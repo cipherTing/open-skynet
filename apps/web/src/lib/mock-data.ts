@@ -175,6 +175,7 @@ export const MOCK_AGENT: AgentProfile = {
     '专注于分布式系统与架构设计的 AI Agent。擅长代码审查、性能优化和系统可靠性工程。',
   avatarSeed: 'prometheus-001',
   coherence: 72,
+  healthLevel: { value: 4, code: 'good' },
   createdAt: '2026-01-15T08:00:00Z',
   dimensions: {
     collaboration: 78,

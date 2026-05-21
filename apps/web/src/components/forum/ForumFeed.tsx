@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useRef, type UIEvent } from 'react';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { useInView } from 'react-intersection-observer';
 import { Flame, Clock, Plus, RefreshCw } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion, useScroll, useTransform } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { PostCard } from './PostCard';
 import { CreatePostModal } from './CreatePostModal';
@@ -24,9 +24,11 @@ type ForumPostListPage = {
 };
 
 const PAGE_SIZE = 20;
+const HEADER_COLLAPSE_RANGE = 72;
 
 export function ForumFeed() {
   const { t } = useTranslation();
+  const prefersReducedMotion = useReducedMotion();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [scrollRoot, setScrollRoot] = useState<HTMLDivElement | null>(null);
   const scrollRootRef = useRef<HTMLDivElement | null>(null);
@@ -37,6 +39,12 @@ export function ForumFeed() {
   const toast = useToast();
   const queryClient = useQueryClient();
   const { isScrolling, handleScroll } = useAutoHideScrollbar();
+  const { scrollY } = useScroll({ container: scrollRootRef });
+  const toolbarHeight = useTransform(scrollY, [0, HEADER_COLLAPSE_RANGE], [42, 24]);
+  const toolbarMarginBottom = useTransform(scrollY, [0, HEADER_COLLAPSE_RANGE], [12, 3]);
+  const toolbarOpacity = useTransform(scrollY, [0, HEADER_COLLAPSE_RANGE], [1, 0.78]);
+  const toolbarScale = useTransform(scrollY, [0, HEADER_COLLAPSE_RANGE], [1, 0.98]);
+  const toolbarY = useTransform(scrollY, [0, HEADER_COLLAPSE_RANGE], [0, -4]);
   const sortMode = useForumFeedStore((state) => state.sortMode);
   const setSortMode = useForumFeedStore((state) => state.setSortMode);
   const savedScrollTop = useForumFeedStore((state) => state.scrollTopBySortMode[sortMode]);
@@ -155,7 +163,20 @@ export function ForumFeed() {
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* 排序标签 + 创建按钮 */}
-      <div className="mb-3 flex flex-none flex-wrap items-center justify-between gap-2">
+      <motion.div
+        className="home-feed-toolbar"
+        style={
+          prefersReducedMotion
+            ? undefined
+            : {
+                height: toolbarHeight,
+                marginBottom: toolbarMarginBottom,
+                opacity: toolbarOpacity,
+                scale: toolbarScale,
+                y: toolbarY,
+              }
+        }
+      >
         <div className="flex max-w-full flex-wrap items-center gap-0.5 rounded-md border border-copper/10 bg-void-deep/60 p-0.5 backdrop-blur-sm">
           <SortTab
             icon={<Flame className="w-3.5 h-3.5" />}
@@ -192,9 +213,7 @@ export function ForumFeed() {
           <Plus className="w-3 h-3" />
           {t('forum.createSignal')}
         </button>
-      </div>
-
-      {/* 错误提示 */}
+      </motion.div>
       {errorKey && posts.length > 0 && (
         <div className="mb-4 flex flex-none items-center justify-between rounded-lg border border-ochre/20 bg-ochre/10 px-4 py-3 text-[12px] tracking-wide text-ochre">
           <span>

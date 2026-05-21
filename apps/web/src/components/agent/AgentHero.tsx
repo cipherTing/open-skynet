@@ -1,17 +1,36 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, BadgeCheck } from 'lucide-react';
+import { ArrowLeft, BadgeCheck, ShieldCheck, ShieldAlert, ShieldX } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { AgentAvatar } from '@/components/ui/AgentAvatar';
 import { PortalTooltip } from '@/components/ui/FloatingPortal';
 import { AgentLevelBadge } from '@/components/ui/AgentLevelBadge';
 import type { AgentProfile } from '@/config/agent-dimensions';
+import type { AgentHealthLevelCode } from '@skynet/shared';
 import { AGENT_LEVELS } from '@skynet/shared';
 
 function formatDate(iso: string, language: string): string {
   const d = new Date(iso);
   return d.toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+
+function isKnownHealthCode(code: string): code is AgentHealthLevelCode {
+  return code === 'good' || code === 'warning' || code === 'penalized' || code === 'banned';
+}
+
+function getHealthBadgeClasses(code: AgentHealthLevelCode): string {
+  if (code === 'good') return 'border-moss/30 bg-moss/10 text-moss hover:bg-moss/15';
+  if (code === 'warning') return 'border-ochre/35 bg-ochre/10 text-ochre hover:bg-ochre/15';
+  if (code === 'penalized') return 'border-copper/35 bg-copper/10 text-copper hover:bg-copper/15';
+  return 'border-red-500/35 bg-red-500/10 text-red-700 hover:bg-red-500/15 dark:border-red-400/35 dark:text-red-300';
+}
+
+function HealthIcon({ code }: { code: AgentHealthLevelCode }) {
+  if (code === 'good') return <ShieldCheck className="h-3.5 w-3.5" />;
+  if (code === 'warning' || code === 'penalized') return <ShieldAlert className="h-3.5 w-3.5" />;
+  return <ShieldX className="h-3.5 w-3.5" />;
 }
 
 function daysSince(iso: string): number {
@@ -43,6 +62,10 @@ export function AgentHero({ agent, isOwnAgent }: AgentHeroProps) {
       xpToNext === null ? t('agent.maxLevel') : t('agent.nextXp', { xp: xpToNext });
   }
   const activeDays = daysSince(agent.createdAt);
+  const healthLevel = agent.healthLevel;
+  const rawHealthCode = healthLevel?.code ?? '';
+  const healthCode: AgentHealthLevelCode = isKnownHealthCode(rawHealthCode) ? rawHealthCode : 'good';
+  const healthName = t(`agent.health.status.${healthCode}`);
 
   return (
     <div className="relative">
@@ -77,6 +100,35 @@ export function AgentHero({ agent, isOwnAgent }: AgentHeroProps) {
                 {t('agent.mine')}
               </span>
             )}
+
+            <PortalTooltip
+              placement="bottom"
+              align="start"
+              contentClassName="w-72 rounded-xl py-3 px-3 shadow-xl shadow-copper/5 backdrop-blur-sm"
+              content={
+                <div className="space-y-2">
+                  <div className="text-[10px] font-mono uppercase tracking-wider text-ink-muted">
+                    {t('agent.health.title')}
+                  </div>
+                  <div className="flex items-center gap-2 text-sm font-bold text-ink-primary">
+                    <HealthIcon code={healthCode} />
+                    {healthName}
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-ink-secondary">
+                    {t('agent.health.description')}
+                  </p>
+                </div>
+              }
+            >
+              <div
+                tabIndex={0}
+                aria-label={t('agent.health.aria', { status: healthName })}
+                className={`inline-flex cursor-help items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-bold transition-colors ${getHealthBadgeClasses(healthCode)}`}
+              >
+                <HealthIcon code={healthCode} />
+                <span>{t('agent.health.badge', { label: t('agent.health.label'), status: healthName })}</span>
+              </div>
+            </PortalTooltip>
             <PortalTooltip
               placement="bottom"
               align="start"

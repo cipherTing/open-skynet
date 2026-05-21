@@ -8,6 +8,14 @@ export interface User {
 
 // --- Agent 类型 ---
 
+
+export type AgentHealthLevelCode = 'banned' | 'penalized' | 'warning' | 'good';
+
+export interface AgentHealthLevelSummary {
+  value: 1 | 2 | 3 | 4;
+  code: AgentHealthLevelCode;
+}
+
 export interface Agent {
   id: string;
   name: string;
@@ -16,6 +24,7 @@ export interface Agent {
   ownerOperationEnabled?: boolean;
   avatarSeed: string;
   level?: AgentLevelSummary | null;
+  healthLevel?: AgentHealthLevelSummary | null;
   scoreHistory?: AgentScorePoint[];
   createdAt: string;
 }
@@ -123,6 +132,7 @@ export interface ForumAuthor {
   description?: string;
   avatarSeed?: string;
   level?: AgentLevelSummary | null;
+  healthLevel?: AgentHealthLevelSummary | null;
 }
 
 export type FeedbackType =
@@ -189,6 +199,144 @@ export interface AgentFavoritesResponse {
   hidden: boolean;
   favorites: AgentFavoriteItem[];
   meta: PaginationMeta;
+}
+
+export type GovernanceTargetType = 'POST' | 'REPLY';
+
+export type GovernanceCaseStatus =
+  | 'OPEN'
+  | 'EMERGENCY'
+  | 'RESOLVED_VIOLATION'
+  | 'RESOLVED_NOT_VIOLATION';
+
+export type GovernanceResultCode = 'violation' | 'not_violation';
+
+export interface GovernancePostSnapshot {
+  kind: 'POST';
+  post: {
+    id: string;
+    title: string;
+    content: string;
+    authorId: string;
+    createdAt: string;
+  };
+}
+
+export interface GovernanceReplySnapshot {
+  kind: 'REPLY';
+  post: {
+    id: string;
+    title: string;
+    content: string;
+    authorId: string;
+    createdAt: string;
+  };
+  reply: {
+    id: string;
+    content: string;
+    authorId: string;
+    createdAt: string;
+  };
+  parentReply?: {
+    id: string;
+    content: string;
+    authorId: string;
+    createdAt: string;
+  };
+}
+
+export type GovernanceTargetSnapshot = GovernancePostSnapshot | GovernanceReplySnapshot;
+
+export interface GovernanceVoteTally {
+  violation: number;
+  notViolation: number;
+}
+
+export type GovernanceTargetSummary =
+  | {
+      kind: 'POST';
+      post: {
+        id: string;
+        title: string;
+        excerpt: string;
+        authorId: string;
+        createdAt: string;
+      };
+    }
+  | {
+      kind: 'REPLY';
+      post: {
+        id: string;
+        title: string;
+      };
+      reply: {
+        id: string;
+        excerpt: string;
+        authorId: string;
+        createdAt: string;
+      };
+      parentReply?: {
+        id: string;
+        excerpt: string;
+      };
+      depth: 1 | 2;
+    };
+
+export type GovernanceTimelineEvent =
+  | {
+      type: 'CASE_OPENED';
+      date: string;
+      occurredAt: string;
+    }
+  | {
+      type: 'VOTES_CAST';
+      date: string;
+      voterCount: number;
+      violation: { voterCount: number; votes: number };
+      notViolation: { voterCount: number; votes: number };
+      firstOccurredAt: string;
+      lastOccurredAt: string;
+    }
+  | {
+      type: 'CASE_RESOLVED';
+      date: string;
+      occurredAt: string;
+      result: GovernanceResultCode;
+      durationMinutes: number;
+    };
+
+export interface GovernanceResultFeedItem {
+  id: string;
+  targetType: GovernanceTargetType;
+  targetId: string;
+  status: Extract<GovernanceCaseStatus, 'RESOLVED_VIOLATION' | 'RESOLVED_NOT_VIOLATION'>;
+  result: GovernanceResultCode;
+  targetSummary: GovernanceTargetSummary;
+  tally: GovernanceVoteTally;
+  openedAt: string;
+  resolvedAt: string;
+  durationMinutes: number;
+}
+
+export interface GovernanceResultsBatch {
+  items: GovernanceResultFeedItem[];
+  sampledAt: string;
+  serverTime: string;
+}
+
+export interface GovernanceResultDetail extends GovernanceResultFeedItem {
+  targetSnapshot: GovernanceTargetSnapshot;
+  timelineEvents: GovernanceTimelineEvent[];
+}
+
+export interface GovernanceStats {
+  todayResolvedCount: number;
+  recentResolvedCount: number;
+  openCount: number;
+  emergencyCount: number;
+  violationResolvedCount: number;
+  notViolationResolvedCount: number;
+  averageResolutionMinutes: number | null;
 }
 
 // --- Agent 交互历史 ---

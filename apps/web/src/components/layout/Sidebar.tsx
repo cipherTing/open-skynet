@@ -1,24 +1,37 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Radio, LogIn, Shield } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { LogIn, Radio, Scale, Shield } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/contexts/AuthContext';
+import { PortalTooltip } from '@/components/ui/FloatingPortal';
 import { UserDropdown } from '@/components/ui/UserDropdown';
-import { FLOATING_Z_INDEX, PortalTooltip } from '@/components/ui/FloatingPortal';
+import { useHomeNavigationStore, type HomeSection } from '@/stores/home-navigation-store';
 
-const navItems = [
-  { icon: Radio, labelKey: 'sidebar.feed', href: '/' },
+export type SidebarSection = HomeSection;
+
+interface SidebarProps {
+  activeSection?: SidebarSection;
+  onSectionChange?: (section: SidebarSection) => void;
+}
+
+const tabItems: Array<{ icon: typeof Radio; labelKey: string; section: SidebarSection }> = [
+  { icon: Radio, labelKey: 'sidebar.feed', section: 'feed' },
+  { icon: Scale, labelKey: 'sidebar.governance', section: 'governance' },
 ];
 
-export function Sidebar() {
+const navButtonClass = (isActive: boolean) =>
+  `relative flex w-full flex-col items-center justify-center gap-0.5 rounded-lg py-2 transition-all duration-200 ${
+    isActive ? 'bg-copper/10 text-copper' : 'text-ink-muted hover:bg-copper/5 hover:text-copper'
+  }`;
+
+export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
   const { t } = useTranslation();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const { isAuthenticated, agent, logout } = useAuth();
-  const pathname = usePathname();
+  const setHomeActiveSection = useHomeNavigationStore((state) => state.setActiveSection);
 
   useEffect(() => {
     if (!showLogoutConfirm) return;
@@ -31,74 +44,98 @@ export function Sidebar() {
 
   return (
     <>
-      <aside className="fixed left-0 top-0 h-screen w-16 z-40 flex flex-col items-center py-4">
-        {/* 背景 */}
-        <div className="absolute inset-0 bg-void-deep border-r border-copper/10" />
+      <aside className="fixed left-0 top-0 z-40 flex h-screen w-16 flex-col items-center py-4">
+        <div className="absolute inset-0 border-r border-copper/10 bg-void-deep" />
 
-        <div className="relative flex flex-col items-center h-full w-full px-2">
-          {/* Logo */}
-          <Link href="/" className="mb-4 group">
-            <div className="w-10 h-10 flex items-center justify-center border border-copper/40 rounded-lg">
-              <span className="text-copper font-display text-sm font-black tracking-deck-wide">
-                S
-              </span>
-            </div>
-          </Link>
+        <div className="relative flex h-full w-full flex-col items-center px-2">
+          {onSectionChange ? (
+            <button
+              type="button"
+              className="group mb-4"
+              aria-label={t('sidebar.feed')}
+              onClick={() => onSectionChange('feed')}
+            >
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-copper/40">
+                <span className="font-display text-sm font-black tracking-deck-wide text-copper">S</span>
+              </div>
+            </button>
+          ) : (
+            <Link
+              href="/"
+              className="group mb-4"
+              aria-label={t('sidebar.feed')}
+              onClick={() => setHomeActiveSection('feed')}
+            >
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-copper/40">
+                <span className="font-display text-sm font-black tracking-deck-wide text-copper">S</span>
+              </div>
+            </Link>
+          )}
 
-          {/* 分隔线 */}
-          <div className="w-8 deck-divider mb-3" />
+          <div className="deck-divider mb-3 w-8" />
 
-          {/* 导航项 */}
-          <nav className="flex-1 flex flex-col items-center gap-1 w-full">
-            {navItems.map((item) => {
+          <nav className="flex w-full flex-1 flex-col items-center gap-1" aria-label={t('sidebar.navigation')}>
+            {tabItems.map((item) => {
               const Icon = item.icon;
-              const isActive = pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href));
+              const isActive = activeSection === item.section;
               const label = t(item.labelKey);
-
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`relative flex flex-col items-center justify-center w-full py-2 rounded-lg transition-all duration-200 gap-0.5 ${
-                    isActive
-                      ? 'text-copper bg-copper/10'
-                      : 'text-ink-muted hover:text-copper hover:bg-copper/5'
-                  }`}
-                >
+              const content = (
+                <>
                   {isActive && (
                     <motion.div
                       layoutId="sidebar-active"
-                      className="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-6 bg-copper rounded-r-full"
-                      style={{ boxShadow: '0 0 6px rgba(255, 122, 191, 0.5)' }}
+                      className="absolute left-0 top-1/2 h-6 w-[2px] -translate-y-1/2 rounded-r-full bg-copper shadow-[0_0_6px_rgba(255,122,191,0.5)]"
                       transition={{ type: 'spring', stiffness: 300, damping: 30 }}
                     />
                   )}
-                  <Icon className="w-5 h-5" />
+                  <Icon className="h-5 w-5" />
                   <span className="text-[10px] font-medium tracking-wide">{label}</span>
+                </>
+              );
+
+              if (onSectionChange) {
+                return (
+                  <button
+                    key={item.section}
+                    type="button"
+                    aria-pressed={isActive}
+                    className={navButtonClass(isActive)}
+                    onClick={() => onSectionChange(item.section)}
+                  >
+                    {content}
+                  </button>
+                );
+              }
+
+              return (
+                <Link
+                  key={item.section}
+                  href="/"
+                  className={navButtonClass(isActive)}
+                  onClick={() => {
+                    setHomeActiveSection(item.section);
+                  }}
+                >
+                  {content}
                 </Link>
               );
             })}
           </nav>
 
-          {/* 分隔线 */}
-          <div className="w-8 deck-divider mb-3" />
+          <div className="deck-divider mb-3 w-8" />
 
-          {/* 用户区域 */}
-          <div className="flex flex-col items-center gap-2 w-full pb-2">
+          <div className="flex w-full flex-col items-center gap-2 pb-2">
             {isAuthenticated && agent ? (
-              <UserDropdown
-                agent={agent}
-                onLogout={() => setShowLogoutConfirm(true)}
-              />
+              <UserDropdown agent={agent} onLogout={() => setShowLogoutConfirm(true)} />
             ) : (
               <PortalTooltip content={t('sidebar.login')} placement="right">
                 <span className="block w-full">
                   <Link
                     href="/auth"
                     aria-label={t('sidebar.login')}
-                    className="flex flex-col items-center justify-center w-full py-2 rounded-lg text-ink-muted hover:text-copper hover:bg-copper/5 transition-all gap-0.5"
+                    className="flex w-full flex-col items-center justify-center gap-0.5 rounded-lg py-2 text-ink-muted transition-all hover:bg-copper/5 hover:text-copper"
                   >
-                    <LogIn className="w-5 h-5" />
+                    <LogIn className="h-5 w-5" />
                     <span className="text-[10px] font-medium tracking-wide">{t('sidebar.login')}</span>
                   </Link>
                 </span>
@@ -106,22 +143,19 @@ export function Sidebar() {
             )}
           </div>
 
-          {/* 底部状态点 */}
-          <div className="mt-auto mb-1">
-            <div className="w-2 h-2 rounded-full bg-moss/60" style={{ boxShadow: '0 0 4px rgba(74, 222, 128, 0.4)' }} />
+          <div className="mb-1 mt-auto">
+            <div className="h-2 w-2 rounded-full bg-moss/60 shadow-[0_0_4px_rgba(74,222,128,0.4)]" />
           </div>
         </div>
       </aside>
 
-      {/* 退出登录确认弹窗 */}
       <AnimatePresence>
         {showLogoutConfirm && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 flex items-center justify-center bg-void/60 backdrop-blur-sm"
-            style={{ zIndex: FLOATING_Z_INDEX.modal }}
+            className="fixed inset-0 z-[130] flex items-center justify-center bg-void/60 backdrop-blur-sm"
             onClick={() => setShowLogoutConfirm(false)}
           >
             <motion.div
@@ -135,26 +169,28 @@ export function Sidebar() {
               aria-modal="true"
               aria-labelledby="logout-title"
             >
-              <div className="flex items-center gap-2 mb-4">
-                <Shield className="w-5 h-5 text-ochre" />
-                <span id="logout-title" className="text-sm text-ochre font-bold tracking-deck-normal uppercase">{t('sidebar.logoutTitle')}</span>
+              <div className="mb-4 flex items-center gap-2">
+                <Shield className="h-5 w-5 text-ochre" />
+                <span id="logout-title" className="text-sm font-bold uppercase tracking-deck-normal text-ochre">
+                  {t('sidebar.logoutTitle')}
+                </span>
               </div>
-              <p className="text-ink-secondary text-sm mb-6 leading-relaxed">
-                {t('sidebar.logoutQuestion')}
-              </p>
+              <p className="mb-6 text-sm leading-relaxed text-ink-secondary">{t('sidebar.logoutQuestion')}</p>
               <div className="flex gap-3">
                 <button
+                  type="button"
                   onClick={() => setShowLogoutConfirm(false)}
-                  className="flex-1 px-4 py-2.5 text-sm text-ink-secondary border border-copper/20 hover:border-copper/40 hover:text-ink-primary transition-all rounded-lg tracking-wide"
+                  className="flex-1 rounded-lg border border-copper/20 px-4 py-2.5 text-sm tracking-wide text-ink-secondary transition-all hover:border-copper/40 hover:text-ink-primary"
                 >
                   {t('app.cancel')}
                 </button>
                 <button
+                  type="button"
                   onClick={() => {
                     logout();
                     setShowLogoutConfirm(false);
                   }}
-                  className="flex-1 px-4 py-2.5 text-sm text-void bg-ochre hover:bg-ochre-dim transition-all rounded-lg tracking-wide font-bold"
+                  className="flex-1 rounded-lg bg-ochre px-4 py-2.5 text-sm font-bold tracking-wide text-void transition-all hover:bg-ochre-dim"
                 >
                   {t('sidebar.logoutConfirm')}
                 </button>

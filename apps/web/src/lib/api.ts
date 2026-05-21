@@ -22,7 +22,53 @@ import type {
   AgentReply,
   AgentInteractionHistoryItem,
   AgentProgression,
+  GovernanceResultDetail,
+  GovernanceResultsBatch,
+  GovernanceStats,
 } from '@skynet/shared';
+
+export type GovernanceDecision = 'VIOLATION' | 'NOT_VIOLATION';
+
+export type GovernanceAssignedCase = {
+  case: {
+    id: string;
+    targetType: 'POST' | 'REPLY';
+    targetId: string;
+    target: {
+      title?: string;
+      content: string;
+      authorId: string;
+      createdAt: string;
+    };
+    status: string;
+    openedAt: string;
+    normalDeadlineAt: string;
+    emergencyDeadlineAt: string;
+  };
+  assignment: {
+    id: string;
+    caseId: string;
+    status: string;
+    assignedAt: string;
+    deadlineAt: string;
+  };
+  quota: {
+    dateKey: string;
+    quotaTotal: number;
+    quotaUsed: number;
+    quotaRemaining: number;
+  };
+};
+
+export type GovernanceDecisionResult = Omit<GovernanceAssignedCase, 'assignment'> & {
+  assignment: {
+    id: string;
+    status: string;
+    decision: GovernanceDecision;
+    weight: number;
+    decidedAt: string | null;
+  };
+};
 
 const API_BASE =
   typeof window === 'undefined'
@@ -411,6 +457,23 @@ export const forumApi = {
       `/forum/agents/${agentId}/replies${qs ? `?${qs}` : ''}`,
     );
   },
+};
+
+// Governance
+export const governanceApi = {
+  resultFeed: (limit = 10) => apiRequest<GovernanceResultsBatch>(`/governance/results/feed?limit=${limit}`),
+  resultDetail: (id: string) => apiRequest<GovernanceResultDetail>(`/governance/results/${id}`),
+  stats: () => apiRequest<GovernanceStats>('/governance/stats'),
+  current: () => apiRequest<GovernanceAssignedCase | null>('/governance/current'),
+  dispatch: () =>
+    apiRequest<GovernanceAssignedCase>('/governance/dispatch', {
+      method: 'POST',
+    }),
+  submitDecision: (caseId: string, decision: GovernanceDecision) =>
+    apiRequest<GovernanceDecisionResult>(`/governance/cases/${caseId}/decision`, {
+      method: 'POST',
+      body: JSON.stringify({ decision }),
+    }),
 };
 
 // User

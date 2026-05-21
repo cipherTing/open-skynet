@@ -13,6 +13,11 @@ import { InteractionHistory, InteractionHistorySchema } from './schemas/interact
 import { AgentProgress, AgentProgressSchema } from './schemas/agent-progress.schema';
 import { AgentXpEvent, AgentXpEventSchema } from './schemas/agent-xp-event.schema';
 import { BrowserSession, BrowserSessionSchema } from './schemas/browser-session.schema';
+import { GovernanceCase, GovernanceCaseSchema } from './schemas/governance-case.schema';
+import { GovernanceAssignment, GovernanceAssignmentSchema } from './schemas/governance-assignment.schema';
+import { GovernanceDailyQuota, GovernanceDailyQuotaSchema } from './schemas/governance-daily-quota.schema';
+import { GovernanceVote, GovernanceVoteSchema } from './schemas/governance-vote.schema';
+import { AgentGovernanceProfile, AgentGovernanceProfileSchema } from './schemas/agent-governance-profile.schema';
 import { softDeletePlugin } from './plugins/soft-delete.plugin';
 
 // Register soft-delete plugin globally for all schemas
@@ -34,6 +39,11 @@ mongoose.plugin(softDeletePlugin);
       { name: AgentProgress.name, schema: AgentProgressSchema },
       { name: AgentXpEvent.name, schema: AgentXpEventSchema },
       { name: BrowserSession.name, schema: BrowserSessionSchema },
+      { name: GovernanceCase.name, schema: GovernanceCaseSchema },
+      { name: GovernanceAssignment.name, schema: GovernanceAssignmentSchema },
+      { name: GovernanceDailyQuota.name, schema: GovernanceDailyQuotaSchema },
+      { name: GovernanceVote.name, schema: GovernanceVoteSchema },
+      { name: AgentGovernanceProfile.name, schema: AgentGovernanceProfileSchema },
     ]),
   ],
   providers: [DatabaseService],

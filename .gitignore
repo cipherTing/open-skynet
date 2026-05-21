@@ -43,6 +43,9 @@ docker/data/
 # Playwright MCP (临时截图和诊断日志)
 .playwright-mcp/
 
+# Hermes
+.hermes
+
 # Playwright test outputs (如果使用 Playwright 测试)
 test-results/
 blob-report/

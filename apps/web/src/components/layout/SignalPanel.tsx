@@ -58,12 +58,11 @@ const activityFeed = [
   target: string;
 }>;
 
-export function SignalPanel() {
+export function SignalPanelContent() {
   const { t } = useTranslation();
   const { isScrolling, handleScroll } = useAutoHideScrollbar();
 
   return (
-    <aside className="hidden xl:flex h-full min-h-0 flex-col w-[280px] shrink-0 border-l border-copper/10 bg-void-deep">
       <div
         onScroll={handleScroll}
         className={`skynet-auto-hide-scrollbar flex min-h-0 flex-col h-full overflow-y-auto py-4 ${
@@ -157,6 +156,13 @@ export function SignalPanel() {
           </div>
         </div>
       </div>
+  );
+}
+
+export function SignalPanel() {
+  return (
+    <aside className="hidden h-full min-h-0 w-[280px] shrink-0 flex-col border-l border-copper/10 bg-void-deep xl:flex">
+      <SignalPanelContent />
     </aside>
   );
 }

@@ -3,6 +3,8 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  Inject,
+  forwardRef,
 } from "@nestjs/common";
 import { InjectModel } from "@nestjs/mongoose";
 import { Model, Types, type ClientSession, type FilterQuery } from "mongoose";
@@ -33,6 +35,9 @@ import {
   type FeedbackCounts,
   type FeedbackType,
 } from "./feedback.constants";
+import { GovernanceService } from "@/governance/governance.service";
+import { AgentGovernanceProfile } from "@/database/schemas/agent-governance-profile.schema";
+import { GOVERNANCE_HEALTH_LEVEL, type GovernanceHealthLevel } from "@/governance/governance.constants";
 
 const AUTHOR_FIELDS = "name description avatarSeed";
 const DELETED_AUTHOR_NAME = "已离线 Agent";
@@ -144,6 +149,19 @@ function createFallbackAuthor(authorId: string): PopulatedAuthor {
   };
 }
 
+
+type PublicAgentHealthLevelSummary = {
+  value: 1 | 2 | 3 | 4;
+  code: "banned" | "penalized" | "warning" | "good";
+};
+
+function toPublicAgentHealthLevel(healthLevel: GovernanceHealthLevel): PublicAgentHealthLevelSummary {
+  if (healthLevel <= GOVERNANCE_HEALTH_LEVEL.BANNED) return { value: GOVERNANCE_HEALTH_LEVEL.BANNED, code: "banned" };
+  if (healthLevel <= GOVERNANCE_HEALTH_LEVEL.PENALIZED) return { value: GOVERNANCE_HEALTH_LEVEL.PENALIZED, code: "penalized" };
+  if (healthLevel <= GOVERNANCE_HEALTH_LEVEL.WARNING) return { value: GOVERNANCE_HEALTH_LEVEL.WARNING, code: "warning" };
+  return { value: GOVERNANCE_HEALTH_LEVEL.GOOD, code: "good" };
+}
+
 function createEmptyMeta(page: number, pageSize: number) {
   return {
     total: 0,
@@ -165,6 +183,8 @@ export class ForumService {
     @InjectModel(Post.name) private readonly postModel: Model<Post>,
     @InjectModel(Reply.name) private readonly replyModel: Model<Reply>,
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
+    @InjectModel(AgentGovernanceProfile.name)
+    private readonly agentGovernanceProfileModel: Model<AgentGovernanceProfile>,
     @InjectModel(Feedback.name) private readonly feedbackModel: Model<Feedback>,
     @InjectModel(PostFavorite.name)
     private readonly postFavoriteModel: Model<PostFavorite>,
@@ -174,6 +194,8 @@ export class ForumService {
     private readonly interactionHistoryModel: Model<InteractionHistory>,
     private readonly databaseService: DatabaseService,
     private readonly progressionService: ProgressionService,
+    @Inject(forwardRef(() => GovernanceService))
+    private readonly governanceService: GovernanceService,
   ) {}
 
   private async populateAuthors(
@@ -800,6 +822,9 @@ export class ForumService {
     if (post.authorId === agentId) {
       throw new ForbiddenException("不能评价自己的帖子");
     }
+    if (dto.type === "VIOLATION") {
+      await this.governanceService.assertCanReportViolation(agentId);
+    }
 
     try {
       return await this.databaseService.$transaction(async (session) => {
@@ -842,6 +867,13 @@ export class ForumService {
               { [previousType]: -1, [dto.type]: 1 },
               session,
             );
+            if (previousType !== "VIOLATION" && dto.type === "VIOLATION") {
+              await this.governanceService.ensureCaseForTarget({
+                targetType: "POST",
+                targetId: postId,
+                session,
+              });
+            }
             action = "changed";
             feedback = { id: existingFeedback.id, type: dto.type };
           }
@@ -867,6 +899,13 @@ export class ForumService {
             { [dto.type]: 1 },
             session,
           );
+          if (dto.type === "VIOLATION") {
+            await this.governanceService.ensureCaseForTarget({
+              targetType: "POST",
+              targetId: postId,
+              session,
+            });
+          }
           action = "created";
           feedback = { id: newFeedback.id, type: dto.type };
         }
@@ -907,6 +946,9 @@ export class ForumService {
     }
     if (reply.authorId === agentId) {
       throw new ForbiddenException("不能评价自己的回复");
+    }
+    if (dto.type === "VIOLATION") {
+      await this.governanceService.assertCanReportViolation(agentId);
     }
     const post = await this.postModel.findById(reply.postId);
     if (!post) {
@@ -954,6 +996,13 @@ export class ForumService {
               { [previousType]: -1, [dto.type]: 1 },
               session,
             );
+            if (previousType !== "VIOLATION" && dto.type === "VIOLATION") {
+              await this.governanceService.ensureCaseForTarget({
+                targetType: "REPLY",
+                targetId: replyId,
+                session,
+              });
+            }
             action = "changed";
             feedback = { id: existingFeedback.id, type: dto.type };
           }
@@ -979,6 +1028,13 @@ export class ForumService {
             { [dto.type]: 1 },
             session,
           );
+          if (dto.type === "VIOLATION") {
+            await this.governanceService.ensureCaseForTarget({
+              targetType: "REPLY",
+              targetId: replyId,
+              session,
+            });
+          }
           action = "created";
           feedback = { id: newFeedback.id, type: dto.type };
         }
@@ -1300,9 +1356,10 @@ export class ForumService {
     if (!agent) {
       throw new NotFoundException("Agent 不存在");
     }
-    const [level, scoreHistory] = await Promise.all([
+    const [level, scoreHistory, healthProfile] = await Promise.all([
       this.progressionService.getPublicLevelSummary(agent.id),
       this.progressionService.getScoreHistory(agent.id),
+      this.agentGovernanceProfileModel.findOne({ agentId: agent.id }).lean<{ healthLevel?: GovernanceHealthLevel }>(),
     ]);
     return {
       id: agent.id,
@@ -1311,6 +1368,7 @@ export class ForumService {
       favoritesPublic: agent.favoritesPublic !== false,
       avatarSeed: agent.avatarSeed,
       level,
+      healthLevel: toPublicAgentHealthLevel(healthProfile?.healthLevel ?? GOVERNANCE_HEALTH_LEVEL.GOOD),
       scoreHistory,
       createdAt: agent.createdAt.toISOString(),
     };

@@ -14,6 +14,7 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { HealthModule } from './health/health.module';
 import { LoggerMiddleware } from './common/middleware/logger.middleware';
 import { getRedisConfig } from './config/env';
+import { GovernanceModule } from './governance/governance.module';
 
 const redisConfig = getRedisConfig();
 
@@ -36,6 +37,7 @@ const redisConfig = getRedisConfig();
     AuthModule,
     UserModule,
     ForumModule,
+    GovernanceModule,
     HealthModule,
   ],
   providers: [

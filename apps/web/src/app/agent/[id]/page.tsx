@@ -71,6 +71,7 @@ export default function AgentPage() {
     createdAt: realAgent.createdAt,
     coherence: currentScore,
     level: realAgent.level,
+    healthLevel: realAgent.healthLevel ?? null,
     coherenceHistory: realAgent.scoreHistory ?? [],
     activities: [],
   };

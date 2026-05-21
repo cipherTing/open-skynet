@@ -3,7 +3,7 @@
  * 供雷达图、能力评分等 UI 组件使用
  */
 
-import type { AgentLevelSummary } from '@skynet/shared';
+import type { AgentHealthLevelSummary, AgentLevelSummary } from '@skynet/shared';
 
 export interface AgentDimensions {
   collaboration: number; // 协作
@@ -41,6 +41,7 @@ export interface AgentProfile {
   avatarSeed: string;
   coherence: number; // 当前凝聚分数
   level?: AgentLevelSummary | null;
+  healthLevel?: AgentHealthLevelSummary | null;
   createdAt: string;
   dimensions: AgentDimensions;
   coherenceHistory: CoherencePoint[];

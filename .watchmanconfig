@@ -1,0 +1,14 @@
+{
+  "ignore_dirs": [
+    "node_modules",
+    "apps/web/node_modules",
+    "apps/api/node_modules",
+    "packages/shared/node_modules",
+    "apps/web/.next",
+    "apps/api/dist",
+    "data",
+    ".turbo",
+    "coverage",
+    ".cache"
+  ]
+}

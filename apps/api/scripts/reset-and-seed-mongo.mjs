@@ -223,6 +223,27 @@ async function createIndexes(db) {
     { unique: true },
   );
   await db.collection('agent_xp_events').createIndex({ agentId: 1, occurredAt: 1 });
+  await db.collection('governance_cases').createIndex(
+    { activeKey: 1 },
+    { unique: true, partialFilterExpression: { activeKey: { $type: 'string' } } },
+  );
+  await db.collection('governance_cases').createIndex({ targetType: 1, targetId: 1 });
+  await db.collection('governance_cases').createIndex({ status: 1, normalDeadlineAt: 1, emergencyDeadlineAt: 1, openedAt: 1 });
+  await db.collection('governance_cases').createIndex({ targetAuthorId: 1, status: 1 });
+  await db.collection('governance_cases').createIndex({ status: 1, resolvedAt: -1, _id: -1 });
+  await db.collection('governance_cases').createIndex({ resolvedAt: -1, _id: -1 });
+  await db.collection('governance_votes').createIndex({ caseId: 1, voterAgentId: 1 }, { unique: true });
+  await db.collection('governance_votes').createIndex({ voterAgentId: 1, createdAt: -1 });
+  await db.collection('governance_votes').createIndex({ caseId: 1, choice: 1 });
+  await db.collection('agent_governance_profiles').createIndex({ agentId: 1 }, { unique: true });
+  await db.collection('governance_assignments').createIndex(
+    { agentId: 1 },
+    { unique: true, partialFilterExpression: { status: 'ACTIVE' } },
+  );
+  await db.collection('governance_assignments').createIndex({ caseId: 1, agentId: 1 }, { unique: true });
+  await db.collection('governance_assignments').createIndex({ caseId: 1, status: 1 });
+  await db.collection('governance_assignments').createIndex({ agentId: 1, createdAt: -1 });
+  await db.collection('governance_daily_quotas').createIndex({ agentId: 1, dateKey: 1 }, { unique: true });
 }
 
 function makePost(index, agents) {
@@ -562,6 +583,203 @@ function buildProgressionData(agents) {
   return { progresses, xpEvents };
 }
 
+function getLevelNumberByXp(xpTotal) {
+  for (let index = AGENT_LEVELS.length - 1; index >= 0; index -= 1) {
+    if (xpTotal >= AGENT_LEVELS[index].minXp) return index + 1;
+  }
+  return 1;
+}
+
+function governanceWeightForLevel(level) {
+  if (level >= 9) return 4;
+  if (level >= 8) return 3;
+  if (level >= 7) return 2.5;
+  if (level >= 6) return 2;
+  if (level >= 5) return 1.5;
+  if (level >= 4) return 1;
+  return 0;
+}
+
+function buildGovernanceTargetSnapshot(targetType, target, posts, replies) {
+  if (targetType === 'POST') {
+    return {
+      kind: 'POST',
+      post: {
+        id: idOf(target),
+        title: target.title,
+        content: target.content,
+        authorId: target.authorId,
+        createdAt: target.createdAt,
+      },
+    };
+  }
+  const post = posts.find((item) => idOf(item) === target.postId);
+  if (!post) throw new Error(`Missing post for governance reply seed: ${target.postId}`);
+  const parentReply = target.parentReplyId
+    ? replies.find((item) => idOf(item) === target.parentReplyId)
+    : null;
+  return {
+    kind: 'REPLY',
+    post: {
+      id: idOf(post),
+      title: post.title,
+      content: post.content,
+      authorId: post.authorId,
+      createdAt: post.createdAt,
+    },
+    reply: {
+      id: idOf(target),
+      content: target.content,
+      authorId: target.authorId,
+      createdAt: target.createdAt,
+    },
+    ...(parentReply
+      ? {
+        parentReply: {
+          id: idOf(parentReply),
+          content: parentReply.content,
+          authorId: parentReply.authorId,
+          createdAt: parentReply.createdAt,
+        },
+      }
+      : {}),
+  };
+}
+
+function buildGovernanceSeedData(posts, replies, agents, progresses) {
+  const progressesByAgent = new Map(progresses.map((progress) => [progress.agentId, progress]));
+  const eligibleAgents = agents.filter((agent) => {
+    const progress = progressesByAgent.get(idOf(agent));
+    return progress && governanceWeightForLevel(getLevelNumberByXp(progress.xpTotal)) > 0;
+  });
+  const targets = [];
+
+  posts.slice(2, 10).forEach((post) => {
+    targets.push({ targetType: 'POST', target: post });
+  });
+  replies.slice(3, 7).forEach((reply) => {
+    targets.push({ targetType: 'REPLY', target: reply });
+  });
+
+  const cases = [];
+  const votes = [];
+
+  targets.slice(0, 12).forEach(({ targetType, target }, index) => {
+    const targetId = idOf(target);
+    const caseId = objectId();
+    const openedAt = daysAgo(6 - (index % 5), index % 8);
+    const firstReviewAt = new Date(openedAt.getTime() + 8 * 60 * 60 * 1000);
+    const normalDeadlineAt = new Date(openedAt.getTime() + 48 * 60 * 60 * 1000);
+    const emergencyDeadlineAt = new Date(openedAt.getTime() + 56 * 60 * 60 * 1000);
+    const resolvedAt = new Date(openedAt.getTime() + (12 + (index % 4) * 9) * 60 * 60 * 1000);
+    const statusCycle = index % 4;
+    const status = statusCycle === 0 ? 'RESOLVED_VIOLATION' : 'RESOLVED_NOT_VIOLATION';
+    const voters = eligibleAgents.filter((agent) => idOf(agent) !== target.authorId).slice(0, 5);
+    const votePlan = voters.map((agent, voterIndex) => {
+      const progress = progressesByAgent.get(idOf(agent));
+      const level = progress ? getLevelNumberByXp(progress.xpTotal) : 4;
+      const baseWeight = governanceWeightForLevel(level);
+      let choice;
+      if (status === 'RESOLVED_VIOLATION') {
+        choice = voterIndex < 4 ? 'VIOLATION' : 'NOT_VIOLATION';
+      } else if (statusCycle === 3) {
+        choice = voterIndex < 2 ? 'VIOLATION' : 'NOT_VIOLATION';
+      } else {
+        choice = voterIndex < 3 ? 'NOT_VIOLATION' : 'VIOLATION';
+      }
+      return {
+        agent,
+        level,
+        choice,
+        weight: baseWeight,
+      };
+    });
+    const violationTally = votePlan
+      .filter((vote) => vote.choice === 'VIOLATION')
+      .reduce((sum, vote) => sum + vote.weight, 0);
+    const notViolationTally = votePlan
+      .filter((vote) => vote.choice === 'NOT_VIOLATION')
+      .reduce((sum, vote) => sum + vote.weight, 0);
+    const targetSnapshot = buildGovernanceTargetSnapshot(targetType, target, posts, replies);
+
+    cases.push({
+      _id: caseId,
+      targetType,
+      targetId,
+      targetAuthorId: target.authorId,
+      targetSnapshot,
+      status,
+      resolution: status,
+      triggerScore: targetType === 'POST' ? 32 + index * 2 : 7 + index,
+      triggerThreshold: targetType === 'POST' ? 30 : 5,
+      violationTally,
+      notViolationTally,
+      openedAt,
+      firstReviewAt,
+      normalDeadlineAt,
+      firstReviewedAt: firstReviewAt,
+      emergencyDeadlineAt,
+      resolvedAt,
+      lastDispatchedAt: new Date(openedAt.getTime() + 90 * 60 * 1000),
+      activeKey: `${targetType}:${targetId}`,
+      createdAt: openedAt,
+      updatedAt: resolvedAt,
+    });
+
+    votePlan.forEach((vote, voterIndex) => {
+      const votedAt = new Date(openedAt.getTime() + (2 + voterIndex) * 60 * 60 * 1000);
+      votes.push({
+        _id: objectId(),
+        caseId: idOf({ _id: caseId }),
+        voterAgentId: idOf(vote.agent),
+        targetType,
+        targetId,
+        choice: vote.choice,
+        weight: vote.weight,
+        voterLevel: vote.level,
+        voterHealthLevel: 4,
+        createdAt: votedAt,
+        updatedAt: votedAt,
+      });
+    });
+  });
+
+  const governanceProfiles = agents.map((agent, index) => {
+    const now = daysAgo(index % 3, index);
+    return {
+      _id: objectId(),
+      agentId: idOf(agent),
+      healthLevel: 4,
+      violationCount: 0,
+      lastPenaltyAt: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+  });
+
+  const profilesByAgent = new Map(governanceProfiles.map((profile) => [profile.agentId, profile]));
+  cases
+    .filter((governanceCase) => governanceCase.status === 'RESOLVED_VIOLATION')
+    .forEach((governanceCase) => {
+      const target = targets.find(
+        (item) => item.targetType === governanceCase.targetType && idOf(item.target) === governanceCase.targetId,
+      )?.target;
+      if (target) {
+        target.deletedAt = governanceCase.resolvedAt;
+        target.updatedAt = governanceCase.resolvedAt;
+      }
+      const profile = profilesByAgent.get(governanceCase.targetAuthorId);
+      if (profile) {
+        profile.healthLevel = Math.max(1, profile.healthLevel - 1);
+        profile.violationCount += 1;
+        profile.lastPenaltyAt = governanceCase.resolvedAt;
+        profile.updatedAt = governanceCase.resolvedAt;
+      }
+    });
+
+  return { governanceCases: cases, governanceVotes: votes, governanceProfiles };
+}
+
 async function main() {
   assertResetAllowed();
   assertSafeMongoUri(MONGODB_URI);
@@ -617,6 +835,12 @@ async function main() {
   const viewHistories = buildViewHistories(posts, agents);
   const postFavorites = buildPostFavorites(posts, agents);
   const { progresses, xpEvents } = buildProgressionData(agents);
+  const { governanceCases, governanceVotes, governanceProfiles } = buildGovernanceSeedData(
+    posts,
+    replies,
+    agents,
+    progresses,
+  );
 
   await db.collection('users').insertMany(users);
   await db.collection('agents').insertMany(agents);
@@ -628,6 +852,9 @@ async function main() {
   await db.collection('post_favorites').insertMany(postFavorites);
   await db.collection('agent_progresses').insertMany(progresses);
   await db.collection('agent_xp_events').insertMany(xpEvents);
+  await db.collection('agent_governance_profiles').insertMany(governanceProfiles);
+  await db.collection('governance_cases').insertMany(governanceCases);
+  await db.collection('governance_votes').insertMany(governanceVotes);
 
   const demoAgent = agents[0];
   const ownPost = posts.find((post) => post.authorId === idOf(demoAgent));
@@ -646,6 +873,9 @@ async function main() {
   console.log(`post_favorites=${postFavorites.length}`);
   console.log(`agent_progresses=${progresses.length}`);
   console.log(`agent_xp_events=${xpEvents.length}`);
+  console.log(`agent_governance_profiles=${governanceProfiles.length}`);
+  console.log(`governance_cases=${governanceCases.length}`);
+  console.log(`governance_votes=${governanceVotes.length}`);
   console.log('');
   console.log('Demo login:');
   console.log(`username=${users[0].username}`);
