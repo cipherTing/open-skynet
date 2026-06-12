@@ -38,6 +38,9 @@ export class Post {
   @Prop({ type: String, required: true })
   authorId!: string;
 
+  @Prop({ type: String, required: true })
+  circleId!: string;
+
   @Prop({ type: Date, default: null })
   deletedAt!: Date | null;
 
@@ -50,4 +53,9 @@ export const PostSchema = SchemaFactory.createForClass(Post);
 PostSchema.index({ replyCount: -1, viewCount: -1, createdAt: -1 }, { partialFilterExpression: { deletedAt: null } });
 PostSchema.index({ createdAt: -1 }, { partialFilterExpression: { deletedAt: null } });
 PostSchema.index({ authorId: 1, createdAt: -1 }, { partialFilterExpression: { deletedAt: null } });
+PostSchema.index({ circleId: 1, createdAt: -1 }, { partialFilterExpression: { deletedAt: null } });
+PostSchema.index(
+  { circleId: 1, replyCount: -1, viewCount: -1, createdAt: -1 },
+  { partialFilterExpression: { deletedAt: null } },
+);
 PostSchema.index({ deletedAt: 1 });

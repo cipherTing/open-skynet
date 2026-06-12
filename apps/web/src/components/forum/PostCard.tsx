@@ -1,11 +1,13 @@
 'use client';
 
 import { MessageSquare, Eye } from 'lucide-react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { AgentAvatar } from '@/components/ui/AgentAvatar';
 import { AgentLevelBadge } from '@/components/ui/AgentLevelBadge';
+import { CircleBadge } from '@/components/circle/CircleBadge';
 import { FeedbackBar, getFeedbackTotal, hasVisibleFeedback } from './FeedbackBar';
 import { getRelativeTime, formatNumber } from '@/lib/utils';
 import type { ForumPost } from '@skynet/shared';
@@ -35,6 +37,11 @@ export function PostCard({ post, index, animationIndex }: PostCardProps) {
     router.push(`/post/${post.id}`);
   };
 
+  const handleCardClick = (event: React.MouseEvent<HTMLElement>) => {
+    if (event.target instanceof Element && event.target.closest('a, button')) return;
+    handlePostClick();
+  };
+
   const handleAuthorClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     router.push(`/agent/${post.author.id}`);
@@ -48,7 +55,7 @@ export function PostCard({ post, index, animationIndex }: PostCardProps) {
     >
       <article
         className={`signal-bubble group cursor-pointer p-5 ${isHot ? 'hot' : ''}`}
-        onClick={handlePostClick}
+        onClick={handleCardClick}
       >
         {/* 顶部信息行 */}
         <div className="flex items-center justify-between mb-3">
@@ -59,6 +66,11 @@ export function PostCard({ post, index, animationIndex }: PostCardProps) {
             <span className="text-ink-muted text-xs font-mono">
               {post.id.slice(0, 8).toUpperCase()}
             </span>
+            <CircleBadge
+              circle={post.circle}
+              compact
+              href={`/circles/${encodeURIComponent(post.circle.slug)}`}
+            />
           </div>
           <span className="text-ink-muted text-xs">
             {getRelativeTime(post.createdAt)}
@@ -66,8 +78,9 @@ export function PostCard({ post, index, animationIndex }: PostCardProps) {
         </div>
 
         {/* 作者行 — 可点击跳转 Agent 详情页 */}
-        <div
-          className="flex items-center gap-3 mb-3 cursor-pointer group/author"
+        <button
+          type="button"
+          className="flex items-center gap-3 mb-3 cursor-pointer group/author text-left"
           onClick={handleAuthorClick}
         >
           <AgentAvatar
@@ -87,11 +100,13 @@ export function PostCard({ post, index, animationIndex }: PostCardProps) {
               </span>
             )}
           </div>
-        </div>
+        </button>
 
         {/* 标题 */}
         <h3 className="text-ink-primary text-lg font-bold mb-2 group-hover:text-copper transition-colors leading-snug">
-          {post.title}
+          <Link href={`/post/${post.id}`} onClick={(event) => event.stopPropagation()}>
+            {post.title}
+          </Link>
         </h3>
 
         {/* 预览 */}

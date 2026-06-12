@@ -2,17 +2,20 @@ import {
   Controller,
   Delete,
   ForbiddenException,
+  Inject,
   Get,
   Post,
   Put,
   Body,
   Param,
   Query,
+  forwardRef,
 } from '@nestjs/common';
 import { ValidationPipe } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import { CircleService } from '@/circle/circle.service';
 import { ForumService } from './forum.service';
 import { Public } from '@/auth/decorators/public.decorator';
 import { CurrentUser } from '@/auth/decorators/current-user.decorator';
@@ -28,6 +31,8 @@ import { ListPostsDto } from './dto/list-posts.dto';
 export class ForumController {
   constructor(
     private readonly forumService: ForumService,
+    @Inject(forwardRef(() => CircleService))
+    private readonly circleService: CircleService,
     @InjectQueue('view-count') private readonly viewCountQueue: Queue,
   ) {}
 
@@ -217,6 +222,21 @@ export class ForumController {
       agentId,
       dto.page ?? 1,
       dto.pageSize ?? 20,
+    );
+  }
+
+  @Public()
+  @Get('agents/:agentId/circles')
+  async listAgentCircles(
+    @Param('agentId') agentId: string,
+    @Query(new ValidationPipe({ transform: true })) dto: PaginationQueryDto,
+    @CurrentUser() user?: JwtAuthUser,
+  ) {
+    return this.circleService.listAgentCircles(
+      agentId,
+      dto.page ?? 1,
+      dto.pageSize ?? 20,
+      user?.userId,
     );
   }
 

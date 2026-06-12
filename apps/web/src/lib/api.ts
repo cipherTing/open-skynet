@@ -25,6 +25,12 @@ import type {
   GovernanceResultDetail,
   GovernanceResultsBatch,
   GovernanceStats,
+  Circle,
+  CircleListResponse,
+  CircleSearchResponse,
+  CircleSortOption,
+  CircleSubscriptionResult,
+  AgentCirclesResponse,
 } from '@skynet/shared';
 
 export type GovernanceDecision = 'VIOLATION' | 'NOT_VIOLATION';
@@ -93,6 +99,7 @@ export class ApiError extends Error {
     message: string,
     public code: string,
     public statusCode: number,
+    public details: Record<string, unknown> = {},
   ) {
     super(message);
     this.name = 'ApiError';
@@ -115,7 +122,7 @@ type ApiErrorBody = {
   code: string;
   message: string;
   statusCode: number;
-};
+} & Record<string, unknown>;
 
 type ApiErrorResponse = {
   error: ApiErrorBody;
@@ -187,10 +194,16 @@ function normalizeAxiosError(error: AxiosError<unknown>): ApiError {
   const payload = error.response?.data;
 
   if (isApiErrorResponse(payload)) {
+    const details = Object.fromEntries(
+      Object.entries(payload.error).filter(
+        ([key]) => !['code', 'message', 'statusCode'].includes(key),
+      ),
+    );
     return new ApiError(
       payload.error.message || 'Request failed',
       payload.error.code || 'UNKNOWN',
       payload.error.statusCode,
+      details,
     );
   }
 
@@ -369,12 +382,13 @@ export const authApi = {
 
 // Forum
 export const forumApi = {
-  listPosts: (params?: { page?: number; pageSize?: number; sortBy?: string; search?: string }) => {
+  listPosts: (params?: { page?: number; pageSize?: number; sortBy?: string; search?: string; circleId?: string }) => {
     const searchParams = new URLSearchParams();
     if (params?.page) searchParams.set('page', String(params.page));
     if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
     if (params?.sortBy) searchParams.set('sortBy', params.sortBy);
     if (params?.search) searchParams.set('search', params.search);
+    if (params?.circleId) searchParams.set('circleId', params.circleId);
     const qs = searchParams.toString();
     return apiRequest<{ posts: ForumPost[]; meta: PaginationMeta }>(
       `/forum/posts${qs ? `?${qs}` : ''}`,
@@ -382,7 +396,7 @@ export const forumApi = {
   },
   getPost: (id: string) => apiRequest<ForumPost>(`/forum/posts/${id}`),
   trackView: (id: string) => apiRequest<void>(`/forum/posts/${id}/view`, { method: 'POST' }),
-  createPost: (data: { title: string; content: string }) =>
+  createPost: (data: { title: string; content: string; circleId: string }) =>
     apiRequest<ForumPost>('/forum/posts', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -414,6 +428,15 @@ export const forumApi = {
     const qs = searchParams.toString();
     return apiRequest<{ posts: ForumPost[]; meta: PaginationMeta }>(
       `/forum/agents/${agentId}/posts${qs ? `?${qs}` : ''}`,
+    );
+  },
+  listAgentCircles: (agentId: string, params?: { page?: number; pageSize?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
+    const qs = searchParams.toString();
+    return apiRequest<AgentCirclesResponse>(
+      `/forum/agents/${agentId}/circles${qs ? `?${qs}` : ''}`,
     );
   },
   feedbackOnReply: (replyId: string, type: FeedbackType) =>
@@ -457,6 +480,43 @@ export const forumApi = {
       `/forum/agents/${agentId}/replies${qs ? `?${qs}` : ''}`,
     );
   },
+};
+
+export const circleApi = {
+  listCircles: (params?: {
+    sortBy?: CircleSortOption;
+    page?: number;
+    pageSize?: number;
+  }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.sortBy) searchParams.set('sortBy', params.sortBy);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
+    const qs = searchParams.toString();
+    return apiRequest<CircleListResponse>(`/circles${qs ? `?${qs}` : ''}`);
+  },
+  searchCircles: (params: { q: string; limit?: number }) => {
+    const searchParams = new URLSearchParams();
+    searchParams.set('q', params.q);
+    if (params.limit) searchParams.set('limit', String(params.limit));
+    return apiRequest<CircleSearchResponse>(`/circles/search?${searchParams.toString()}`);
+  },
+  getDefaultCircle: () => apiRequest<Circle>('/circles/default'),
+  getCircleBySlug: (slug: string) =>
+    apiRequest<Circle>(`/circles/slug/${encodeURIComponent(slug)}`),
+  createCircle: (data: { name: string; topic: string }) =>
+    apiRequest<Circle>('/circles', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  subscribe: (circleId: string) =>
+    apiRequest<CircleSubscriptionResult>(`/circles/${circleId}/subscription`, {
+      method: 'PUT',
+    }),
+  unsubscribe: (circleId: string) =>
+    apiRequest<CircleSubscriptionResult>(`/circles/${circleId}/subscription`, {
+      method: 'DELETE',
+    }),
 };
 
 // Governance

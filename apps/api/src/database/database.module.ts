@@ -18,6 +18,8 @@ import { GovernanceAssignment, GovernanceAssignmentSchema } from './schemas/gove
 import { GovernanceDailyQuota, GovernanceDailyQuotaSchema } from './schemas/governance-daily-quota.schema';
 import { GovernanceVote, GovernanceVoteSchema } from './schemas/governance-vote.schema';
 import { AgentGovernanceProfile, AgentGovernanceProfileSchema } from './schemas/agent-governance-profile.schema';
+import { Circle, CircleSchema } from './schemas/circle.schema';
+import { CircleSubscription, CircleSubscriptionSchema } from './schemas/circle-subscription.schema';
 import { softDeletePlugin } from './plugins/soft-delete.plugin';
 
 // Register soft-delete plugin globally for all schemas
@@ -44,6 +46,8 @@ mongoose.plugin(softDeletePlugin);
       { name: GovernanceDailyQuota.name, schema: GovernanceDailyQuotaSchema },
       { name: GovernanceVote.name, schema: GovernanceVoteSchema },
       { name: AgentGovernanceProfile.name, schema: AgentGovernanceProfileSchema },
+      { name: Circle.name, schema: CircleSchema },
+      { name: CircleSubscription.name, schema: CircleSubscriptionSchema },
     ]),
   ],
   providers: [DatabaseService],

@@ -1,29 +1,43 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { X, Eye, Send, Radio } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
-import { forumApi, ApiError } from '@/lib/api';
+import { CircleSearchSelect } from '@/components/circle/CircleSearchSelect';
+import { circleApi, forumApi, ApiError } from '@/lib/api';
+import { circleKeys } from '@/lib/query-keys';
 import { notifyProgressionUpdated } from '@/lib/progression-events';
-import { FLOATING_Z_INDEX } from '@/components/ui/FloatingPortal';
 import { ComposerTextarea } from '@/components/ui/ComposerTextarea';
-import type { ForumPost } from '@skynet/shared';
+import { FLOATING_Z_INDEX } from '@/components/ui/FloatingPortal';
+import { useAuth } from '@/contexts/AuthContext';
+import type { Circle, ForumPost } from '@skynet/shared';
 
 interface CreatePostModalProps {
   onClose: () => void;
   onCreated: (created: ForumPost) => void;
+  initialCircle?: Circle;
 }
 
-export function CreatePostModal({ onClose, onCreated }: CreatePostModalProps) {
+export function CreatePostModal({ onClose, onCreated, initialCircle }: CreatePostModalProps) {
   const { t } = useTranslation();
+  const { user } = useAuth();
+  const viewerKey = user?.id ?? 'anonymous';
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
+  const [selectedCircle, setSelectedCircle] = useState<Circle | null>(() => initialCircle ?? null);
   const [showPreview, setShowPreview] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const hasInitialCircle = Boolean(initialCircle);
+  const defaultCircleQuery = useQuery({
+    queryKey: circleKeys.defaultCircle(viewerKey),
+    queryFn: () => circleApi.getDefaultCircle(),
+    enabled: !hasInitialCircle,
+  });
 
   useEffect(() => {
     document.body.style.overflow = 'hidden';
@@ -37,9 +51,18 @@ export function CreatePostModal({ onClose, onCreated }: CreatePostModalProps) {
     };
   }, [onClose]);
 
+  useEffect(() => {
+    if (hasInitialCircle || selectedCircle || !defaultCircleQuery.data) return;
+    setSelectedCircle(defaultCircleQuery.data);
+  }, [defaultCircleQuery.data, hasInitialCircle, selectedCircle]);
+
   const handleSubmit = useCallback(async () => {
     if (!title.trim() || !content.trim()) {
       setError(t('createPost.titleRequired'));
+      return;
+    }
+    if (!selectedCircle) {
+      setError(t('createPost.circleRequired'));
       return;
     }
     setError('');
@@ -48,6 +71,7 @@ export function CreatePostModal({ onClose, onCreated }: CreatePostModalProps) {
       const created = await forumApi.createPost({
         title: title.trim(),
         content: content.trim(),
+        circleId: selectedCircle.id,
       });
       if (created.progressDelta) notifyProgressionUpdated();
       onCreated(created);
@@ -60,7 +84,7 @@ export function CreatePostModal({ onClose, onCreated }: CreatePostModalProps) {
     } finally {
       setSubmitting(false);
     }
-  }, [title, content, onCreated, t]);
+  }, [title, content, selectedCircle, onCreated, t]);
 
   return (
     <motion.div
@@ -110,6 +134,21 @@ export function CreatePostModal({ onClose, onCreated }: CreatePostModalProps) {
               {error}
             </div>
           )}
+
+          {/* 标题 */}
+          <div>
+            <label className="block text-[11px] text-copper tracking-deck-normal font-bold uppercase mb-1.5">
+              {t('createPost.circle')}
+            </label>
+            <CircleSearchSelect
+              selectedCircle={selectedCircle}
+              onSelect={setSelectedCircle}
+              disabled={submitting}
+            />
+            {defaultCircleQuery.isError && !selectedCircle && (
+              <p className="mt-1.5 text-[11px] text-ochre">{t('createPost.defaultCircleLoadFailed')}</p>
+            )}
+          </div>
 
           {/* 标题 */}
           <div>
@@ -175,7 +214,7 @@ export function CreatePostModal({ onClose, onCreated }: CreatePostModalProps) {
             </button>
             <button
               onClick={handleSubmit}
-              disabled={submitting || !title.trim() || !content.trim()}
+              disabled={submitting || !title.trim() || !content.trim() || !selectedCircle}
               className="flex items-center gap-1.5 px-4 py-2 text-[12px] text-void bg-copper hover:bg-copper-dim disabled:opacity-40 disabled:cursor-not-allowed transition-all tracking-wide font-bold rounded-lg"
             >
               <Send className="w-3 h-3" />

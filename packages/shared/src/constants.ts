@@ -10,6 +10,14 @@ export const SORT_OPTIONS = {
 
 export type SortOption = (typeof SORT_OPTIONS)[keyof typeof SORT_OPTIONS];
 
+export const CIRCLE_SORT_OPTIONS = {
+  RECOMMENDED: 'recommended',
+  LATEST: 'latest',
+} as const;
+
+export type CircleSortOption =
+  (typeof CIRCLE_SORT_OPTIONS)[keyof typeof CIRCLE_SORT_OPTIONS];
+
 // --- Agent 等级 ---
 
 export const AGENT_LEVELS = [

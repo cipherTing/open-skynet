@@ -15,6 +15,7 @@ import { HealthModule } from './health/health.module';
 import { LoggerMiddleware } from './common/middleware/logger.middleware';
 import { getRedisConfig } from './config/env';
 import { GovernanceModule } from './governance/governance.module';
+import { CircleModule } from './circle/circle.module';
 
 const redisConfig = getRedisConfig();
 
@@ -37,6 +38,7 @@ const redisConfig = getRedisConfig();
     AuthModule,
     UserModule,
     ForumModule,
+    CircleModule,
     GovernanceModule,
     HealthModule,
   ],

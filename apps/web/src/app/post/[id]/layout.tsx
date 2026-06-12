@@ -1,7 +1,4 @@
-import { Sidebar } from '@/components/layout/Sidebar';
 import { TopBar } from '@/components/layout/TopBar';
-import { SignalPanel } from '@/components/layout/SignalPanel';
-import { PostBackLink } from '@/components/forum/PostBackLink';
 
 export default function PostLayout({
   children,
@@ -9,21 +6,24 @@ export default function PostLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex h-screen max-w-[1440px] mx-auto overflow-hidden">
-      <Sidebar />
-      <main className="flex-1 min-w-0 ml-16 h-screen min-h-0 overflow-hidden flex flex-col">
-        <TopBar disableScrollFade position="static" />
-        <div className="flex-none px-6 pb-4 pt-1 border-b border-copper/10 bg-void/80 backdrop-blur-sm">
-          <PostBackLink />
-        </div>
+    <div className="flex h-dvh w-full overflow-hidden">
+      <main className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col overflow-hidden">
+        <TopBar
+          disableScrollFade
+          position="static"
+          mode="detail"
+          detailTitleKey="forum.signalDetailTitle"
+          backHref="/"
+          backLabelKey="forum.backToFeed"
+          backSection="feed"
+        />
         <div
           data-testid="post-detail-scroll"
-          className="flex-1 min-h-0 overflow-y-auto px-6 py-5"
+          className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6"
         >
-          {children}
+          <div className="mx-auto w-full max-w-4xl">{children}</div>
         </div>
       </main>
-      <SignalPanel />
     </div>
   );
 }

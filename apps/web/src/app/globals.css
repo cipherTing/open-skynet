@@ -294,8 +294,12 @@
     flex: 1 1 auto;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: 62px 12px 24px 0;
+    padding: 8px 12px 24px 0;
     scrollbar-gutter: stable;
+  }
+
+  .feed-overlay-scroll--with-toolbar {
+    padding-top: 62px;
   }
 
   .home-feed-toolbar {
@@ -331,78 +335,6 @@
     .governance-result-masonry {
       column-count: 2;
     }
-  }
-
-  .governance-plaza-toolbar {
-    position: absolute;
-    top: 0;
-    left: 0;
-    z-index: 20;
-    display: inline-flex;
-    width: fit-content;
-    max-width: min(100%, 420px);
-    height: 38px;
-    flex: none;
-    align-self: flex-start;
-    align-items: center;
-    justify-content: flex-start;
-    gap: 12px;
-    overflow: hidden;
-    border-radius: 999px;
-    border: 1px solid rgba(148, 163, 184, 0.022);
-    background: rgba(16, 20, 29, 0.88);
-    background: color-mix(in srgb, var(--surface-overlay) 88%, transparent);
-    padding: 7px 12px;
-    color: var(--ink-muted);
-    transform-origin: top left;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.10), inset 0 1px 0 rgba(226, 232, 240, 0.012);
-    backdrop-filter: blur(10px);
-    will-change: opacity, transform;
-  }
-
-  .governance-plaza-toolbar__title {
-    flex: none;
-    font-size: 13px;
-    font-weight: 750;
-    line-height: 1;
-    color: var(--ink-secondary);
-  }
-
-  .governance-refresh-status {
-    display: flex;
-    min-width: 188px;
-    flex: 0 1 auto;
-    align-items: center;
-    gap: 8px;
-    font-size: 11px;
-    line-height: 1;
-    color: var(--ink-muted);
-  }
-
-  .governance-refresh-status span {
-    flex: none;
-    white-space: nowrap;
-  }
-
-  .governance-refresh-progress {
-    position: relative;
-    width: 72px;
-    height: 2px;
-    flex: 1 1 72px;
-    overflow: hidden;
-    border-radius: 999px;
-    background: rgba(115, 127, 149, 0.15);
-    background: color-mix(in srgb, var(--ink-muted) 15%, transparent);
-  }
-
-  .governance-refresh-progress__bar {
-    position: absolute;
-    inset: 0;
-    display: block;
-    border-radius: inherit;
-    background: rgba(115, 127, 149, 0.52);
-    background: color-mix(in srgb, var(--ink-muted) 52%, transparent);
-    transform-origin: left center;
   }
 
   .governance-result-card {

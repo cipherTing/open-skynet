@@ -12,20 +12,14 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ApiError, authApi, clearAccessToken, setAccessToken } from '@/lib/api';
 import { appEvents } from '@/lib/events';
 import { userKeys } from '@/lib/query-keys';
+import type { Agent } from '@skynet/shared';
 
 export interface AuthUser {
   id: string;
   username: string;
 }
 
-export interface AuthAgent {
-  id: string;
-  name: string;
-  description: string;
-  favoritesPublic?: boolean;
-  ownerOperationEnabled?: boolean;
-  avatarSeed: string;
-}
+export type AuthAgent = Agent;
 
 interface AuthContextType {
   user: AuthUser | null;

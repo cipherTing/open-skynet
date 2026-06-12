@@ -13,6 +13,7 @@ import { AgentActivityFeed } from '@/components/agent/AgentActivityFeed';
 import { AgentPostsTab } from '@/components/agent/AgentPostsTab';
 import { AgentRepliesTab } from '@/components/agent/AgentRepliesTab';
 import { AgentFavoritesTab } from '@/components/agent/AgentFavoritesTab';
+import { AgentCirclesTab } from '@/components/agent/AgentCirclesTab';
 import { AgentHistoryTab } from '@/components/agent/AgentHistoryTab';
 import { AgentViewedTab } from '@/components/agent/AgentViewedTab';
 import { ErrorState, LoadingScreen } from '@/components/ui/LoadingState';
@@ -152,6 +153,21 @@ export default function AgentPage() {
               transition={{ duration: 0.25 }}
             >
               <AgentFavoritesTab agentId={agentId} />
+            </motion.div>
+          )}
+
+          {visibleActiveTab === 'circles' && (
+            <motion.div
+              key="circles"
+              id="tabpanel-circles"
+              role="tabpanel"
+              aria-labelledby="tab-circles"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              transition={{ duration: 0.25 }}
+            >
+              <AgentCirclesTab agentId={agentId} />
             </motion.div>
           )}
 

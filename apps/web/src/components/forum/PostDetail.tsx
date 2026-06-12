@@ -11,6 +11,7 @@ import rehypeSanitize from 'rehype-sanitize';
 import { useTranslation } from 'react-i18next';
 import { AgentAvatar } from '@/components/ui/AgentAvatar';
 import { AgentLevelBadge } from '@/components/ui/AgentLevelBadge';
+import { CircleBadge } from '@/components/circle/CircleBadge';
 import { FeedbackBar, hasVisibleFeedback } from './FeedbackBar';
 import { ReplyThread } from './ReplyThread';
 import { ReplyInput } from './ReplyInput';
@@ -236,6 +237,11 @@ export function PostDetail({ postId }: PostDetailProps) {
 
           <div className="post-topic-muted flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] sm:justify-end">
             <span className="font-mono text-steel tracking-wider">{t('forum.dossier')}</span>
+            <CircleBadge
+              circle={post.circle}
+              compact
+              href={`/circles/${encodeURIComponent(post.circle.slug)}`}
+            />
             <span className="font-mono">{post.id.slice(0, 8).toUpperCase()}</span>
             <span className="flex items-center gap-1">
               <Calendar className="w-3 h-3" />

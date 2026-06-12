@@ -3,7 +3,7 @@
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 
-export type AgentTab = 'overview' | 'posts' | 'replies' | 'favorites' | 'history' | 'viewed';
+export type AgentTab = 'overview' | 'posts' | 'replies' | 'favorites' | 'circles' | 'history' | 'viewed';
 
 interface AgentTabsProps {
   activeTab: AgentTab;
@@ -16,6 +16,7 @@ const publicTabs: { key: AgentTab; labelKey: string }[] = [
   { key: 'posts', labelKey: 'agent.tabs.posts' },
   { key: 'replies', labelKey: 'agent.tabs.replies' },
   { key: 'favorites', labelKey: 'agent.tabs.favorites' },
+  { key: 'circles', labelKey: 'agent.tabs.circles' },
 ];
 
 const privateTabs: { key: AgentTab; labelKey: string }[] = [

@@ -4,10 +4,12 @@ import { useEffect } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useInView } from 'react-intersection-observer';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { MessageSquare, CornerDownRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { AgentAvatar } from '@/components/ui/AgentAvatar';
 import { AgentLevelBadge } from '@/components/ui/AgentLevelBadge';
+import { CircleBadge } from '@/components/circle/CircleBadge';
 import { FeedbackBar, hasVisibleFeedback } from '@/components/forum/FeedbackBar';
 import { EmptyState, ErrorState, InlineLoading } from '@/components/ui/LoadingState';
 import { useAuth } from '@/contexts/AuthContext';
@@ -34,6 +36,7 @@ function sanitizePreview(text: string, maxLen: number = 200): string {
 
 export function AgentRepliesTab({ agentId }: AgentRepliesTabProps) {
   const { t } = useTranslation();
+  const router = useRouter();
   const { isLoading: authLoading, user } = useAuth();
   const viewerKey = user?.id ?? 'anonymous';
   const { ref: loaderRef, inView } = useInView({ threshold: 0.5 });
@@ -54,6 +57,11 @@ export function AgentRepliesTab({ agentId }: AgentRepliesTabProps) {
   const loading = repliesQuery.isPending || repliesQuery.isFetchingNextPage;
   const hasMore = repliesQuery.hasNextPage === true;
   const errorKey = repliesQuery.isError ? 'agent.repliesLoadFailed' : '';
+
+  const handleCardClick = (event: React.MouseEvent<HTMLElement>, postId: string) => {
+    if (event.target instanceof Element && event.target.closest('a, button')) return;
+    router.push(`/post/${postId}`);
+  };
 
   useEffect(() => {
     if (inView && hasMore && !repliesQuery.isFetchingNextPage && replies.length > 0) {
@@ -80,65 +88,79 @@ export function AgentRepliesTab({ agentId }: AgentRepliesTabProps) {
         return (
           <article
             key={reply.id}
-            className="signal-bubble p-4 group hover:border-copper/20 transition-colors"
+            className="signal-bubble p-4 group cursor-pointer hover:border-copper/20 transition-colors"
+            onClick={(event) => handleCardClick(event, reply.postId)}
           >
-            <Link href={`/post/${reply.postId}`} className="block cursor-pointer">
-              {/* 顶部：帖子作者头像 + 帖子标题 */}
-              {reply.post && (
-                <div className="flex items-center gap-2.5 mb-3 pb-3 border-b border-copper/[0.08]">
-                  <AgentAvatar
-                    agentId={reply.post.author?.avatarSeed || reply.post.author?.id || ''}
-                    agentName={reply.post.author?.name}
-                    size={24}
+            {/* 顶部：帖子作者头像 + 帖子标题 */}
+            {reply.post && (
+              <div className="flex items-center gap-2.5 mb-3 pb-3 border-b border-copper/[0.08]">
+                <AgentAvatar
+                  agentId={reply.post.author?.avatarSeed || reply.post.author?.id || ''}
+                  agentName={reply.post.author?.name}
+                  size={24}
+                />
+                <div className="flex-1 min-w-0">
+                  <span className="text-copper text-xs font-bold">{reply.post.author?.name}</span>
+                  <AgentLevelBadge level={reply.post.author?.level} compact />
+                  <CircleBadge
+                    circle={reply.post.circle}
+                    compact
+                    href={`/circles/${encodeURIComponent(reply.post.circle.slug)}`}
                   />
-                  <div className="flex-1 min-w-0">
-                    <span className="text-copper text-xs font-bold">{reply.post.author?.name}</span>
-                    <AgentLevelBadge level={reply.post.author?.level} compact />
-                    <span className="text-ink-muted text-xs mx-1.5">·</span>
-                    <span className="text-ink-secondary text-xs truncate">{reply.post.title}</span>
-                  </div>
-                  <MessageSquare className="w-3.5 h-3.5 text-ink-muted/50" />
+                  <span className="text-ink-muted text-xs mx-1.5">·</span>
+                  <Link
+                    href={`/post/${reply.postId}`}
+                    className="truncate text-xs text-ink-secondary"
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    {reply.post.title}
+                  </Link>
                 </div>
-              )}
-
-              {/* 回复对象 */}
-              <div className="flex items-start gap-2 mb-3 rounded-md border border-copper/[0.08] bg-void-mid/35 px-2.5 py-2">
-                {reply.parentReply ? (
-                  <>
-                    <CornerDownRight className="w-3.5 h-3.5 text-ink-muted/50 mt-0.5 flex-shrink-0" />
-                    <div className="min-w-0">
-                      <div className="mb-1 flex min-w-0 items-center gap-1.5 text-[11px] font-mono text-steel">
-                        <span className="truncate">
-                          {t('replyThread.replyTo', {
-                            name: reply.parentReply.author?.name || t('agent.unknownAgent'),
-                          })}
-                        </span>
-                        <AgentLevelBadge level={reply.parentReply.author?.level} compact />
-                      </div>
-                      <p className="text-xs text-ink-muted line-clamp-2">
-                        {reply.parentReply.content}
-                      </p>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <CornerDownRight className="w-3.5 h-3.5 text-ink-muted/50 mt-0.5 flex-shrink-0" />
-                    <div className="min-w-0">
-                      <div className="mb-1 text-[11px] font-mono text-moss">
-                        {t('agent.replyMainPost')}
-                      </div>
-                      <p className="text-xs text-ink-muted line-clamp-2">
-                        {postContentPreview || reply.post?.title || t('agent.mainPostUnavailable')}
-                      </p>
-                    </div>
-                  </>
-                )}
+                <MessageSquare className="w-3.5 h-3.5 text-ink-muted/50" />
               </div>
+            )}
 
-              {/* 回复内容 */}
-              <p className="text-sm text-ink-primary line-clamp-3 mb-3">
-                {sanitizePreview(reply.content)}
-              </p>
+            {/* 回复对象 */}
+            <div className="flex items-start gap-2 mb-3 rounded-md border border-copper/[0.08] bg-void-mid/35 px-2.5 py-2">
+              {reply.parentReply ? (
+                <>
+                  <CornerDownRight className="w-3.5 h-3.5 text-ink-muted/50 mt-0.5 flex-shrink-0" />
+                  <div className="min-w-0">
+                    <div className="mb-1 flex min-w-0 items-center gap-1.5 text-[11px] font-mono text-steel">
+                      <span className="truncate">
+                        {t('replyThread.replyTo', {
+                          name: reply.parentReply.author?.name || t('agent.unknownAgent'),
+                        })}
+                      </span>
+                      <AgentLevelBadge level={reply.parentReply.author?.level} compact />
+                    </div>
+                    <p className="text-xs text-ink-muted line-clamp-2">
+                      {reply.parentReply.content}
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <CornerDownRight className="w-3.5 h-3.5 text-ink-muted/50 mt-0.5 flex-shrink-0" />
+                  <div className="min-w-0">
+                    <div className="mb-1 text-[11px] font-mono text-moss">
+                      {t('agent.replyMainPost')}
+                    </div>
+                    <p className="text-xs text-ink-muted line-clamp-2">
+                      {postContentPreview || reply.post?.title || t('agent.mainPostUnavailable')}
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* 回复内容 */}
+            <Link
+              href={`/post/${reply.postId}`}
+              className="mb-3 line-clamp-3 text-sm text-ink-primary"
+              onClick={(event) => event.stopPropagation()}
+            >
+              {sanitizePreview(reply.content)}
             </Link>
 
             {/* 底部 */}

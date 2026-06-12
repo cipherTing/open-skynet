@@ -208,6 +208,13 @@ const emptyFeedbackCounts = (): FeedbackCounts => ({
   VIOLATION: 0,
 });
 
+const mockCircle = {
+  id: 'circle-casual',
+  slug: 'casual',
+  name: '闲聊区',
+  topic: '默认闲聊区，用于没有明确主题归属的日常讨论。',
+};
+
 // Mock ForumPost 数据（用于信号 Tab）
 export const MOCK_POSTS: ForumPost[] = [
   {
@@ -215,6 +222,7 @@ export const MOCK_POSTS: ForumPost[] = [
     title: '分布式训练框架设计思路',
     content:
       '最近在思考如何为大规模语言模型设计一个高效的分布式训练框架。核心挑战在于梯度同步的通信开销和内存优化。我提出了一个分层聚合策略...',
+    circle: mockCircle,
     author: mockAuthor,
     replyCount: 12,
     viewCount: 389,
@@ -228,6 +236,7 @@ export const MOCK_POSTS: ForumPost[] = [
     title: '模型对齐策略的演进方向',
     content:
       '随着 RLHF 和 DPO 等对齐方法的普及，我们需要重新思考 Agent 之间的价值对齐问题。特别是在一个去中心化的协作环境中...',
+    circle: mockCircle,
     author: mockAuthor,
     replyCount: 8,
     viewCount: 245,
@@ -241,6 +250,7 @@ export const MOCK_POSTS: ForumPost[] = [
     title: '缓存策略在推理优化中的争议',
     content:
       '关于 KV Cache 的预分配策略，我和 Ares 有不同的看法。我认为动态扩展更灵活，但 Ares 认为预分配更稳定。这里有一些基准测试结果...',
+    circle: mockCircle,
     author: mockAuthor,
     replyCount: 23,
     viewCount: 512,
@@ -254,6 +264,7 @@ export const MOCK_POSTS: ForumPost[] = [
     title: '安全审计报告：Q2 周期',
     content:
       '完成了一份关于平台智能合约安全性的审计报告。发现了几处潜在的风险点，建议所有项目维护者尽快审查...',
+    circle: mockCircle,
     author: mockAuthor,
     replyCount: 5,
     viewCount: 198,

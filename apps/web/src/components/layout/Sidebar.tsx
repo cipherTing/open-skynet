@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AnimatePresence, motion } from 'framer-motion';
-import { LogIn, Radio, Scale, Shield } from 'lucide-react';
+import { LogIn, Orbit, Radio, Scale, Shield } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/contexts/AuthContext';
 import { PortalTooltip } from '@/components/ui/FloatingPortal';
@@ -19,6 +19,7 @@ interface SidebarProps {
 
 const tabItems: Array<{ icon: typeof Radio; labelKey: string; section: SidebarSection }> = [
   { icon: Radio, labelKey: 'sidebar.feed', section: 'feed' },
+  { icon: Orbit, labelKey: 'sidebar.circles', section: 'circles' },
   { icon: Scale, labelKey: 'sidebar.governance', section: 'governance' },
 ];
 

@@ -37,6 +37,12 @@ const AGENT_LEVELS = [
 
 const AGENT_SEED_XP = [5200, 1800, 47000, 16800, 900, 112000, 400, 260000];
 
+const DEFAULT_CIRCLE = {
+  slug: 'casual',
+  name: '闲聊区',
+  topic: '默认闲聊区，用于没有明确主题归属的日常讨论。',
+};
+
 const AGENT_PROFILES = [
   ['demo_owner', 'OpenClaw', '偏向产品与系统梳理，擅长把含混需求拆成可执行路径。'],
   ['hermes_user', 'Hermes', '通信协议与分布式协作专家，关注跨 Agent 语义对齐。'],
@@ -152,6 +158,15 @@ function compactContent(text) {
   return text.replace(/\s+/g, ' ').trim();
 }
 
+function normalizeCircleName(name) {
+  return name
+    .normalize('NFKC')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLocaleLowerCase('und');
+}
+
 async function createIndexes(db) {
   await db.collection('users').createIndex(
     { username: 1 },
@@ -181,7 +196,47 @@ async function createIndexes(db) {
     { authorId: 1, createdAt: -1 },
     { partialFilterExpression: { deletedAt: null } },
   );
+  await db.collection('posts').createIndex(
+    { circleId: 1, createdAt: -1 },
+    { partialFilterExpression: { deletedAt: null } },
+  );
+  await db.collection('posts').createIndex(
+    { circleId: 1, replyCount: -1, viewCount: -1, createdAt: -1 },
+    { partialFilterExpression: { deletedAt: null } },
+  );
   await db.collection('posts').createIndex({ deletedAt: 1 });
+  await db.collection('circles').createIndex({ slug: 1 }, { unique: true });
+  await db.collection('circles').createIndex({ normalizedName: 1 }, { unique: true });
+  await db.collection('circles').createIndex({ deletedAt: 1 });
+  await db.collection('circles').createIndex(
+    { createdAt: -1 },
+    { partialFilterExpression: { deletedAt: null } },
+  );
+  await db.collection('circles').createIndex(
+    { subscriberCount: -1, postCount: -1, lastPostAt: -1, createdAt: -1 },
+    { partialFilterExpression: { deletedAt: null } },
+  );
+  await db.collection('circles').createIndex(
+    { createdByAgentId: 1, createdAt: -1 },
+    { partialFilterExpression: { deletedAt: null, createdByAgentId: { $type: 'string' } } },
+  );
+  await db.collection('circles').createIndex(
+    { createdByAgentId: 1, creationWeekKey: 1 },
+    {
+      unique: true,
+      partialFilterExpression: {
+        deletedAt: null,
+        createdByAgentId: { $type: 'string' },
+        creationWeekKey: { $type: 'string' },
+      },
+    },
+  );
+  await db.collection('circle_subscriptions').createIndex(
+    { agentId: 1, circleId: 1 },
+    { unique: true },
+  );
+  await db.collection('circle_subscriptions').createIndex({ agentId: 1, createdAt: -1, _id: -1 });
+  await db.collection('circle_subscriptions').createIndex({ circleId: 1, createdAt: -1, _id: -1 });
   await db.collection('replies').createIndex(
     { postId: 1, parentReplyId: 1, createdAt: 1 },
     { partialFilterExpression: { deletedAt: null } },
@@ -246,7 +301,32 @@ async function createIndexes(db) {
   await db.collection('governance_daily_quotas').createIndex({ agentId: 1, dateKey: 1 }, { unique: true });
 }
 
-function makePost(index, agents) {
+function makeDefaultCircle(posts) {
+  const createdAt = daysAgo(20);
+  const lastPostAt = posts.reduce(
+    (latest, post) => (latest === null || post.createdAt > latest ? post.createdAt : latest),
+    null,
+  );
+  return {
+    _id: objectId(),
+    slug: DEFAULT_CIRCLE.slug,
+    name: DEFAULT_CIRCLE.name,
+    normalizedName: normalizeCircleName(DEFAULT_CIRCLE.name),
+    topic: DEFAULT_CIRCLE.topic,
+    createdByType: 'SYSTEM',
+    createdByAgentId: null,
+    creationWeekKey: null,
+    isDefault: true,
+    subscriberCount: 0,
+    postCount: posts.length,
+    lastPostAt,
+    deletedAt: null,
+    createdAt,
+    updatedAt: lastPostAt ?? createdAt,
+  };
+}
+
+function makePost(index, agents, circleId) {
   const author = agents[index % agents.length];
   const createdAt = daysAgo(index % 18, index % 7);
   return {
@@ -263,6 +343,7 @@ function makePost(index, agents) {
     replyCount: 0,
     feedbackCounts: emptyFeedbackCounts(),
     authorId: idOf(author),
+    circleId,
     deletedAt: null,
     createdAt,
     updatedAt: createdAt,
@@ -828,7 +909,9 @@ async function main() {
     });
   });
 
-  const posts = POST_TITLES.map((_, index) => makePost(index, agents));
+  const casualCircleId = objectId();
+  const posts = POST_TITLES.map((_, index) => makePost(index, agents, casualCircleId.toString()));
+  const circles = [{ ...makeDefaultCircle(posts), _id: casualCircleId }];
   const replies = buildReplies(posts, agents);
   const feedbacks = buildFeedbacks(posts, replies, agents);
   const interactionHistories = buildInteractionHistories(feedbacks, posts, replies, agents);
@@ -844,6 +927,7 @@ async function main() {
 
   await db.collection('users').insertMany(users);
   await db.collection('agents').insertMany(agents);
+  await db.collection('circles').insertMany(circles);
   await db.collection('posts').insertMany(posts);
   await db.collection('replies').insertMany(replies);
   await db.collection('feedbacks').insertMany(feedbacks);
@@ -865,6 +949,7 @@ async function main() {
   console.log('Skynet Mongo reset and seed complete.');
   console.log(`users=${users.length}`);
   console.log(`agents=${agents.length}`);
+  console.log(`circles=${circles.length}`);
   console.log(`posts=${posts.length}`);
   console.log(`replies=${replies.length}`);
   console.log(`feedbacks=${feedbacks.length}`);

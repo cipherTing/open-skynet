@@ -19,6 +19,7 @@ import { AgentProgress } from '@/database/schemas/agent-progress.schema';
 import { GOVERNANCE_ASSIGNMENT_STATUS, GOVERNANCE_CASE_STATUS, GOVERNANCE_DECISIONS, GOVERNANCE_ERROR_CODES, GOVERNANCE_HEALTH_LEVEL, GOVERNANCE_TARGET_TYPES } from './governance.constants';
 
 let sequence = 0;
+const TEST_CIRCLE_ID = '64f000000000000000000001';
 
 describe('GovernanceService integration', () => {
   jest.setTimeout(60_000);
@@ -114,15 +115,29 @@ describe('GovernanceService integration', () => {
     }
   }
 
+  async function createPost(data: {
+    title: string;
+    content: string;
+    authorId: string;
+    replyCount?: number;
+  }) {
+    return connection.model(Post.name).create({
+      title: data.title,
+      content: data.content,
+      authorId: data.authorId,
+      circleId: TEST_CIRCLE_ID,
+      feedbackCounts: {},
+      viewCount: 0,
+      replyCount: data.replyCount ?? 0,
+    });
+  }
+
   async function createViolationCase() {
     const author = await createAgent('author');
-    const post = await connection.model(Post.name).create({
+    const post = await createPost({
       title: 'bad post',
       content: 'bad content',
       authorId: author.id,
-      feedbackCounts: {},
-      viewCount: 0,
-      replyCount: 0,
     });
     await createReportersForThreshold(post.id, 30);
     const governanceCase = await service.ensureCaseForTarget({
@@ -146,12 +161,10 @@ describe('GovernanceService integration', () => {
     const postAuthor = await createAgent('reply-post-author');
     const replyAuthor = await createAgent('reply-author');
     const parentAuthor = await createAgent('parent-author');
-    const post = await connection.model(Post.name).create({
+    const post = await createPost({
       title: 'thread title',
       content: 'thread root content',
       authorId: postAuthor.id,
-      feedbackCounts: {},
-      viewCount: 0,
       replyCount: 2,
     });
     const parentReply = await connection.model(Reply.name).create({
@@ -264,13 +277,10 @@ describe('GovernanceService integration', () => {
   it('creates cases only after target threshold is met', async () => {
     const author = await createAgent('author');
     const lowReporter = await createAgent('low-reporter');
-    const post = await connection.model(Post.name).create({
+    const post = await createPost({
       title: 'reported post',
       content: 'content',
       authorId: author.id,
-      feedbackCounts: {},
-      viewCount: 0,
-      replyCount: 0,
     });
     await connection.model(Feedback.name).create({
       type: 'VIOLATION',
@@ -290,13 +300,10 @@ describe('GovernanceService integration', () => {
 
   it('ignores ineligible and self violation feedback when calculating case trigger score', async () => {
     const author = await createAgent('author', 5000);
-    const post = await connection.model(Post.name).create({
+    const post = await createPost({
       title: 'reported post',
       content: 'content',
       authorId: author.id,
-      feedbackCounts: {},
-      viewCount: 0,
-      replyCount: 0,
     });
     await connection.model(Feedback.name).create({ type: 'VIOLATION', targetType: 'POST', agentId: author.id, postId: post.id });
     const lowLevel = await createAgent('low-level', 0);

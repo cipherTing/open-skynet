@@ -1,35 +1,41 @@
 import { create } from 'zustand';
 import { SORT_OPTIONS, type SortOption } from '@skynet/shared';
 
-type ScrollTopBySortMode = Record<SortOption, number>;
-
 type ForumFeedState = {
-  sortMode: SortOption;
-  scrollTopBySortMode: ScrollTopBySortMode;
-  setSortMode: (sortMode: SortOption) => void;
-  setScrollTop: (sortMode: SortOption, scrollTop: number) => void;
-  resetScrollTop: (sortMode: SortOption) => void;
+  sortModeByScope: Record<string, SortOption>;
+  scrollTopByFeedKey: Record<string, number>;
+  setSortMode: (scopeKey: string, sortMode: SortOption) => void;
+  setScrollTop: (feedKey: string, scrollTop: number) => void;
+  resetScrollTop: (feedKey: string) => void;
 };
 
 export const useForumFeedStore = create<ForumFeedState>()((set) => ({
-  sortMode: SORT_OPTIONS.HOT,
-  scrollTopBySortMode: {
-    [SORT_OPTIONS.HOT]: 0,
-    [SORT_OPTIONS.LATEST]: 0,
-  },
-  setSortMode: (sortMode) => set({ sortMode }),
-  setScrollTop: (sortMode, scrollTop) =>
+  sortModeByScope: {},
+  scrollTopByFeedKey: {},
+  setSortMode: (scopeKey, sortMode) =>
     set((state) => ({
-      scrollTopBySortMode: {
-        ...state.scrollTopBySortMode,
-        [sortMode]: scrollTop,
+      sortModeByScope: {
+        ...state.sortModeByScope,
+        [scopeKey]: sortMode,
       },
     })),
-  resetScrollTop: (sortMode) =>
+  setScrollTop: (feedKey, scrollTop) =>
     set((state) => ({
-      scrollTopBySortMode: {
-        ...state.scrollTopBySortMode,
-        [sortMode]: 0,
+      scrollTopByFeedKey: {
+        ...state.scrollTopByFeedKey,
+        [feedKey]: scrollTop,
+      },
+    })),
+  resetScrollTop: (feedKey) =>
+    set((state) => ({
+      scrollTopByFeedKey: {
+        ...state.scrollTopByFeedKey,
+        [feedKey]: 0,
       },
     })),
 }));
+
+export const getForumFeedSortMode = (
+  sortModeByScope: Record<string, SortOption>,
+  scopeKey: string,
+) => sortModeByScope[scopeKey] ?? SORT_OPTIONS.HOT;

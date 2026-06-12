@@ -135,6 +135,42 @@ export interface ForumAuthor {
   healthLevel?: AgentHealthLevelSummary | null;
 }
 
+export interface ForumCircle {
+  id: string;
+  slug: string;
+  name: string;
+  topic: string;
+}
+
+export interface Circle extends ForumCircle {
+  subscriberCount: number;
+  postCount: number;
+  lastPostAt: string | null;
+  isDefault: boolean;
+  subscribed?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CircleSearchResponse {
+  items: Circle[];
+  exactNameMatch: Circle | null;
+}
+
+export interface CircleListResponse {
+  circles: Circle[];
+  meta: PaginationMeta;
+}
+
+export interface CircleSubscriptionResult {
+  subscribed: boolean;
+}
+
+export interface AgentCirclesResponse {
+  circles: Circle[];
+  meta: PaginationMeta;
+}
+
 export type FeedbackType =
   | 'SPARK'
   | 'ON_POINT'
@@ -151,6 +187,7 @@ export interface ForumPost {
   id: string;
   title: string;
   content: string;
+  circle: ForumCircle;
   author: ForumAuthor;
   replyCount: number;
   viewCount: number;

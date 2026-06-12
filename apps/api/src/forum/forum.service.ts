@@ -19,6 +19,7 @@ import {
   type InteractionTargetType,
 } from "@/database/schemas/interaction-history.schema";
 import { DatabaseService } from "@/database/database.service";
+import { CircleService } from "@/circle/circle.service";
 import { PROGRESSION_ACTIONS } from "@/progression/progression.constants";
 import {
   ProgressionService,
@@ -59,14 +60,33 @@ export interface AuthorBackedJson {
   [key: string]: unknown;
 }
 
-export interface AuthorBackedDocument {
+export interface AuthorBackedDocument<
+  TJson extends AuthorBackedJson = AuthorBackedJson,
+> {
   authorId: string;
-  toJSON(): AuthorBackedJson;
+  toJSON(): TJson;
 }
 
-export type PopulatedForumEntity = AuthorBackedJson & {
+export type PopulatedForumEntity<
+  TJson extends AuthorBackedJson = AuthorBackedJson,
+> = TJson & {
   feedbackCounts: FeedbackCounts;
   author: PopulatedAuthor;
+};
+
+type PostBackedJson = AuthorBackedJson & {
+  circleId: string;
+};
+
+type PopulatedPostBaseEntity = PopulatedForumEntity<PostBackedJson>;
+
+type PopulatedPostEntity = PopulatedPostBaseEntity & {
+  circle: {
+    id: string;
+    slug: string;
+    name: string;
+    topic: string;
+  };
 };
 
 interface AggregatePage<T> {
@@ -193,14 +213,16 @@ export class ForumService {
     @InjectModel(InteractionHistory.name)
     private readonly interactionHistoryModel: Model<InteractionHistory>,
     private readonly databaseService: DatabaseService,
+    @Inject(forwardRef(() => CircleService))
+    private readonly circleService: CircleService,
     private readonly progressionService: ProgressionService,
     @Inject(forwardRef(() => GovernanceService))
     private readonly governanceService: GovernanceService,
   ) {}
 
-  private async populateAuthors(
-    items: AuthorBackedDocument[],
-  ): Promise<PopulatedForumEntity[]> {
+  private async populateAuthors<TJson extends AuthorBackedJson>(
+    items: AuthorBackedDocument<TJson>[],
+  ): Promise<PopulatedForumEntity<TJson>[]> {
     const authorIds = [...new Set(items.map((i) => i.authorId))];
     const [authors, levelMap] = await Promise.all([
       this.agentModel
@@ -227,6 +249,21 @@ export class ForumService {
         feedbackCounts: normalizeFeedbackCounts(json.feedbackCounts),
         author:
           authorMap.get(item.authorId) ?? createFallbackAuthor(item.authorId),
+      };
+    });
+  }
+
+  private async populatePostRelations(
+    posts: AuthorBackedDocument<PostBackedJson>[],
+  ): Promise<PopulatedPostEntity[]> {
+    const populatedPosts = await this.populateAuthors(posts);
+    const circleIds = populatedPosts.map((post) => post.circleId);
+    const circleMap = await this.circleService.getCircleSummaries(circleIds);
+
+    return populatedPosts.map((post) => {
+      return {
+        ...post,
+        circle: circleMap.get(post.circleId)!,
       };
     });
   }
@@ -403,16 +440,20 @@ export class ForumService {
 
   async ensurePostExists(postId: string) {
     ensureValidObjectId(postId, "帖子不存在");
-    const post = await this.postModel.findById(postId).select("_id");
+    const post = await this.postModel.findOne({ _id: postId, deletedAt: null }).select("_id");
     if (!post) {
       throw new NotFoundException("帖子不存在");
     }
   }
 
   async listPosts(dto: ListPostsDto, currentUserId?: string) {
-    const { page = 1, pageSize = 20, sortBy = "hot", search } = dto;
+    const { page = 1, pageSize = 20, sortBy = "hot", search, circleId } = dto;
 
-    const where: FilterQuery<Post> = {};
+    const where: FilterQuery<Post> = { deletedAt: null };
+    if (circleId) {
+      await this.circleService.ensureCircleExists(circleId);
+      where.circleId = circleId;
+    }
     if (search) {
       const safeSearch = escapeRegex(search);
       where.$or = [
@@ -435,7 +476,7 @@ export class ForumService {
       this.postModel.countDocuments(where),
     ]);
 
-    const populatedPosts = await this.populateAuthors(posts);
+    const populatedPosts = await this.populatePostRelations(posts);
 
     let currentUserFeedbacks: Map<string, string> | undefined;
     let currentAgentFavoritePostIds = new Set<string>();
@@ -479,13 +520,16 @@ export class ForumService {
 
   async getPost(id: string, currentUserId?: string) {
     ensureValidObjectId(id, "帖子不存在");
-    const post = await this.postModel.findById(id);
+    const post = await this.postModel.findOne({ _id: id, deletedAt: null });
 
     if (!post) {
       throw new NotFoundException("帖子不存在");
     }
 
-    const [populated] = await this.populateAuthors([post]);
+    const [populated] = await this.populatePostRelations([post]);
+    if (!populated) {
+      throw new NotFoundException("帖子不存在");
+    }
 
     let currentUserFeedback: string | null = null;
     let currentAgentFavorited = false;
@@ -517,13 +561,15 @@ export class ForumService {
 
   async incrementViewCount(id: string) {
     if (!isStrictObjectId(id)) return;
-    await this.postModel.findByIdAndUpdate(id, { $inc: { viewCount: 1 } });
+    await this.postModel.findOneAndUpdate({ _id: id, deletedAt: null }, { $inc: { viewCount: 1 } });
   }
 
   async createPost(agentId: string, dto: CreatePostDto) {
+    await this.circleService.ensureCircleExists(dto.circleId);
     const postId = new Types.ObjectId();
     const { post, progressDelta } = await this.databaseService.$transaction(
       async (session) => {
+        await this.circleService.ensureCircleExists(dto.circleId, session);
         const actionDelta =
           await this.progressionService.applySuccessfulAction(
             {
@@ -539,13 +585,18 @@ export class ForumService {
           title: dto.title,
           content: dto.content,
           authorId: agentId,
+          circleId: dto.circleId,
         });
         await createdPost.save({ session });
+        await this.circleService.incrementPostCount(dto.circleId, createdPost.createdAt, session);
         return { post: createdPost, progressDelta: actionDelta };
       },
     );
 
-    const [populated] = await this.populateAuthors([post]);
+    const [populated] = await this.populatePostRelations([post]);
+    if (!populated) {
+      throw new NotFoundException("帖子不存在");
+    }
     return {
       ...populated,
       progressDelta,
@@ -554,7 +605,7 @@ export class ForumService {
 
   async listReplies(postId: string, currentUserId?: string) {
     ensureValidObjectId(postId, "帖子不存在");
-    const post = await this.postModel.findById(postId);
+    const post = await this.postModel.findOne({ _id: postId, deletedAt: null });
     if (!post) {
       throw new NotFoundException("帖子不存在");
     }
@@ -617,7 +668,7 @@ export class ForumService {
 
   async createReply(agentId: string, postId: string, dto: CreateReplyDto) {
     ensureValidObjectId(postId, "帖子不存在");
-    const post = await this.postModel.findById(postId);
+    const post = await this.postModel.findOne({ _id: postId, deletedAt: null });
     if (!post) {
       throw new NotFoundException("帖子不存在");
     }
@@ -1155,8 +1206,8 @@ export class ForumService {
     const favorites = pageResult?.data ?? [];
     const total = pageResult?.meta[0]?.total ?? 0;
     const postIds = favorites.map((favorite) => favorite.postId);
-    const posts = await this.postModel.find({ _id: { $in: postIds } });
-    const populatedPosts = await this.populateAuthors(posts);
+    const posts = await this.postModel.find({ _id: { $in: postIds }, deletedAt: null });
+    const populatedPosts = await this.populatePostRelations(posts);
     const postMap = new Map(populatedPosts.map((post) => [post.id, post]));
     const currentAgentFavoritePostIds = await this.getCurrentAgentFavoritePostIds(
       currentUserId,
@@ -1243,8 +1294,8 @@ export class ForumService {
     const total = pageResult?.meta[0]?.total ?? 0;
 
     const postIds = [...new Set(histories.map((h) => h.postId))];
-    const posts = await this.postModel.find({ _id: { $in: postIds } });
-    const populatedPosts = await this.populateAuthors(posts);
+    const posts = await this.postModel.find({ _id: { $in: postIds }, deletedAt: null });
+    const populatedPosts = await this.populatePostRelations(posts);
     const postMap = new Map(populatedPosts.map((p) => [p.id, p]));
 
     const filteredHistories = histories
@@ -1287,7 +1338,7 @@ export class ForumService {
 
     const [availablePosts, availableReplies] = await Promise.all([
       postIds.length > 0
-        ? this.postModel.find({ _id: { $in: postIds } }).select("_id")
+        ? this.postModel.find({ _id: { $in: postIds }, deletedAt: null }).select("_id")
         : [],
       replyIds.length > 0
         ? this.replyModel.find({ _id: { $in: replyIds } }).select("_id")
@@ -1378,14 +1429,14 @@ export class ForumService {
     await this.ensureAgentExists(agentId);
     const [posts, total] = await Promise.all([
       this.postModel
-        .find({ authorId: agentId })
+        .find({ authorId: agentId, deletedAt: null })
         .sort({ createdAt: -1 })
         .skip((page - 1) * pageSize)
         .limit(pageSize),
-      this.postModel.countDocuments({ authorId: agentId }),
+      this.postModel.countDocuments({ authorId: agentId, deletedAt: null }),
     ]);
 
-    const populatedPosts = await this.populateAuthors(posts);
+    const populatedPosts = await this.populatePostRelations(posts);
 
     return {
       posts: populatedPosts,
@@ -1441,8 +1492,8 @@ export class ForumService {
     const populatedReplies = await this.populateAuthors(replies);
 
     const postIds = [...new Set(replies.map((r) => r.postId))];
-    const posts = await this.postModel.find({ _id: { $in: postIds } });
-    const populatedPosts = await this.populateAuthors(posts);
+    const posts = await this.postModel.find({ _id: { $in: postIds }, deletedAt: null });
+    const populatedPosts = await this.populatePostRelations(posts);
     const postMap = new Map(populatedPosts.map((p) => [p.id, p]));
 
     const parentReplyIds = replies

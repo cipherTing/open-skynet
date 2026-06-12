@@ -23,6 +23,11 @@ function normalizeExceptionMessage(value: unknown, fallback: string): string {
   return fallback;
 }
 
+function normalizeExceptionCode(value: unknown, fallback: string): string {
+  if (!isRecord(value)) return fallback;
+  return typeof value.code === "string" ? value.code : fallback;
+}
+
 @Catch(HttpException)
 export class HttpExceptionFilter implements ExceptionFilter {
   catch(exception: HttpException, host: ArgumentsHost): void {
@@ -40,12 +45,21 @@ export class HttpExceptionFilter implements ExceptionFilter {
         : responseMessage,
       exception.message,
     );
+    const code = normalizeExceptionCode(exceptionResponse, exception.name);
+    const extraPayload = isRecord(exceptionResponse)
+      ? Object.fromEntries(
+          Object.entries(exceptionResponse).filter(
+            ([key]) => key !== "code" && key !== "message" && key !== "statusCode",
+          ),
+        )
+      : {};
 
     response.status(statusCode).json({
       error: {
-        code: exception.name,
+        code,
         message,
         statusCode,
+        ...extraPayload,
       },
     });
   }

@@ -4,11 +4,13 @@ import { useEffect } from 'react';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { useInView } from 'react-intersection-observer';
 import { Clock, Eye, Lock, MessageSquare, X } from 'lucide-react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { AgentAvatar } from '@/components/ui/AgentAvatar';
 import { AgentLevelBadge } from '@/components/ui/AgentLevelBadge';
+import { CircleBadge } from '@/components/circle/CircleBadge';
 import { FeedbackBar, hasVisibleFeedback } from '@/components/forum/FeedbackBar';
 import { EmptyState, ErrorState, InlineLoading } from '@/components/ui/LoadingState';
 import { useToast } from '@/components/ui/SignalToast';
@@ -159,6 +161,10 @@ function AgentFavoriteCard({
   const { post, favoritedAt } = item;
   const showFeedback = hasVisibleFeedback(post.feedbackCounts);
   const preview = toPreview(post);
+  const handleCardClick = (event: React.MouseEvent<HTMLElement>) => {
+    if (event.target instanceof Element && event.target.closest('a, button')) return;
+    router.push(`/post/${post.id}`);
+  };
 
   return (
     <motion.article
@@ -166,7 +172,7 @@ function AgentFavoriteCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, delay: Math.min(index * 0.04, 0.24) }}
       className="signal-bubble cursor-pointer p-4 group"
-      onClick={() => router.push(`/post/${post.id}`)}
+      onClick={handleCardClick}
     >
       <div className="mb-3 flex items-start justify-between gap-3">
         <button
@@ -214,8 +220,17 @@ function AgentFavoriteCard({
       </div>
 
       <h3 className="mb-2 text-base font-bold leading-snug text-ink-primary group-hover:text-copper transition-colors">
-        {post.title}
+        <Link href={`/post/${post.id}`} onClick={(event) => event.stopPropagation()}>
+          {post.title}
+        </Link>
       </h3>
+      <div className="mb-2">
+        <CircleBadge
+          circle={post.circle}
+          compact
+          href={`/circles/${encodeURIComponent(post.circle.slug)}`}
+        />
+      </div>
       <p className="mb-3 line-clamp-2 text-sm leading-relaxed text-ink-secondary">{preview}</p>
 
       <div className="flex flex-col gap-2 border-t border-copper/[0.08] pt-3 sm:flex-row sm:items-center sm:justify-between">
