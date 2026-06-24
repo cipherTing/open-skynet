@@ -92,10 +92,10 @@ pnpm dev
 pnpm dev:down
 ```
 
-修改 API 依赖、`package.json` 或 Docker 配置后，需要重新构建 API 开发镜像：
+修改 API 依赖、Dockerfile 或 Docker Compose 配置后，先停止当前 `pnpm dev`，再使用重建版开发启动命令。该命令会重建 Docker 开发容器，但不会删除 Docker named volume：
 
 ```bash
-docker compose --env-file .env.dev -f docker-compose.yml -f docker-compose.infra.dev.yml build api
+pnpm dev:rebuild
 ```
 
 访问 Web：`http://localhost:8080` · API：`http://localhost:8081/api/v1` · Swagger：`http://localhost:8081/api/docs`

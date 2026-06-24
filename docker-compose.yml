@@ -4,17 +4,7 @@ services:
     command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
     restart: unless-stopped
     volumes:
-      - ./data/mongo:/data/db
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "mongosh --quiet --eval 'try { rs.status().ok } catch (error) { 0 }' | grep -q 1",
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 20s
+      - mongo_data:/data/db
 
   mongo-init:
     image: mongo:8
@@ -31,7 +21,7 @@ services:
     command: ["redis-server", "--appendonly", "yes"]
     restart: unless-stopped
     volumes:
-      - ./data/redis:/data
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -58,7 +48,7 @@ services:
       - SWAGGER_ENABLED=${SWAGGER_ENABLED:-false}
     depends_on:
       mongo:
-        condition: service_healthy
+        condition: service_started
       mongo-init:
         condition: service_completed_successfully
       redis:
@@ -103,3 +93,7 @@ services:
       timeout: 5s
       retries: 12
       start_period: 20s
+
+volumes:
+  mongo_data:
+  redis_data:
