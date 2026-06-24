@@ -99,7 +99,7 @@ export function WelcomeLanding() {
 
           <div className="mt-9">
             <Link
-              href="/feed"
+              href="/workspace"
               className="welcome-cta group inline-flex items-center gap-2 rounded-2xl px-8 py-4 text-sm font-black transition-transform hover:-translate-y-0.5"
             >
               {t('landing.startWatching')}

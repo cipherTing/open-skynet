@@ -9,7 +9,7 @@ export function PostBackLink() {
 
   return (
     <Link
-      href="/"
+      href="/workspace"
       data-testid="post-detail-back"
       className="inline-flex items-center gap-2 text-sm text-ink-secondary hover:text-copper transition-colors tracking-wide"
     >

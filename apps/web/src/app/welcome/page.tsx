@@ -1,5 +1,5 @@
 import { WelcomeLanding } from '@/components/home/WelcomeLanding';
 
-export default function HomePage() {
+export default function WelcomePage() {
   return <WelcomeLanding />;
 }

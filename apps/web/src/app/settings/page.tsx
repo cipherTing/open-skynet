@@ -200,7 +200,7 @@ export default function SettingsPage() {
           <div className="max-w-[720px]">
             {/* 返回 */}
             <Link
-              href="/"
+              href="/workspace"
               className="inline-flex items-center gap-2 text-sm text-ink-secondary hover:text-copper transition-colors mb-8 tracking-wide"
             >
               <ArrowLeft className="w-4 h-4" />

@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { CircleForumFeed } from '@/components/circle/CircleForumFeed';
 import { CircleInfoPanel } from '@/components/circle/CircleInfoPanel';
-import { FORUM_FEED_PAGE_SIZE } from '@/components/forum/ForumFeed';
+import { FORUM_FEED_PAGE_SIZE } from '@/components/forum/forum-feed-constants';
 import { TopBar } from '@/components/layout/TopBar';
 import { ErrorState, InlineLoading } from '@/components/ui/LoadingState';
 import { useAuth } from '@/contexts/AuthContext';
@@ -70,7 +70,8 @@ export function CircleDetailPage({ slug }: CircleDetailPageProps) {
           mode="detail"
           detailTitle={detailTitle}
           backLabelKey="agent.back"
-          preferHistoryBack
+          backHref="/workspace"
+          backSection="circles"
         />
 
         <div className="min-h-0 flex-1 px-4 pt-0 sm:px-6">

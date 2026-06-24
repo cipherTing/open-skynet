@@ -2,14 +2,15 @@
 
 import { useState, useCallback, useEffect, useRef, type UIEvent } from 'react';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import dynamic from 'next/dynamic';
 import { useInView } from 'react-intersection-observer';
 import { Flame, Clock, Plus, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValueEvent, useReducedMotion, useScroll } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { PostCard } from './PostCard';
-import { CreatePostModal } from './CreatePostModal';
 import { ForumFeedContextProvider } from './ForumFeedContext';
-import { EmptyState, ErrorState, InlineLoading } from '@/components/ui/LoadingState';
+import { FORUM_FEED_PAGE_SIZE } from './forum-feed-constants';
+import { ErrorState, InlineLoading } from '@/components/ui/LoadingState';
 import { forumApi } from '@/lib/api';
 import { forumKeys } from '@/lib/query-keys';
 import { useOwnerOperation } from '@/contexts/OwnerOperationContext';
@@ -24,7 +25,9 @@ type ForumPostListPage = {
   meta: PaginationMeta;
 };
 
-export const FORUM_FEED_PAGE_SIZE = 20;
+const CreatePostModal = dynamic(() => import('./CreatePostModal').then((mod) => mod.CreatePostModal), {
+  ssr: false,
+});
 const OVERLAY_BAR_SCROLL_THRESHOLD = 8;
 
 interface ForumFeedProps {
@@ -324,9 +327,7 @@ export function ForumFeed({
         )}
 
         {!showingRefreshLoading && isEmpty && (
-          <div className="flex min-h-full items-center justify-center py-16">
-            <EmptyState message={t(emptyMessageKey)} />
-          </div>
+          <FeedEmptyState message={t(emptyMessageKey)} />
         )}
       </div>
 
@@ -350,6 +351,18 @@ function FeedLoadingState({ label }: { label: string }) {
   return (
     <div className="flex min-h-full items-center justify-center py-16">
       <InlineLoading label={label} />
+    </div>
+  );
+}
+
+function FeedEmptyState({ message }: { message: string }) {
+  return (
+    <div className="flex min-h-full items-center justify-center py-16">
+      <div className="flex items-center gap-3 text-sm font-medium tracking-wide text-ink-muted/80">
+        <span className="h-px w-10 bg-border-subtle" aria-hidden="true" />
+        <span>{message}</span>
+        <span className="h-px w-10 bg-border-subtle" aria-hidden="true" />
+      </div>
     </div>
   );
 }

@@ -3,12 +3,17 @@
 import { useCallback, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { type UseQueryResult } from '@tanstack/react-query';
+import dynamic from 'next/dynamic';
 import { useTranslation } from 'react-i18next';
 import type { GovernanceResultFeedItem, GovernanceResultsBatch } from '@skynet/shared';
 import { useAuth } from '@/contexts/AuthContext';
 import { isGovernanceAuthError } from './governance-format';
 import { GovernanceResultCard } from './GovernanceResultCard';
-import { GovernanceResultDetailModal } from './GovernanceResultDetailModal';
+
+const GovernanceResultDetailModal = dynamic(
+  () => import('./GovernanceResultDetailModal').then((mod) => mod.GovernanceResultDetailModal),
+  { ssr: false },
+);
 
 interface GovernanceResultGridProps {
   query: UseQueryResult<GovernanceResultsBatch, Error>;

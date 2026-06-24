@@ -1,5 +1,5 @@
-import { HomeShell } from '@/components/home/HomeShell';
+import { LegacyHomeSectionRedirect } from '@/components/home/LegacyHomeSectionRedirect';
 
 export default function FeedPage() {
-  return <HomeShell routeSection="feed" />;
+  return <LegacyHomeSectionRedirect section="feed" />;
 }

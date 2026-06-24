@@ -2,40 +2,48 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { useReducedMotion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
-import { CircleGrid } from '@/components/circle/CircleGrid';
-import { ForumFeed } from '@/components/forum/ForumFeed';
-import { GovernancePanelContent } from '@/components/governance/GovernancePanel';
-import { GovernanceResultGrid } from '@/components/governance/GovernanceResultGrid';
 import { isGovernanceAuthError } from '@/components/governance/governance-format';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { type TopBarGovernanceControls } from '@/components/layout/TopBar';
-import { SignalPanelContent } from '@/components/layout/SignalPanel';
 import { TopBar } from '@/components/layout/TopBar';
 import { useAuth } from '@/contexts/AuthContext';
 import { governanceApi } from '@/lib/api';
 import { useHomeNavigationStore, type HomeSection } from '@/stores/home-navigation-store';
+
+const ForumFeed = dynamic(() => import('@/components/forum/ForumFeed').then((mod) => mod.ForumFeed), {
+  loading: () => <SectionLoading />,
+});
+const CircleGrid = dynamic(() => import('@/components/circle/CircleGrid').then((mod) => mod.CircleGrid), {
+  loading: () => <SectionLoading />,
+});
+const GovernanceResultGrid = dynamic(
+  () => import('@/components/governance/GovernanceResultGrid').then((mod) => mod.GovernanceResultGrid),
+  { loading: () => <SectionLoading /> },
+);
+const SignalPanelContent = dynamic(() => import('@/components/layout/SignalPanel').then((mod) => mod.SignalPanelContent), {
+  loading: () => <PanelLoading />,
+});
+const GovernancePanelContent = dynamic(
+  () => import('@/components/governance/GovernancePanel').then((mod) => mod.GovernancePanelContent),
+  { loading: () => <PanelLoading /> },
+);
 
 const GOVERNANCE_BATCH_SIZE = 10;
 const GOVERNANCE_AUTO_REFRESH_MS = 60_000;
 const COUNTDOWN_TICK_MS = 1_000;
 const MANUAL_REFRESH_COOLDOWN_MS = 1_000;
 
-interface HomeShellProps {
-  routeSection?: HomeSection;
-}
-
-export function HomeShell({ routeSection }: HomeShellProps = {}) {
+export function HomeShell() {
   const { t } = useTranslation();
-  const router = useRouter();
   const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const prefersReducedMotion = useReducedMotion();
   const reducedMotionEnabled = prefersReducedMotion === true;
   const storedActiveSection = useHomeNavigationStore((state) => state.activeSection);
   const setActiveSection = useHomeNavigationStore((state) => state.setActiveSection);
-  const activeSection = routeSection ?? storedActiveSection;
+  const activeSection = storedActiveSection;
   const isGovernanceActive = activeSection === 'governance';
   const topBarMode = activeSection === 'governance'
     ? 'governance'
@@ -49,27 +57,11 @@ export function HomeShell({ routeSection }: HomeShellProps = {}) {
   const pauseRemainingMsRef = useRef<number | null>(null);
   const lastManualRefreshAtRef = useRef(0);
 
-  useEffect(() => {
-    if (!routeSection) return;
-    setActiveSection(routeSection);
-  }, [routeSection, setActiveSection]);
-
   const handleSectionChange = useCallback(
     (section: HomeSection) => {
       setActiveSection(section);
-      if (!routeSection) return;
-      if (section === routeSection) return;
-      if (section === 'feed') {
-        router.push('/feed');
-        return;
-      }
-      if (section === 'circles') {
-        router.push('/circles');
-        return;
-      }
-      router.push('/');
     },
-    [routeSection, router, setActiveSection],
+    [setActiveSection],
   );
 
   const governanceResultsQuery = useQuery({
@@ -241,9 +233,6 @@ export function HomeShell({ routeSection }: HomeShellProps = {}) {
           disableScrollFade
           position="static"
           mode={topBarMode}
-          backHref={routeSection === 'circles' ? '/feed' : undefined}
-          backLabelKey={routeSection === 'circles' ? 'forum.backToFeed' : undefined}
-          backSection={routeSection === 'circles' ? 'feed' : undefined}
           governanceControls={governanceControls}
         />
         <div className="min-h-0 flex-1 pl-6 pr-3 pt-0">
@@ -267,4 +256,16 @@ export function HomeShell({ routeSection }: HomeShellProps = {}) {
       </aside>
     </div>
   );
+}
+
+function SectionLoading() {
+  return (
+    <div className="flex h-full items-center justify-center text-xs uppercase tracking-[0.24em] text-ink-muted">
+      SKYNET
+    </div>
+  );
+}
+
+function PanelLoading() {
+  return <div className="p-4 text-xs uppercase tracking-[0.2em] text-ink-muted">SKYNET</div>;
 }

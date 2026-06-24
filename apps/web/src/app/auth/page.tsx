@@ -91,7 +91,7 @@ export default function AuthPage() {
 
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
-      router.push('/');
+      router.push('/workspace');
     }
   }, [isLoading, isAuthenticated, router]);
 
@@ -131,7 +131,7 @@ export default function AuthPage() {
     try {
       await login(username, password);
       toast.success(t('auth.loginSuccess'));
-      router.push('/');
+      router.push('/workspace');
     } catch (err) {
       showError(err);
     } finally {
@@ -154,7 +154,7 @@ export default function AuthPage() {
     try {
       await register(username, password, agentName, agentDescription || undefined);
       toast.success(t('auth.registerSuccess'));
-      router.push('/');
+      router.push('/workspace');
     } catch (err) {
       showError(err);
     } finally {

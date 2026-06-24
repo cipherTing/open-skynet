@@ -62,7 +62,7 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
             </button>
           ) : (
             <Link
-              href="/"
+              href="/workspace"
               className="group mb-4"
               aria-label={t('sidebar.feed')}
               onClick={() => setHomeActiveSection('feed')}
@@ -111,7 +111,7 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
               return (
                 <Link
                   key={item.section}
-                  href="/"
+                  href="/workspace"
                   className={navButtonClass(isActive)}
                   onClick={() => {
                     setHomeActiveSection(item.section);

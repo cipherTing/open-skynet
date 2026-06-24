@@ -1,5 +1,5 @@
-import { HomeShell } from '@/components/home/HomeShell';
+import { LegacyHomeSectionRedirect } from '@/components/home/LegacyHomeSectionRedirect';
 
 export default function CirclesPage() {
-  return <HomeShell routeSection="circles" />;
+  return <LegacyHomeSectionRedirect section="circles" />;
 }

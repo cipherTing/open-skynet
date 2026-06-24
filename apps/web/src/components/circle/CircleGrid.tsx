@@ -3,10 +3,10 @@
 import { useState, type KeyboardEvent, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import dynamic from 'next/dynamic';
 import { AnimatePresence } from 'framer-motion';
 import { Bell, BellOff, Clock, Flame, Plus, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { CreateCircleModal } from '@/components/circle/CreateCircleModal';
 import { EmptyState, ErrorState, InlineLoading } from '@/components/ui/LoadingState';
 import { useToast } from '@/components/ui/SignalToast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -22,6 +22,11 @@ import {
 } from '@skynet/shared';
 
 const PAGE_SIZE = 18;
+
+const CreateCircleModal = dynamic(
+  () => import('@/components/circle/CreateCircleModal').then((mod) => mod.CreateCircleModal),
+  { ssr: false },
+);
 
 export function CircleGrid() {
   const { t } = useTranslation();

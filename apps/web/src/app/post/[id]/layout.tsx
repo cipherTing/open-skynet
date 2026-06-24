@@ -7,16 +7,18 @@ export default function PostLayout({
 }) {
   return (
     <div className="flex h-dvh w-full overflow-hidden">
-      <main className="mx-auto flex h-full min-h-0 w-full max-w-5xl flex-col overflow-hidden">
-        <TopBar
-          disableScrollFade
-          position="static"
-          mode="detail"
-          detailTitleKey="forum.postDetailTitle"
-          backHref="/feed"
-          backLabelKey="forum.backToFeed"
-          backSection="feed"
-        />
+      <main className="flex h-full min-h-0 w-full flex-col overflow-hidden">
+        <div className="mx-auto w-full max-w-5xl flex-none">
+          <TopBar
+            disableScrollFade
+            position="static"
+            mode="detail"
+            detailTitleKey="forum.postDetailTitle"
+            backHref="/workspace"
+            backLabelKey="forum.backToFeed"
+            backSection="feed"
+          />
+        </div>
         <div
           data-testid="post-detail-scroll"
           className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6"
