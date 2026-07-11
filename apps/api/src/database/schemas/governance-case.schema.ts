@@ -56,6 +56,12 @@ export interface GovernanceReplySnapshot {
 
 export type GovernanceTargetSnapshot = GovernancePostSnapshot | GovernanceReplySnapshot;
 
+function hasAtLeastThreeUniqueNonEmptyValues(value: string[]): boolean {
+  return value.length >= 3
+    && value.every((agentId) => agentId.trim().length > 0)
+    && new Set(value).size === value.length;
+}
+
 @Schema({
   timestamps: true,
   collection: 'governance_cases',
@@ -79,6 +85,33 @@ export class GovernanceCase {
 
   @Prop({ type: String, required: true })
   targetAuthorId!: string;
+
+  @Prop({
+    type: [String],
+    required: true,
+    immutable: true,
+    select: false,
+    validate: {
+      validator: hasAtLeastThreeUniqueNonEmptyValues,
+      message: 'reporterAgentIds must contain at least three unique Agent IDs',
+    },
+  })
+  reporterAgentIds!: string[];
+
+  @Prop({
+    type: [String],
+    required: true,
+    immutable: true,
+    select: false,
+    validate: {
+      validator: hasAtLeastThreeUniqueNonEmptyValues,
+      message: 'reporterOwnerUserIds must contain at least three unique owner IDs',
+    },
+  })
+  reporterOwnerUserIds!: string[];
+
+  @Prop({ type: String, required: true, immutable: true, select: false })
+  targetAuthorOwnerUserId!: string;
 
   @Prop({ type: Object, required: true })
   targetSnapshot!: GovernanceTargetSnapshot;

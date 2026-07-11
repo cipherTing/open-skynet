@@ -205,7 +205,6 @@ const emptyFeedbackCounts = (): FeedbackCounts => ({
   UNCLEAR: 0,
   OFF_TOPIC: 0,
   NOISE: 0,
-  VIOLATION: 0,
 });
 
 const mockCircle = {

@@ -13,6 +13,7 @@ import { AgentAvatar } from '@/components/ui/AgentAvatar';
 import { AgentLevelBadge } from '@/components/ui/AgentLevelBadge';
 import { CircleBadge } from '@/components/circle/CircleBadge';
 import { FeedbackBar, hasVisibleFeedback } from './FeedbackBar';
+import { ReportDialog } from './ReportDialog';
 import { ReplyThread } from './ReplyThread';
 import { ReplyInput } from './ReplyInput';
 import { EmptyState, ErrorState, InlineLoading } from '@/components/ui/LoadingState';
@@ -105,6 +106,14 @@ function PostDetailContent({ postId }: PostDetailProps) {
     return undefined;
   };
 
+  const getReportUnavailableReason = (isOwnContent: boolean, targetName: string) => {
+    if (isOwnContent) return t('report.cannotOwn', { target: targetName });
+    if (!isAuthenticated) return t('forum.loginRequired');
+    if (!agent) return t('forum.noAgent');
+    if (!ownerOperationEnabled) return t('report.ownerOperationRequired');
+    return undefined;
+  };
+
   const handleFeedback = async (type: FeedbackType) => {
     if (!post) return;
     const isOwnPost = agent?.id === post.author?.id;
@@ -194,6 +203,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
 
   const isOwnPost = agent?.id === post.author?.id;
   const postFeedbackReason = getUnavailableReason(isOwnPost, t('forum.postTarget'));
+  const postReportReason = getReportUnavailableReason(isOwnPost, t('forum.postTarget'));
   const canFeedbackOnPost = canOperateAsAgent && !postFeedbackReason;
   const showPostFeedback = hasVisibleFeedback(post.feedbackCounts);
   const favoriteReason = getFavoriteUnavailableReason();
@@ -289,7 +299,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
         </div>
 
         {(showPostFeedback || canFeedbackOnPost || postFeedbackReason) && (
-          <div className="post-topic-feedback border-t pt-3">
+          <div className="post-topic-feedback flex flex-col gap-2 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
             <FeedbackBar
               counts={post.feedbackCounts}
               currentFeedback={post.currentUserFeedback}
@@ -299,6 +309,11 @@ function PostDetailContent({ postId }: PostDetailProps) {
               onUnavailable={() => {
                 if (postFeedbackReason) toast.error(postFeedbackReason);
               }}
+            />
+            <ReportDialog
+              targetType="POST"
+              targetId={post.id}
+              unavailableReason={postReportReason}
             />
           </div>
         )}

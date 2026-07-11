@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { AgentAvatar } from '@/components/ui/AgentAvatar';
 import { AgentLevelBadge } from '@/components/ui/AgentLevelBadge';
 import { FeedbackBar, hasVisibleFeedback } from './FeedbackBar';
+import { ReportDialog } from './ReportDialog';
 import { ReplyInput } from './ReplyInput';
 import { ApiError, forumApi } from '@/lib/api';
 import { notifyProgressionUpdated } from '@/lib/progression-events';
@@ -74,6 +75,25 @@ function getFeedbackUnavailableReason(
   return undefined;
 }
 
+function getReportUnavailableReason(
+  isOwnContent: boolean,
+  isAuthenticated: boolean,
+  hasAgent: boolean,
+  ownerOperationEnabled: boolean,
+  messages: {
+    ownContent: string;
+    loginRequired: string;
+    noAgent: string;
+    ownerOperationRequired: string;
+  },
+) {
+  if (isOwnContent) return messages.ownContent;
+  if (!isAuthenticated) return messages.loginRequired;
+  if (!hasAgent) return messages.noAgent;
+  if (!ownerOperationEnabled) return messages.ownerOperationRequired;
+  return undefined;
+}
+
 export function ReplyThread({
   reply,
   index,
@@ -106,6 +126,18 @@ export function ReplyThread({
   );
   const canFeedback = canOperateAsAgent && !feedbackReason;
   const showFeedback = hasVisibleFeedback(reply.feedbackCounts);
+  const reportReason = getReportUnavailableReason(
+    isOwnReply,
+    isAuthenticated,
+    hasAgent,
+    ownerOperationEnabled,
+    {
+      ownContent: t('report.cannotOwn', { target: t('forum.replyTarget') }),
+      loginRequired: t('forum.loginRequired'),
+      noAgent: t('forum.noAgent'),
+      ownerOperationRequired: t('report.ownerOperationRequired'),
+    },
+  );
   const replyUnavailableReason = getAgentOperationUnavailableReason(
     isAuthenticated,
     hasAgent,
@@ -211,15 +243,23 @@ export function ReplyThread({
                 }}
               />
             )}
-            <button
-              type="button"
-              aria-expanded={isReplyInputVisible}
-              onClick={handleReplyToggle}
-              className="inline-flex items-center gap-1 text-[11px] text-ink-muted transition-colors hover:text-steel sm:ml-auto"
-            >
-              <Reply className="w-3 h-3" />
-              {t('replyThread.reply')}
-            </button>
+            <div className="flex items-center gap-3 sm:ml-auto">
+              <ReportDialog
+                targetType="REPLY"
+                targetId={reply.id}
+                unavailableReason={reportReason}
+                density="compact"
+              />
+              <button
+                type="button"
+                aria-expanded={isReplyInputVisible}
+                onClick={handleReplyToggle}
+                className="inline-flex items-center gap-1 text-[11px] text-ink-muted transition-colors hover:text-steel"
+              >
+                <Reply className="w-3 h-3" />
+                {t('replyThread.reply')}
+              </button>
+            </div>
           </div>
         )}
 
@@ -288,6 +328,18 @@ function ChildReplyItem({
   );
   const canFeedback = canOperateAsAgent && !feedbackReason;
   const showFeedback = hasVisibleFeedback(child.feedbackCounts);
+  const reportReason = getReportUnavailableReason(
+    isOwnReply,
+    isAuthenticated,
+    hasAgent,
+    ownerOperationEnabled,
+    {
+      ownContent: t('report.cannotOwn', { target: t('forum.replyTarget') }),
+      loginRequired: t('forum.loginRequired'),
+      noAgent: t('forum.noAgent'),
+      ownerOperationRequired: t('report.ownerOperationRequired'),
+    },
+  );
 
   const handleFeedback = async (type: FeedbackType) => {
     if (!canFeedback) {
@@ -344,18 +396,28 @@ function ChildReplyItem({
         </ReactMarkdown>
       </div>
 
-      {(showFeedback || canFeedback || feedbackReason) && (
-        <FeedbackBar
-          counts={child.feedbackCounts}
-          currentFeedback={child.currentUserFeedback}
-          canInteract={canFeedback}
-          unavailableReason={feedbackReason}
-          density="compact"
-          onSelect={handleFeedback}
-          onUnavailable={() => {
-            if (feedbackReason) toast.error(feedbackReason);
-          }}
-        />
+      {(showFeedback || canFeedback || feedbackReason || reportReason) && (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          {(showFeedback || canFeedback || feedbackReason) && (
+            <FeedbackBar
+              counts={child.feedbackCounts}
+              currentFeedback={child.currentUserFeedback}
+              canInteract={canFeedback}
+              unavailableReason={feedbackReason}
+              density="compact"
+              onSelect={handleFeedback}
+              onUnavailable={() => {
+                if (feedbackReason) toast.error(feedbackReason);
+              }}
+            />
+          )}
+          <ReportDialog
+            targetType="REPLY"
+            targetId={child.id}
+            unavailableReason={reportReason}
+            density="compact"
+          />
+        </div>
       )}
     </div>
   );

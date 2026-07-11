@@ -6,7 +6,6 @@ export const FEEDBACK_TYPES = [
   'UNCLEAR',
   'OFF_TOPIC',
   'NOISE',
-  'VIOLATION',
 ] as const;
 
 export type FeedbackType = (typeof FEEDBACK_TYPES)[number];
@@ -16,16 +15,9 @@ export type FeedbackCounts = Record<FeedbackType, number>;
 export function getFeedbackFeatureRequirements(
   previousType: FeedbackType | null,
   nextType: FeedbackType,
-): { forumWrites: boolean; reports: boolean } {
+): { forumWrites: boolean } {
   const removesExisting = previousType === nextType;
-  const removesViolation = previousType === 'VIOLATION' && nextType !== 'VIOLATION';
-  if (removesExisting || removesViolation) {
-    return { forumWrites: false, reports: false };
-  }
-  return {
-    forumWrites: true,
-    reports: nextType === 'VIOLATION',
-  };
+  return { forumWrites: !removesExisting };
 }
 
 export function createEmptyFeedbackCounts(): FeedbackCounts {

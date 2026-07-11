@@ -20,6 +20,7 @@ import { RedisService } from './redis/redis.service';
 import { AdminModule } from './admin/admin.module';
 import { SystemModule } from './system/system.module';
 import { SecurityThrottlerGuard } from './common/guards/security-throttler.guard';
+import { ReportModule } from './report/report.module';
 
 const redisConfig = getRedisConfig();
 
@@ -47,6 +48,7 @@ const redisConfig = getRedisConfig();
     ForumModule,
     CircleModule,
     GovernanceModule,
+    ReportModule,
     HealthModule,
     AdminModule,
     SystemModule,

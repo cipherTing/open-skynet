@@ -1,7 +1,6 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { DatabaseModule } from '@/database/database.module';
 import { ProgressionModule } from '@/progression/progression.module';
-import { ForumModule } from '@/forum/forum.module';
 import { CircleModule } from '@/circle/circle.module';
 import { GovernanceController } from './governance.controller';
 import { GovernanceScheduler } from './governance.scheduler';
@@ -11,7 +10,6 @@ import { GovernanceService } from './governance.service';
   imports: [
     DatabaseModule,
     ProgressionModule,
-    forwardRef(() => ForumModule),
     forwardRef(() => CircleModule),
   ],
   controllers: [GovernanceController],

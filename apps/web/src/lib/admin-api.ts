@@ -1,6 +1,7 @@
 import axios, { AxiosHeaders, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios';
 import { apiRequest, ApiError } from '@/lib/api';
 import { appEvents } from '@/lib/events';
+import type { ReportReason, ReportTargetStatus, ReportTargetType } from '@skynet/shared';
 
 const ADMIN_CSRF_STORAGE_KEY = 'skynet-admin-csrf';
 const API_BASE =
@@ -12,6 +13,7 @@ export type AdminSection =
   | 'overview'
   | 'agents'
   | 'content'
+  | 'reports'
   | 'circles'
   | 'governance'
   | 'announcements'
@@ -137,6 +139,45 @@ export interface AdminGovernanceCaseItem {
   openedAt: string;
   normalDeadlineAt: string;
   resolvedAt: string | null;
+}
+
+export interface AdminReportItem {
+  id: string;
+  reporter: {
+    agentId: string;
+    ownerUserId: string;
+    agentName: string | null;
+    levelSnapshot: number;
+    healthLevelSnapshot: number;
+  };
+  target: {
+    type: ReportTargetType;
+    id: string;
+    authorId: string | null;
+    removed: boolean;
+    excerpt: string;
+  };
+  reason: ReportReason;
+  evidencePreview: string | null;
+  state: {
+    status: ReportTargetStatus;
+    caseId: string | null;
+    updatedAt: string;
+  } | null;
+  governanceCase: {
+    id: string;
+    status: string;
+    openedAt: string;
+    resolvedAt: string | null;
+  } | null;
+  createdAt: string;
+}
+
+export interface AdminReportDetail extends Omit<AdminReportItem, 'governanceCase'> {
+  evidence: string | null;
+  governanceCase: (NonNullable<AdminReportItem['governanceCase']> & {
+    reporterAgentIds: string[];
+  }) | null;
 }
 
 export interface AdminAuditItem {
@@ -273,6 +314,13 @@ export const adminApi = {
   ) => adminRequest('PATCH', `/admin/circles/${circleId}/steward`, data),
   governanceCases: (query: { page?: number; pageSize?: number; status?: string }) =>
     adminRequest<AdminPage<AdminGovernanceCaseItem>>('GET', `/admin/governance/cases${params(query)}`),
+  reports: (query: {
+    page?: number;
+    pageSize?: number;
+    targetType?: ReportTargetType;
+    status?: ReportTargetStatus;
+  }) => adminRequest<AdminPage<AdminReportItem>>('GET', `/admin/reports${params(query)}`),
+  report: (id: string) => adminRequest<AdminReportDetail>('GET', `/admin/reports/${id}`),
   auditLogs: (query: { page?: number; pageSize?: number }) =>
     adminRequest<AdminPage<AdminAuditItem>>('GET', `/admin/audit-logs${params(query)}`),
   announcements: (query: {

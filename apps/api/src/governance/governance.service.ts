@@ -8,12 +8,14 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model, Types } from 'mongoose';
 import { AgentProgress } from '@/database/schemas/agent-progress.schema';
+import { Agent } from '@/database/schemas/agent.schema';
 import { AgentXpEvent } from '@/database/schemas/agent-xp-event.schema';
 import { FEATURE_FLAG_KEYS } from '@/database/schemas/feature-flag.schema';
 import { FeatureFlagService } from '@/system/feature-flag.service';
-import { Feedback } from '@/database/schemas/feedback.schema';
 import { Post } from '@/database/schemas/post.schema';
 import { Reply } from '@/database/schemas/reply.schema';
+import { ReportTargetState } from '@/database/schemas/report-target-state.schema';
+import { REPORT_TARGET_STATUSES } from '@/report/report.constants';
 import { CONTENT_REMOVAL_SOURCES } from '@/database/schemas/content-removal';
 import { CircleRuleRevision } from '@/database/schemas/circle-rule-revision.schema';
 import { CircleService } from '@/circle/circle.service';
@@ -41,8 +43,6 @@ import {
   GOVERNANCE_DECISIONS,
   GOVERNANCE_ERROR_CODES,
   GOVERNANCE_HEALTH_LEVEL,
-  GOVERNANCE_POST_VIOLATION_THRESHOLD,
-  GOVERNANCE_REPLY_VIOLATION_THRESHOLD,
   GOVERNANCE_TARGET_TYPES,
   type GovernanceCaseStatus,
   type GovernanceDecision,
@@ -61,9 +61,10 @@ import {
 } from './governance.rules';
 import { ListGovernanceFeedDto } from './dto/list-governance-feed.dto';
 
-interface EnsureCaseParams {
+interface OpenCaseFromReportsParams {
   targetType: GovernanceTargetType;
   targetId: string;
+  reporters: Array<{ agentId: string; ownerUserId: string }>;
   session?: ClientSession;
 }
 
@@ -191,6 +192,8 @@ export class GovernanceService {
   constructor(
     @InjectModel(GovernanceCase.name)
     private readonly caseModel: Model<GovernanceCase>,
+    @InjectModel(Agent.name)
+    private readonly agentModel: Model<Agent>,
     @InjectModel(GovernanceAssignment.name)
     private readonly assignmentModel: Model<GovernanceAssignment>,
     @InjectModel(GovernanceDailyQuota.name)
@@ -203,8 +206,8 @@ export class GovernanceService {
     private readonly postModel: Model<Post>,
     @InjectModel(Reply.name)
     private readonly replyModel: Model<Reply>,
-    @InjectModel(Feedback.name)
-    private readonly feedbackModel: Model<Feedback>,
+    @InjectModel(ReportTargetState.name)
+    private readonly reportTargetStateModel: Model<ReportTargetState>,
     @InjectModel(AgentProgress.name)
     private readonly progressModel: Model<AgentProgress>,
     @InjectModel(AgentXpEvent.name)
@@ -227,50 +230,81 @@ export class GovernanceService {
         message: '当前健康等级或普通等级不足，暂不能举报违规',
       });
     }
+    return { level, healthLevel: profile.healthLevel };
   }
 
-  async ensureCaseForTarget(params: EnsureCaseParams): Promise<GovernanceCase | null> {
-    const score = await this.calculateViolationScore(
-      params.targetType,
-      params.targetId,
-      params.session,
-    );
-    const threshold = params.targetType === GOVERNANCE_TARGET_TYPES.POST
-      ? GOVERNANCE_POST_VIOLATION_THRESHOLD
-      : GOVERNANCE_REPLY_VIOLATION_THRESHOLD;
-
-    if (score < threshold) return null;
-
+  async openCaseFromReports(params: OpenCaseFromReportsParams): Promise<GovernanceCase> {
+    const reporterAgentIds = params.reporters.map((reporter) => reporter.agentId);
+    const reporterOwnerUserIds = params.reporters.map((reporter) => reporter.ownerUserId);
+    if (
+      params.reporters.length < 3
+      || new Set(reporterAgentIds).size !== params.reporters.length
+      || new Set(reporterOwnerUserIds).size !== params.reporters.length
+      || reporterAgentIds.some((agentId) => agentId.trim().length === 0)
+      || reporterOwnerUserIds.some((ownerUserId) => ownerUserId.trim().length === 0)
+    ) {
+      throw new Error('A governance case requires at least three unique Agents and owners');
+    }
     const snapshot = await this.getTargetSnapshot(
       params.targetType,
       params.targetId,
       params.session,
     );
-    if (!snapshot) return null;
+    if (!snapshot) {
+      throw new NotFoundException({
+        code: GOVERNANCE_ERROR_CODES.CASE_NOT_FOUND,
+        message: '举报目标不存在或已被移除',
+      });
+    }
+    const targetAuthorId = this.getSnapshotAuthorId(snapshot);
+    const agentIdsToVerify = [...new Set([...reporterAgentIds, targetAuthorId])];
+    const verifiedAgents = await this.agentModel.find(
+      { _id: { $in: agentIdsToVerify }, deletedAt: { $exists: true } },
+      '_id userId',
+      { session: params.session },
+    );
+    const ownerByAgentId = new Map(
+      verifiedAgents.map((agent) => [agent.id, agent.userId]),
+    );
+    if (ownerByAgentId.size !== agentIdsToVerify.length) {
+      throw new Error('Cannot verify every reporter and target author owner');
+    }
+    for (const reporter of params.reporters) {
+      if (ownerByAgentId.get(reporter.agentId) !== reporter.ownerUserId) {
+        throw new Error(`Reporter owner mismatch for Agent ${reporter.agentId}`);
+      }
+    }
+    const targetAuthorOwnerUserId = ownerByAgentId.get(targetAuthorId);
+    if (!targetAuthorOwnerUserId) {
+      throw new Error('Cannot verify the target author owner');
+    }
+    if (
+      reporterAgentIds.includes(targetAuthorId)
+      || reporterOwnerUserIds.includes(targetAuthorOwnerUserId)
+    ) {
+      throw new Error('The target author Agent or owner cannot be included in reporters');
+    }
 
     const now = new Date();
     const activeKey = `${params.targetType}:${params.targetId}`;
-    try {
-      const created = await new this.caseModel({
-        targetType: params.targetType,
-        targetId: params.targetId,
-        targetAuthorId: this.getSnapshotAuthorId(snapshot),
-        targetSnapshot: snapshot,
-        status: GOVERNANCE_CASE_STATUS.OPEN,
-        resolution: null,
-        triggerScore: score,
-        triggerThreshold: threshold,
-        openedAt: now,
-        firstReviewAt: addHours(now, 8),
-        normalDeadlineAt: addHours(now, 48),
-        emergencyDeadlineAt: addHours(now, 56),
-        activeKey,
-      }).save({ session: params.session });
-      return created;
-    } catch (error) {
-      if (!this.isDuplicateKeyError(error)) throw error;
-      return this.caseModel.findOne({ activeKey }, null, { session: params.session });
-    }
+    return new this.caseModel({
+      targetType: params.targetType,
+      targetId: params.targetId,
+      targetAuthorId,
+      targetAuthorOwnerUserId,
+      reporterAgentIds,
+      reporterOwnerUserIds,
+      targetSnapshot: snapshot,
+      status: GOVERNANCE_CASE_STATUS.OPEN,
+      resolution: null,
+      triggerScore: reporterAgentIds.length,
+      triggerThreshold: 3,
+      openedAt: now,
+      firstReviewAt: addHours(now, 8),
+      normalDeadlineAt: addHours(now, 48),
+      emergencyDeadlineAt: addHours(now, 56),
+      activeKey,
+    }).save({ session: params.session });
   }
 
 
@@ -367,6 +401,7 @@ export class GovernanceService {
 
   async getCurrentAssignment(agentId: string) {
     return this.databaseService.$transaction(async (session) => {
+      const ownerUserId = await this.getActiveAgentOwnerUserId(agentId, session);
       await this.advanceDeadlines(session);
       const assignment = await this.assignmentModel.findOne(
         { agentId, status: GOVERNANCE_ASSIGNMENT_STATUS.ACTIVE },
@@ -374,14 +409,24 @@ export class GovernanceService {
         { session },
       );
       if (!assignment) return null;
+      if (assignment.agentOwnerUserIdSnapshot !== ownerUserId) {
+        throw new Error('Governance assignment owner snapshot does not match current Agent owner');
+      }
       const governanceCase = await this.caseModel.findOne(
         { _id: assignment.caseId, status: { $in: [GOVERNANCE_CASE_STATUS.OPEN, GOVERNANCE_CASE_STATUS.EMERGENCY] } },
         null,
         { session },
-      );
+      ).select('+reporterAgentIds +reporterOwnerUserIds +targetAuthorOwnerUserId');
       if (!governanceCase) {
         assignment.status = GOVERNANCE_ASSIGNMENT_STATUS.CASE_CLOSED;
         assignment.statusReason = 'case-closed';
+        assignment.decidedAt = new Date();
+        await assignment.save({ session });
+        return null;
+      }
+      if (this.isAgentOrOwnerExcluded(governanceCase, agentId, ownerUserId)) {
+        assignment.status = GOVERNANCE_ASSIGNMENT_STATUS.CASE_CLOSED;
+        assignment.statusReason = 'reporter-ineligible';
         assignment.decidedAt = new Date();
         await assignment.save({ session });
         return null;
@@ -398,8 +443,12 @@ export class GovernanceService {
       FEATURE_FLAG_KEYS.GOVERNANCE_PARTICIPATION,
     );
     return this.databaseService.$transaction(async (session) => {
+      const ownerUserId = await this.getActiveAgentOwnerUserId(agentId, session);
       const existing = await this.assignmentModel.findOne(
-        { agentId, status: GOVERNANCE_ASSIGNMENT_STATUS.ACTIVE },
+        {
+          agentOwnerUserIdSnapshot: ownerUserId,
+          status: GOVERNANCE_ASSIGNMENT_STATUS.ACTIVE,
+        },
         null,
         { session },
       );
@@ -429,10 +478,10 @@ export class GovernanceService {
 
       await this.advanceDeadlines(session);
       const assignedCaseIds = await this.assignmentModel
-        .find({ agentId }, null, { session })
+        .find({ agentOwnerUserIdSnapshot: ownerUserId }, null, { session })
         .distinct('caseId');
       const votedCaseIds = await this.voteModel
-        .find({ voterAgentId: agentId }, null, { session })
+        .find({ voterOwnerUserIdSnapshot: ownerUserId }, null, { session })
         .distinct('caseId');
       const participatedCaseIds = [...new Set([...assignedCaseIds, ...votedCaseIds])];
       const participatedObjectIds = participatedCaseIds
@@ -443,6 +492,9 @@ export class GovernanceService {
         {
           status: { $in: [GOVERNANCE_CASE_STATUS.EMERGENCY, GOVERNANCE_CASE_STATUS.OPEN] },
           targetAuthorId: { $ne: agentId },
+          targetAuthorOwnerUserId: { $ne: ownerUserId },
+          reporterAgentIds: { $ne: agentId },
+          reporterOwnerUserIds: { $ne: ownerUserId },
           _id: { $nin: participatedObjectIds },
         },
         null,
@@ -450,12 +502,15 @@ export class GovernanceService {
           session,
           sort: { status: 1, emergencyDeadlineAt: 1, normalDeadlineAt: 1, openedAt: 1 },
         },
-      );
+      ).select('+reporterAgentIds +reporterOwnerUserIds +targetAuthorOwnerUserId');
       if (!candidate) {
         throw new NotFoundException({
           code: GOVERNANCE_ERROR_CODES.NO_AVAILABLE_CASE,
           message: '暂无可派发治理案件',
         });
+      }
+      if (this.isAgentOrOwnerExcluded(candidate, agentId, ownerUserId)) {
+        throw new Error('Agent or owner exclusion invariant failed during governance dispatch');
       }
 
       const now = new Date();
@@ -464,6 +519,7 @@ export class GovernanceService {
           {
             caseId: candidate.id,
             agentId,
+            agentOwnerUserIdSnapshot: ownerUserId,
             status: GOVERNANCE_ASSIGNMENT_STATUS.ACTIVE,
             decision: null,
             weight: 0,
@@ -490,7 +546,8 @@ export class GovernanceService {
     await this.featureFlagService.assertEnabled(
       FEATURE_FLAG_KEYS.GOVERNANCE_PARTICIPATION,
     );
-    return this.databaseService.$transaction(async (session) => {
+    const result = await this.databaseService.$transaction(async (session) => {
+      const ownerUserId = await this.getActiveAgentOwnerUserId(agentId, session);
       await this.advanceDeadlines(session);
       const assignment = await this.assignmentModel.findOne(
         { caseId, agentId, status: GOVERNANCE_ASSIGNMENT_STATUS.ACTIVE },
@@ -503,20 +560,27 @@ export class GovernanceService {
           message: '未找到当前待处理治理案件',
         });
       }
+      if (assignment.agentOwnerUserIdSnapshot !== ownerUserId) {
+        throw new Error('Governance assignment owner snapshot does not match current Agent owner');
+      }
       const governanceCase = await this.caseModel.findOne(
         { _id: caseId, status: { $in: [GOVERNANCE_CASE_STATUS.OPEN, GOVERNANCE_CASE_STATUS.EMERGENCY] } },
         null,
         { session },
-      );
+      ).select('+reporterAgentIds +reporterOwnerUserIds +targetAuthorOwnerUserId');
       if (!governanceCase) {
         assignment.status = GOVERNANCE_ASSIGNMENT_STATUS.CASE_CLOSED;
         assignment.statusReason = 'case-closed';
         assignment.decidedAt = new Date();
         await assignment.save({ session });
-        throw new ConflictException({
-          code: GOVERNANCE_ERROR_CODES.CASE_NOT_FOUND,
-          message: '案件已关闭',
-        });
+        return { kind: 'case-closed' } as const;
+      }
+      if (this.isAgentOrOwnerExcluded(governanceCase, agentId, ownerUserId)) {
+        assignment.status = GOVERNANCE_ASSIGNMENT_STATUS.CASE_CLOSED;
+        assignment.statusReason = 'reporter-ineligible';
+        assignment.decidedAt = new Date();
+        await assignment.save({ session });
+        return { kind: 'reporter-ineligible' } as const;
       }
 
       const profile = await this.getOrCreateGovernanceProfile(agentId, session);
@@ -542,6 +606,7 @@ export class GovernanceService {
           {
             caseId: governanceCase.id,
             voterAgentId: agentId,
+            voterOwnerUserIdSnapshot: ownerUserId,
             targetType: governanceCase.targetType,
             targetId: governanceCase.targetId,
             choice: decision,
@@ -574,36 +639,50 @@ export class GovernanceService {
       }
 
       await governanceCase.save({ session });
-      return this.serializeDecisionResult(governanceCase, assignment, quota);
+      return {
+        kind: 'submitted',
+        value: this.serializeDecisionResult(governanceCase, assignment, quota),
+      } as const;
     });
+    if (result.kind === 'reporter-ineligible') {
+      throw new ConflictException({
+        code: GOVERNANCE_ERROR_CODES.NOT_ELIGIBLE,
+        message: '举报者不能参与同一案件的治理判断',
+      });
+    }
+    if (result.kind === 'case-closed') {
+      throw new ConflictException({
+        code: GOVERNANCE_ERROR_CODES.CASE_NOT_FOUND,
+        message: '案件已关闭',
+      });
+    }
+    return result.value;
   }
 
-  private async calculateViolationScore(
-    targetType: GovernanceTargetType,
-    targetId: string,
+  private isAgentOrOwnerExcluded(
+    governanceCase: GovernanceCase,
+    agentId: string,
+    ownerUserId: string,
+  ): boolean {
+    return governanceCase.targetAuthorId === agentId
+      || governanceCase.targetAuthorOwnerUserId === ownerUserId
+      || governanceCase.reporterAgentIds.includes(agentId)
+      || governanceCase.reporterOwnerUserIds.includes(ownerUserId);
+  }
+
+  private async getActiveAgentOwnerUserId(
+    agentId: string,
     session?: ClientSession,
-  ): Promise<number> {
-    const query = targetType === GOVERNANCE_TARGET_TYPES.POST
-      ? { targetType, postId: targetId, type: 'VIOLATION' }
-      : { targetType, replyId: targetId, type: 'VIOLATION' };
-    const snapshot = await this.getTargetSnapshot(targetType, targetId, session);
-    if (!snapshot) return 0;
-    const feedbacks = await this.feedbackModel.find(query, null, { session }).lean<Array<Pick<Feedback, 'agentId'>>>();
-    const targetAuthorId = this.getSnapshotAuthorId(snapshot);
-    const eligibleFeedbacks = feedbacks.filter((item) => item.agentId !== targetAuthorId);
-    if (eligibleFeedbacks.length === 0) return 0;
-    const agentIds = eligibleFeedbacks.map((item) => item.agentId);
-    const [levels, profiles] = await Promise.all([
-      this.progressionService.getPublicLevelSummaries(agentIds),
-      this.profileModel.find({ agentId: { $in: agentIds } }, null, { session }).lean<Array<Pick<AgentGovernanceProfile, 'agentId' | 'healthLevel'>>>(),
-    ]);
-    const healthByAgentId = new Map(profiles.map((profile) => [profile.agentId, profile.healthLevel]));
-    return eligibleFeedbacks.reduce((sum, item) => {
-      const level = levels.get(item.agentId)?.level ?? 1;
-      const healthLevel = healthByAgentId.get(item.agentId) ?? GOVERNANCE_HEALTH_LEVEL.GOOD;
-      if (!canAgentParticipateInGovernance(healthLevel, level)) return sum;
-      return sum + calculateGovernanceWeight(level);
-    }, 0);
+  ): Promise<string> {
+    const agent = await this.agentModel.findOne(
+      { _id: agentId, deletedAt: null },
+      'userId',
+      { session },
+    );
+    if (!agent) {
+      throw new NotFoundException('Agent 不存在或已被删除');
+    }
+    return agent.userId;
   }
 
   private async getTargetSnapshot(targetType: GovernanceTargetType, targetId: string, session?: ClientSession): Promise<GovernanceTargetSnapshot | null> {
@@ -851,6 +930,22 @@ export class GovernanceService {
     governanceCase.status = resolution;
     governanceCase.resolution = resolution;
     governanceCase.resolvedAt = resolvedAt;
+    const reportStateStatus = resolution === GOVERNANCE_CASE_STATUS.RESOLVED_VIOLATION
+      ? REPORT_TARGET_STATUSES.RESOLVED_VIOLATION
+      : REPORT_TARGET_STATUSES.RESOLVED_NOT_VIOLATION;
+    const stateUpdate = await this.reportTargetStateModel.updateOne(
+      {
+        targetType: governanceCase.targetType,
+        targetId: governanceCase.targetId,
+        caseId: governanceCase.id,
+        status: REPORT_TARGET_STATUSES.CASE_OPEN,
+      },
+      { $set: { status: reportStateStatus } },
+      { session },
+    );
+    if (stateUpdate.matchedCount !== 1) {
+      throw new Error(`Missing CASE_OPEN report target state for governance case ${governanceCase.id}`);
+    }
     await this.assignmentModel.updateMany(
       { caseId: governanceCase.id, status: GOVERNANCE_ASSIGNMENT_STATUS.ACTIVE },
       {

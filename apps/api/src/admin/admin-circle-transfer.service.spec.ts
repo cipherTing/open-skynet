@@ -34,6 +34,10 @@ import { FeatureFlag, FeatureFlagSchema } from '@/database/schemas/feature-flag.
 import { GovernanceCase, GovernanceCaseSchema } from '@/database/schemas/governance-case.schema';
 import { Post, PostSchema } from '@/database/schemas/post.schema';
 import { Reply, ReplySchema } from '@/database/schemas/reply.schema';
+import {
+  ReportTargetState,
+  ReportTargetStateSchema,
+} from '@/database/schemas/report-target-state.schema';
 import { User, UserSchema } from '@/database/schemas/user.schema';
 import { CircleService } from '@/circle/circle.service';
 import { DatabaseService } from '@/database/database.service';
@@ -82,6 +86,7 @@ describe('AdminService circle transfer integration', () => {
           { name: CircleRuleRevision.name, schema: CircleRuleRevisionSchema },
           { name: CircleMaintenanceLog.name, schema: CircleMaintenanceLogSchema },
           { name: GovernanceCase.name, schema: GovernanceCaseSchema },
+          { name: ReportTargetState.name, schema: ReportTargetStateSchema },
           { name: AdminAuditLog.name, schema: AdminAuditLogSchema },
           { name: FeatureFlag.name, schema: FeatureFlagSchema },
         ]),
@@ -123,6 +128,8 @@ describe('AdminService circle transfer integration', () => {
       CircleRuleRevision.name,
       CircleMaintenanceLog.name,
       AdminAuditLog.name,
+      Post.name,
+      ReportTargetState.name,
     ];
     await Promise.all(
       modelNames.map((name) => connection.model(name).collection.deleteMany({})),
@@ -248,5 +255,29 @@ describe('AdminService circle transfer integration', () => {
         publicReason: '不应成功的交接',
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('keeps administrator removal and report target state in the same transaction', async () => {
+    const author = await createAgent('content-author');
+    const circle = await createCircle(author.id);
+    const post = await connection.model(Post.name).create({
+      title: 'admin removal target',
+      content: '管理员移除与举报状态同步测试',
+      authorId: author.id,
+      circleId: circle.id,
+      circleRulesVersion: 1,
+      deletedAt: null,
+    });
+
+    await service.setContentRemoved(ADMIN, 'POST', post.id, true, '违规内容人工移除');
+    const removedState = await connection.model(ReportTargetState.name).findOne({
+      targetType: 'POST',
+      targetId: post.id,
+    });
+    expect(removedState).toMatchObject({ status: 'TARGET_REMOVED', caseId: null });
+
+    await service.setContentRemoved(ADMIN, 'POST', post.id, false, '复核后恢复内容');
+    const restoredState = await connection.model(ReportTargetState.name).findById(removedState?.id);
+    expect(restoredState?.status).toBe('COLLECTING');
   });
 });

@@ -44,10 +44,6 @@ export const FEEDBACK_ITEMS: Array<{
     type: 'NOISE',
     emoji: '🗑️',
   },
-  {
-    type: 'VIOLATION',
-    emoji: '🚨',
-  },
 ];
 
 const emptyFeedbackCounts = (): FeedbackCounts => ({
@@ -58,7 +54,6 @@ const emptyFeedbackCounts = (): FeedbackCounts => ({
   UNCLEAR: 0,
   OFF_TOPIC: 0,
   NOISE: 0,
-  VIOLATION: 0,
 });
 
 export function normalizeFeedbackCounts(counts?: Partial<FeedbackCounts> | null): FeedbackCounts {

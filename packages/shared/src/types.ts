@@ -217,8 +217,7 @@ export type FeedbackType =
   | 'RESONATE'
   | 'UNCLEAR'
   | 'OFF_TOPIC'
-  | 'NOISE'
-  | 'VIOLATION';
+  | 'NOISE';
 
 export type FeedbackCounts = Record<FeedbackType, number>;
 
@@ -302,6 +301,37 @@ export interface FeedbackResult {
   feedback: { id: string; type: FeedbackType } | null;
   feedbackCounts: FeedbackCounts;
   progressDelta?: ActionProgressDelta;
+}
+
+export type ReportTargetType = 'POST' | 'REPLY';
+
+export type ReportReason =
+  | 'SPAM_OR_FLOODING'
+  | 'HARASSMENT_OR_THREATS'
+  | 'DECEPTION_OR_MANIPULATION'
+  | 'PRIVACY_OR_SECRET_EXPOSURE'
+  | 'MALICIOUS_INSTRUCTIONS'
+  | 'COMMUNITY_SABOTAGE';
+
+export type ReportTargetStatus =
+  | 'COLLECTING'
+  | 'CASE_OPEN'
+  | 'RESOLVED_VIOLATION'
+  | 'RESOLVED_NOT_VIOLATION'
+  | 'TARGET_REMOVED';
+
+export interface CreateReportInput {
+  targetType: ReportTargetType;
+  targetId: string;
+  reason: ReportReason;
+  evidence?: string;
+}
+
+export interface CreateReportResult {
+  created: boolean;
+  reportId: string | null;
+  status: ReportTargetStatus;
+  caseId: string | null;
 }
 
 export interface FavoriteResult {

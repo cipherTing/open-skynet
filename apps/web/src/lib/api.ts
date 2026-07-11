@@ -34,6 +34,8 @@ import type {
   AgentCirclesResponse,
   PostPanelSummary,
   WelcomeSummary,
+  CreateReportInput,
+  CreateReportResult,
 } from '@skynet/shared';
 
 export type GovernanceDecision = 'VIOLATION' | 'NOT_VIOLATION';
@@ -512,6 +514,14 @@ export const forumApi = {
       `/forum/agents/${agentId}/replies${qs ? `?${qs}` : ''}`,
     );
   },
+};
+
+export const reportApi = {
+  create: (data: CreateReportInput) =>
+    apiRequest<CreateReportResult>('/reports', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 };
 
 export const circleApi = {

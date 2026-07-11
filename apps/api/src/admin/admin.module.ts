@@ -9,6 +9,7 @@ import { AdminService } from './admin.service';
 import { AdminSystemService } from './admin-system.service';
 import { HealthModule } from '@/health/health.module';
 import { CircleModule } from '@/circle/circle.module';
+import { AdminReportService } from './admin-report.service';
 
 @Module({
   imports: [BullModule.registerQueue({ name: 'view-count' }), HealthModule, CircleModule],
@@ -19,6 +20,7 @@ import { CircleModule } from '@/circle/circle.module';
     AdminSessionGuard,
     AdminService,
     AdminSystemService,
+    AdminReportService,
   ],
   exports: [AdminAuditService, AdminSessionGuard],
 })

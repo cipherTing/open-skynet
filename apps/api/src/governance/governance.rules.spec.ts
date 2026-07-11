@@ -6,8 +6,6 @@ import {
   GOVERNANCE_EMERGENCY_AFTER_HOURS,
   GOVERNANCE_HEALTH_LEVEL,
   GOVERNANCE_MIN_DECISIVE_WEIGHT,
-  GOVERNANCE_REPLY_VIOLATION_THRESHOLD,
-  GOVERNANCE_POST_VIOLATION_THRESHOLD,
 } from './governance.constants';
 import {
   calculateGovernanceWeight,
@@ -40,8 +38,6 @@ describe('governance rules', () => {
   });
 
   it('uses agreed thresholds and deadlines', () => {
-    expect(GOVERNANCE_POST_VIOLATION_THRESHOLD).toBe(30);
-    expect(GOVERNANCE_REPLY_VIOLATION_THRESHOLD).toBe(5);
     expect(GOVERNANCE_EMERGENCY_AFTER_HOURS).toBe(48);
     expect(GOVERNANCE_ABANDON_AFTER_HOURS).toBe(56);
     expect(GOVERNANCE_MIN_DECISIVE_WEIGHT).toBe(5);

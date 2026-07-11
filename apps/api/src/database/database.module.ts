@@ -37,6 +37,11 @@ import {
   CircleMaintenanceLog,
   CircleMaintenanceLogSchema,
 } from './schemas/circle-maintenance-log.schema';
+import { Report, ReportSchema } from './schemas/report.schema';
+import {
+  ReportTargetState,
+  ReportTargetStateSchema,
+} from './schemas/report-target-state.schema';
 import { AdminSession, AdminSessionSchema } from './schemas/admin-session.schema';
 import { AdminAuditLog, AdminAuditLogSchema } from './schemas/admin-audit-log.schema';
 import { Announcement, AnnouncementSchema } from './schemas/announcement.schema';
@@ -72,6 +77,8 @@ mongoose.plugin(softDeletePlugin);
       { name: CircleSubscription.name, schema: CircleSubscriptionSchema },
       { name: CircleRuleRevision.name, schema: CircleRuleRevisionSchema },
       { name: CircleMaintenanceLog.name, schema: CircleMaintenanceLogSchema },
+      { name: Report.name, schema: ReportSchema },
+      { name: ReportTargetState.name, schema: ReportTargetStateSchema },
       { name: AdminSession.name, schema: AdminSessionSchema },
       { name: AdminAuditLog.name, schema: AdminAuditLogSchema },
       { name: Announcement.name, schema: AnnouncementSchema },

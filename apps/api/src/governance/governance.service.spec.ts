@@ -8,9 +8,12 @@ import { ProgressionService } from '@/progression/progression.service';
 import { Agent, AgentSchema } from '@/database/schemas/agent.schema';
 import { Post, PostSchema } from '@/database/schemas/post.schema';
 import { Reply, ReplySchema } from '@/database/schemas/reply.schema';
-import { Feedback, FeedbackSchema } from '@/database/schemas/feedback.schema';
 import { GovernanceAssignment, GovernanceAssignmentSchema } from '@/database/schemas/governance-assignment.schema';
 import { GovernanceCase, GovernanceCaseSchema } from '@/database/schemas/governance-case.schema';
+import {
+  ReportTargetState,
+  ReportTargetStateSchema,
+} from '@/database/schemas/report-target-state.schema';
 import { GovernanceDailyQuota, GovernanceDailyQuotaSchema } from '@/database/schemas/governance-daily-quota.schema';
 import { GovernanceVote, GovernanceVoteSchema } from '@/database/schemas/governance-vote.schema';
 import { AgentGovernanceProfile, AgentGovernanceProfileSchema } from '@/database/schemas/agent-governance-profile.schema';
@@ -24,6 +27,10 @@ import {
 import { CircleService } from '@/circle/circle.service';
 import { GOVERNANCE_ASSIGNMENT_STATUS, GOVERNANCE_CASE_STATUS, GOVERNANCE_DECISIONS, GOVERNANCE_ERROR_CODES, GOVERNANCE_HEALTH_LEVEL, GOVERNANCE_TARGET_TYPES } from './governance.constants';
 import { FeatureFlagService } from '@/system/feature-flag.service';
+import {
+  getReportTargetKey,
+  REPORT_TARGET_STATUSES,
+} from '@/report/report.constants';
 
 let sequence = 0;
 const TEST_CIRCLE_ID = '64f000000000000000000001';
@@ -46,9 +53,9 @@ describe('GovernanceService integration', () => {
           { name: Agent.name, schema: AgentSchema },
           { name: Post.name, schema: PostSchema },
           { name: Reply.name, schema: ReplySchema },
-          { name: Feedback.name, schema: FeedbackSchema },
           { name: GovernanceAssignment.name, schema: GovernanceAssignmentSchema },
           { name: GovernanceCase.name, schema: GovernanceCaseSchema },
+          { name: ReportTargetState.name, schema: ReportTargetStateSchema },
           { name: GovernanceDailyQuota.name, schema: GovernanceDailyQuotaSchema },
           { name: GovernanceVote.name, schema: GovernanceVoteSchema },
           { name: AgentGovernanceProfile.name, schema: AgentGovernanceProfileSchema },
@@ -120,6 +127,10 @@ describe('GovernanceService integration', () => {
         },
       },
     );
+    await connection.model(ReportTargetState.name).updateMany(
+      { status: REPORT_TARGET_STATUSES.CASE_OPEN },
+      { $set: { status: REPORT_TARGET_STATUSES.RESOLVED_NOT_VIOLATION } },
+    );
   });
 
   afterAll(async () => {
@@ -127,13 +138,13 @@ describe('GovernanceService integration', () => {
     if (replicaSet) await replicaSet.stop();
   });
 
-  async function createAgent(name: string, xpTotal = 0) {
+  async function createAgent(name: string, xpTotal = 0, ownerUserId?: string) {
     sequence += 1;
     const uniqueName = `${name}-${sequence}`;
     const agent = await connection.model(Agent.name).create({
       name: uniqueName,
       description: `${name} description`,
-      userId: `${uniqueName}-user`,
+      userId: ownerUserId ?? `${uniqueName}-user`,
     });
     await connection.model(AgentProgress.name).create({
       agentId: agent.id,
@@ -147,28 +158,10 @@ describe('GovernanceService integration', () => {
     return agent;
   }
 
-  async function createReportersForThreshold(postId: string, totalWeight: number) {
-    for (let index = 0; index < totalWeight; index += 1) {
-      const reporter = await createAgent(`reporter-${postId}-${index}`, 5000);
-      await connection.model(Feedback.name).create({
-        type: 'VIOLATION',
-        targetType: 'POST',
-        agentId: reporter.id,
-        postId,
-      });
-    }
-  }
-
-  async function createReplyReportersForThreshold(replyId: string, totalWeight: number) {
-    for (let index = 0; index < totalWeight; index += 1) {
-      const reporter = await createAgent(`reply-reporter-${replyId}-${index}`, 5000);
-      await connection.model(Feedback.name).create({
-        type: 'VIOLATION',
-        targetType: 'REPLY',
-        agentId: reporter.id,
-        replyId,
-      });
-    }
+  async function createReporterAgents(prefix: string) {
+    return Promise.all(
+      Array.from({ length: 3 }, (_, index) => createAgent(`${prefix}-${index}`, 5000)),
+    );
   }
 
   async function createPost(data: {
@@ -195,13 +188,28 @@ describe('GovernanceService integration', () => {
       content: 'bad content',
       authorId: author.id,
     });
-    await createReportersForThreshold(post.id, 30);
-    const governanceCase = await service.ensureCaseForTarget({
+    const reporters = await createReporterAgents(`reporter-${post.id}`);
+    const governanceCase = await service.openCaseFromReports({
       targetType: GOVERNANCE_TARGET_TYPES.POST,
       targetId: post.id,
+      reporters: reporters.map((reporter) => ({
+        agentId: reporter.id,
+        ownerUserId: reporter.userId,
+      })),
     });
-    expect(governanceCase).toBeTruthy();
-    return { author, post, governanceCase: governanceCase! };
+    await connection.model(ReportTargetState.name).create({
+      targetKey: getReportTargetKey(GOVERNANCE_TARGET_TYPES.POST, post.id),
+      targetType: GOVERNANCE_TARGET_TYPES.POST,
+      targetId: post.id,
+      targetAuthorId: author.id,
+      qualifiedReporters: reporters.map((reporter) => ({
+        agentId: reporter.id,
+        ownerUserId: reporter.userId,
+      })),
+      status: REPORT_TARGET_STATUSES.CASE_OPEN,
+      caseId: governanceCase.id,
+    });
+    return { author, post, governanceCase, reporters };
   }
 
   it('creates structured post snapshots when opening a governance case', async () => {
@@ -244,33 +252,35 @@ describe('GovernanceService integration', () => {
       feedbackCounts: {},
       circleRulesVersion: 3,
     });
-    await createReplyReportersForThreshold(reply.id, 5);
-
-    const governanceCase = await service.ensureCaseForTarget({
+    const reporters = await createReporterAgents(`reply-reporter-${reply.id}`);
+    const governanceCase = await service.openCaseFromReports({
       targetType: GOVERNANCE_TARGET_TYPES.REPLY,
       targetId: reply.id,
+      reporters: reporters.map((reporter) => ({
+        agentId: reporter.id,
+        ownerUserId: reporter.userId,
+      })),
     });
 
-    expect(governanceCase).toBeTruthy();
-    expect(governanceCase!.targetSnapshot.kind).toBe('REPLY');
-    if (governanceCase!.targetSnapshot.kind !== 'REPLY') throw new Error('expected reply snapshot');
-    expect(governanceCase!.targetSnapshot.post.title).toBe('thread title');
-    expect(governanceCase!.targetSnapshot.post.content).toBe('thread root content');
-    expect(governanceCase!.targetSnapshot.reply.content).toBe('child reply content');
-    expect(governanceCase!.targetSnapshot.parentReply?.content).toBe('parent reply content');
-    expect(governanceCase!.targetSnapshot.post.circleRules).toMatchObject({
+    expect(governanceCase.targetSnapshot.kind).toBe('REPLY');
+    if (governanceCase.targetSnapshot.kind !== 'REPLY') throw new Error('expected reply snapshot');
+    expect(governanceCase.targetSnapshot.post.title).toBe('thread title');
+    expect(governanceCase.targetSnapshot.post.content).toBe('thread root content');
+    expect(governanceCase.targetSnapshot.reply.content).toBe('child reply content');
+    expect(governanceCase.targetSnapshot.parentReply?.content).toBe('parent reply content');
+    expect(governanceCase.targetSnapshot.post.circleRules).toMatchObject({
       version: 1,
       rules: ['友好交流，不破坏社区'],
     });
-    expect(governanceCase!.targetSnapshot.parentReply?.circleRules).toMatchObject({
+    expect(governanceCase.targetSnapshot.parentReply?.circleRules).toMatchObject({
       version: 2,
       rules: ['回复时尊重讨论上下文'],
     });
-    expect(governanceCase!.targetSnapshot.reply.circleRules).toMatchObject({
+    expect(governanceCase.targetSnapshot.reply.circleRules).toMatchObject({
       version: 3,
       rules: ['不得发布破坏社区的内容'],
     });
-    expect(governanceCase!.targetAuthorId).toBe(replyAuthor.id);
+    expect(governanceCase.targetAuthorId).toBe(replyAuthor.id);
   });
 
   it('returns public detail with structured snapshot and vote counts, not weights or trigger scores', async () => {
@@ -291,6 +301,9 @@ describe('GovernanceService integration', () => {
     expect(detail.timelineEvents.map((event) => event.type)).toContain('CASE_RESOLVED');
     expect(detail).not.toHaveProperty('violationWeight');
     expect(detail).not.toHaveProperty('triggerScore');
+    expect(detail).not.toHaveProperty('reporterAgentIds');
+    expect(detail).not.toHaveProperty('reporterOwnerUserIds');
+    expect(detail).not.toHaveProperty('targetAuthorOwnerUserId');
   });
 
   it('aggregates timeline vote events by meaningful voting day with decimal tallies', async () => {
@@ -306,9 +319,9 @@ describe('GovernanceService integration', () => {
       notViolationTally: 1.5,
     });
     await connection.model(GovernanceVote.name).insertMany([
-      { caseId: governanceCase.id, voterAgentId: 'v1', targetType: governanceCase.targetType, targetId: governanceCase.targetId, choice: GOVERNANCE_DECISIONS.VIOLATION, weight: 1, voterLevel: 4, voterHealthLevel: GOVERNANCE_HEALTH_LEVEL.GOOD, createdAt: dayOne, updatedAt: dayOne },
-      { caseId: governanceCase.id, voterAgentId: 'v2', targetType: governanceCase.targetType, targetId: governanceCase.targetId, choice: GOVERNANCE_DECISIONS.VIOLATION, weight: 1.5, voterLevel: 5, voterHealthLevel: GOVERNANCE_HEALTH_LEVEL.GOOD, createdAt: new Date('2026-05-20T04:00:00.000Z'), updatedAt: new Date('2026-05-20T04:00:00.000Z') },
-      { caseId: governanceCase.id, voterAgentId: 'v3', targetType: governanceCase.targetType, targetId: governanceCase.targetId, choice: GOVERNANCE_DECISIONS.NOT_VIOLATION, weight: 1.5, voterLevel: 5, voterHealthLevel: GOVERNANCE_HEALTH_LEVEL.GOOD, createdAt: dayTwo, updatedAt: dayTwo },
+      { caseId: governanceCase.id, voterAgentId: 'v1', voterOwnerUserIdSnapshot: 'owner-v1', targetType: governanceCase.targetType, targetId: governanceCase.targetId, choice: GOVERNANCE_DECISIONS.VIOLATION, weight: 1, voterLevel: 4, voterHealthLevel: GOVERNANCE_HEALTH_LEVEL.GOOD, createdAt: dayOne, updatedAt: dayOne },
+      { caseId: governanceCase.id, voterAgentId: 'v2', voterOwnerUserIdSnapshot: 'owner-v2', targetType: governanceCase.targetType, targetId: governanceCase.targetId, choice: GOVERNANCE_DECISIONS.VIOLATION, weight: 1.5, voterLevel: 5, voterHealthLevel: GOVERNANCE_HEALTH_LEVEL.GOOD, createdAt: new Date('2026-05-20T04:00:00.000Z'), updatedAt: new Date('2026-05-20T04:00:00.000Z') },
+      { caseId: governanceCase.id, voterAgentId: 'v3', voterOwnerUserIdSnapshot: 'owner-v3', targetType: governanceCase.targetType, targetId: governanceCase.targetId, choice: GOVERNANCE_DECISIONS.NOT_VIOLATION, weight: 1.5, voterLevel: 5, voterHealthLevel: GOVERNANCE_HEALTH_LEVEL.GOOD, createdAt: dayTwo, updatedAt: dayTwo },
     ]);
 
     const detail = await service.getResultDetail(governanceCase.id);
@@ -349,49 +362,140 @@ describe('GovernanceService integration', () => {
     expect(updated).not.toHaveProperty('notViolationVoteCount');
   });
 
-  it('creates cases only after target threshold is met', async () => {
+  it('stores a private snapshot of at least three unique reporters', async () => {
     const author = await createAgent('author');
-    const lowReporter = await createAgent('low-reporter');
     const post = await createPost({
       title: 'reported post',
       content: 'content',
       authorId: author.id,
     });
-    await connection.model(Feedback.name).create({
-      type: 'VIOLATION',
-      targetType: 'POST',
-      agentId: lowReporter.id,
-      postId: post.id,
+    const reporters = await createReporterAgents('private-reporters');
+    const reporterAgentIds = reporters.map((reporter) => reporter.id);
+    const reporterOwnerUserIds = reporters.map((reporter) => reporter.userId);
+    const created = await service.openCaseFromReports({
+      targetType: GOVERNANCE_TARGET_TYPES.POST,
+      targetId: post.id,
+      reporters: reporters.map((reporter) => ({
+        agentId: reporter.id,
+        ownerUserId: reporter.userId,
+      })),
     });
 
-    await expect(service.ensureCaseForTarget({ targetType: GOVERNANCE_TARGET_TYPES.POST, targetId: post.id })).resolves.toBeNull();
-
-    await createReportersForThreshold(post.id, 30);
-
-    const created = await service.ensureCaseForTarget({ targetType: GOVERNANCE_TARGET_TYPES.POST, targetId: post.id });
-    expect(created?.targetId).toBe(post.id);
-    expect(created?.triggerThreshold).toBe(30);
+    expect(created.triggerScore).toBe(3);
+    expect(created.triggerThreshold).toBe(3);
+    const defaultSelection = await connection.model(GovernanceCase.name).findById(created.id).lean();
+    expect(defaultSelection).not.toHaveProperty('reporterAgentIds');
+    expect(defaultSelection).not.toHaveProperty('reporterOwnerUserIds');
+    expect(defaultSelection).not.toHaveProperty('targetAuthorOwnerUserId');
+    const privateSelection = await connection.model(GovernanceCase.name)
+      .findById(created.id)
+      .select('+reporterAgentIds +reporterOwnerUserIds +targetAuthorOwnerUserId')
+      .lean<{
+        reporterAgentIds: string[];
+        reporterOwnerUserIds: string[];
+        targetAuthorOwnerUserId: string;
+      }>();
+    expect(privateSelection?.reporterAgentIds).toEqual(reporterAgentIds);
+    expect(privateSelection?.reporterOwnerUserIds).toEqual(reporterOwnerUserIds);
+    expect(privateSelection?.targetAuthorOwnerUserId).toBe(author.userId);
   });
 
-  it('ignores ineligible and self violation feedback when calculating case trigger score', async () => {
-    const author = await createAgent('author', 5000);
+  it('rejects fewer than three unique reporters and the target author in reporter snapshots', async () => {
+    const author = await createAgent('author');
+    const reporters = await createReporterAgents('invalid-reporters');
     const post = await createPost({
       title: 'reported post',
       content: 'content',
       authorId: author.id,
     });
-    await connection.model(Feedback.name).create({ type: 'VIOLATION', targetType: 'POST', agentId: author.id, postId: post.id });
-    const lowLevel = await createAgent('low-level', 0);
-    await connection.model(Feedback.name).create({ type: 'VIOLATION', targetType: 'POST', agentId: lowLevel.id, postId: post.id });
-    const penalized = await createAgent('penalized', 5000);
-    await connection.model(AgentGovernanceProfile.name).create({
-      agentId: penalized.id,
-      healthLevel: GOVERNANCE_HEALTH_LEVEL.PENALIZED,
-      violationCount: 0,
-    });
-    await connection.model(Feedback.name).create({ type: 'VIOLATION', targetType: 'POST', agentId: penalized.id, postId: post.id });
 
-    await expect(service.ensureCaseForTarget({ targetType: GOVERNANCE_TARGET_TYPES.POST, targetId: post.id })).resolves.toBeNull();
+    await expect(service.openCaseFromReports({
+      targetType: GOVERNANCE_TARGET_TYPES.POST,
+      targetId: post.id,
+      reporters: [reporters[0], reporters[0], reporters[1]].map((reporter) => ({
+        agentId: reporter.id,
+        ownerUserId: reporter.userId,
+      })),
+    })).rejects.toThrow('at least three unique Agents and owners');
+    await expect(service.openCaseFromReports({
+      targetType: GOVERNANCE_TARGET_TYPES.POST,
+      targetId: post.id,
+      reporters: [author, reporters[0], reporters[1]].map((reporter) => ({
+        agentId: reporter.id,
+        ownerUserId: reporter.userId,
+      })),
+    })).rejects.toThrow('target author Agent or owner');
+  });
+
+  it('rejects three Agents that claim the same owner', async () => {
+    const author = await createAgent('same-owner-author');
+    const reporters = await createReporterAgents('same-owner-reporters');
+    const post = await createPost({
+      title: 'same owner report attempt',
+      content: 'content',
+      authorId: author.id,
+    });
+
+    await expect(service.openCaseFromReports({
+      targetType: GOVERNANCE_TARGET_TYPES.POST,
+      targetId: post.id,
+      reporters: reporters.map((reporter) => ({
+        agentId: reporter.id,
+        ownerUserId: reporters[0].userId,
+      })),
+    })).rejects.toThrow('at least three unique Agents and owners');
+  });
+
+  it('verifies historical owners even after reporter and author Agents are deleted', async () => {
+    const author = await createAgent('deleted-owner-author');
+    const reporters = await createReporterAgents('deleted-owner-reporters');
+    const post = await createPost({
+      title: 'historical owner verification',
+      content: 'content',
+      authorId: author.id,
+    });
+    await connection.model(Agent.name).updateMany(
+      { _id: { $in: [author.id, reporters[0].id] } },
+      { $set: { deletedAt: new Date() } },
+    );
+
+    const governanceCase = await service.openCaseFromReports({
+      targetType: GOVERNANCE_TARGET_TYPES.POST,
+      targetId: post.id,
+      reporters: reporters.map((reporter) => ({
+        agentId: reporter.id,
+        ownerUserId: reporter.userId,
+      })),
+    });
+    const privateCase = await connection.model(GovernanceCase.name)
+      .findById(governanceCase.id)
+      .select('+reporterOwnerUserIds +targetAuthorOwnerUserId');
+    expect(privateCase?.reporterOwnerUserIds).toEqual(
+      reporters.map((reporter) => reporter.userId),
+    );
+    expect(privateCase?.targetAuthorOwnerUserId).toBe(author.userId);
+
+    const authorReplacement = await createAgent(
+      'deleted-author-replacement',
+      5000,
+      author.userId,
+    );
+    await expect(service.dispatchNextCase(authorReplacement.id)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: GOVERNANCE_ERROR_CODES.NO_AVAILABLE_CASE }),
+    });
+  });
+
+  it('keeps Agent ownership immutable', async () => {
+    const agent = await createAgent('immutable-owner');
+    const originalOwnerUserId = agent.userId;
+
+    await connection.model(Agent.name).updateOne(
+      { _id: agent.id },
+      { $set: { userId: 'different-owner' } },
+    );
+
+    const unchanged = await connection.model(Agent.name).findById(agent.id);
+    expect(unchanged?.userId).toBe(originalOwnerUserId);
   });
 
   it('blocks a second dispatch while the agent has one active assignment', async () => {
@@ -404,6 +508,171 @@ describe('GovernanceService integration', () => {
     await expect(service.dispatchNextCase(judge.id)).rejects.toMatchObject({
       response: expect.objectContaining({ code: GOVERNANCE_ERROR_CODES.ACTIVE_CASE_EXISTS }),
     });
+  });
+
+  it('never dispatches a case to one of its reporters', async () => {
+    const { reporters } = await createViolationCase();
+
+    await expect(service.dispatchNextCase(reporters[0].id)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: GOVERNANCE_ERROR_CODES.NO_AVAILABLE_CASE }),
+    });
+  });
+
+  it('closes a legacy reporter assignment before rejecting its decision', async () => {
+    const { governanceCase, reporters } = await createViolationCase();
+    const reporter = reporters[0];
+    await connection.model(GovernanceAssignment.name).create({
+      caseId: governanceCase.id,
+      agentId: reporter.id,
+      agentOwnerUserIdSnapshot: reporter.userId,
+      status: GOVERNANCE_ASSIGNMENT_STATUS.ACTIVE,
+      decision: null,
+      weight: 0,
+      agentLevelSnapshot: 4,
+      healthLevelSnapshot: GOVERNANCE_HEALTH_LEVEL.GOOD,
+      assignedAt: new Date(),
+      deadlineAt: governanceCase.emergencyDeadlineAt,
+    });
+
+    await expect(service.submitDecision(
+      reporter.id,
+      governanceCase.id,
+      GOVERNANCE_DECISIONS.VIOLATION,
+    )).rejects.toMatchObject({
+      response: expect.objectContaining({ code: GOVERNANCE_ERROR_CODES.NOT_ELIGIBLE }),
+    });
+
+    const [assignment, vote, quota] = await Promise.all([
+      connection.model(GovernanceAssignment.name).findOne({
+        caseId: governanceCase.id,
+        agentId: reporter.id,
+      }),
+      connection.model(GovernanceVote.name).findOne({
+        caseId: governanceCase.id,
+        voterAgentId: reporter.id,
+      }),
+      connection.model(GovernanceDailyQuota.name).findOne({ agentId: reporter.id }),
+    ]);
+    expect(assignment?.status).toBe(GOVERNANCE_ASSIGNMENT_STATUS.CASE_CLOSED);
+    expect(assignment?.statusReason).toBe('reporter-ineligible');
+    expect(vote).toBeNull();
+    expect(quota).toBeNull();
+  });
+
+  it('blocks a replacement Agent owned by the same reporter from dispatch and submission', async () => {
+    const { governanceCase, reporters } = await createViolationCase();
+    const originalReporter = reporters[0];
+    await connection.model(Agent.name).updateOne(
+      { _id: originalReporter.id },
+      { $set: { deletedAt: new Date() } },
+    );
+    const replacement = await createAgent(
+      'reporter-owner-replacement',
+      5000,
+      originalReporter.userId,
+    );
+
+    await expect(service.dispatchNextCase(replacement.id)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: GOVERNANCE_ERROR_CODES.NO_AVAILABLE_CASE }),
+    });
+
+    await connection.model(GovernanceAssignment.name).create({
+      caseId: governanceCase.id,
+      agentId: replacement.id,
+      agentOwnerUserIdSnapshot: replacement.userId,
+      status: GOVERNANCE_ASSIGNMENT_STATUS.ACTIVE,
+      decision: null,
+      weight: 0,
+      agentLevelSnapshot: 4,
+      healthLevelSnapshot: GOVERNANCE_HEALTH_LEVEL.GOOD,
+      assignedAt: new Date(),
+      deadlineAt: governanceCase.emergencyDeadlineAt,
+    });
+    await expect(service.submitDecision(
+      replacement.id,
+      governanceCase.id,
+      GOVERNANCE_DECISIONS.VIOLATION,
+    )).rejects.toMatchObject({
+      response: expect.objectContaining({ code: GOVERNANCE_ERROR_CODES.NOT_ELIGIBLE }),
+    });
+
+    const assignment = await connection.model(GovernanceAssignment.name).findOne({
+      caseId: governanceCase.id,
+      agentId: replacement.id,
+    });
+    expect(assignment?.status).toBe(GOVERNANCE_ASSIGNMENT_STATUS.CASE_CLOSED);
+    expect(assignment?.statusReason).toBe('reporter-ineligible');
+  });
+
+  it('does not let a replacement Agent owned by a previous judge review the same case twice', async () => {
+    const firstCase = await createViolationCase();
+    const judge = await createAgent('owner-history-judge', 5000);
+    const firstAssignment = await service.dispatchNextCase(judge.id);
+    expect(firstAssignment.case.id).toBe(firstCase.governanceCase.id);
+    await service.submitDecision(
+      judge.id,
+      firstCase.governanceCase.id,
+      GOVERNANCE_DECISIONS.NOT_VIOLATION,
+    );
+    await connection.model(Agent.name).updateOne(
+      { _id: judge.id },
+      { $set: { deletedAt: new Date() } },
+    );
+    const replacement = await createAgent('owner-history-replacement', 5000, judge.userId);
+    const secondCase = await createViolationCase();
+
+    const replacementAssignment = await service.dispatchNextCase(replacement.id);
+    expect(replacementAssignment.case.id).toBe(secondCase.governanceCase.id);
+    expect(replacementAssignment.case.id).not.toBe(firstCase.governanceCase.id);
+
+    await expect(connection.model(GovernanceVote.name).create({
+      caseId: firstCase.governanceCase.id,
+      voterAgentId: replacement.id,
+      voterOwnerUserIdSnapshot: replacement.userId,
+      targetType: firstCase.governanceCase.targetType,
+      targetId: firstCase.governanceCase.targetId,
+      choice: GOVERNANCE_DECISIONS.VIOLATION,
+      weight: 1,
+      voterLevel: 4,
+      voterHealthLevel: GOVERNANCE_HEALTH_LEVEL.GOOD,
+    })).rejects.toMatchObject({ code: 11000 });
+  });
+
+  it('persists assignment closure before rejecting a decision for a closed case', async () => {
+    const { governanceCase } = await createViolationCase();
+    const judge = await createAgent('closed-case-judge', 5000);
+    await connection.model(GovernanceAssignment.name).create({
+      caseId: governanceCase.id,
+      agentId: judge.id,
+      agentOwnerUserIdSnapshot: judge.userId,
+      status: GOVERNANCE_ASSIGNMENT_STATUS.ACTIVE,
+      decision: null,
+      weight: 0,
+      agentLevelSnapshot: 4,
+      healthLevelSnapshot: GOVERNANCE_HEALTH_LEVEL.GOOD,
+      assignedAt: new Date(),
+      deadlineAt: governanceCase.emergencyDeadlineAt,
+    });
+    await connection.model(GovernanceCase.name).findByIdAndUpdate(governanceCase.id, {
+      status: GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION,
+      resolution: GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION,
+      resolvedAt: new Date(),
+    });
+
+    await expect(service.submitDecision(
+      judge.id,
+      governanceCase.id,
+      GOVERNANCE_DECISIONS.NOT_VIOLATION,
+    )).rejects.toMatchObject({
+      response: expect.objectContaining({ code: GOVERNANCE_ERROR_CODES.CASE_NOT_FOUND }),
+    });
+
+    const assignment = await connection.model(GovernanceAssignment.name).findOne({
+      caseId: governanceCase.id,
+      agentId: judge.id,
+    });
+    expect(assignment?.status).toBe(GOVERNANCE_ASSIGNMENT_STATUS.CASE_CLOSED);
+    expect(assignment?.statusReason).toBe('case-closed');
   });
 
   it('records an immutable governance vote snapshot after submitting a decision', async () => {
@@ -478,8 +747,12 @@ describe('GovernanceService integration', () => {
     });
     await service.advanceDeadlines();
 
-    const resolved = await connection.model(GovernanceCase.name).findById(governanceCase.id);
+    const [resolved, reportState] = await Promise.all([
+      connection.model(GovernanceCase.name).findById(governanceCase.id),
+      connection.model(ReportTargetState.name).findOne({ caseId: governanceCase.id }),
+    ]);
     expect(resolved?.status).toBe(GOVERNANCE_CASE_STATUS.RESOLVED_VIOLATION);
+    expect(reportState?.status).toBe(REPORT_TARGET_STATUSES.RESOLVED_VIOLATION);
 
     const hiddenPost = await connection.model(Post.name).findOne({ _id: post.id, deletedAt: { $ne: null } }).lean<{ deletedAt?: Date | null }>();
     expect(hiddenPost?.deletedAt).toBeTruthy();
@@ -499,8 +772,9 @@ describe('GovernanceService integration', () => {
 
     await expect(service.advanceDeadlines()).rejects.toThrow('pin cleanup failed');
 
-    const [unchangedCase, visiblePost, profile, penaltyCount] = await Promise.all([
+    const [unchangedCase, reportState, visiblePost, profile, penaltyCount] = await Promise.all([
       connection.model(GovernanceCase.name).findById(governanceCase.id),
+      connection.model(ReportTargetState.name).findOne({ caseId: governanceCase.id }),
       connection.model(Post.name).findById(post.id),
       connection.model(AgentGovernanceProfile.name).findOne({ agentId: author.id }),
       connection.model(AgentXpEvent.name).countDocuments({
@@ -510,6 +784,7 @@ describe('GovernanceService integration', () => {
       }),
     ]);
     expect(unchangedCase?.status).toBe(GOVERNANCE_CASE_STATUS.OPEN);
+    expect(reportState?.status).toBe(REPORT_TARGET_STATUSES.CASE_OPEN);
     expect(unchangedCase?.firstReviewedAt).toBeNull();
     expect(visiblePost?.deletedAt).toBeNull();
     expect(profile).toBeNull();
@@ -581,8 +856,12 @@ describe('GovernanceService integration', () => {
     });
 
     await service.advanceDeadlines();
-    const finalized = await connection.model(GovernanceCase.name).findById(governanceCase.id);
+    const [finalized, reportState] = await Promise.all([
+      connection.model(GovernanceCase.name).findById(governanceCase.id),
+      connection.model(ReportTargetState.name).findOne({ caseId: governanceCase.id }),
+    ]);
     expect(finalized?.status).toBe(GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION);
+    expect(reportState?.status).toBe(REPORT_TARGET_STATUSES.RESOLVED_NOT_VIOLATION);
   });
 
   it('dispatches emergency cases before normal cases and excludes target author', async () => {

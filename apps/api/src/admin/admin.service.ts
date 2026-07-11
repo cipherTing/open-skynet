@@ -7,7 +7,7 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { Model, Types, type FilterQuery } from 'mongoose';
+import { ClientSession, Model, Types, type FilterQuery } from 'mongoose';
 import { Agent } from '@/database/schemas/agent.schema';
 import { User } from '@/database/schemas/user.schema';
 import { BrowserSession } from '@/database/schemas/browser-session.schema';
@@ -19,6 +19,7 @@ import { Post } from '@/database/schemas/post.schema';
 import { Reply } from '@/database/schemas/reply.schema';
 import { Circle } from '@/database/schemas/circle.schema';
 import { GovernanceCase } from '@/database/schemas/governance-case.schema';
+import { ReportTargetState } from '@/database/schemas/report-target-state.schema';
 import { DatabaseService } from '@/database/database.service';
 import { CONTENT_REMOVAL_SOURCES } from '@/database/schemas/content-removal';
 import { GOVERNANCE_HEALTH_LEVEL } from '@/governance/governance.constants';
@@ -38,9 +39,28 @@ import type { ListAdminContentDto } from './dto/list-admin-content.dto';
 import type { ListAdminCirclesDto } from './dto/list-admin-circles.dto';
 import type { TransferCircleStewardDto } from './dto/transfer-circle-steward.dto';
 import type { ListAdminGovernanceDto } from './dto/list-admin-governance.dto';
+import {
+  REPORT_TARGET_STATUSES,
+  getReportTargetKey,
+  type ReportTargetType,
+} from '@/report/report.constants';
 
 const EMPTY_DAILY_COUNTERS = { posts: 0, replies: 0, childReplies: 0, feedbacks: 0 };
 const ADMIN_HEALTH_TIMEOUT_MS = 2_000;
+const ADMIN_CONTENT_TRANSACTION_MAX_ATTEMPTS = 4;
+
+function isReportTargetStateRace(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    error.code === 11000 &&
+    'keyPattern' in error &&
+    typeof error.keyPattern === 'object' &&
+    error.keyPattern !== null &&
+    'targetKey' in error.keyPattern
+  );
+}
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -77,6 +97,8 @@ export class AdminService {
     @InjectModel(Circle.name) private readonly circleModel: Model<Circle>,
     @InjectModel(GovernanceCase.name)
     private readonly governanceCaseModel: Model<GovernanceCase>,
+    @InjectModel(ReportTargetState.name)
+    private readonly reportTargetStateModel: Model<ReportTargetState>,
     @InjectQueue('view-count') private readonly viewCountQueue: Queue,
     private readonly healthService: HealthService,
     private readonly circleService: CircleService,
@@ -453,6 +475,26 @@ export class AdminService {
     reason: string,
   ) {
     ensureObjectId(id, '内容不存在');
+    for (let attempt = 1; attempt <= ADMIN_CONTENT_TRANSACTION_MAX_ATTEMPTS; attempt += 1) {
+      try {
+        return await this.setContentRemovedInTransaction(admin, type, id, removed, reason);
+      } catch (error) {
+        if (attempt < ADMIN_CONTENT_TRANSACTION_MAX_ATTEMPTS && isReportTargetStateRace(error)) {
+          continue;
+        }
+        throw error;
+      }
+    }
+    throw new Error('内容管理事务重试次数已耗尽');
+  }
+
+  private async setContentRemovedInTransaction(
+    admin: AdminPrincipal,
+    type: ReportTargetType,
+    id: string,
+    removed: boolean,
+    reason: string,
+  ) {
     const where = removed
       ? { _id: id, deletedAt: null, removalSource: { $in: [CONTENT_REMOVAL_SOURCES.NONE, null] } }
       : { _id: id, deletedAt: { $ne: null }, removalSource: CONTENT_REMOVAL_SOURCES.ADMIN };
@@ -460,6 +502,11 @@ export class AdminService {
       ? { deletedAt: new Date(), removalSource: CONTENT_REMOVAL_SOURCES.ADMIN }
       : { deletedAt: null, removalSource: CONTENT_REMOVAL_SOURCES.NONE };
     return this.databaseService.$transaction(async (session) => {
+      const content = type === 'POST'
+        ? await this.postModel.findOne({ _id: id, deletedAt: { $exists: true } }, 'authorId', { session })
+        : await this.replyModel.findOne({ _id: id, deletedAt: { $exists: true } }, 'authorId', { session });
+      if (!content) throw new NotFoundException('内容不存在');
+      await this.syncReportTargetRemoval(type, id, content.authorId, removed, session);
       const result = type === 'POST'
         ? await this.postModel.updateOne(where, update, { session })
         : await this.replyModel.updateOne(where, update, { session });
@@ -487,6 +534,43 @@ export class AdminService {
       });
       return { removed, removalSource: removed ? 'ADMIN' : 'NONE' };
     });
+  }
+
+  private async syncReportTargetRemoval(
+    targetType: ReportTargetType,
+    targetId: string,
+    targetAuthorId: string,
+    removed: boolean,
+    session?: ClientSession,
+  ): Promise<void> {
+    const targetKey = getReportTargetKey(targetType, targetId);
+    const state = await this.reportTargetStateModel.findOne({ targetKey }, null, { session });
+    if (removed) {
+      if (!state) {
+        await new this.reportTargetStateModel({
+          targetKey,
+          targetType,
+          targetId,
+          targetAuthorId,
+          qualifiedReporters: [],
+          status: REPORT_TARGET_STATUSES.TARGET_REMOVED,
+          caseId: null,
+        }).save({ session });
+        return;
+      }
+      if (state.status === REPORT_TARGET_STATUSES.COLLECTING) {
+        state.status = REPORT_TARGET_STATUSES.TARGET_REMOVED;
+        await state.save({ session });
+      }
+      return;
+    }
+    if (
+      state?.status === REPORT_TARGET_STATUSES.TARGET_REMOVED &&
+      state.caseId === null
+    ) {
+      state.status = REPORT_TARGET_STATUSES.COLLECTING;
+      await state.save({ session });
+    }
   }
 
   async listCircles(dto: ListAdminCirclesDto) {

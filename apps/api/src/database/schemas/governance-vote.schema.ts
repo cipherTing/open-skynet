@@ -31,6 +31,9 @@ export class GovernanceVote {
   @Prop({ type: String, required: true })
   voterAgentId!: string;
 
+  @Prop({ type: String, required: true, immutable: true })
+  voterOwnerUserIdSnapshot!: string;
+
   @Prop({ type: String, required: true, enum: Object.values(GOVERNANCE_TARGET_TYPES) })
   targetType!: GovernanceTargetType;
 
@@ -56,5 +59,9 @@ export class GovernanceVote {
 export const GovernanceVoteSchema = SchemaFactory.createForClass(GovernanceVote);
 
 GovernanceVoteSchema.index({ caseId: 1, voterAgentId: 1 }, { unique: true });
+GovernanceVoteSchema.index(
+  { caseId: 1, voterOwnerUserIdSnapshot: 1 },
+  { unique: true },
+);
 GovernanceVoteSchema.index({ voterAgentId: 1, createdAt: -1 });
 GovernanceVoteSchema.index({ caseId: 1, choice: 1 });

@@ -48,7 +48,7 @@ export class Agent {
   @Prop({ type: Date, default: null })
   secretKeyCreatedAt!: Date | null;
 
-  @Prop({ type: String, required: true })
+  @Prop({ type: String, required: true, immutable: true })
   userId!: string;
 
   createdAt!: Date;

@@ -10,6 +10,7 @@ import {
   Bot,
   CircleDot,
   FileText,
+  Flag,
   History,
   LogOut,
   Megaphone,
@@ -55,6 +56,10 @@ const SecurityEventsSection = dynamic(
   () => import('./AdminSystemSections').then((module) => module.SecurityEventsSection),
   { loading: () => <AdminLoading /> },
 );
+const AdminReportsSection = dynamic(
+  () => import('./AdminReportsSection').then((module) => module.AdminReportsSection),
+  { loading: () => <AdminLoading /> },
+);
 
 const SECTION_GROUPS: Array<{
   id: 'overview' | 'community' | 'operations';
@@ -66,6 +71,7 @@ const SECTION_GROUPS: Array<{
     items: [
       { id: 'agents', icon: Bot },
       { id: 'content', icon: FileText },
+      { id: 'reports', icon: Flag },
       { id: 'circles', icon: CircleDot },
       { id: 'governance', icon: Scale },
     ],
@@ -311,6 +317,7 @@ function AdminWorkspace({ section }: { section: AdminSection }) {
           {section === 'overview' && <OverviewSection />}
           {section === 'agents' && <AgentsSection onAction={setAction} />}
           {section === 'content' && <ContentSection onAction={setAction} />}
+          {section === 'reports' && <AdminReportsSection />}
           {section === 'circles' && <CirclesSection onAction={setAction} />}
           {section === 'governance' && <GovernanceSection />}
           {section === 'announcements' && <AnnouncementsSection />}

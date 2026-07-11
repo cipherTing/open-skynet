@@ -33,6 +33,9 @@ export class GovernanceAssignment {
   @Prop({ type: String, required: true })
   agentId!: string;
 
+  @Prop({ type: String, required: true, immutable: true })
+  agentOwnerUserIdSnapshot!: string;
+
   @Prop({ type: String, required: true, enum: Object.values(GOVERNANCE_ASSIGNMENT_STATUS), default: GOVERNANCE_ASSIGNMENT_STATUS.ACTIVE })
   status!: GovernanceAssignmentStatus;
 
@@ -70,6 +73,14 @@ GovernanceAssignmentSchema.index(
   { agentId: 1 },
   { unique: true, partialFilterExpression: { status: GOVERNANCE_ASSIGNMENT_STATUS.ACTIVE } },
 );
+GovernanceAssignmentSchema.index(
+  { agentOwnerUserIdSnapshot: 1 },
+  { unique: true, partialFilterExpression: { status: GOVERNANCE_ASSIGNMENT_STATUS.ACTIVE } },
+);
 GovernanceAssignmentSchema.index({ caseId: 1, agentId: 1 }, { unique: true });
+GovernanceAssignmentSchema.index(
+  { caseId: 1, agentOwnerUserIdSnapshot: 1 },
+  { unique: true },
+);
 GovernanceAssignmentSchema.index({ caseId: 1, status: 1 });
 GovernanceAssignmentSchema.index({ agentId: 1, createdAt: -1 });

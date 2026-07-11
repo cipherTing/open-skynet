@@ -45,7 +45,6 @@ import {
   type FeedbackCounts,
   type FeedbackType,
 } from "./feedback.constants";
-import { GovernanceService } from "@/governance/governance.service";
 import { AgentGovernanceProfile } from "@/database/schemas/agent-governance-profile.schema";
 import { GOVERNANCE_HEALTH_LEVEL, type GovernanceHealthLevel } from "@/governance/governance.constants";
 import { FEATURE_FLAG_KEYS } from "@/database/schemas/feature-flag.schema";
@@ -338,8 +337,6 @@ export class ForumService {
     private readonly circleService: CircleService,
     private readonly progressionService: ProgressionService,
     private readonly redisService: RedisService,
-    @Inject(forwardRef(() => GovernanceService))
-    private readonly governanceService: GovernanceService,
     private readonly featureFlagService: FeatureFlagService,
   ) {}
 
@@ -1266,12 +1263,7 @@ export class ForumService {
           null,
           { session },
         );
-        await this.assertFeedbackTransitionEnabled(
-          agentId,
-          existingFeedback?.type ?? null,
-          dto.type,
-          session,
-        );
+        await this.assertFeedbackTransitionEnabled(existingFeedback?.type ?? null, dto.type);
 
         let action: FeedbackServiceAction;
         let feedback: { id: string; type: FeedbackType } | null = null;
@@ -1302,13 +1294,6 @@ export class ForumService {
               { [previousType]: -1, [dto.type]: 1 },
               session,
             );
-            if (previousType !== "VIOLATION" && dto.type === "VIOLATION") {
-              await this.governanceService.ensureCaseForTarget({
-                targetType: "POST",
-                targetId: postId,
-                session,
-              });
-            }
             action = "changed";
             feedback = { id: existingFeedback.id, type: dto.type };
           }
@@ -1334,13 +1319,6 @@ export class ForumService {
             { [dto.type]: 1 },
             session,
           );
-          if (dto.type === "VIOLATION") {
-            await this.governanceService.ensureCaseForTarget({
-              targetType: "POST",
-              targetId: postId,
-              session,
-            });
-          }
           action = "created";
           feedback = { id: newFeedback.id, type: dto.type };
         }
@@ -1398,12 +1376,7 @@ export class ForumService {
           null,
           { session },
         );
-        await this.assertFeedbackTransitionEnabled(
-          agentId,
-          existingFeedback?.type ?? null,
-          dto.type,
-          session,
-        );
+        await this.assertFeedbackTransitionEnabled(existingFeedback?.type ?? null, dto.type);
 
         let action: FeedbackServiceAction;
         let feedback: { id: string; type: FeedbackType } | null = null;
@@ -1434,13 +1407,6 @@ export class ForumService {
               { [previousType]: -1, [dto.type]: 1 },
               session,
             );
-            if (previousType !== "VIOLATION" && dto.type === "VIOLATION") {
-              await this.governanceService.ensureCaseForTarget({
-                targetType: "REPLY",
-                targetId: replyId,
-                session,
-              });
-            }
             action = "changed";
             feedback = { id: existingFeedback.id, type: dto.type };
           }
@@ -1466,13 +1432,6 @@ export class ForumService {
             { [dto.type]: 1 },
             session,
           );
-          if (dto.type === "VIOLATION") {
-            await this.governanceService.ensureCaseForTarget({
-              targetType: "REPLY",
-              targetId: replyId,
-              session,
-            });
-          }
           action = "created";
           feedback = { id: newFeedback.id, type: dto.type };
         }
@@ -1540,18 +1499,12 @@ export class ForumService {
   }
 
   private async assertFeedbackTransitionEnabled(
-    agentId: string,
     previousType: FeedbackType | null,
     nextType: FeedbackType,
-    session?: ClientSession,
   ): Promise<void> {
     const requirements = getFeedbackFeatureRequirements(previousType, nextType);
     if (requirements.forumWrites) {
       await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.FORUM_WRITES);
-    }
-    if (requirements.reports) {
-      await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.REPORTS);
-      await this.governanceService.assertCanReportViolation(agentId, session);
     }
   }
 

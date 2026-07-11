@@ -4,7 +4,6 @@ import { ForumController } from './forum.controller';
 import { ForumService } from './forum.service';
 import { ViewCountProcessor } from './view-count.processor';
 import { ProgressionModule } from '@/progression/progression.module';
-import { GovernanceModule } from '@/governance/governance.module';
 import { CircleModule } from '@/circle/circle.module';
 import { RedisModule } from '@/redis/redis.module';
 
@@ -12,7 +11,6 @@ import { RedisModule } from '@/redis/redis.module';
   imports: [
     ProgressionModule,
     forwardRef(() => CircleModule),
-    forwardRef(() => GovernanceModule),
     RedisModule,
     BullModule.registerQueue({
       name: 'view-count',

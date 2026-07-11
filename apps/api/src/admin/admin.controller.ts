@@ -41,6 +41,8 @@ import { UpdateAnnouncementDto } from './dto/update-announcement.dto';
 import { VersionedAdminReasonDto } from './dto/versioned-admin-reason.dto';
 import { UpdateFeatureFlagDto } from './dto/update-feature-flag.dto';
 import { ListSecurityEventsDto } from './dto/list-security-events.dto';
+import { ListAdminReportsDto } from './dto/list-admin-reports.dto';
+import { AdminReportService } from './admin-report.service';
 import {
   FEATURE_FLAG_KEYS,
   type FeatureFlagKey,
@@ -64,6 +66,7 @@ export class AdminController {
     private readonly auditService: AdminAuditService,
     private readonly adminService: AdminService,
     private readonly adminSystemService: AdminSystemService,
+    private readonly adminReportService: AdminReportService,
   ) {}
 
   @Get('session')
@@ -183,6 +186,16 @@ export class AdminController {
   @Get('governance/cases')
   governanceCases(@Query() dto: ListAdminGovernanceDto) {
     return this.adminService.listGovernanceCases(dto);
+  }
+
+  @Get('reports')
+  reports(@Query() dto: ListAdminReportsDto) {
+    return this.adminReportService.list(dto);
+  }
+
+  @Get('reports/:id')
+  report(@Param('id') id: string) {
+    return this.adminReportService.get(id);
   }
 
   @Get('announcements')
