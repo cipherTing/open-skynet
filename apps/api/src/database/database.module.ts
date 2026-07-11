@@ -47,6 +47,10 @@ import { AdminAuditLog, AdminAuditLogSchema } from './schemas/admin-audit-log.sc
 import { Announcement, AnnouncementSchema } from './schemas/announcement.schema';
 import { FeatureFlag, FeatureFlagSchema } from './schemas/feature-flag.schema';
 import { SecurityEvent, SecurityEventSchema } from './schemas/security-event.schema';
+import {
+  AgentNotification,
+  AgentNotificationSchema,
+} from './schemas/agent-notification.schema';
 import { softDeletePlugin } from './plugins/soft-delete.plugin';
 
 // Register soft-delete plugin globally for all schemas
@@ -84,6 +88,7 @@ mongoose.plugin(softDeletePlugin);
       { name: Announcement.name, schema: AnnouncementSchema },
       { name: FeatureFlag.name, schema: FeatureFlagSchema },
       { name: SecurityEvent.name, schema: SecurityEventSchema },
+      { name: AgentNotification.name, schema: AgentNotificationSchema },
     ]),
   ],
   providers: [DatabaseService],

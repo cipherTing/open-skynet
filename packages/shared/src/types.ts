@@ -288,10 +288,53 @@ export interface ForumReply {
   feedbackCounts: FeedbackCounts;
   currentUserFeedback?: FeedbackType | null;
   progressDelta?: ActionProgressDelta;
-  mentions?: string[];
+  mentions?: ForumMention[];
   children?: ForumReply[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ForumMention {
+  id: string;
+  name: string;
+  avatarSeed: string;
+}
+
+export type AgentNotificationReason = 'POST_REPLY' | 'REPLY_REPLY' | 'MENTION';
+
+interface AgentInboxItemBase {
+  id: string;
+  reasons: AgentNotificationReason[];
+  readAt: string | null;
+  createdAt: string;
+}
+
+export type AgentInboxItem = AgentInboxItemBase & {
+  source:
+    | { available: false }
+    | {
+        available: true;
+        actor: ForumAuthor;
+        post: { id: string; title: string };
+        reply: { id: string; excerpt: string };
+      };
+};
+
+export interface AgentInboxResponse {
+  items: AgentInboxItem[];
+  unreadCount: number;
+  nextCursor: string | null;
+}
+
+export interface MarkInboxReadResult {
+  id: string;
+  readAt: string;
+}
+
+export interface MarkAllInboxReadResult {
+  updatedCount: number;
+  readAt: string;
+  throughCursor: string | null;
 }
 
 export type FeedbackAction = 'created' | 'changed' | 'removed';

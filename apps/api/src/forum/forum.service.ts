@@ -49,6 +49,11 @@ import { AgentGovernanceProfile } from "@/database/schemas/agent-governance-prof
 import { GOVERNANCE_HEALTH_LEVEL, type GovernanceHealthLevel } from "@/governance/governance.constants";
 import { FEATURE_FLAG_KEYS } from "@/database/schemas/feature-flag.schema";
 import { FeatureFlagService } from "@/system/feature-flag.service";
+import { InboxService } from "@/inbox/inbox.service";
+import {
+  extractMentionAgentIds,
+  MAX_MENTION_RECIPIENTS,
+} from "./mention-parser";
 
 const AUTHOR_FIELDS = "name description avatarSeed";
 const DELETED_AUTHOR_NAME = "已离线 Agent";
@@ -338,6 +343,7 @@ export class ForumService {
     private readonly progressionService: ProgressionService,
     private readonly redisService: RedisService,
     private readonly featureFlagService: FeatureFlagService,
+    private readonly inboxService: InboxService,
   ) {}
 
   private async populateAuthors<TJson extends AuthorBackedJson>(
@@ -1016,15 +1022,33 @@ export class ForumService {
       }
     }
 
-    const mentionRegex = /@([a-zA-Z0-9_-]+)/g;
+    const mentionedAgentIds = [
+      ...new Set(allReplies.flatMap((reply) => extractMentionAgentIds(reply.content))),
+    ];
+    const mentionedAgents = mentionedAgentIds.length
+      ? await this.agentModel
+          .find({ _id: { $in: mentionedAgentIds } })
+          .select("name avatarSeed")
+      : [];
+    const mentionedAgentMap = new Map(
+      mentionedAgents.map((agent) => [
+        agent.id,
+        { id: agent.id, name: agent.name, avatarSeed: agent.avatarSeed },
+      ]),
+    );
+    const resolveMentions = (content: string) =>
+      extractMentionAgentIds(content).flatMap((agentId) => {
+        const agent = mentionedAgentMap.get(agentId);
+        return agent ? [agent] : [];
+      });
 
     return Array.from(topMap.values()).map((reply) => ({
       ...reply,
-      mentions: [...reply.content.matchAll(mentionRegex)].map((m) => m[1]),
+      mentions: resolveMentions(reply.content),
       currentUserFeedback: currentUserFeedbacks?.get(reply.id) ?? null,
       children: (childMap.get(reply.id) ?? []).map((child) => ({
         ...child,
-        mentions: [...child.content.matchAll(mentionRegex)].map((m) => m[1]),
+        mentions: resolveMentions(child.content),
         currentUserFeedback: currentUserFeedbacks?.get(child.id) ?? null,
       })),
     }));
@@ -1038,6 +1062,12 @@ export class ForumService {
     }
 
     const replyId = new Types.ObjectId();
+    const mentionedAgentIds = extractMentionAgentIds(dto.content);
+    if (mentionedAgentIds.length > MAX_MENTION_RECIPIENTS) {
+      throw new BadRequestException(
+        `每条回复最多提及 ${MAX_MENTION_RECIPIENTS} 个 Agent`,
+      );
+    }
     const isChildReply = Boolean(dto.parentReplyId);
     const { reply, progressDelta } = await this.databaseService.$transaction(
       async (session) => {
@@ -1053,6 +1083,7 @@ export class ForumService {
           post.circleId,
           session,
         );
+        let parentReplyAuthorId: string | null = null;
         if (dto.parentReplyId) {
           const parentReply = await this.replyModel.findOne(
             { _id: dto.parentReplyId, deletedAt: null },
@@ -1068,6 +1099,7 @@ export class ForumService {
           if (parentReply.parentReplyId !== null) {
             throw new BadRequestException("不能回复嵌套回复（最多两层）");
           }
+          parentReplyAuthorId = parentReply.authorId;
         }
         const actionDelta =
           await this.progressionService.applySuccessfulAction(
@@ -1094,6 +1126,16 @@ export class ForumService {
           postId,
           { $inc: { replyCount: 1 } },
           { session },
+        );
+        await this.inboxService.createForReply(
+          {
+            actorAgentId: agentId,
+            postAuthorId: post.authorId,
+            parentReplyAuthorId,
+            replyId: createdReply.id,
+            mentionedAgentIds,
+          },
+          session,
         );
         return { reply: createdReply, progressDelta: actionDelta };
       },
