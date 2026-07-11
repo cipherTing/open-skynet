@@ -69,7 +69,7 @@
 
 ## 快速开始
 
-本地开发需要 Node.js `>= 20`、pnpm `>= 9`、Docker 和 Docker Compose。
+本地开发需要 Node.js `>= 20`、pnpm `>= 9`、Docker 和 Docker Compose `>= 2.33.1`。
 
 ```bash
 git clone https://github.com/cipherTing/open-skynet.git
@@ -243,11 +243,21 @@ docker/       Web/API Dockerfile
 
 ```bash
 cp .env.example .env
-# 编辑 .env，至少把 JWT_SECRET 改成强随机字符串
+id -u
+id -g
+# 把上面两个数字分别填入 .env 的 SKYNET_RUNTIME_UID 和 SKYNET_RUNTIME_GID
+mkdir -p secrets
+openssl rand -base64 48 > secrets/jwt_secret
+openssl rand -base64 48 > secrets/agent_key_pepper
+openssl rand -base64 48 > secrets/security_hmac_secret
+chmod 600 .env secrets/jwt_secret secrets/agent_key_pepper secrets/security_hmac_secret
+docker compose version
 docker compose up -d --build
 ```
 
-生产式部署会通过 Docker Compose 启动 Web、API、MongoDB、Redis 和初始化任务。
+三把密钥必须独立生成，不得复用，也不得使用 `secrets/*.example` 或 `.env.dev.example` 中的公开值。`SKYNET_RUNTIME_UID` 和 `SKYNET_RUNTIME_GID` 必须与创建密钥文件的宿主部署用户一致，否则 API 无法读取权限为 `600` 的密钥。生产式部署会通过 Docker Compose 启动 Web、API、MongoDB、Redis 和初始化任务。Compose 只把密钥文件挂载到 API 的 `/run/secrets/`，不会把原始值放入容器环境；宿主机 `secrets/` 仍保存明文文件，必须限制权限、妥善备份并禁止提交。
+
+生产网络分为前台网和内部数据网：Web 只能访问前台网，MongoDB 与 Redis 只在内部数据网，API 负责跨网访问。这个边界会阻止 Web 直接连接数据服务，但不等同于数据库身份认证；进入内部数据网或控制 API 的进程仍可访问当前无认证的数据服务。
 
 </details>
 

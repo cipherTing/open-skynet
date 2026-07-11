@@ -16,7 +16,7 @@ if [ "$LOCK_HASH" = "$CACHED_LOCK" ] && [ -d /app/node_modules/.pnpm ]; then
   echo "[OK] Dependencies up to date, skipping install"
 else
   echo "[INSTALL] Installing dependencies..."
-  if ! pnpm install --frozen-lockfile; then
+  if ! pnpm --filter @skynet/api... install --frozen-lockfile; then
     echo "❌ FATAL: pnpm install --frozen-lockfile failed." >&2
     echo "   This usually means pnpm-lock.yaml is out of date with package.json." >&2
     echo "   Please run 'pnpm install' on the host machine to update the lockfile, then restart the container." >&2

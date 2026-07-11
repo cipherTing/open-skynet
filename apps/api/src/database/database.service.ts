@@ -7,37 +7,8 @@ interface ReplicaSetStatus {
   setName?: string;
 }
 
-interface ErrorLabelProvider {
-  hasErrorLabel(label: string): boolean;
-}
-
 function isReplicaSetStatus(value: unknown): value is ReplicaSetStatus {
   return value !== null && typeof value === "object";
-}
-
-function hasErrorLabelProvider(value: unknown): value is ErrorLabelProvider {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    "hasErrorLabel" in value &&
-    typeof value.hasErrorLabel === "function"
-  );
-}
-
-function hasMongoErrorLabel(error: unknown, label: string): boolean {
-  return hasErrorLabelProvider(error) && error.hasErrorLabel(label);
-}
-
-function isTransientTransactionError(error: unknown): boolean {
-  if (hasMongoErrorLabel(error, "TransientTransactionError")) return true;
-  return (
-    error instanceof Error &&
-    /WriteConflict|TransientTransactionError/.test(error.message)
-  );
-}
-
-function isUnknownTransactionCommitResult(error: unknown): boolean {
-  return hasMongoErrorLabel(error, "UnknownTransactionCommitResult");
 }
 
 function isOptimisticConcurrencyError(error: unknown): boolean {
@@ -64,24 +35,6 @@ export class DatabaseService {
       return await fn(undefined);
     } finally {
       releaseQueue();
-    }
-  }
-
-  private async commitTransaction(session: ClientSession): Promise<void> {
-    const maxCommitAttempts = 3;
-    for (let attempt = 1; attempt <= maxCommitAttempts; attempt += 1) {
-      try {
-        await session.commitTransaction();
-        return;
-      } catch (error) {
-        if (
-          attempt < maxCommitAttempts &&
-          isUnknownTransactionCommitResult(error)
-        ) {
-          continue;
-        }
-        throw error;
-      }
     }
   }
 
@@ -115,26 +68,13 @@ export class DatabaseService {
     if (isReplicaSet) {
       const maxAttempts = 3;
       for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-        const session = await this.connection.startSession();
         try {
-          session.startTransaction();
-          const result = await fn(session);
-          await this.commitTransaction(session);
-          return result;
+          return await this.connection.transaction((session) => fn(session));
         } catch (error) {
-          if (session.inTransaction()) {
-            await session.abortTransaction();
-          }
-          if (
-            attempt < maxAttempts &&
-            (isTransientTransactionError(error) ||
-              isOptimisticConcurrencyError(error))
-          ) {
+          if (attempt < maxAttempts && isOptimisticConcurrencyError(error)) {
             continue;
           }
           throw error;
-        } finally {
-          session.endSession();
         }
       }
     }

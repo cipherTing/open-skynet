@@ -1,5 +1,18 @@
 import { readFileSync } from 'node:fs';
 
+const SECURITY_SECRET_NAMES = ['JWT_SECRET', 'AGENT_KEY_PEPPER', 'SECURITY_HMAC_SECRET'] as const;
+
+type SecuritySecretName = (typeof SECURITY_SECRET_NAMES)[number];
+
+const PUBLIC_SECRET_EXAMPLES = new Set([
+  'replace-with-a-strong-random-secret-at-least-32-chars',
+  'replace-with-an-independent-agent-key-pepper-32-chars-min',
+  'replace-with-an-independent-security-hmac-secret-32-chars-min',
+  'dev-only-insecure-change-me-at-least-32-characters',
+  'dev-only-agent-key-pepper-at-least-32-characters',
+  'dev-only-security-hmac-at-least-32-characters',
+]);
+
 export function isDevelopment(): boolean {
   return process.env.NODE_ENV === 'development';
 }
@@ -21,16 +34,7 @@ export function getRedisConfig(): { host: string; port: number } {
 }
 
 export function getRequiredJwtSecret(): string {
-  const secret = readSecret('JWT_SECRET');
-  if (!secret || secret.trim() === '') {
-    throw new Error('JWT_SECRET environment variable is required');
-  }
-
-  if (secret.length < 32 || secret === 'replace-with-a-strong-random-secret-at-least-32-chars') {
-    throw new Error('JWT_SECRET must be at least 32 characters and cannot use the example value');
-  }
-
-  return secret;
+  return getRequiredSecret('JWT_SECRET');
 }
 
 export function getRequiredAgentKeyPepper(): string {
@@ -39,6 +43,15 @@ export function getRequiredAgentKeyPepper(): string {
 
 export function getRequiredSecurityHmacSecret(): string {
   return getRequiredSecret('SECURITY_HMAC_SECRET');
+}
+
+export function validateSecuritySecrets(): void {
+  const secrets = SECURITY_SECRET_NAMES.map((name) => getRequiredSecret(name));
+  if (new Set(secrets).size !== SECURITY_SECRET_NAMES.length) {
+    throw new Error(
+      'JWT_SECRET, AGENT_KEY_PEPPER, and SECURITY_HMAC_SECRET must use independent values',
+    );
+  }
 }
 
 export function getTrustProxySetting(): number | string | false {
@@ -61,10 +74,16 @@ export function getTrustProxySetting(): number | string | false {
   throw new Error('TRUST_PROXY must be a hop count or an explicit trusted subnet list');
 }
 
-function getRequiredSecret(name: string): string {
+function getRequiredSecret(name: SecuritySecretName): string {
   const secret = readSecret(name);
-  if (!secret || secret.length < 32) {
+  if (!secret) {
+    throw new Error(`${name} environment variable or ${name}_FILE is required`);
+  }
+  if (secret.length < 32) {
     throw new Error(`${name} must be at least 32 characters`);
+  }
+  if (isProduction() && PUBLIC_SECRET_EXAMPLES.has(secret)) {
+    throw new Error(`${name} cannot use a public example value in production`);
   }
   return secret;
 }

@@ -1,13 +1,13 @@
 services:
   mongo:
     ports:
-      - "127.0.0.1:${MONGO_PORT:-27017}:27017"
+      - '127.0.0.1:${MONGO_PORT:-27017}:27017'
 
   redis:
     healthcheck:
       disable: true
     ports:
-      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+      - '127.0.0.1:${REDIS_PORT:-6379}:6379'
 
   api:
     image: skynet-api:dev
@@ -15,24 +15,30 @@ services:
       context: .
       dockerfile: docker/api.Dockerfile
       target: dev
-    restart: "no"
+    restart: 'no'
     init: true
+    user: !reset null
+    read_only: false
     healthcheck:
       disable: true
     ports:
-      - "127.0.0.1:${API_PORT:-8081}:8081"
+      - '127.0.0.1:${API_PORT:-8081}:8081'
     environment:
-      - NODE_ENV=development
-      - API_PORT=8081
-      - MONGODB_URI=mongodb://mongo:27017/skynet?replicaSet=rs0
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:8080}
-      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
-      - AGENT_KEY_PEPPER=${AGENT_KEY_PEPPER:?AGENT_KEY_PEPPER is required}
-      - SECURITY_HMAC_SECRET=${SECURITY_HMAC_SECRET:?SECURITY_HMAC_SECRET is required}
-      - TRUST_PROXY=${TRUST_PROXY:-false}
-      - SWAGGER_ENABLED=${SWAGGER_ENABLED:-true}
+      NODE_ENV: development
+      API_PORT: 8081
+      MONGODB_URI: mongodb://mongo:27017/skynet?replicaSet=rs0
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080}
+      JWT_SECRET_FILE: !reset null
+      AGENT_KEY_PEPPER_FILE: !reset null
+      SECURITY_HMAC_SECRET_FILE: !reset null
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      AGENT_KEY_PEPPER: ${AGENT_KEY_PEPPER:?AGENT_KEY_PEPPER is required}
+      SECURITY_HMAC_SECRET: ${SECURITY_HMAC_SECRET:?SECURITY_HMAC_SECRET is required}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+      SWAGGER_ENABLED: ${SWAGGER_ENABLED:-true}
+    secrets: !reset []
     volumes:
       - ./package.json:/app/package.json:ro
       - ./pnpm-workspace.yaml:/app/pnpm-workspace.yaml:ro
@@ -53,3 +59,8 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_started
+
+secrets:
+  jwt_secret: !reset null
+  agent_key_pepper: !reset null
+  security_hmac_secret: !reset null

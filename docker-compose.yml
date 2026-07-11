@@ -1,29 +1,35 @@
 services:
   mongo:
     image: mongo:8.2
-    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    command: ['mongod', '--replSet', 'rs0', '--bind_ip_all']
     restart: unless-stopped
     volumes:
       - mongo_data:/data/db
+    networks:
+      - data
 
   mongo-init:
     image: mongo:8.2
-    restart: "no"
+    restart: 'no'
     depends_on:
       - mongo
     volumes:
       - ./docker/mongo-init.sh:/docker/mongo-init.sh:ro
       - ./docker/mongo-init.js:/docker/mongo-init.js:ro
-    command: ["sh", "/docker/mongo-init.sh"]
+    command: ['sh', '/docker/mongo-init.sh']
+    networks:
+      - data
 
   redis:
     image: redis:8.2
-    command: ["redis-server", "--appendonly", "yes"]
+    command: ['redis-server', '--appendonly', 'yes']
     restart: unless-stopped
     volumes:
       - redis_data:/data
+    networks:
+      - data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 10s
       timeout: 3s
       retries: 12
@@ -35,20 +41,29 @@ services:
       dockerfile: docker/api.Dockerfile
       target: prod
     restart: unless-stopped
+    user: '${SKYNET_RUNTIME_UID:-1000}:${SKYNET_RUNTIME_GID:-1000}'
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
     ports:
-      - "${API_HOST:-127.0.0.1}:${API_PORT:-8081}:8081"
+      - '${API_HOST:-127.0.0.1}:${API_PORT:-8081}:8081'
     environment:
-      - NODE_ENV=production
-      - API_PORT=8081
-      - MONGODB_URI=${SKYNET_MONGODB_URI:-mongodb://mongo:27017/skynet?replicaSet=rs0}
-      - REDIS_HOST=${SKYNET_REDIS_HOST:-redis}
-      - REDIS_PORT=${SKYNET_REDIS_PORT:-6379}
-      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:8080}
-      - JWT_SECRET=${JWT_SECRET}
-      - AGENT_KEY_PEPPER=${AGENT_KEY_PEPPER}
-      - SECURITY_HMAC_SECRET=${SECURITY_HMAC_SECRET}
-      - TRUST_PROXY=${TRUST_PROXY:-false}
-      - SWAGGER_ENABLED=${SWAGGER_ENABLED:-false}
+      NODE_ENV: production
+      API_PORT: 8081
+      MONGODB_URI: ${SKYNET_MONGODB_URI:-mongodb://mongo:27017/skynet?replicaSet=rs0}
+      REDIS_HOST: ${SKYNET_REDIS_HOST:-redis}
+      REDIS_PORT: ${SKYNET_REDIS_PORT:-6379}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080}
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+      AGENT_KEY_PEPPER_FILE: /run/secrets/agent_key_pepper
+      SECURITY_HMAC_SECRET_FILE: /run/secrets/security_hmac_secret
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+      SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
     depends_on:
       mongo:
         condition: service_started
@@ -56,11 +71,20 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
+    secrets:
+      - jwt_secret
+      - agent_key_pepper
+      - security_hmac_secret
+    networks:
+      frontend:
+        gw_priority: 100
+      data:
+        gw_priority: 10
     healthcheck:
       test:
         [
-          "CMD-SHELL",
-          "node -e \"fetch('http://127.0.0.1:'+(process.env.API_PORT||8081)+'/api/v1/health/ready').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
+          'CMD-SHELL',
+          'node -e "fetch(''http://127.0.0.1:''+(process.env.API_PORT||8081)+''/api/v1/health/ready'').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"',
         ]
       interval: 10s
       timeout: 5s
@@ -76,8 +100,17 @@ services:
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8081/api/v1}
     restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /app/apps/web/.next/cache:size=64m,uid=1000,gid=1000,mode=0750
     ports:
-      - "${WEB_HOST:-127.0.0.1}:${WEB_PORT:-8080}:8080"
+      - '${WEB_HOST:-127.0.0.1}:${WEB_PORT:-8080}:8080'
     environment:
       - NODE_ENV=production
       - PORT=8080
@@ -86,11 +119,13 @@ services:
     depends_on:
       api:
         condition: service_healthy
+    networks:
+      - frontend
     healthcheck:
       test:
         [
-          "CMD-SHELL",
-          "node -e \"fetch('http://127.0.0.1:'+(process.env.PORT||8080)).then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\"",
+          'CMD-SHELL',
+          'node -e "fetch(''http://127.0.0.1:''+(process.env.PORT||8080)).then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"',
         ]
       interval: 10s
       timeout: 5s
@@ -100,3 +135,16 @@ services:
 volumes:
   mongo_data:
   redis_data:
+
+networks:
+  frontend:
+  data:
+    internal: true
+
+secrets:
+  jwt_secret:
+    file: ${JWT_SECRET_FILE_PATH:-./secrets/jwt_secret}
+  agent_key_pepper:
+    file: ${AGENT_KEY_PEPPER_FILE_PATH:-./secrets/agent_key_pepper}
+  security_hmac_secret:
+    file: ${SECURITY_HMAC_SECRET_FILE_PATH:-./secrets/security_hmac_secret}

@@ -21,9 +21,10 @@ import {
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
-import { getTrustProxySetting, isSwaggerEnabled } from './config/env';
+import { getTrustProxySetting, isSwaggerEnabled, validateSecuritySecrets } from './config/env';
 
 async function bootstrap() {
+  validateSecuritySecrets();
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bodyParser: false,
   });
@@ -42,10 +43,7 @@ async function bootstrap() {
   app.use(json({ limit: '256kb' }));
   app.use(urlencoded({ extended: false, limit: '64kb' }));
   app.use((request: Request, response: Response, next: NextFunction) => {
-    if (
-      request.path.startsWith('/api/v1/admin') ||
-      request.path.startsWith('/api/v1/auth')
-    ) {
+    if (request.path.startsWith('/api/v1/admin') || request.path.startsWith('/api/v1/auth')) {
       response.setHeader('Cache-Control', 'no-store');
       response.setHeader('Pragma', 'no-cache');
     }
@@ -97,7 +95,7 @@ async function bootstrap() {
 }
 
 void bootstrap().catch((error: unknown) => {
-  const message = error instanceof Error ? error.stack ?? error.message : String(error);
+  const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
   console.error(message);
   process.exitCode = 1;
 });
