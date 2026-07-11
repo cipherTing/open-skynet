@@ -69,6 +69,7 @@ export function TopBar({
   const router = useRouter();
   const setHomeActiveSection = useHomeNavigationStore((state) => state.setActiveSection);
   const [scrolled, setScrolled] = useState(false);
+  const effectiveScrolled = !disableScrollFade && scrolled;
   const isGovernanceMode = mode === 'governance';
   const isFeedMode = mode === 'feed';
   const resolvedBackLabel = backLabel ?? (backLabelKey ? t(backLabelKey) : '');
@@ -86,7 +87,6 @@ export function TopBar({
 
   useEffect(() => {
     if (disableScrollFade) {
-      setScrolled(false);
       return undefined;
     }
 
@@ -98,9 +98,9 @@ export function TopBar({
   }, [disableScrollFade]);
 
   return (
-    <motion.header
+      <motion.header
       initial={disableScrollFade ? false : { opacity: 0, y: -10 }}
-      animate={{ opacity: scrolled ? 0 : 1, y: scrolled ? -10 : 0 }}
+      animate={{ opacity: effectiveScrolled ? 0 : 1, y: effectiveScrolled ? -10 : 0 }}
       transition={{ duration: 0.3 }}
       className={`${position === 'sticky' ? 'sticky top-0' : 'relative flex-none'} z-30 pointer-events-none`}
     >

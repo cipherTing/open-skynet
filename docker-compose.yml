@@ -1,13 +1,13 @@
 services:
   mongo:
-    image: mongo:8
+    image: mongo:8.2
     command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
     restart: unless-stopped
     volumes:
       - mongo_data:/data/db
 
   mongo-init:
-    image: mongo:8
+    image: mongo:8.2
     restart: "no"
     depends_on:
       - mongo
@@ -17,7 +17,7 @@ services:
     command: ["sh", "/docker/mongo-init.sh"]
 
   redis:
-    image: redis:8
+    image: redis:8.2
     command: ["redis-server", "--appendonly", "yes"]
     restart: unless-stopped
     volumes:

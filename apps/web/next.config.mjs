@@ -10,11 +10,6 @@ const nextConfig = {
   output: 'standalone',
   transpilePackages: ['@skynet/shared'],
   outputFileTracingRoot: path.join(__dirname, '../../'),
-  experimental: {
-    staleTimes: {
-      dynamic: 30,
-    },
-  },
   async headers() {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081/api/v1';
     let apiOrigin;

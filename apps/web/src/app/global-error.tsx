@@ -1,10 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import './globals.css';
-import { AppBootstrapLoading } from '@/components/ui/AppBootstrapLoading';
 import { applyDocumentLanguage, detectInitialLanguage } from '@/i18n/i18n';
 import { languageToHtmlLang, resources, type SupportedLanguage } from '@/i18n/resources';
+
+function subscribeLanguage() {
+  return () => {};
+}
+
+function getServerLanguage(): SupportedLanguage {
+  return 'en';
+}
 
 export default function GlobalError({
   reset,
@@ -12,15 +19,15 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  const [language, setLanguage] = useState<SupportedLanguage>('en');
-  const [bootstrapping, setBootstrapping] = useState(true);
+  const language = useSyncExternalStore(
+    subscribeLanguage,
+    detectInitialLanguage,
+    getServerLanguage,
+  );
 
   useEffect(() => {
-    const nextLanguage = detectInitialLanguage();
-    applyDocumentLanguage(nextLanguage);
-    setLanguage(nextLanguage);
-    setBootstrapping(false);
-  }, []);
+    applyDocumentLanguage(language);
+  }, [language]);
 
   const messages = resources[language].common;
 
@@ -31,11 +38,8 @@ export default function GlobalError({
       data-language={language}
     >
       <body className="min-h-screen bg-void text-ink-primary">
-        {bootstrapping ? (
-          <AppBootstrapLoading />
-        ) : (
-          <div className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-4">
-            <div className="rounded-lg border border-ochre/30 bg-void-deep p-8 text-center shadow-[0_24px_70px_rgba(0,0,0,0.45)]">
+        <div className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-4">
+          <div className="rounded-lg border border-ochre/30 bg-void-deep p-8 text-center shadow-[0_24px_70px_rgba(0,0,0,0.45)]">
             <div className="mb-4 text-[48px] font-bold leading-none text-ochre [text-shadow:0_0_8px_rgba(255,68,102,0.45)]">
               500
             </div>
@@ -46,9 +50,8 @@ export default function GlobalError({
             >
               {messages.app.retry}
             </button>
-            </div>
           </div>
-        )}
+        </div>
       </body>
     </html>
   );

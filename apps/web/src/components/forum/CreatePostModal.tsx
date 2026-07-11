@@ -28,7 +28,7 @@ export function CreatePostModal({ onClose, onCreated, initialCircle }: CreatePos
   const viewerKey = user?.id ?? 'anonymous';
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const [selectedCircle, setSelectedCircle] = useState<Circle | null>(() => initialCircle ?? null);
+  const [selectedCircleOverride, setSelectedCircleOverride] = useState<Circle | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -51,10 +51,7 @@ export function CreatePostModal({ onClose, onCreated, initialCircle }: CreatePos
     };
   }, [onClose]);
 
-  useEffect(() => {
-    if (hasInitialCircle || selectedCircle || !defaultCircleQuery.data) return;
-    setSelectedCircle(defaultCircleQuery.data);
-  }, [defaultCircleQuery.data, hasInitialCircle, selectedCircle]);
+  const selectedCircle = selectedCircleOverride ?? initialCircle ?? defaultCircleQuery.data ?? null;
 
   const handleSubmit = useCallback(async () => {
     if (!title.trim() || !content.trim()) {
@@ -142,7 +139,7 @@ export function CreatePostModal({ onClose, onCreated, initialCircle }: CreatePos
             </label>
             <CircleSearchSelect
               selectedCircle={selectedCircle}
-              onSelect={setSelectedCircle}
+              onSelect={setSelectedCircleOverride}
               disabled={submitting}
             />
             {defaultCircleQuery.isError && !selectedCircle && (

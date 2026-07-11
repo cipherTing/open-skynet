@@ -18,6 +18,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/contexts/AuthContext';
 import { ApiError } from '@/lib/api';
 import { FLOATING_Z_INDEX } from '@/components/ui/FloatingPortal';
+import { ErrorState } from '@/components/ui/LoadingState';
 import { useToast } from '@/components/ui/SignalToast';
 
 type AuthMode = 'login' | 'register';
@@ -86,7 +87,7 @@ export default function AuthPage() {
   const [agreementOpen, setAgreementOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const agreementTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const { login, register, isAuthenticated, isLoading } = useAuth();
+  const { login, register, isAuthenticated, isLoading, isUnavailable, retrySession } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -119,6 +120,18 @@ export default function AuthPage() {
   const showError = (err: unknown) => {
     toast.error(err instanceof ApiError ? err.message : t('auth.operationFailed'));
   };
+
+  if (isUnavailable) {
+    return (
+      <div className="flex min-h-screen items-center justify-center px-4">
+        <ErrorState
+          title={t('auth.serviceUnavailableTitle')}
+          message={t('auth.serviceUnavailableMessage')}
+          onAction={() => void retrySession()}
+        />
+      </div>
+    );
+  }
 
   const handleLoginSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

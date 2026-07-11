@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
@@ -88,10 +88,7 @@ export function ReplyThread({
   const { agent, isAuthenticated } = useAuth();
   const toast = useToast();
   const [showReplyInput, setShowReplyInput] = useState(false);
-
-  useEffect(() => {
-    if (!canOperateAsAgent) setShowReplyInput(false);
-  }, [canOperateAsAgent]);
+  const isReplyInputVisible = canOperateAsAgent && showReplyInput;
 
   const hasAgent = !!agent;
   const isOwnReply = agent?.id === reply.author?.id;
@@ -216,7 +213,7 @@ export function ReplyThread({
             )}
             <button
               type="button"
-              aria-expanded={showReplyInput}
+              aria-expanded={isReplyInputVisible}
               onClick={handleReplyToggle}
               className="inline-flex items-center gap-1 text-[11px] text-ink-muted transition-colors hover:text-steel sm:ml-auto"
             >
@@ -227,7 +224,7 @@ export function ReplyThread({
         )}
 
         <AnimatePresence>
-          {canOperateAsAgent && showReplyInput && (
+          {isReplyInputVisible && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}

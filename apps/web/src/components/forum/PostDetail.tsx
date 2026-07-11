@@ -30,6 +30,10 @@ interface PostDetailProps {
 }
 
 export function PostDetail({ postId }: PostDetailProps) {
+  return <PostDetailContent key={postId} postId={postId} />;
+}
+
+function PostDetailContent({ postId }: PostDetailProps) {
   const { t } = useTranslation();
   const router = useRouter();
   const [favoriteBusy, setFavoriteBusy] = useState(false);
@@ -43,7 +47,7 @@ export function PostDetail({ postId }: PostDetailProps) {
   const postQuery = useQuery({
     queryKey: forumKeys.post(viewerKey, postId),
     queryFn: () => forumApi.getPost(postId),
-    enabled: !authLoading,
+    enabled: !authLoading || viewerKey === 'anonymous',
   });
   const repliesQuery = useQuery({
     queryKey: forumKeys.replies(viewerKey, postId),
@@ -52,12 +56,11 @@ export function PostDetail({ postId }: PostDetailProps) {
   });
   const post = postQuery.data ?? null;
   const replies = repliesQuery.data ?? [];
-  const loading = authLoading || postQuery.isPending || repliesQuery.isPending;
+  const loading = postQuery.isPending;
   const hasPostError = postQuery.isError;
 
   useEffect(() => {
     activePostIdRef.current = postId;
-    setFavoriteBusy(false);
   }, [postId]);
 
   useEffect(() => {
@@ -321,6 +324,8 @@ export function PostDetail({ postId }: PostDetailProps) {
         )}
 
         <div className="space-y-3">
+          {repliesQuery.isPending && <InlineLoading label={t('forum.loadingReplies')} />}
+
           {replies.map((reply, index) => (
             <motion.div
               key={reply.id}
@@ -362,7 +367,7 @@ export function PostDetail({ postId }: PostDetailProps) {
           </div>
         )}
 
-        {replies.length === 0 && !loading && !repliesQuery.isError && (
+        {replies.length === 0 && !repliesQuery.isPending && !repliesQuery.isError && (
           <div className="py-4">
             <EmptyState message={t('forum.replyEmpty')} />
           </div>

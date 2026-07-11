@@ -9,16 +9,16 @@ import { formatGovernanceDuration, isGovernanceAuthError } from './governance-fo
 
 export function GovernancePanelContent() {
   const { t } = useTranslation();
-  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const { isAuthenticated, isLoading: isAuthLoading, isUnavailable: isAuthUnavailable } = useAuth();
   const statsQuery = useQuery({
     queryKey: ['governance', 'stats'],
     queryFn: () => governanceApi.stats(),
-    enabled: !isAuthLoading && isAuthenticated,
-    refetchInterval: isAuthenticated ? 60_000 : false,
+    enabled: !isAuthLoading && !isAuthUnavailable && isAuthenticated,
+    refetchInterval: isAuthenticated && !isAuthUnavailable ? 60_000 : false,
     retry: (failureCount, error) => !isGovernanceAuthError(error) && failureCount < 2,
   });
   const stats = statsQuery.data;
-  const requiresLogin = !isAuthLoading && !isAuthenticated;
+  const requiresLogin = !isAuthLoading && !isAuthUnavailable && !isAuthenticated;
 
   return (
     <div className="skynet-auto-hide-scrollbar flex h-full min-h-0 flex-col gap-5 overflow-y-auto px-4 py-5">
@@ -31,6 +31,10 @@ export function GovernancePanelContent() {
       {isAuthLoading ? (
         <section className="rounded-2xl border border-copper/10 bg-void/35 p-4 text-xs leading-5 text-ink-muted">
           {t('governance.panel.syncing')}
+        </section>
+      ) : isAuthUnavailable ? (
+        <section className="rounded-2xl border border-ochre/20 bg-ochre/5 p-4 text-xs text-ochre">
+          {t('governance.panel.syncFailed')}
         </section>
       ) : requiresLogin ? (
         <section className="rounded-2xl border border-copper/20 bg-copper/5 p-4 text-xs leading-5 text-copper">

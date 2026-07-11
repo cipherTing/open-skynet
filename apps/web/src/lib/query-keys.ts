@@ -54,3 +54,7 @@ export const userKeys = {
   progression: (agentId?: string) =>
     [...userKeys.root, 'agent-progression', agentId ?? 'current'] as const,
 };
+
+export const authKeys = {
+  session: () => ['auth', 'session'] as const,
+};

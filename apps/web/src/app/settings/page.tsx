@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
@@ -24,66 +25,103 @@ import { TopBar } from '@/components/layout/TopBar';
 import { AgentAvatar } from '@/components/ui/AgentAvatar';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { PortalTooltip } from '@/components/ui/FloatingPortal';
-import { LoadingScreen } from '@/components/ui/LoadingState';
+import { ErrorState, LoadingScreen } from '@/components/ui/LoadingState';
 import { useToast } from '@/components/ui/SignalToast';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOwnerOperation } from '@/contexts/OwnerOperationContext';
 import { userApi, ApiError } from '@/lib/api';
+import type { Agent } from '@skynet/shared';
+
+type KeyInfo = {
+  prefix: string;
+  lastFour: string;
+  createdAt: string;
+};
+
+type KeyInfoState =
+  | { status: 'loading'; data: null }
+  | { status: 'ready'; data: KeyInfo | null }
+  | { status: 'error'; data: null };
 
 export default function SettingsPage() {
-  const { t, i18n } = useTranslation();
-  const { agent, isLoading, isAuthenticated, refreshUser } = useAuth();
-  const { ownerOperationEnabled, setOwnerOperationEnabled } = useOwnerOperation();
+  const { t } = useTranslation();
+  const {
+    agent,
+    isLoading,
+    isUnavailable,
+    isAuthenticated,
+    refreshUser,
+    retrySession,
+  } = useAuth();
   const router = useRouter();
+
+  useEffect(() => {
+    if (!isLoading && !isUnavailable && !isAuthenticated) {
+      router.push('/auth');
+    }
+  }, [isLoading, isUnavailable, isAuthenticated, router]);
+
+  if (isLoading) {
+    return <LoadingScreen />;
+  }
+
+  if (isUnavailable) {
+    return (
+      <div className="flex min-h-screen items-center justify-center px-4">
+        <ErrorState
+          title={t('settings.authUnavailableTitle')}
+          message={t('settings.authUnavailableMessage')}
+          onAction={() => void retrySession()}
+        />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated || !agent) return null;
+
+  return <SettingsPageContent key={agent.id} agent={agent} refreshUser={refreshUser} />;
+}
+
+function SettingsPageContent({
+  agent,
+  refreshUser,
+}: {
+  agent: Agent;
+  refreshUser: () => Promise<void>;
+}) {
+  const { t, i18n } = useTranslation();
+  const { ownerOperationEnabled, setOwnerOperationEnabled } = useOwnerOperation();
   const toast = useToast();
 
-  const [agentName, setAgentName] = useState('');
-  const [agentDescription, setAgentDescription] = useState('');
-  const [favoritesPublic, setFavoritesPublic] = useState(true);
+  const [agentName, setAgentName] = useState(agent.name);
+  const [agentDescription, setAgentDescription] = useState(agent.description || '');
+  const [favoritesPublic, setFavoritesPublic] = useState(agent.favoritesPublic !== false);
   const [saving, setSaving] = useState(false);
   const [privacySaving, setPrivacySaving] = useState(false);
   const [ownerOperationSaving, setOwnerOperationSaving] = useState(false);
 
-  const [keyInfo, setKeyInfo] = useState<{
-    prefix: string;
-    lastFour: string;
-    createdAt: string;
-  } | null>(null);
-  const [keyLoaded, setKeyLoaded] = useState(false);
   const [newKey, setNewKey] = useState('');
   const [keyCopied, setKeyCopied] = useState(false);
   const [keyInfoCopied, setKeyInfoCopied] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [regenerateConfirmOpen, setRegenerateConfirmOpen] = useState(false);
 
-  useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      router.push('/auth');
-    }
-  }, [isLoading, isAuthenticated, router]);
+  const keyInfoQuery = useQuery({
+    queryKey: ['settings', 'agent-key-info', agent.id],
+    queryFn: async (): Promise<KeyInfo | null> => userApi.getKeyInfo(),
+  });
+  const keyInfoState: KeyInfoState = keyInfoQuery.isError
+    ? { status: 'error', data: null }
+    : keyInfoQuery.isPending
+      ? { status: 'loading', data: null }
+      : { status: 'ready', data: keyInfoQuery.data ?? null };
+  const keyInfo = keyInfoState.data;
+  const keyLoaded = keyInfoState.status === 'ready';
+  const canRegenerateKey = keyInfoState.status === 'ready' && !regenerating;
 
-  useEffect(() => {
-    if (agent) {
-      setAgentName(agent.name);
-      setAgentDescription(agent.description || '');
-      setFavoritesPublic(agent.favoritesPublic !== false);
-    }
-  }, [agent]);
-
-  const loadKeyInfo = useCallback(async () => {
-    try {
-      const info = await userApi.getKeyInfo();
-      setKeyInfo(info);
-    } catch {
-      setKeyInfo(null);
-    } finally {
-      setKeyLoaded(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (isAuthenticated) loadKeyInfo();
-  }, [isAuthenticated, loadKeyInfo]);
+  const reloadKeyInfo = useCallback(async () => {
+    await keyInfoQuery.refetch();
+  }, [keyInfoQuery]);
 
   const handleSaveProfile = async () => {
     if (!agentName.trim()) {
@@ -151,7 +189,7 @@ export default function SettingsPage() {
     try {
       const data = await userApi.regenerateKey();
       setNewKey(data.secretKey);
-      await loadKeyInfo();
+      await reloadKeyInfo();
       toast.success(t('settings.keyGenerated'));
     } catch (err) {
       if (err instanceof ApiError) {
@@ -166,6 +204,7 @@ export default function SettingsPage() {
   };
 
   const handleRegenerateKey = () => {
+    if (!canRegenerateKey) return;
     if (keyInfo) {
       setRegenerateConfirmOpen(true);
       return;
@@ -183,12 +222,6 @@ export default function SettingsPage() {
       toast.error(t('settings.copyFailed'));
     }
   };
-
-  if (isLoading) {
-    return <LoadingScreen />;
-  }
-
-  if (!isAuthenticated) return null;
 
   return (
     <div className="flex min-h-screen max-w-[1440px] mx-auto">
@@ -434,6 +467,12 @@ export default function SettingsPage() {
                     </div>
                   )}
 
+                  {keyInfoState.status === 'error' && !newKey && (
+                    <div className="px-4 py-3 bg-ochre/5 border border-ochre/20 rounded-lg">
+                      <p className="text-sm text-ochre">{t('settings.keyInfoLoadFailed')}</p>
+                    </div>
+                  )}
+
                   {/* 新生成的密钥 */}
                   {newKey && (
                     <motion.div
@@ -466,9 +505,9 @@ export default function SettingsPage() {
                     </motion.div>
                   )}
 
-                  <button
-                    onClick={handleRegenerateKey}
-                    disabled={regenerating}
+                    <button
+                      onClick={handleRegenerateKey}
+                    disabled={!canRegenerateKey}
                     className="flex items-center gap-2 px-5 py-2.5 text-sm text-ochre border border-ochre/25 hover:bg-ochre/10 disabled:opacity-40 disabled:cursor-not-allowed transition-all font-bold rounded-lg"
                   >
                     <RefreshCw className={`w-4 h-4 ${regenerating ? 'animate-spin' : ''}`} />

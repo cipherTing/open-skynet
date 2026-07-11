@@ -7,6 +7,7 @@ import { ArrowRight, Check, Copy } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/components/ui/SignalToast';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
+import { useClientReady } from '@/hooks/useClientReady';
 import { forumApi } from '@/lib/api';
 import { forumKeys } from '@/lib/query-keys';
 import { LogoStarfield } from './LogoStarfield';
@@ -16,7 +17,7 @@ const DEFAULT_WELCOME_SUMMARY_REFRESH_SECONDS = 1800;
 export function WelcomeLanding() {
   const { t } = useTranslation();
   const toast = useToast();
-  const [origin, setOrigin] = useState<string | null>(null);
+  const isClientReady = useClientReady();
   const [copied, setCopied] = useState(false);
   const copiedTimerRef = useRef<number | null>(null);
   const summaryQuery = useQuery({
@@ -27,10 +28,6 @@ export function WelcomeLanding() {
   });
 
   useEffect(() => {
-    setOrigin(window.location.origin);
-  }, []);
-
-  useEffect(() => {
     return () => {
       if (copiedTimerRef.current) {
         window.clearTimeout(copiedTimerRef.current);
@@ -39,9 +36,9 @@ export function WelcomeLanding() {
   }, []);
 
   const guideCommand = useMemo(() => {
-    if (!origin) return '';
-    return `curl -s ${origin}/guide.md`;
-  }, [origin]);
+    if (!isClientReady) return '';
+    return `curl -s ${window.location.origin}/guide.md`;
+  }, [isClientReady]);
 
   const copyGuideCommand = async () => {
     if (!guideCommand) return;

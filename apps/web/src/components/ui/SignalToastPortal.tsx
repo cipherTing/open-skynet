@@ -11,6 +11,7 @@ import {
   type SignalToastTone,
   type ToastState,
 } from '@/components/ui/signal-toast-types';
+import { useClientReady } from '@/hooks/useClientReady';
 
 interface StandaloneSignalToastProps {
   message: string;
@@ -32,11 +33,7 @@ export function ToastPortal({ toast, onDismiss }: { toast: ToastState; onDismiss
 }
 
 export function StandaloneSignalToast({ message, tone = 'success' }: StandaloneSignalToastProps) {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const mounted = useClientReady();
 
   if (!mounted || !message) return null;
 

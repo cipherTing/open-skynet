@@ -14,11 +14,10 @@ import {
   type MouseEvent,
   type ReactElement,
   type ReactNode,
-  type Ref,
   type RefObject,
-  type MutableRefObject,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { useClientReady } from '@/hooks/useClientReady';
 
 type FloatingSide = 'top' | 'bottom' | 'left' | 'right';
 type FloatingAlign = 'start' | 'center' | 'end';
@@ -74,29 +73,6 @@ export const FLOATING_Z_INDEX = {
   menu: 120,
   modal: 130,
 } as const;
-
-function composeRefs<T>(...refs: Array<Ref<T> | undefined>) {
-  return (node: T | null) => {
-    refs.forEach((ref) => {
-      if (!ref) return;
-      if (typeof ref === 'function') {
-        ref(node);
-        return;
-      }
-      (ref as MutableRefObject<T | null>).current = node;
-    });
-  };
-}
-
-function composeHandlers<E>(
-  original: ((event: E) => void) | undefined,
-  ours: (event: E) => void,
-) {
-  return (event: E) => {
-    original?.(event);
-    ours(event);
-  };
-}
 
 function toRect(anchor: FloatingAnchorRect): DOMRect {
   return {
@@ -217,9 +193,51 @@ export const FloatingPortal = ({
   onMouseEnter,
   onMouseLeave,
 }: FloatingPortalProps) => {
+  const mounted = useClientReady();
+
+  if (!open || !mounted) return null;
+
+  return (
+    <FloatingPortalContent
+      anchorRef={anchorRef}
+      anchorRect={anchorRect}
+      placement={placement}
+      align={align}
+      offset={offset}
+      viewportPadding={viewportPadding}
+      zIndex={zIndex}
+      role={role}
+      id={id}
+      ariaLabelledBy={ariaLabelledBy}
+      className={className}
+      style={style}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+    >
+      {children}
+    </FloatingPortalContent>
+  );
+};
+
+function FloatingPortalContent({
+  anchorRef,
+  anchorRect,
+  placement = 'bottom',
+  align = 'center',
+  offset = 8,
+  viewportPadding = 8,
+  zIndex = FLOATING_Z_INDEX.tooltip,
+  role,
+  id,
+  ariaLabelledBy,
+  className = '',
+  style,
+  children,
+  onMouseEnter,
+  onMouseLeave,
+}: Omit<FloatingPortalProps, 'open'>) {
   const floatingRef = useRef<HTMLDivElement | null>(null);
   const frameRef = useRef<number | null>(null);
-  const [mounted, setMounted] = useState(false);
   const [position, setPosition] = useState<FloatingPosition | null>(null);
 
   const updatePosition = useCallback(() => {
@@ -238,15 +256,6 @@ export const FloatingPortal = ({
   }, [updatePosition]);
 
   useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    if (!open || !mounted) {
-      setPosition(null);
-      return undefined;
-    }
-
     scheduleUpdate();
     window.addEventListener('resize', scheduleUpdate);
     window.addEventListener('scroll', scheduleUpdate, true);
@@ -264,13 +273,11 @@ export const FloatingPortal = ({
         frameRef.current = null;
       }
     };
-  }, [anchorRef, mounted, open, scheduleUpdate]);
+  }, [anchorRef, scheduleUpdate]);
 
   useEffect(() => {
-    if (open) scheduleUpdate();
-  }, [anchorRect, open, scheduleUpdate]);
-
-  if (!open || !mounted) return null;
+    scheduleUpdate();
+  }, [anchorRect, scheduleUpdate]);
 
   return createPortal(
     <div
@@ -294,7 +301,7 @@ export const FloatingPortal = ({
     </div>,
     document.body,
   );
-};
+}
 
 export function PortalTooltip({
   children,
@@ -313,7 +320,7 @@ export function PortalTooltip({
   const triggerRef = useRef<HTMLElement | null>(null);
   const closeTimerRef = useRef<number | null>(null);
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
-  const open = controlledOpen ?? uncontrolledOpen;
+  const open = !disabled && (controlledOpen ?? uncontrolledOpen);
   const setOpen = useCallback(
     (nextOpen: boolean) => {
       if (controlledOpen === undefined) {
@@ -349,42 +356,81 @@ export function PortalTooltip({
     setOpen(false);
   }, [clearCloseTimer, setOpen]);
 
+  const handlePointerEnter = useCallback(() => {
+    show();
+  }, [show]);
+
+  const handlePointerLeave = useCallback(() => {
+    hide();
+  }, [hide]);
+
+  const handleMouseEnter = useCallback(
+    (event: MouseEvent<HTMLElement>) => {
+      if (event.currentTarget !== event.target) return;
+      show();
+    },
+    [show],
+  );
+  const handleMouseLeave = useCallback(
+    (event: MouseEvent<HTMLElement>) => {
+      if (event.currentTarget !== event.target) return;
+      hide();
+    },
+    [hide],
+  );
+  const handleFocus = useCallback(
+    (event: FocusEvent<HTMLElement>) => {
+      show();
+    },
+    [show],
+  );
+  const handleBlur = useCallback(
+    (event: FocusEvent<HTMLElement>) => {
+      hide();
+    },
+    [hide],
+  );
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLElement>) => {
+      if (event.key === 'Escape') hideNow();
+    },
+    [hideNow],
+  );
+  const setTriggerNode = useCallback((node: HTMLElement | null) => {
+    triggerRef.current = node;
+  }, []);
+
   useEffect(() => () => clearCloseTimer(), [clearCloseTimer]);
-  useEffect(() => {
-    if (disabled) hideNow();
-  }, [disabled, hideNow]);
 
   if (!isValidElement(children)) return null;
-
-  const child = children as ReactElement<{
-    ref?: Ref<HTMLElement>;
-    className?: string;
-    onMouseEnter?: (event: MouseEvent<HTMLElement>) => void;
-    onMouseLeave?: (event: MouseEvent<HTMLElement>) => void;
-    onFocus?: (event: FocusEvent<HTMLElement>) => void;
-    onBlur?: (event: FocusEvent<HTMLElement>) => void;
-    onKeyDown?: (event: KeyboardEvent<HTMLElement>) => void;
-    'aria-describedby'?: string;
-  }>;
-
+  const child = children as ReactElement<{ 'aria-describedby'?: string }>;
+  const usesBlockWrapper = child.type === 'div';
   const describedBy = [child.props['aria-describedby'], tooltipId].filter(Boolean).join(' ');
+  const trigger = open
+    ? cloneElement(child, { 'aria-describedby': describedBy })
+    : child;
+  const triggerWrapperClassName = [usesBlockWrapper ? 'block' : 'inline-flex', wrapperClassName]
+    .filter(Boolean)
+    .join(' ');
 
-  const trigger = cloneElement(child, {
-    ref: composeRefs(child.props.ref, triggerRef),
-    className: [child.props.className, wrapperClassName].filter(Boolean).join(' '),
-    onMouseEnter: composeHandlers(child.props.onMouseEnter, show),
-    onMouseLeave: composeHandlers(child.props.onMouseLeave, hide),
-    onFocus: composeHandlers(child.props.onFocus, show),
-    onBlur: composeHandlers(child.props.onBlur, hide),
-    onKeyDown: composeHandlers(child.props.onKeyDown, (event) => {
-      if (event.key === 'Escape') hideNow();
-    }),
-    'aria-describedby': open ? describedBy : child.props['aria-describedby'],
-  });
+  const triggerWrapperProps = {
+    className: triggerWrapperClassName,
+    onPointerEnter: handlePointerEnter,
+    onPointerLeave: handlePointerLeave,
+    onMouseEnter: handleMouseEnter,
+    onMouseLeave: handleMouseLeave,
+    onFocus: handleFocus,
+    onBlur: handleBlur,
+    onKeyDown: handleKeyDown,
+  };
 
   return (
     <>
-      {trigger}
+      {usesBlockWrapper ? (
+        <div ref={setTriggerNode} {...triggerWrapperProps}>{trigger}</div>
+      ) : (
+        <span ref={setTriggerNode} {...triggerWrapperProps}>{trigger}</span>
+      )}
       <FloatingPortal
         open={open && !disabled}
         anchorRef={triggerRef}

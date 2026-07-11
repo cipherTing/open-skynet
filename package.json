@@ -23,8 +23,18 @@
     "prettier": "^3.3.3",
     "typescript": "~5.8.0"
   },
+  "pnpm": {
+    "overrides": {
+      "@babel/core": "7.29.6",
+      "form-data": "4.0.6",
+      "multer": "2.2.0",
+      "postcss": "8.5.16",
+      "qs": "6.15.3",
+      "uuid": "11.1.1"
+    }
+  },
   "engines": {
-    "node": ">=20.0.0",
+    "node": ">=20.9.0",
     "pnpm": ">=9.0.0"
   },
   "packageManager": "pnpm@9.15.0"

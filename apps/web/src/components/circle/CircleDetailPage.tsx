@@ -25,7 +25,7 @@ export function CircleDetailPage({ slug }: CircleDetailPageProps) {
   const circleQuery = useQuery({
     queryKey: circleKeys.detail(viewerKey, slug),
     queryFn: () => circleApi.getCircleBySlug(slug),
-    enabled: !authLoading && Boolean(slug),
+    enabled: (!authLoading || viewerKey === 'anonymous') && Boolean(slug),
   });
   const circle = circleQuery.data ?? null;
   const detailTitle = circle ? `/${circle.name}` : t('circles.detail.title');
@@ -75,13 +75,13 @@ export function CircleDetailPage({ slug }: CircleDetailPageProps) {
         />
 
         <div className="min-h-0 flex-1 px-4 pt-0 sm:px-6">
-          {(authLoading || circleQuery.isPending) && (
+          {circleQuery.isPending && (
             <div className="flex min-h-full items-center justify-center py-16">
               <InlineLoading label={t('circles.detail.loading')} />
             </div>
           )}
 
-          {!authLoading && circleQuery.isError && (
+          {circleQuery.isError && (
             <div className="flex min-h-full items-center justify-center py-16">
               <ErrorState
                 title={t('circles.detail.loadFailedTitle')}
@@ -92,7 +92,7 @@ export function CircleDetailPage({ slug }: CircleDetailPageProps) {
             </div>
           )}
 
-          {!authLoading && circle && (
+          {circle && (
             <div className="flex h-full min-h-0 flex-col">
               <div className="mb-4 flex-none xl:hidden">
                 <CircleInfoPanel
@@ -109,7 +109,7 @@ export function CircleDetailPage({ slug }: CircleDetailPageProps) {
         </div>
       </main>
 
-      {!authLoading && circle && (
+      {circle && (
         <aside className="hidden h-full min-h-0 w-[280px] shrink-0 flex-col border-l border-border-subtle bg-void-deep xl:flex">
           <CircleInfoPanel
             circle={circle}

@@ -6,9 +6,9 @@ import {
   useEffect,
   useMemo,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from 'react';
-import { AppBootstrapLoading } from '@/components/ui/AppBootstrapLoading';
 
 type AppTheme = 'dark' | 'light';
 
@@ -28,28 +28,46 @@ function applyDocumentTheme(theme: AppTheme) {
   document.documentElement.setAttribute('data-theme', theme);
 }
 
+function readStoredTheme(): AppTheme {
+  if (typeof window === 'undefined') return 'dark';
+  try {
+    return normalizeTheme(window.localStorage.getItem(THEME_STORAGE_KEY));
+  } catch {
+    return 'dark';
+  }
+}
+
+function subscribeTheme(onStoreChange: () => void) {
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === THEME_STORAGE_KEY) onStoreChange();
+  };
+  window.addEventListener('storage', onStorage);
+  return () => window.removeEventListener('storage', onStorage);
+}
+
+function getServerTheme(): AppTheme {
+  return 'dark';
+}
+
 export function AppThemeProvider({ children }: { children: ReactNode }) {
-  const [bootstrapping, setBootstrapping] = useState(true);
-  const [theme, setThemeState] = useState<AppTheme>('dark');
+  const storedTheme = useSyncExternalStore<AppTheme>(
+    subscribeTheme,
+    readStoredTheme,
+    getServerTheme,
+  );
+  const [themeOverride, setThemeOverride] = useState<AppTheme | null>(null);
+  const theme = themeOverride ?? storedTheme;
 
   useEffect(() => {
-    let nextTheme: AppTheme = 'dark';
-    try {
-      nextTheme = normalizeTheme(window.localStorage.getItem(THEME_STORAGE_KEY));
-    } catch {
-      nextTheme = 'dark';
-    }
-    applyDocumentTheme(nextTheme);
-    setThemeState(nextTheme);
-    setBootstrapping(false);
-  }, []);
+    applyDocumentTheme(theme);
+  }, [theme]);
 
   const value = useMemo<AppThemeContextValue>(
     () => ({
       theme,
       setTheme: (nextTheme) => {
         applyDocumentTheme(nextTheme);
-        setThemeState(nextTheme);
+        setThemeOverride(nextTheme);
         try {
           window.localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
         } catch {
@@ -59,10 +77,6 @@ export function AppThemeProvider({ children }: { children: ReactNode }) {
     }),
     [theme],
   );
-
-  if (bootstrapping) {
-    return <AppBootstrapLoading />;
-  }
 
   return <AppThemeContext.Provider value={value}>{children}</AppThemeContext.Provider>;
 }

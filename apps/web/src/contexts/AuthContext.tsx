@@ -2,16 +2,14 @@
 import {
   createContext,
   useContext,
-  useState,
   useEffect,
   useCallback,
-  useRef,
   ReactNode,
 } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, authApi, clearAccessToken, setAccessToken } from '@/lib/api';
 import { appEvents } from '@/lib/events';
-import { userKeys } from '@/lib/query-keys';
+import { authKeys, userKeys } from '@/lib/query-keys';
 import type { Agent } from '@skynet/shared';
 
 export interface AuthUser {
@@ -21,10 +19,22 @@ export interface AuthUser {
 
 export type AuthAgent = Agent;
 
+type AuthSession = {
+  user: AuthUser;
+  agent: AuthAgent | null;
+  token: string;
+};
+
+type AuthSessionState = {
+  session: AuthSession | null;
+  status: 'loading' | 'ready' | 'error';
+};
+
 interface AuthContextType {
   user: AuthUser | null;
   agent: AuthAgent | null;
   isLoading: boolean;
+  isUnavailable: boolean;
   isAuthenticated: boolean;
   login: (username: string, password: string) => Promise<void>;
   register: (
@@ -35,45 +45,68 @@ interface AuthContextType {
   ) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
+  retrySession: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+const isExpiredAuthError = (error: unknown) =>
+  error instanceof ApiError && (error.statusCode === 401 || error.statusCode === 403);
+
+async function loadAuthSession(): Promise<AuthSession | null> {
+  try {
+    const data = await authApi.refresh();
+    setAccessToken(data.token);
+    return data;
+  } catch (err) {
+    if (isExpiredAuthError(err)) {
+      clearAccessToken();
+      return null;
+    }
+    throw err;
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [agent, setAgent] = useState<AuthAgent | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const viewerIdRef = useRef<string | null>(null);
+  const authSessionKey = authKeys.session();
+  const authSessionQuery = useQuery({
+    queryKey: authSessionKey,
+    queryFn: loadAuthSession,
+    retry: false,
+  });
+  const authSessionState: AuthSessionState = authSessionQuery.isError
+    ? { session: null, status: 'error' }
+    : authSessionQuery.isPending
+      ? { session: null, status: 'loading' }
+      : { session: authSessionQuery.data ?? null, status: 'ready' };
+  const authSession = authSessionState.session;
+  const user = authSession?.user ?? null;
+  const agent = authSession?.agent ?? null;
 
   const clearAuthState = useCallback(() => {
     clearAccessToken();
-    viewerIdRef.current = null;
-    setUser(null);
-    setAgent(null);
+    queryClient.setQueryData<AuthSession | null>(authSessionKey, null);
     queryClient.removeQueries({ queryKey: userKeys.root });
-  }, [queryClient]);
+  }, [authSessionKey, queryClient]);
 
-  const isExpiredAuthError = (error: unknown) =>
-    error instanceof ApiError && (error.statusCode === 401 || error.statusCode === 403);
+  const retrySession = useCallback(async () => {
+    await authSessionQuery.refetch();
+  }, [authSessionQuery]);
 
   const refreshUser = useCallback(async () => {
     try {
       const data = await authApi.refresh();
-      viewerIdRef.current = data.user.id;
       setAccessToken(data.token);
-      setUser(data.user);
-      setAgent(data.agent);
+      queryClient.setQueryData<AuthSession | null>(authSessionKey, data);
     } catch (err) {
       if (isExpiredAuthError(err)) {
         clearAuthState();
+        return;
       }
+      throw err;
     }
-  }, [clearAuthState]);
-
-  useEffect(() => {
-    refreshUser().finally(() => setIsLoading(false));
-  }, [refreshUser]);
+  }, [authSessionKey, clearAuthState, queryClient]);
 
   useEffect(() => {
     const handleAuthExpired = () => {
@@ -88,10 +121,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (username: string, password: string) => {
     const data = await authApi.login({ username, password });
-    viewerIdRef.current = data.user.id;
     setAccessToken(data.token);
-    setUser(data.user);
-    setAgent(data.agent);
+    queryClient.setQueryData<AuthSession | null>(authSessionKey, data);
   };
 
   const register = async (
@@ -106,10 +137,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       agentName,
       agentDescription,
     });
-    viewerIdRef.current = data.user.id;
     setAccessToken(data.token);
-    setUser(data.user);
-    setAgent(data.agent);
+    queryClient.setQueryData<AuthSession | null>(authSessionKey, data);
   };
 
   const logout = async () => {
@@ -122,12 +151,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         user,
         agent,
-        isLoading,
+        isLoading: authSessionState.status === 'loading',
+        isUnavailable: authSessionState.status === 'error',
         isAuthenticated: !!user,
         login,
         register,
         logout,
         refreshUser,
+        retrySession,
       }}
     >
       {children}

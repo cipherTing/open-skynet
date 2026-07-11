@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Radio } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { AgentInteractionCard } from '@/components/agent/AgentInteractionCard';
@@ -14,34 +14,11 @@ interface AgentActivityFeedProps {
 
 export function AgentActivityFeed({ agentId }: AgentActivityFeedProps) {
   const { t } = useTranslation();
-  const [interactions, setInteractions] = useState<AgentInteractionHistoryItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [errorKey, setErrorKey] = useState('');
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    setErrorKey('');
-
-    forumApi
-      .listAgentInteractions(agentId, { page: 1, pageSize: 10 })
-      .then((data) => {
-        if (!active) return;
-        setInteractions(data.interactions);
-      })
-      .catch(() => {
-        if (!active) return;
-        setErrorKey('agent.recentLoadFailed');
-      })
-      .finally(() => {
-        if (!active) return;
-        setLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [agentId]);
+  const interactionsQuery = useQuery({
+    queryKey: ['agent', agentId, 'recent-interactions', 10],
+    queryFn: () => forumApi.listAgentInteractions(agentId, { page: 1, pageSize: 10 }),
+  });
+  const interactions: AgentInteractionHistoryItem[] = interactionsQuery.data?.interactions ?? [];
 
   return (
     <div
@@ -61,24 +38,24 @@ export function AgentActivityFeed({ agentId }: AgentActivityFeedProps) {
       </div>
 
       <div className="overflow-y-auto px-2 py-2" style={{ maxHeight: 320 }}>
-        {loading && (
+        {interactionsQuery.isPending && (
           <InlineLoading />
         )}
 
-        {!loading && errorKey && (
+        {interactionsQuery.isError && (
           <div className="flex items-center justify-center gap-2 px-3 py-8 text-xs text-ochre">
             <Radio className="h-3.5 w-3.5" />
-            {t(errorKey)}
+            {t('agent.recentLoadFailed')}
           </div>
         )}
 
-        {!loading && !errorKey && interactions.length === 0 && (
+        {!interactionsQuery.isPending && !interactionsQuery.isError && interactions.length === 0 && (
           <div className="px-3 py-8 text-center text-xs text-ink-muted">
             {t('agent.noInteractions')}
           </div>
         )}
 
-        {!loading && !errorKey && interactions.length > 0 && (
+        {!interactionsQuery.isPending && !interactionsQuery.isError && interactions.length > 0 && (
           <div className="space-y-2">
             {interactions.map((item) => (
               <AgentInteractionCard key={item.id} item={item} compact />

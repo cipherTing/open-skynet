@@ -38,7 +38,7 @@ const MANUAL_REFRESH_COOLDOWN_MS = 1_000;
 
 export function HomeShell() {
   const { t } = useTranslation();
-  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const { isAuthenticated, isLoading: isAuthLoading, isUnavailable: isAuthUnavailable } = useAuth();
   const prefersReducedMotion = useReducedMotion();
   const reducedMotionEnabled = prefersReducedMotion === true;
   const storedActiveSection = useHomeNavigationStore((state) => state.activeSection);
@@ -59,6 +59,14 @@ export function HomeShell() {
 
   const handleSectionChange = useCallback(
     (section: HomeSection) => {
+      if (section !== 'governance') {
+        setIsGovernanceDetailOpen(false);
+      }
+      if (section === 'governance') {
+        const current = Date.now();
+        setNowMs(current);
+        setNextRefreshAt(current + GOVERNANCE_AUTO_REFRESH_MS);
+      }
       setActiveSection(section);
     },
     [setActiveSection],
@@ -68,7 +76,7 @@ export function HomeShell() {
     queryKey: ['governance', 'results', 'random-batch', GOVERNANCE_BATCH_SIZE],
     queryFn: () => governanceApi.resultFeed(GOVERNANCE_BATCH_SIZE),
     placeholderData: (previous) => previous,
-    enabled: isGovernanceActive && !isAuthLoading && isAuthenticated,
+    enabled: isGovernanceActive && !isAuthLoading && !isAuthUnavailable && isAuthenticated,
     retry: (failureCount, error) => !isGovernanceAuthError(error) && failureCount < 2,
   });
 
@@ -82,23 +90,12 @@ export function HomeShell() {
     return () => document.removeEventListener('visibilitychange', onVisibilityChange);
   }, []);
 
-  useEffect(() => {
-    if (isGovernanceActive) return;
-    setIsGovernanceDetailOpen(false);
-  }, [isGovernanceActive]);
-
-  useEffect(() => {
-    if (!isGovernanceActive) return;
-    const current = Date.now();
-    setNowMs(current);
-    setNextRefreshAt(current + GOVERNANCE_AUTO_REFRESH_MS);
-  }, [isGovernanceActive]);
-
-  const requiresGovernanceLogin = !isAuthLoading && !isAuthenticated;
+  const requiresGovernanceLogin = !isAuthLoading && !isAuthUnavailable && !isAuthenticated;
   const hasGovernanceAuthError = isGovernanceAuthError(governanceResultsQuery.error);
   const isGovernanceRefreshPaused =
     isGovernanceActive &&
     (isAuthLoading ||
+      isAuthUnavailable ||
       requiresGovernanceLogin ||
       hasGovernanceAuthError ||
       !isDocumentVisible ||
@@ -107,16 +104,15 @@ export function HomeShell() {
   const shouldAutoRefresh =
     isGovernanceActive &&
     !isGovernanceRefreshPaused;
+  const queryNextRefreshAt = governanceResultsQuery.dataUpdatedAt > 0
+    ? governanceResultsQuery.dataUpdatedAt + GOVERNANCE_AUTO_REFRESH_MS
+    : nextRefreshAt;
+  const scheduledNextRefreshAt = Math.max(nextRefreshAt, queryNextRefreshAt);
 
   useEffect(() => {
-    if (!governanceResultsQuery.data?.sampledAt) return;
-    const current = Date.now();
-    setNextRefreshAt(current + GOVERNANCE_AUTO_REFRESH_MS);
-    setNowMs(current);
-    if (isGovernanceRefreshPaused) {
-      pauseRemainingMsRef.current = GOVERNANCE_AUTO_REFRESH_MS;
-    }
-  }, [governanceResultsQuery.data?.sampledAt, isGovernanceRefreshPaused]);
+    if (governanceResultsQuery.dataUpdatedAt <= 0 || !isGovernanceRefreshPaused) return;
+    pauseRemainingMsRef.current = GOVERNANCE_AUTO_REFRESH_MS;
+  }, [governanceResultsQuery.dataUpdatedAt, isGovernanceRefreshPaused]);
 
   const refetchGovernanceResults = governanceResultsQuery.refetch;
   const isGovernanceFetching = governanceResultsQuery.isFetching;
@@ -129,7 +125,7 @@ export function HomeShell() {
     const current = Date.now();
     if (isGovernanceRefreshPaused) {
       if (pauseRemainingMsRef.current === null) {
-        pauseRemainingMsRef.current = Math.max(0, nextRefreshAt - current);
+        pauseRemainingMsRef.current = Math.max(0, scheduledNextRefreshAt - current);
         setNowMs(current);
       }
       return;
@@ -140,7 +136,7 @@ export function HomeShell() {
       setNextRefreshAt(current + pauseRemainingMsRef.current);
       pauseRemainingMsRef.current = null;
     }
-  }, [isGovernanceActive, isGovernanceRefreshPaused, nextRefreshAt]);
+  }, [isGovernanceActive, isGovernanceRefreshPaused, scheduledNextRefreshAt]);
 
   useEffect(() => {
     if (!isGovernanceActive) return undefined;
@@ -149,7 +145,7 @@ export function HomeShell() {
       if (isGovernanceRefreshPaused) return;
       const current = Date.now();
       setNowMs(current);
-      if (!shouldAutoRefresh || isGovernanceFetching || current < nextRefreshAt) return;
+      if (!shouldAutoRefresh || isGovernanceFetching || current < scheduledNextRefreshAt) return;
       setNextRefreshAt(current + GOVERNANCE_AUTO_REFRESH_MS);
       void refetchGovernanceResults({ cancelRefetch: false });
     }, COUNTDOWN_TICK_MS);
@@ -159,25 +155,25 @@ export function HomeShell() {
     isGovernanceActive,
     isGovernanceFetching,
     isGovernanceRefreshPaused,
-    nextRefreshAt,
     refetchGovernanceResults,
+    scheduledNextRefreshAt,
     shouldAutoRefresh,
   ]);
 
   const handleGovernanceRefresh = useCallback(() => {
-    if (isAuthLoading || !isAuthenticated || isGovernanceDetailOpen) return;
+    if (isAuthLoading || isAuthUnavailable || !isAuthenticated || isGovernanceDetailOpen) return;
     const current = Date.now();
     if (current - lastManualRefreshAtRef.current < MANUAL_REFRESH_COOLDOWN_MS) return;
     lastManualRefreshAtRef.current = current;
     setNowMs(current);
     setNextRefreshAt(current + GOVERNANCE_AUTO_REFRESH_MS);
     void refetchGovernanceResults();
-  }, [isAuthLoading, isAuthenticated, isGovernanceDetailOpen, refetchGovernanceResults]);
+  }, [isAuthLoading, isAuthUnavailable, isAuthenticated, isGovernanceDetailOpen, refetchGovernanceResults]);
 
   const governanceControls = useMemo<TopBarGovernanceControls | undefined>(() => {
     if (!isGovernanceActive) return undefined;
 
-    const remainingMs = Math.max(0, nextRefreshAt - nowMs);
+    const remainingMs = Math.max(0, scheduledNextRefreshAt - nowMs);
     const remainingSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
     const elapsed = GOVERNANCE_AUTO_REFRESH_MS - remainingMs;
     const progressValue = Math.min(1, Math.max(0, elapsed / GOVERNANCE_AUTO_REFRESH_MS));
@@ -186,24 +182,24 @@ export function HomeShell() {
       : t('governance.refreshResults');
     const statusLabel = isAuthLoading
       ? t('governance.panel.syncing')
-      : requiresGovernanceLogin
-        ? t('governance.loginRequiredTitle')
-        : hasGovernanceAuthError
+      : isAuthUnavailable || hasGovernanceAuthError
           ? t('governance.syncFailed')
-          : isGovernanceDetailOpen
-            ? t('governance.autoRefresh.pausedForModal')
-            : reducedMotionEnabled
-              ? t('governance.autoRefresh.pausedForReducedMotion')
-              : !isDocumentVisible
-                ? t('governance.autoRefresh.pausedForHiddenPage')
-                : t('governance.autoRefresh.active', { seconds: remainingSeconds });
+          : requiresGovernanceLogin
+            ? t('governance.loginRequiredTitle')
+            : isGovernanceDetailOpen
+              ? t('governance.autoRefresh.pausedForModal')
+              : reducedMotionEnabled
+                ? t('governance.autoRefresh.pausedForReducedMotion')
+                : !isDocumentVisible
+                  ? t('governance.autoRefresh.pausedForHiddenPage')
+                  : t('governance.autoRefresh.active', { seconds: remainingSeconds });
 
     return {
       statusLabel,
       progressValue,
       isProgressPaused: isGovernanceRefreshPaused,
       isRefreshing: isGovernanceFetching,
-      refreshDisabled: isAuthLoading || !isAuthenticated || isGovernanceDetailOpen,
+      refreshDisabled: isAuthLoading || isAuthUnavailable || !isAuthenticated || isGovernanceDetailOpen,
       refreshLabel,
       onRefresh: handleGovernanceRefresh,
     };
@@ -212,15 +208,16 @@ export function HomeShell() {
     hasGovernanceAuthError,
     isAuthenticated,
     isAuthLoading,
+    isAuthUnavailable,
     isDocumentVisible,
     isGovernanceActive,
     isGovernanceDetailOpen,
     isGovernanceFetching,
     isGovernanceRefreshPaused,
-    nextRefreshAt,
     nowMs,
     reducedMotionEnabled,
     requiresGovernanceLogin,
+    scheduledNextRefreshAt,
     t,
   ]);
 

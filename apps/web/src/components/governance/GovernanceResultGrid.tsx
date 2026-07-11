@@ -22,14 +22,14 @@ interface GovernanceResultGridProps {
 
 export function GovernanceResultGrid({ query, onDetailOpenChange }: GovernanceResultGridProps) {
   const { t } = useTranslation();
-  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const { isAuthenticated, isLoading: isAuthLoading, isUnavailable: isAuthUnavailable } = useAuth();
   const prefersReducedMotion = useReducedMotion();
   const [selectedResult, setSelectedResult] = useState<GovernanceResultFeedItem | null>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
 
   const data = query.data;
   const items = data?.items ?? [];
-  const requiresLogin = !isAuthLoading && !isAuthenticated;
+  const requiresLogin = !isAuthLoading && !isAuthUnavailable && !isAuthenticated;
   const hasAuthError = isGovernanceAuthError(query.error);
 
   const openDetails = useCallback((result: GovernanceResultFeedItem, trigger: HTMLElement) => {
@@ -48,7 +48,11 @@ export function GovernanceResultGrid({ query, onDetailOpenChange }: GovernanceRe
   return (
     <div className="feed-overlay-shell">
       <div className="feed-overlay-scroll skynet-auto-hide-scrollbar">
-        {requiresLogin ? (
+        {isAuthUnavailable ? (
+          <div className="rounded-2xl border border-ochre/20 bg-ochre/5 p-6 text-sm text-ochre">
+            {t('governance.syncFailed')}
+          </div>
+        ) : requiresLogin ? (
           <div className="rounded-2xl border border-copper/20 bg-copper/5 p-8 text-center text-sm text-ink-secondary">
             <p className="text-base font-semibold text-ink-primary">{t('governance.loginRequiredTitle')}</p>
             <p className="mt-2">{t('governance.loginRequiredDescription')}</p>
