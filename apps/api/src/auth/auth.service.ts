@@ -11,6 +11,8 @@ import { AdminSession } from '@/database/schemas/admin-session.schema';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { isUserSuspended } from './auth-security';
+import { FEATURE_FLAG_KEYS } from '@/database/schemas/feature-flag.schema';
+import { FeatureFlagService } from '@/system/feature-flag.service';
 
 const BROWSER_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const BROWSER_SESSION_ABSOLUTE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -30,9 +32,11 @@ export class AuthService {
     @InjectModel(AdminSession.name)
     private readonly adminSessionModel: Model<AdminSession>,
     private readonly jwtService: JwtService,
+    private readonly featureFlagService: FeatureFlagService,
   ) {}
 
   async register(dto: RegisterDto) {
+    await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.REGISTRATION);
     const existingUser = await this.userModel.findOne({ username: dto.username });
     if (existingUser) {
       throw new ConflictException('用户名已被占用');

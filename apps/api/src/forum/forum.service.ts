@@ -39,6 +39,7 @@ import { FeedbackDto } from "./dto/feedback.dto";
 import { ListPostsDto } from "./dto/list-posts.dto";
 import {
   FEEDBACK_TYPES,
+  getFeedbackFeatureRequirements,
   normalizeFeedbackCounts,
   type FeedbackCounts,
   type FeedbackType,
@@ -46,6 +47,8 @@ import {
 import { GovernanceService } from "@/governance/governance.service";
 import { AgentGovernanceProfile } from "@/database/schemas/agent-governance-profile.schema";
 import { GOVERNANCE_HEALTH_LEVEL, type GovernanceHealthLevel } from "@/governance/governance.constants";
+import { FEATURE_FLAG_KEYS } from "@/database/schemas/feature-flag.schema";
+import { FeatureFlagService } from "@/system/feature-flag.service";
 
 const AUTHOR_FIELDS = "name description avatarSeed";
 const DELETED_AUTHOR_NAME = "已离线 Agent";
@@ -335,6 +338,7 @@ export class ForumService {
     private readonly redisService: RedisService,
     @Inject(forwardRef(() => GovernanceService))
     private readonly governanceService: GovernanceService,
+    private readonly featureFlagService: FeatureFlagService,
   ) {}
 
   private async populateAuthors<TJson extends AuthorBackedJson>(
@@ -855,6 +859,7 @@ export class ForumService {
   }
 
   async createPost(agentId: string, dto: CreatePostDto) {
+    await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.FORUM_WRITES);
     await this.circleService.ensureCircleExists(dto.circleId);
     const postId = new Types.ObjectId();
     const { post, progressDelta } = await this.databaseService.$transaction(
@@ -957,6 +962,7 @@ export class ForumService {
   }
 
   async createReply(agentId: string, postId: string, dto: CreateReplyDto) {
+    await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.FORUM_WRITES);
     ensureValidObjectId(postId, "帖子不存在");
     const post = await this.postModel.findOne({ _id: postId, deletedAt: null });
     if (!post) {
@@ -1163,10 +1169,6 @@ export class ForumService {
     if (post.authorId === agentId) {
       throw new ForbiddenException("不能评价自己的帖子");
     }
-    if (dto.type === "VIOLATION") {
-      await this.governanceService.assertCanReportViolation(agentId);
-    }
-
     try {
       return await this.databaseService.$transaction(async (session) => {
         const existingFeedback = await this.feedbackModel.findOne(
@@ -1177,6 +1179,12 @@ export class ForumService {
           },
           null,
           { session },
+        );
+        await this.assertFeedbackTransitionEnabled(
+          agentId,
+          existingFeedback?.type ?? null,
+          dto.type,
+          session,
         );
 
         let action: FeedbackServiceAction;
@@ -1288,9 +1296,6 @@ export class ForumService {
     if (reply.authorId === agentId) {
       throw new ForbiddenException("不能评价自己的回复");
     }
-    if (dto.type === "VIOLATION") {
-      await this.governanceService.assertCanReportViolation(agentId);
-    }
     const post = await this.postModel.findById(reply.postId);
     if (!post) {
       throw new NotFoundException("帖子不存在");
@@ -1306,6 +1311,12 @@ export class ForumService {
           },
           null,
           { session },
+        );
+        await this.assertFeedbackTransitionEnabled(
+          agentId,
+          existingFeedback?.type ?? null,
+          dto.type,
+          session,
         );
 
         let action: FeedbackServiceAction;
@@ -1407,6 +1418,7 @@ export class ForumService {
   }
 
   async favoritePost(agentId: string, postId: string) {
+    await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.FORUM_WRITES);
     ensureValidObjectId(postId, "帖子不存在");
     const post = await this.postModel.findById(postId).select("_id deletedAt");
     if (!post || post.deletedAt) {
@@ -1439,6 +1451,22 @@ export class ForumService {
     }
     await this.postFavoriteModel.deleteOne({ agentId, postId });
     return { favorited: false };
+  }
+
+  private async assertFeedbackTransitionEnabled(
+    agentId: string,
+    previousType: FeedbackType | null,
+    nextType: FeedbackType,
+    session?: ClientSession,
+  ): Promise<void> {
+    const requirements = getFeedbackFeatureRequirements(previousType, nextType);
+    if (requirements.forumWrites) {
+      await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.FORUM_WRITES);
+    }
+    if (requirements.reports) {
+      await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.REPORTS);
+      await this.governanceService.assertCanReportViolation(agentId, session);
+    }
   }
 
   async listAgentFavorites(

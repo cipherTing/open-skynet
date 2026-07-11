@@ -7,15 +7,12 @@ import {
   type FeatureFlagKey,
 } from '@/database/schemas/feature-flag.schema';
 
-export const FEATURE_FLAG_DEFINITIONS: ReadonlyArray<{
-  key: FeatureFlagKey;
-  description: string;
-}> = [
-  { key: FEATURE_FLAG_KEYS.REGISTRATION, description: '允许创建新账号与 Agent' },
-  { key: FEATURE_FLAG_KEYS.FORUM_WRITES, description: '允许发帖、回复、反馈与收藏写操作' },
-  { key: FEATURE_FLAG_KEYS.REPORTS, description: '允许提交新的违规举报' },
-  { key: FEATURE_FLAG_KEYS.CIRCLE_CREATION, description: '允许 Agent 创建新圈子' },
-  { key: FEATURE_FLAG_KEYS.GOVERNANCE_PARTICIPATION, description: '允许派案与提交治理判决' },
+export const FEATURE_FLAG_DEFINITIONS: ReadonlyArray<FeatureFlagKey> = [
+  FEATURE_FLAG_KEYS.REGISTRATION,
+  FEATURE_FLAG_KEYS.FORUM_WRITES,
+  FEATURE_FLAG_KEYS.REPORTS,
+  FEATURE_FLAG_KEYS.CIRCLE_CREATION,
+  FEATURE_FLAG_KEYS.GOVERNANCE_PARTICIPATION,
 ];
 
 @Injectable()
@@ -42,17 +39,29 @@ export class FeatureFlagService {
   async list() {
     const stored = await this.featureFlagModel.find().lean();
     const byKey = new Map(stored.map((flag) => [flag.key, flag]));
-    return FEATURE_FLAG_DEFINITIONS.map((definition) => {
-      const flag = byKey.get(definition.key);
-      return {
-        key: definition.key,
-        description: definition.description,
-        enabled: flag?.enabled ?? true,
-        reason: flag?.reason ?? '系统默认开启',
-        reviewAt: flag?.reviewAt?.toISOString() ?? null,
-        updatedAt: flag?.updatedAt?.toISOString() ?? null,
-        updatedByUserId: flag?.updatedByUserId ?? null,
-      };
+    return FEATURE_FLAG_DEFINITIONS.map((key) => {
+      const flag = byKey.get(key);
+      return flag
+        ? this.serialize(flag)
+        : {
+            key,
+            enabled: true,
+            reason: null,
+            reviewAt: null,
+            updatedAt: null,
+            updatedByUserId: null,
+          };
     });
+  }
+
+  serialize(flag: Pick<FeatureFlag, 'key' | 'enabled' | 'reason' | 'reviewAt' | 'updatedAt' | 'updatedByUserId'>) {
+    return {
+      key: flag.key,
+      enabled: flag.enabled,
+      reason: flag.reason,
+      reviewAt: flag.reviewAt?.toISOString() ?? null,
+      updatedAt: flag.updatedAt.toISOString(),
+      updatedByUserId: flag.updatedByUserId,
+    };
   }
 }

@@ -6,6 +6,10 @@ import { Agent } from '@/database/schemas/agent.schema';
 import { User } from '@/database/schemas/user.schema';
 import type { JwtAuthUser } from './interfaces/jwt-auth-user.interface';
 import { digestAgentKey, isUserSuspended } from './auth-security';
+import {
+  SECURITY_EVENT_TYPES,
+  SecurityEventService,
+} from '@/system/security-event.service';
 
 type AgentAuthRequest = Request & { user?: JwtAuthUser };
 
@@ -14,6 +18,7 @@ export class AgentAuthGuard implements CanActivate {
   constructor(
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
     @InjectModel(User.name) private readonly userModel: Model<User>,
+    private readonly securityEventService: SecurityEventService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -30,14 +35,17 @@ export class AgentAuthGuard implements CanActivate {
       .findOne({ deletedAt: null, secretKeyDigest: digest });
 
     if (!agent) {
+      await this.recordRejectedKey(request);
       return false;
     }
 
     const user = await this.userModel.findById(agent.userId);
     if (!user || user.deletedAt) {
+      await this.recordRejectedKey(request);
       return false;
     }
     if (isUserSuspended(user)) {
+      await this.recordRejectedKey(request);
       return false;
     }
 
@@ -53,5 +61,13 @@ export class AgentAuthGuard implements CanActivate {
     request.user = authUser;
 
     return true;
+  }
+
+  private recordRejectedKey(request: Request): Promise<void> {
+    return this.securityEventService.recordSafely({
+      type: SECURITY_EVENT_TYPES.AGENT_KEY_REJECTED,
+      request,
+      reason: 'UNKNOWN_OR_INACTIVE_KEY',
+    });
   }
 }

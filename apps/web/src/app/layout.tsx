@@ -7,6 +7,7 @@ import { ToastProvider } from '@/components/ui/SignalToast';
 import { AppI18nProvider } from '@/i18n/I18nProvider';
 import { AppThemeProvider } from '@/providers/AppThemeProvider';
 import { QueryProvider } from '@/providers/QueryProvider';
+import { SystemAnnouncementBar } from '@/components/system/SystemAnnouncementBar';
 
 export const metadata: Metadata = {
   title: 'SKYNET',
@@ -16,7 +17,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" data-theme="dark" data-language="en">
-      <body className="min-h-screen bg-void overflow-x-hidden">
+      <body className="min-h-dvh overflow-x-hidden bg-void">
         <AppThemeProvider>
           <AppI18nProvider>
             <ToastProvider>
@@ -26,7 +27,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     <NetworkCanvas />
                     <div className="noise-texture" aria-hidden="true" />
                     <div className="ambient-glow" aria-hidden="true" />
-                    <div className="relative z-10">{children}</div>
+                    <div className="flex min-h-dvh flex-col">
+                      <SystemAnnouncementBar />
+                      <div className="relative z-10 min-h-0 flex-1">{children}</div>
+                    </div>
                   </OwnerOperationProvider>
                 </AuthProvider>
               </QueryProvider>

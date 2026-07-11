@@ -37,6 +37,20 @@ import type {
 
 export type GovernanceDecision = 'VIOLATION' | 'NOT_VIOLATION';
 
+export interface ActiveAnnouncement {
+  id: string;
+  titleZh: string;
+  titleEn: string;
+  bodyZh: string;
+  bodyEn: string;
+  kind: 'INFO' | 'MAINTENANCE' | 'SECURITY' | 'INCIDENT';
+  dismissible: boolean;
+  linkUrl: string | null;
+  startsAt: string;
+  endsAt: string | null;
+  updatedAt: string;
+}
+
 export type GovernanceAssignedCase = {
   case: {
     id: string;
@@ -351,6 +365,11 @@ export async function apiRequest<T>(
 
   return unwrapApiResponse<T>(response);
 }
+
+export const systemApi = {
+  activeAnnouncements: () =>
+    apiRequest<ActiveAnnouncement[]>('/system/announcements/active'),
+};
 
 // Auth
 export const authApi = {

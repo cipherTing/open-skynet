@@ -22,6 +22,10 @@ import {
   ADMIN_CSRF_HEADER,
   ADMIN_SESSION_COOKIE_NAME,
 } from '@/admin/admin.constants';
+import {
+  SECURITY_EVENT_TYPES,
+  SecurityEventService,
+} from '@/system/security-event.service';
 
 type AdminRequest = Request & { admin?: AdminPrincipal };
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
@@ -35,12 +39,21 @@ export class AdminSessionGuard implements CanActivate {
     private readonly browserSessionModel: Model<BrowserSession>,
     @InjectModel(User.name)
     private readonly userModel: Model<User>,
+    private readonly securityEventService: SecurityEventService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<AdminRequest>();
-    if (request.headers.authorization?.trim().startsWith('Bearer sk_live_')) {
-      throw new ForbiddenException('Agent API Key 不能访问管理员接口');
+    const authorization = request.headers.authorization?.trim() ?? '';
+    if (authorization) {
+      if (/^Bearer\s+sk_live_/i.test(authorization)) {
+        await this.securityEventService.recordSafely({
+          type: SECURITY_EVENT_TYPES.ADMIN_AGENT_KEY_REJECTED,
+          request,
+          reason: 'AGENT_CREDENTIAL_ON_ADMIN_ROUTE',
+        });
+      }
+      throw new ForbiddenException('管理员接口不接受 Authorization 请求头');
     }
 
     const rawToken = readCookie(request, ADMIN_SESSION_COOKIE_NAME);
@@ -79,10 +92,41 @@ export class AdminSessionGuard implements CanActivate {
     }
 
     if (!SAFE_METHODS.has(request.method)) {
-      this.assertSameOrigin(request);
+      const origin = request.header('origin');
+      const originResult = this.getOriginRejectionReason(origin);
+      if (originResult) {
+        await this.securityEventService.recordSafely({
+          type: SECURITY_EVENT_TYPES.ADMIN_CSRF_REJECTED,
+          request,
+          reason: originResult,
+        });
+        throw new ForbiddenException({
+          code: 'ADMIN_CSRF_REJECTED',
+          message: '管理员请求来源无效',
+        });
+      }
       const csrfToken = request.header(ADMIN_CSRF_HEADER);
-      if (!csrfToken || !secureTokenMatches(csrfToken, adminSession.csrfTokenHash)) {
-        throw new ForbiddenException('管理员请求校验失败');
+      if (!csrfToken) {
+        await this.securityEventService.recordSafely({
+          type: SECURITY_EVENT_TYPES.ADMIN_CSRF_REJECTED,
+          request,
+          reason: 'MISSING_TOKEN',
+        });
+        throw new ForbiddenException({
+          code: 'ADMIN_CSRF_REJECTED',
+          message: '管理员请求校验失败',
+        });
+      }
+      if (!secureTokenMatches(csrfToken, adminSession.csrfTokenHash)) {
+        await this.securityEventService.recordSafely({
+          type: SECURITY_EVENT_TYPES.ADMIN_CSRF_REJECTED,
+          request,
+          reason: 'INVALID_TOKEN',
+        });
+        throw new ForbiddenException({
+          code: 'ADMIN_CSRF_REJECTED',
+          message: '管理员请求校验失败',
+        });
       }
     }
 
@@ -95,14 +139,14 @@ export class AdminSessionGuard implements CanActivate {
     return true;
   }
 
-  private assertSameOrigin(request: Request): void {
-    const origin = request.header('origin');
+  private getOriginRejectionReason(
+    origin: string | undefined,
+  ): 'MISSING_ORIGIN' | 'ORIGIN_MISMATCH' | null {
     const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:8080')
       .split(',')
       .map((value) => value.trim())
       .filter(Boolean);
-    if (!origin || !allowedOrigins.includes(origin)) {
-      throw new ForbiddenException('管理员请求来源无效');
-    }
+    if (!origin) return 'MISSING_ORIGIN';
+    return allowedOrigins.includes(origin) ? null : 'ORIGIN_MISMATCH';
   }
 }

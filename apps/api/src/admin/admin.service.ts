@@ -5,11 +5,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { InjectConnection } from '@nestjs/mongoose';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { Model, Types, type FilterQuery } from 'mongoose';
-import type { Connection } from 'mongoose';
 import { Agent } from '@/database/schemas/agent.schema';
 import { User } from '@/database/schemas/user.schema';
 import { BrowserSession } from '@/database/schemas/browser-session.schema';
@@ -28,8 +26,8 @@ import { AGENT_LEVELS } from '@/progression/progression.constants';
 import type { AdminPrincipal } from './interfaces/admin-principal.interface';
 import { AdminAuditService } from './admin-audit.service';
 import { ADMIN_AUDIT_ACTIONS } from './admin.constants';
-import { RedisService } from '@/redis/redis.service';
 import { isUserSuspended } from '@/auth/auth-security';
+import { HealthService } from '@/health/health.service';
 import type { ListAdminAgentsDto } from './dto/list-admin-agents.dto';
 import type { SuspendAgentDto } from './dto/suspend-agent.dto';
 import type { AdjustAgentXpDto } from './dto/adjust-agent-xp.dto';
@@ -40,6 +38,7 @@ import type { TransferCircleStewardDto } from './dto/transfer-circle-steward.dto
 import type { ListAdminGovernanceDto } from './dto/list-admin-governance.dto';
 
 const EMPTY_DAILY_COUNTERS = { posts: 0, replies: 0, childReplies: 0, feedbacks: 0 };
+const ADMIN_HEALTH_TIMEOUT_MS = 2_000;
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -76,9 +75,8 @@ export class AdminService {
     @InjectModel(Circle.name) private readonly circleModel: Model<Circle>,
     @InjectModel(GovernanceCase.name)
     private readonly governanceCaseModel: Model<GovernanceCase>,
-    @InjectConnection() private readonly connection: Connection,
     @InjectQueue('view-count') private readonly viewCountQueue: Queue,
-    private readonly redisService: RedisService,
+    private readonly healthService: HealthService,
     private readonly databaseService: DatabaseService,
     private readonly auditService: AdminAuditService,
   ) {}
@@ -111,29 +109,26 @@ export class AdminService {
   }
 
   private async readServiceHealth() {
-    const [mongo, redis, queue] = await Promise.all([
+    const [dependencies, queue] = await Promise.all([
+      this.healthService.readDependencies(),
       this.measureDependency(async () => {
-        const database = this.connection.db;
-        if (!database) throw new Error('MongoDB database handle is unavailable');
-        await database.admin().ping();
-        return {};
-      }),
-      this.measureDependency(async () => {
-        await this.redisService.getClient().ping();
-        return {};
-      }),
-      this.measureDependency(async () => {
-        const counts = await this.viewCountQueue.getJobCounts(
-          'waiting',
-          'active',
-          'completed',
-          'failed',
-          'delayed',
+        const counts = await this.withHealthTimeout(
+          this.viewCountQueue.getJobCounts(
+            'waiting',
+            'active',
+            'completed',
+            'failed',
+            'delayed',
+          ),
         );
         return { counts };
       }),
     ]);
-    return { api: { status: 'ok' as const }, mongo, redis, viewCountQueue: queue };
+    return {
+      api: { status: 'ok' as const },
+      ...dependencies,
+      viewCountQueue: queue,
+    };
   }
 
   private async measureDependency<T extends Record<string, unknown>>(
@@ -149,6 +144,23 @@ export class AdminService {
         latencyMs: Date.now() - startedAt,
         message: error instanceof Error ? error.message : 'Unknown dependency error',
       };
+    }
+  }
+
+  private async withHealthTimeout<T>(operation: Promise<T>): Promise<T> {
+    let timeout: NodeJS.Timeout | undefined;
+    try {
+      return await Promise.race([
+        operation,
+        new Promise<never>((_, reject) => {
+          timeout = setTimeout(
+            () => reject(new Error('Queue health check timed out')),
+            ADMIN_HEALTH_TIMEOUT_MS,
+          );
+        }),
+      ]);
+    } finally {
+      if (timeout) clearTimeout(timeout);
     }
   }
 

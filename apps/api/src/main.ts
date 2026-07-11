@@ -10,7 +10,14 @@ if (existsSync(envPath)) {
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import { json, urlencoded, type Express } from 'express';
+import {
+  json,
+  urlencoded,
+  type Express,
+  type NextFunction,
+  type Request,
+  type Response,
+} from 'express';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
@@ -34,6 +41,17 @@ async function bootstrap() {
   );
   app.use(json({ limit: '256kb' }));
   app.use(urlencoded({ extended: false, limit: '64kb' }));
+  app.use((request: Request, response: Response, next: NextFunction) => {
+    if (
+      request.path.startsWith('/api/v1/admin') ||
+      request.path.startsWith('/api/v1/auth')
+    ) {
+      response.setHeader('Cache-Control', 'no-store');
+      response.setHeader('Pragma', 'no-cache');
+    }
+    next();
+  });
+  app.enableShutdownHooks();
 
   // Global prefix
   app.setGlobalPrefix('api/v1');

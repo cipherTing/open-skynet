@@ -2,21 +2,23 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import { getConnectionToken, MongooseModule } from '@nestjs/mongoose';
 import { Connection } from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
-import { DatabaseModule } from '@/database/database.module';
 import { DatabaseService } from '@/database/database.service';
 import { GovernanceService } from './governance.service';
 import { ProgressionService } from '@/progression/progression.service';
-import { Agent } from '@/database/schemas/agent.schema';
-import { Post } from '@/database/schemas/post.schema';
-import { Reply } from '@/database/schemas/reply.schema';
-import { Feedback } from '@/database/schemas/feedback.schema';
-import { GovernanceAssignment } from '@/database/schemas/governance-assignment.schema';
-import { GovernanceCase } from '@/database/schemas/governance-case.schema';
-import { GovernanceDailyQuota } from '@/database/schemas/governance-daily-quota.schema';
-import { GovernanceVote } from '@/database/schemas/governance-vote.schema';
-import { AgentGovernanceProfile } from '@/database/schemas/agent-governance-profile.schema';
-import { AgentProgress } from '@/database/schemas/agent-progress.schema';
+import { Agent, AgentSchema } from '@/database/schemas/agent.schema';
+import { Post, PostSchema } from '@/database/schemas/post.schema';
+import { Reply, ReplySchema } from '@/database/schemas/reply.schema';
+import { Feedback, FeedbackSchema } from '@/database/schemas/feedback.schema';
+import { GovernanceAssignment, GovernanceAssignmentSchema } from '@/database/schemas/governance-assignment.schema';
+import { GovernanceCase, GovernanceCaseSchema } from '@/database/schemas/governance-case.schema';
+import { GovernanceDailyQuota, GovernanceDailyQuotaSchema } from '@/database/schemas/governance-daily-quota.schema';
+import { GovernanceVote, GovernanceVoteSchema } from '@/database/schemas/governance-vote.schema';
+import { AgentGovernanceProfile, AgentGovernanceProfileSchema } from '@/database/schemas/agent-governance-profile.schema';
+import { AgentProgress, AgentProgressSchema } from '@/database/schemas/agent-progress.schema';
+import { AgentXpEvent, AgentXpEventSchema } from '@/database/schemas/agent-xp-event.schema';
+import { FeatureFlag, FeatureFlagSchema } from '@/database/schemas/feature-flag.schema';
 import { GOVERNANCE_ASSIGNMENT_STATUS, GOVERNANCE_CASE_STATUS, GOVERNANCE_DECISIONS, GOVERNANCE_ERROR_CODES, GOVERNANCE_HEALTH_LEVEL, GOVERNANCE_TARGET_TYPES } from './governance.constants';
+import { FeatureFlagService } from '@/system/feature-flag.service';
 
 let sequence = 0;
 const TEST_CIRCLE_ID = '64f000000000000000000001';
@@ -33,9 +35,27 @@ describe('GovernanceService integration', () => {
     moduleRef = await Test.createTestingModule({
       imports: [
         MongooseModule.forRoot(mongod.getUri()),
-        DatabaseModule,
+        MongooseModule.forFeature([
+          { name: Agent.name, schema: AgentSchema },
+          { name: Post.name, schema: PostSchema },
+          { name: Reply.name, schema: ReplySchema },
+          { name: Feedback.name, schema: FeedbackSchema },
+          { name: GovernanceAssignment.name, schema: GovernanceAssignmentSchema },
+          { name: GovernanceCase.name, schema: GovernanceCaseSchema },
+          { name: GovernanceDailyQuota.name, schema: GovernanceDailyQuotaSchema },
+          { name: GovernanceVote.name, schema: GovernanceVoteSchema },
+          { name: AgentGovernanceProfile.name, schema: AgentGovernanceProfileSchema },
+          { name: AgentProgress.name, schema: AgentProgressSchema },
+          { name: AgentXpEvent.name, schema: AgentXpEventSchema },
+          { name: FeatureFlag.name, schema: FeatureFlagSchema },
+        ]),
       ],
-      providers: [GovernanceService, ProgressionService, DatabaseService],
+      providers: [
+        GovernanceService,
+        ProgressionService,
+        DatabaseService,
+        FeatureFlagService,
+      ],
     }).compile();
 
     connection = moduleRef.get<Connection>(getConnectionToken());
@@ -67,8 +87,8 @@ describe('GovernanceService integration', () => {
   });
 
   afterAll(async () => {
-    await moduleRef.close();
-    await mongod.stop();
+    if (moduleRef) await moduleRef.close();
+    if (mongod) await mongod.stop();
   });
 
   async function createAgent(name: string, xpTotal = 0) {

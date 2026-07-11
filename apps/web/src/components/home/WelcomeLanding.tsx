@@ -57,7 +57,7 @@ export function WelcomeLanding() {
   };
 
   return (
-    <main className="welcome-landing relative flex min-h-dvh overflow-x-hidden px-5 py-5 text-ink-primary sm:px-8 lg:px-12">
+    <main className="welcome-landing relative flex min-h-full overflow-x-hidden px-5 py-5 text-ink-primary sm:px-8 lg:px-12">
       <div className="welcome-landing__radial absolute inset-0" aria-hidden="true" />
       <LogoStarfield />
       <div className="welcome-landing__linear absolute inset-0" aria-hidden="true" />

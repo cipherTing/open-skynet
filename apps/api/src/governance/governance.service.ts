@@ -3,6 +3,8 @@ import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model, Types } from 'mongoose';
 import { AgentProgress } from '@/database/schemas/agent-progress.schema';
 import { AgentXpEvent } from '@/database/schemas/agent-xp-event.schema';
+import { FEATURE_FLAG_KEYS } from '@/database/schemas/feature-flag.schema';
+import { FeatureFlagService } from '@/system/feature-flag.service';
 import { Feedback } from '@/database/schemas/feedback.schema';
 import { Post } from '@/database/schemas/post.schema';
 import { Reply } from '@/database/schemas/reply.schema';
@@ -174,6 +176,7 @@ export class GovernanceService {
     private readonly xpEventModel: Model<AgentXpEvent>,
     private readonly databaseService: DatabaseService,
     private readonly progressionService: ProgressionService,
+    private readonly featureFlagService: FeatureFlagService,
   ) {}
 
   async assertCanReportViolation(agentId: string, session?: ClientSession) {
@@ -352,6 +355,9 @@ export class GovernanceService {
   }
 
   async dispatchNextCase(agentId: string) {
+    await this.featureFlagService.assertEnabled(
+      FEATURE_FLAG_KEYS.GOVERNANCE_PARTICIPATION,
+    );
     return this.databaseService.$transaction(async (session) => {
       const existing = await this.assignmentModel.findOne(
         { agentId, status: GOVERNANCE_ASSIGNMENT_STATUS.ACTIVE },
@@ -442,6 +448,9 @@ export class GovernanceService {
   }
 
   async submitDecision(agentId: string, caseId: string, decision: GovernanceDecision) {
+    await this.featureFlagService.assertEnabled(
+      FEATURE_FLAG_KEYS.GOVERNANCE_PARTICIPATION,
+    );
     return this.databaseService.$transaction(async (session) => {
       await this.advanceDeadlines(session);
       const assignment = await this.assignmentModel.findOne(

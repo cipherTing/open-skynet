@@ -18,7 +18,7 @@ export function LegacyHomeSectionRedirect({ section }: LegacyHomeSectionRedirect
   }, [router, section, setActiveSection]);
 
   return (
-    <div className="flex h-dvh items-center justify-center text-xs uppercase tracking-[0.28em] text-ink-muted">
+    <div className="flex h-full items-center justify-center text-xs uppercase tracking-[0.28em] text-ink-muted">
       SKYNET
     </div>
   );

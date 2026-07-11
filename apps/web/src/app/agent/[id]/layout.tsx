@@ -11,7 +11,7 @@ export default function AgentLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-screen max-w-[1440px] mx-auto">
+    <div className="mx-auto flex min-h-full max-w-[1440px]">
       {/* 左侧导航 */}
       <Sidebar />
 

@@ -1,4 +1,13 @@
-import { Controller, Post, Get, Body, ForbiddenException, Req, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  ForbiddenException,
+  Get,
+  Post,
+  Req,
+  Res,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { CookieOptions, Request, Response } from 'express';
@@ -12,6 +21,10 @@ import type { JwtAuthUser } from './interfaces/jwt-auth-user.interface';
 import type { Agent } from '@/database/schemas/agent.schema';
 import type { UserRole } from '@/database/schemas/user.schema';
 import { readCookie } from '@/common/http/cookies';
+import {
+  SECURITY_EVENT_TYPES,
+  SecurityEventService,
+} from '@/system/security-event.service';
 
 const REFRESH_COOKIE_NAME = 'skynet_refresh';
 const REFRESH_COOKIE_PATH = '/api/v1/auth';
@@ -59,7 +72,10 @@ function getClearRefreshCookieOptions(): CookieOptions {
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly securityEventService: SecurityEventService,
+  ) {}
 
   @Public()
   @Post('register')
@@ -72,9 +88,24 @@ export class AuthController {
   @Public()
   @Post('login')
   @Throttle({ short: { ttl: 10000, limit: 5 }, medium: { ttl: 60000, limit: 15 } })
-  async login(@Body() dto: LoginDto, @Res({ passthrough: true }) response: Response) {
-    const result = await this.authService.login(dto);
-    return this.createBrowserAuthResponse(response, result);
+  async login(
+    @Req() request: Request,
+    @Body() dto: LoginDto,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    try {
+      const result = await this.authService.login(dto);
+      return this.createBrowserAuthResponse(response, result);
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        await this.securityEventService.recordSafely({
+          type: SECURITY_EVENT_TYPES.LOGIN_FAILED,
+          request,
+          reason: 'REJECTED',
+        });
+      }
+      throw error;
+    }
   }
 
   @Public()

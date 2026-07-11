@@ -34,6 +34,17 @@ import { ListAdminCirclesDto } from './dto/list-admin-circles.dto';
 import { TransferCircleStewardDto } from './dto/transfer-circle-steward.dto';
 import { ListAdminGovernanceDto } from './dto/list-admin-governance.dto';
 import { ADMIN_CONTENT_TYPES, type AdminContentType } from './admin.constants';
+import { AdminSystemService } from './admin-system.service';
+import { ListAnnouncementsDto } from './dto/list-announcements.dto';
+import { CreateAnnouncementDto } from './dto/create-announcement.dto';
+import { UpdateAnnouncementDto } from './dto/update-announcement.dto';
+import { VersionedAdminReasonDto } from './dto/versioned-admin-reason.dto';
+import { UpdateFeatureFlagDto } from './dto/update-feature-flag.dto';
+import { ListSecurityEventsDto } from './dto/list-security-events.dto';
+import {
+  FEATURE_FLAG_KEYS,
+  type FeatureFlagKey,
+} from '@/database/schemas/feature-flag.schema';
 
 function getClearAdminCookieOptions(): CookieOptions {
   return {
@@ -52,6 +63,7 @@ export class AdminController {
     private readonly adminAuthService: AdminAuthService,
     private readonly auditService: AdminAuditService,
     private readonly adminService: AdminService,
+    private readonly adminSystemService: AdminSystemService,
   ) {}
 
   @Get('session')
@@ -171,5 +183,73 @@ export class AdminController {
   @Get('governance/cases')
   governanceCases(@Query() dto: ListAdminGovernanceDto) {
     return this.adminService.listGovernanceCases(dto);
+  }
+
+  @Get('announcements')
+  announcements(@Query() dto: ListAnnouncementsDto) {
+    return this.adminSystemService.listAnnouncements(dto);
+  }
+
+  @Post('announcements')
+  createAnnouncement(
+    @CurrentAdmin() admin: AdminPrincipal,
+    @Body() dto: CreateAnnouncementDto,
+  ) {
+    return this.adminSystemService.createAnnouncement(admin, dto);
+  }
+
+  @Patch('announcements/:id')
+  updateAnnouncement(
+    @CurrentAdmin() admin: AdminPrincipal,
+    @Param('id') id: string,
+    @Body() dto: UpdateAnnouncementDto,
+  ) {
+    return this.adminSystemService.updateAnnouncement(admin, id, dto);
+  }
+
+  @Post('announcements/:id/publish')
+  publishAnnouncement(
+    @CurrentAdmin() admin: AdminPrincipal,
+    @Param('id') id: string,
+    @Body() dto: VersionedAdminReasonDto,
+  ) {
+    return this.adminSystemService.publishAnnouncement(admin, id, dto);
+  }
+
+  @Post('announcements/:id/withdraw')
+  withdrawAnnouncement(
+    @CurrentAdmin() admin: AdminPrincipal,
+    @Param('id') id: string,
+    @Body() dto: VersionedAdminReasonDto,
+  ) {
+    return this.adminSystemService.withdrawAnnouncement(admin, id, dto);
+  }
+
+  @Delete('announcements/:id')
+  deleteAnnouncement(
+    @CurrentAdmin() admin: AdminPrincipal,
+    @Param('id') id: string,
+    @Body() dto: VersionedAdminReasonDto,
+  ) {
+    return this.adminSystemService.deleteAnnouncementDraft(admin, id, dto);
+  }
+
+  @Get('feature-flags')
+  featureFlags() {
+    return this.adminSystemService.listFeatureFlags();
+  }
+
+  @Patch('feature-flags/:key')
+  updateFeatureFlag(
+    @CurrentAdmin() admin: AdminPrincipal,
+    @Param('key', new ParseEnumPipe(FEATURE_FLAG_KEYS)) key: FeatureFlagKey,
+    @Body() dto: UpdateFeatureFlagDto,
+  ) {
+    return this.adminSystemService.updateFeatureFlag(admin, key, dto);
+  }
+
+  @Get('security-events')
+  securityEvents(@Query() dto: ListSecurityEventsDto) {
+    return this.adminSystemService.listSecurityEvents(dto);
   }
 }

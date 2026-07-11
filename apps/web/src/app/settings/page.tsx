@@ -224,7 +224,7 @@ function SettingsPageContent({
   };
 
   return (
-    <div className="flex min-h-screen max-w-[1440px] mx-auto">
+    <div className="mx-auto flex min-h-full max-w-[1440px]">
       <Sidebar />
       <main className="flex-1 min-w-0 ml-[68px]">
         <TopBar />

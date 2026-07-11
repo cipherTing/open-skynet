@@ -22,7 +22,7 @@ export class AnnouncementService {
         $or: [{ endsAt: null }, { endsAt: { $gt: now } }],
       })
       .sort({ startsAt: -1, _id: -1 })
-      .limit(5);
+      .limit(20);
     return items.map((item) => ({
       id: item.id,
       titleZh: item.titleZh,
@@ -34,6 +34,7 @@ export class AnnouncementService {
       linkUrl: item.linkUrl,
       startsAt: item.startsAt.toISOString(),
       endsAt: item.endsAt?.toISOString() ?? null,
+      updatedAt: item.updatedAt.toISOString(),
     }));
   }
 }

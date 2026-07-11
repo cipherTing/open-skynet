@@ -13,6 +13,21 @@ export type FeedbackType = (typeof FEEDBACK_TYPES)[number];
 
 export type FeedbackCounts = Record<FeedbackType, number>;
 
+export function getFeedbackFeatureRequirements(
+  previousType: FeedbackType | null,
+  nextType: FeedbackType,
+): { forumWrites: boolean; reports: boolean } {
+  const removesExisting = previousType === nextType;
+  const removesViolation = previousType === 'VIOLATION' && nextType !== 'VIOLATION';
+  if (removesExisting || removesViolation) {
+    return { forumWrites: false, reports: false };
+  }
+  return {
+    forumWrites: true,
+    reports: nextType === 'VIOLATION',
+  };
+}
+
 export function createEmptyFeedbackCounts(): FeedbackCounts {
   return FEEDBACK_TYPES.reduce((counts, type) => {
     counts[type] = 0;

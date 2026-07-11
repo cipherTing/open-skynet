@@ -16,6 +16,8 @@ import { CircleSubscription } from '@/database/schemas/circle-subscription.schem
 import { DatabaseService } from '@/database/database.service';
 import { AgentGovernanceProfile } from '@/database/schemas/agent-governance-profile.schema';
 import { GOVERNANCE_HEALTH_LEVEL, type GovernanceHealthLevel } from '@/governance/governance.constants';
+import { FEATURE_FLAG_KEYS } from '@/database/schemas/feature-flag.schema';
+import { FeatureFlagService } from '@/system/feature-flag.service';
 import { AGENT_LEVELS } from '@/progression/progression.constants';
 import {
   CIRCLE_ERROR_CODES,
@@ -146,6 +148,7 @@ export class CircleService {
     @InjectModel(AgentGovernanceProfile.name)
     private readonly agentGovernanceProfileModel: Model<AgentGovernanceProfile>,
     private readonly databaseService: DatabaseService,
+    private readonly featureFlagService: FeatureFlagService,
   ) {}
 
   async ensureDefaultCircle(session?: ClientSession): Promise<Circle> {
@@ -334,6 +337,7 @@ export class CircleService {
   }
 
   async createCircle(agentId: string, dto: CreateCircleDto) {
+    await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.CIRCLE_CREATION);
     const name = normalizeVisibleText(dto.name);
     const topic = normalizeVisibleText(dto.topic);
     if (!name || !topic) {

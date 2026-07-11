@@ -1,5 +1,6 @@
 import axios, { AxiosHeaders, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios';
 import { apiRequest, ApiError } from '@/lib/api';
+import { appEvents } from '@/lib/events';
 
 const ADMIN_CSRF_STORAGE_KEY = 'skynet-admin-csrf';
 const API_BASE =
@@ -13,7 +14,59 @@ export type AdminSection =
   | 'content'
   | 'circles'
   | 'governance'
+  | 'announcements'
+  | 'featureFlags'
+  | 'security'
   | 'audit';
+
+export type AdminAnnouncementStatus = 'DRAFT' | 'PUBLISHED' | 'WITHDRAWN';
+export type AdminAnnouncementKind = 'INFO' | 'MAINTENANCE' | 'SECURITY' | 'INCIDENT';
+export type AdminFeatureFlagKey =
+  | 'registration'
+  | 'forumWrites'
+  | 'reports'
+  | 'circleCreation'
+  | 'governanceParticipation';
+
+export interface AdminAnnouncement {
+  id: string;
+  titleZh: string;
+  titleEn: string;
+  bodyZh: string;
+  bodyEn: string;
+  kind: AdminAnnouncementKind;
+  status: AdminAnnouncementStatus;
+  startsAt: string;
+  endsAt: string | null;
+  dismissible: boolean;
+  linkUrl: string | null;
+  createdByUserId: string;
+  updatedByUserId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminFeatureFlag {
+  key: AdminFeatureFlagKey;
+  enabled: boolean;
+  reason: string | null;
+  reviewAt: string | null;
+  updatedAt: string | null;
+  updatedByUserId: string | null;
+}
+
+export interface AdminSecurityEvent {
+  id: string;
+  type: string;
+  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  fingerprint: string;
+  route: string;
+  bucketStart: string;
+  sampleCount: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  details: { reason?: string };
+}
 
 export interface AdminOverview {
   agents: number;
@@ -132,6 +185,17 @@ adminClient.interceptors.response.use(
   (error: unknown) => {
     if (axios.isAxiosError<unknown>(error)) {
       const payload = error.response?.data;
+      const csrfRejected =
+        isRecord(payload) &&
+        isRecord(payload.error) &&
+        payload.error.code === 'ADMIN_CSRF_REJECTED';
+      if (
+        (error.response?.status === 401 || csrfRejected) &&
+        typeof window !== 'undefined'
+      ) {
+        window.sessionStorage.removeItem(ADMIN_CSRF_STORAGE_KEY);
+        appEvents.emit('admin:expired');
+      }
       if (isRecord(payload) && isRecord(payload.error)) {
         const body = payload.error;
         throw new ApiError(
@@ -202,4 +266,78 @@ export const adminApi = {
     adminRequest<AdminPage<AdminGovernanceCaseItem>>('GET', `/admin/governance/cases${params(query)}`),
   auditLogs: (query: { page?: number; pageSize?: number }) =>
     adminRequest<AdminPage<AdminAuditItem>>('GET', `/admin/audit-logs${params(query)}`),
+  announcements: (query: {
+    page?: number;
+    pageSize?: number;
+    status?: string;
+    kind?: string;
+    search?: string;
+  }) =>
+    adminRequest<AdminPage<AdminAnnouncement>>(
+      'GET',
+      `/admin/announcements${params(query)}`,
+    ),
+  createAnnouncement: (data: {
+    titleZh: string;
+    titleEn: string;
+    bodyZh: string;
+    bodyEn: string;
+    kind: AdminAnnouncementKind;
+    startsAt: string;
+    endsAt?: string | null;
+    dismissible: boolean;
+    linkUrl?: string | null;
+    reason: string;
+  }) => adminRequest<AdminAnnouncement>('POST', '/admin/announcements', data),
+  updateAnnouncement: (
+    id: string,
+    data: {
+      expectedUpdatedAt: string;
+      titleZh?: string;
+      titleEn?: string;
+      bodyZh?: string;
+      bodyEn?: string;
+      kind?: AdminAnnouncementKind;
+      startsAt?: string;
+      endsAt?: string | null;
+      dismissible?: boolean;
+      linkUrl?: string | null;
+      reason: string;
+    },
+  ) => adminRequest<AdminAnnouncement>('PATCH', `/admin/announcements/${id}`, data),
+  publishAnnouncement: (id: string, expectedUpdatedAt: string, reason: string) =>
+    adminRequest<AdminAnnouncement>('POST', `/admin/announcements/${id}/publish`, {
+      expectedUpdatedAt,
+      reason,
+    }),
+  withdrawAnnouncement: (id: string, expectedUpdatedAt: string, reason: string) =>
+    adminRequest<AdminAnnouncement>('POST', `/admin/announcements/${id}/withdraw`, {
+      expectedUpdatedAt,
+      reason,
+    }),
+  deleteAnnouncement: (id: string, expectedUpdatedAt: string, reason: string) =>
+    adminRequest<{ deleted: true }>('DELETE', `/admin/announcements/${id}`, {
+      expectedUpdatedAt,
+      reason,
+    }),
+  featureFlags: () => adminRequest<AdminFeatureFlag[]>('GET', '/admin/feature-flags'),
+  updateFeatureFlag: (
+    key: AdminFeatureFlagKey,
+    data: {
+      enabled: boolean;
+      reason: string;
+      reviewAt?: string | null;
+      expectedUpdatedAt?: string | null;
+    },
+  ) => adminRequest<AdminFeatureFlag>('PATCH', `/admin/feature-flags/${key}`, data),
+  securityEvents: (query: {
+    page?: number;
+    pageSize?: number;
+    type?: string;
+    severity?: string;
+  }) =>
+    adminRequest<AdminPage<AdminSecurityEvent>>(
+      'GET',
+      `/admin/security-events${params(query)}`,
+    ),
 };

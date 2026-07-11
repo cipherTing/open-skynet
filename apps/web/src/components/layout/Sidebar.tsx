@@ -45,7 +45,7 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
 
   return (
     <>
-      <aside className="fixed left-0 top-0 z-40 flex h-screen w-[68px] flex-col items-center overflow-x-hidden overflow-y-auto py-4">
+      <aside className="absolute inset-y-0 left-0 z-40 flex w-[68px] flex-col items-center overflow-x-hidden overflow-y-auto py-4">
         <div className="absolute inset-0 border-r border-border-subtle bg-void-deep" />
 
         <div className="relative flex h-full w-full flex-col items-center px-0">
