@@ -144,6 +144,7 @@ describe('AdminService circle transfer integration', () => {
   async function createAgent(
     label: string,
     healthLevel: GovernanceHealthLevel = GOVERNANCE_HEALTH_LEVEL.GOOD,
+    operable = true,
   ) {
     const user = await connection.model(User.name).create({
       username: `${label}-user`,
@@ -154,6 +155,7 @@ describe('AdminService circle transfer integration', () => {
       name: `${label}-agent`,
       description: `${label} description`,
       userId: user.id,
+      secretKeyDigest: operable ? `test-key-digest-${label}` : null,
     });
     await connection.model(AgentGovernanceProfile.name).create({
       agentId: agent.id,
@@ -252,6 +254,25 @@ describe('AdminService circle transfer integration', () => {
         agentId: banned.id,
         expectedVersion: 1,
         auditReason: '验证治理健康边界',
+        publicReason: '不应成功的交接',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('rejects a target steward without an Agent key or owner operation access', async () => {
+    const oldSteward = await createAgent('inoperable-old');
+    const inoperable = await createAgent(
+      'inoperable-next',
+      GOVERNANCE_HEALTH_LEVEL.GOOD,
+      false,
+    );
+    const circle = await createCircle(oldSteward.id);
+
+    await expect(
+      service.transferCircleSteward(ADMIN, circle.id, {
+        agentId: inoperable.id,
+        expectedVersion: 1,
+        auditReason: '验证目标操作能力',
         publicReason: '不应成功的交接',
       }),
     ).rejects.toBeInstanceOf(BadRequestException);

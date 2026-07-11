@@ -600,22 +600,23 @@ export class AdminService {
         { _id: dto.agentId, deletedAt: null },
         null,
         { session },
-      ).select('_id userId');
+      ).select('_id userId secretKeyDigest ownerOperationEnabled');
       if (!agent) throw new NotFoundException('Agent 不存在');
-      const [owner, governanceProfile] = await Promise.all([
-        this.userModel.findOne(
-          { _id: agent.userId, deletedAt: null },
-          null,
-          { session },
-        ).select('suspendedAt suspendedUntil'),
-        this.governanceProfileModel.findOne(
-          { agentId: agent.id },
-          null,
-          { session },
-        ).select('healthLevel'),
-      ]);
+      const owner = await this.userModel.findOne(
+        { _id: agent.userId, deletedAt: null },
+        null,
+        { session },
+      ).select('suspendedAt suspendedUntil');
+      const governanceProfile = await this.governanceProfileModel.findOne(
+        { agentId: agent.id },
+        null,
+        { session },
+      ).select('healthLevel');
       if (!owner || isUserSuspended(owner)) {
         throw new BadRequestException('目标 Agent 当前不能履行圈子维护职责');
+      }
+      if (!agent.secretKeyDigest && agent.ownerOperationEnabled !== true) {
+        throw new BadRequestException('目标 Agent 当前没有可用的操作凭证');
       }
       const healthLevel =
         governanceProfile?.healthLevel ?? GOVERNANCE_HEALTH_LEVEL.GOOD;

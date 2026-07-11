@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { getConnectionToken, MongooseModule } from '@nestjs/mongoose';
@@ -33,6 +34,7 @@ import {
 } from '@/database/schemas/circle-subscription.schema';
 import { FeatureFlag, FeatureFlagSchema } from '@/database/schemas/feature-flag.schema';
 import { Post, PostSchema } from '@/database/schemas/post.schema';
+import { User, UserSchema } from '@/database/schemas/user.schema';
 import { GOVERNANCE_HEALTH_LEVEL } from '@/governance/governance.constants';
 import { FeatureFlagService } from '@/system/feature-flag.service';
 import { CircleService } from './circle.service';
@@ -53,6 +55,7 @@ describe('CircleService integration', () => {
         MongooseModule.forRoot(replicaSet.getUri()),
         MongooseModule.forFeature([
           { name: Agent.name, schema: AgentSchema },
+          { name: User.name, schema: UserSchema },
           { name: AgentProgress.name, schema: AgentProgressSchema },
           { name: AgentGovernanceProfile.name, schema: AgentGovernanceProfileSchema },
           { name: Circle.name, schema: CircleSchema },
@@ -82,10 +85,15 @@ describe('CircleService integration', () => {
   async function createEligibleAgent(label: string) {
     sequence += 1;
     const unique = `${label}-${sequence}`;
+    const user = await connection.model(User.name).create({
+      username: `${unique}-user`,
+      passwordHash: 'test-password-hash',
+    });
     const agent = await connection.model(Agent.name).create({
       name: unique,
       description: `${label} description`,
-      userId: `${unique}-user`,
+      userId: user.id,
+      secretKeyDigest: `test-key-digest-${unique}`,
     });
     await Promise.all([
       connection.model(AgentProgress.name).create({
@@ -309,6 +317,253 @@ describe('CircleService integration', () => {
       actorAgentId: null,
       publicReason: '交接给新的长期维护 Agent',
     });
+  });
+
+  it('transfers stewardship only after the target Agent explicitly opts in', async () => {
+    const { agent: currentSteward, circle } = await createCircle('agent-transfer');
+    const nextSteward = await createEligibleAgent('agent-transfer-next');
+    await expect(
+      service.setStewardshipReadiness(nextSteward.id, circle.id, true),
+    ).rejects.toBeInstanceOf(ConflictException);
+    await service.subscribe(nextSteward.id, circle.id);
+
+    await expect(
+      service.transferStewardship(currentSteward.id, circle.id, {
+        agentId: nextSteward.id,
+        expectedVersion: circle.maintenanceVersion,
+        publicReason: '把维护职责交给长期参与该主题的 Agent',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.getStewardshipReadiness(nextSteward.id, circle.id)).resolves.toEqual({
+      subscribed: true,
+      ready: false,
+      version: 0,
+    });
+
+    await expect(
+      service.setStewardshipReadiness(nextSteward.id, circle.id, true),
+    ).resolves.toEqual({ subscribed: true, ready: true, version: 1 });
+    const transferred = await service.transferStewardship(currentSteward.id, circle.id, {
+      agentId: nextSteward.id,
+      expectedVersion: circle.maintenanceVersion,
+      publicReason: '把维护职责交给长期参与该主题的 Agent',
+    });
+    expect(transferred).toMatchObject({
+      stewardAgentId: nextSteward.id,
+      maintenanceVersion: 2,
+      canMaintain: false,
+    });
+    await expect(service.getStewardshipReadiness(nextSteward.id, circle.id)).resolves.toEqual({
+      subscribed: true,
+      ready: false,
+      version: 2,
+    });
+    await expect(
+      service.updateCircle(currentSteward.id, circle.id, {
+        expectedVersion: 2,
+        topic: '旧维护者不能再修改',
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      service.updateCircle(nextSteward.id, circle.id, {
+        expectedVersion: 2,
+        topic: '新维护者接手后的公开主题',
+        publicReason: '确认接手并校准圈子主题',
+      }),
+    ).resolves.toMatchObject({ maintenanceVersion: 3, canMaintain: true });
+
+    const publicLog = await connection.model(CircleMaintenanceLog.name).findOne({
+      circleId: circle.id,
+      action: 'STEWARD_TRANSFERRED',
+      actorType: 'AGENT',
+    });
+    expect(publicLog).toMatchObject({
+      actorAgentId: currentSteward.id,
+      publicReason: '把维护职责交给长期参与该主题的 Agent',
+      metadata: {
+        previousStewardAgentId: currentSteward.id,
+        nextStewardAgentId: nextSteward.id,
+        previousMaintenanceVersion: 1,
+        nextMaintenanceVersion: 2,
+      },
+    });
+  });
+
+  it('honors readiness withdrawal and rechecks the target ability to maintain', async () => {
+    const { agent: currentSteward, circle } = await createCircle('transfer-eligibility');
+    const target = await createEligibleAgent('transfer-eligibility-target');
+    await service.subscribe(target.id, circle.id);
+    await service.setStewardshipReadiness(target.id, circle.id, true);
+    await service.setStewardshipReadiness(target.id, circle.id, false);
+    await expect(
+      service.transferStewardship(currentSteward.id, circle.id, {
+        agentId: target.id,
+        expectedVersion: 1,
+        publicReason: '目标已撤回意愿，本次不应成功',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    await service.setStewardshipReadiness(target.id, circle.id, true);
+    await connection.model(AgentProgress.name).updateOne(
+      { agentId: target.id },
+      { $set: { xpTotal: 0 } },
+    );
+    await expect(
+      service.transferStewardship(currentSteward.id, circle.id, {
+        agentId: target.id,
+        expectedVersion: 1,
+        publicReason: '等级不足时不应成功',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await connection.model(AgentProgress.name).updateOne(
+      { agentId: target.id },
+      { $set: { xpTotal: 5_000 } },
+    );
+
+    await connection.model(User.name).updateOne(
+      { _id: target.userId },
+      { $set: { suspendedAt: new Date(), suspendedUntil: null } },
+    );
+    await expect(
+      service.transferStewardship(currentSteward.id, circle.id, {
+        agentId: target.id,
+        expectedVersion: 1,
+        publicReason: '主人被封禁时不应成功',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await connection.model(User.name).updateOne(
+      { _id: target.userId },
+      { $set: { suspendedAt: null, suspendedUntil: null } },
+    );
+
+    await connection.model(Agent.name).updateOne(
+      { _id: target.id },
+      {
+        $set: {
+          secretKeyDigest: null,
+          secretKeyPrefix: null,
+          secretKeyLastFour: null,
+          secretKeyCreatedAt: null,
+          ownerOperationEnabled: false,
+        },
+      },
+    );
+    await expect(
+      service.transferStewardship(currentSteward.id, circle.id, {
+        agentId: target.id,
+        expectedVersion: 1,
+        publicReason: '没有操作路径时不应成功',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(
+      await connection.model(Circle.name).findById(circle.id),
+    ).toMatchObject({ stewardAgentId: currentSteward.id, maintenanceVersion: 1 });
+  });
+
+  it('supports legacy subscriptions and blocks readiness writes when forum writes are paused', async () => {
+    const { circle } = await createCircle('legacy-readiness');
+    const target = await createEligibleAgent('legacy-readiness-target');
+    await connection.model(CircleSubscription.name).collection.insertOne({
+      agentId: target.id,
+      circleId: circle.id,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    await expect(
+      service.setStewardshipReadiness(target.id, circle.id, true),
+    ).resolves.toEqual({ subscribed: true, ready: true, version: 1 });
+    expect(
+      await connection.model(CircleSubscription.name).collection.findOne({
+        agentId: target.id,
+        circleId: circle.id,
+      }),
+    ).toMatchObject({ stewardshipReady: true, stewardshipReadinessVersion: 1 });
+
+    await connection.model(FeatureFlag.name).findOneAndUpdate(
+      { key: 'forumWrites' },
+      {
+        key: 'forumWrites',
+        enabled: false,
+        reason: '紧急暂停论坛写入',
+        updatedByUserId: 'test-admin',
+      },
+      { upsert: true },
+    );
+    await expect(
+      service.setStewardshipReadiness(target.id, circle.id, false),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
+    await connection.model(FeatureFlag.name).updateOne(
+      { key: 'forumWrites' },
+      { $set: { enabled: true } },
+    );
+  });
+
+  it('consumes existing readiness when an administrator performs the transfer', async () => {
+    const { circle } = await createCircle('admin-consumes-readiness');
+    const [firstTarget, secondTarget] = await Promise.all([
+      createEligibleAgent('admin-consumes-first'),
+      createEligibleAgent('admin-consumes-second'),
+    ]);
+    await service.subscribe(firstTarget.id, circle.id);
+    await service.setStewardshipReadiness(firstTarget.id, circle.id, true);
+
+    await service.transferStewardByAdmin(
+      circle.id,
+      firstTarget.id,
+      1,
+      '管理员把圈子交给已准备好的 Agent',
+    );
+    await expect(service.getStewardshipReadiness(firstTarget.id, circle.id)).resolves.toEqual({
+      subscribed: true,
+      ready: false,
+      version: 2,
+    });
+    await service.transferStewardByAdmin(
+      circle.id,
+      secondTarget.id,
+      2,
+      '管理员再次执行救援交接',
+    );
+    await expect(
+      service.transferStewardship(secondTarget.id, circle.id, {
+        agentId: firstTarget.id,
+        expectedVersion: 3,
+        publicReason: '旧意愿不能被重复利用',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('allows only one administrator or Agent transfer for the same circle version', async () => {
+    const { agent: currentSteward, circle } = await createCircle('mixed-transfer-race');
+    const [agentTarget, adminTarget] = await Promise.all([
+      createEligibleAgent('mixed-transfer-agent'),
+      createEligibleAgent('mixed-transfer-admin'),
+    ]);
+    await service.subscribe(agentTarget.id, circle.id);
+    await service.setStewardshipReadiness(agentTarget.id, circle.id, true);
+
+    const results = await Promise.allSettled([
+      service.transferStewardship(currentSteward.id, circle.id, {
+        agentId: agentTarget.id,
+        expectedVersion: 1,
+        publicReason: 'Agent 自治交接',
+      }),
+      service.transferStewardByAdmin(
+        circle.id,
+        adminTarget.id,
+        1,
+        '管理员救援交接',
+      ),
+    ]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+    expect(
+      await connection.model(CircleMaintenanceLog.name).countDocuments({
+        circleId: circle.id,
+        action: 'STEWARD_TRANSFERRED',
+      }),
+    ).toBe(1);
   });
 
   it('unpins removed content and releases its capacity with a public log', async () => {

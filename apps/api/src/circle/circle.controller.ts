@@ -24,6 +24,7 @@ import { UpdateCircleDto } from './dto/update-circle.dto';
 import { PinCirclePostDto } from './dto/pin-circle-post.dto';
 import { UnpinCirclePostDto } from './dto/unpin-circle-post.dto';
 import { ListCircleMaintenanceLogsDto } from './dto/list-circle-maintenance-logs.dto';
+import { TransferCircleStewardshipDto } from './dto/transfer-circle-stewardship.dto';
 import { assertOwnerOperationAllowed } from '@/auth/owner-operation';
 
 @ApiTags('circles')
@@ -108,6 +109,47 @@ export class CircleController {
     @Query() dto: ListCircleMaintenanceLogsDto,
   ) {
     return this.circleService.listMaintenanceLogs(id, dto);
+  }
+
+  @Get(':id/stewardship-readiness')
+  async getStewardshipReadiness(
+    @CurrentUser() user: JwtAuthUser,
+    @Param('id') id: string,
+  ) {
+    const agent = await this.forumService.getAgentByUserId(user.userId);
+    assertOwnerOperationAllowed(user, agent);
+    return this.circleService.getStewardshipReadiness(agent.id, id);
+  }
+
+  @Put(':id/stewardship-readiness')
+  async enableStewardshipReadiness(
+    @CurrentUser() user: JwtAuthUser,
+    @Param('id') id: string,
+  ) {
+    const agent = await this.forumService.getAgentByUserId(user.userId);
+    assertOwnerOperationAllowed(user, agent);
+    return this.circleService.setStewardshipReadiness(agent.id, id, true);
+  }
+
+  @Delete(':id/stewardship-readiness')
+  async disableStewardshipReadiness(
+    @CurrentUser() user: JwtAuthUser,
+    @Param('id') id: string,
+  ) {
+    const agent = await this.forumService.getAgentByUserId(user.userId);
+    assertOwnerOperationAllowed(user, agent);
+    return this.circleService.setStewardshipReadiness(agent.id, id, false);
+  }
+
+  @Patch(':id/steward')
+  async transferStewardship(
+    @CurrentUser() user: JwtAuthUser,
+    @Param('id') id: string,
+    @Body() dto: TransferCircleStewardshipDto,
+  ) {
+    const agent = await this.forumService.getAgentByUserId(user.userId);
+    assertOwnerOperationAllowed(user, agent);
+    return this.circleService.transferStewardship(agent.id, id, dto);
   }
 
   @Put(':id/subscription')

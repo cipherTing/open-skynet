@@ -42,6 +42,7 @@ import {
   ReportTargetStateSchema,
 } from '@/database/schemas/report-target-state.schema';
 import {
+  GOVERNANCE_CASE_STATUS,
   GOVERNANCE_HEALTH_LEVEL,
 } from '@/governance/governance.constants';
 import { GovernanceService } from '@/governance/governance.service';
@@ -168,6 +169,23 @@ describe('ReportService integration', () => {
       reason: REPORT_REASONS.COMMUNITY_SABOTAGE,
       evidence: '内容明确试图破坏社区的正常交流',
     });
+  }
+
+  async function createOpenCase() {
+    const author = await createAgent();
+    const post = await createPost(author.id);
+    const reporters = await Promise.all([createAgent(), createAgent(), createAgent()]);
+    await Promise.all(
+      reporters.map((reporter) => reportPost(reporter.id, reporter.userId, post.id)),
+    );
+    const [state, governanceCase] = await Promise.all([
+      connection.model(ReportTargetState.name).findOne({ targetId: post.id }),
+      connection.model(GovernanceCase.name)
+        .findOne({ targetId: post.id })
+        .select('+reporterAgentIds +reporterOwnerUserIds +targetAuthorOwnerUserId'),
+    ]);
+    if (!state || !governanceCase) throw new Error('测试案件创建失败');
+    return { state, governanceCase };
   }
 
   it('opens exactly one case after three distinct agents and owners report concurrently', async () => {
@@ -330,5 +348,380 @@ describe('ReportService integration', () => {
     });
     await expect(service.onModuleInit()).rejects.toThrow('pnpm db:reset');
     await connection.model(Feedback.name).collection.deleteOne({ _id: legacyId });
+  });
+
+  it('rejects startup when a governance case is linked to an inconsistent report state', async () => {
+    const { state, governanceCase } = await createOpenCase();
+    const original = {
+      caseId: state.caseId,
+      targetKey: state.targetKey,
+      targetAuthorId: state.targetAuthorId,
+      targetAuthorOwnerUserId: governanceCase.targetAuthorOwnerUserId,
+      status: state.status,
+    };
+
+    await connection.model(ReportTargetState.name).collection.updateOne(
+      { _id: state._id },
+      { $set: { caseId: new Types.ObjectId().toString() } },
+    );
+    await expect(service.onModuleInit()).rejects.toThrow('pnpm db:reset');
+
+    await connection.model(ReportTargetState.name).collection.updateOne(
+      { _id: state._id },
+      {
+        $set: {
+          caseId: original.caseId,
+          status: REPORT_TARGET_STATUSES.RESOLVED_NOT_VIOLATION,
+        },
+      },
+    );
+    await expect(service.onModuleInit()).rejects.toThrow('pnpm db:reset');
+
+    await connection.model(ReportTargetState.name).collection.updateOne(
+      { _id: state._id },
+      {
+        $set: {
+          status: original.status,
+          targetKey: `${original.targetKey}:corrupted`,
+        },
+      },
+    );
+    await expect(service.onModuleInit()).rejects.toThrow('pnpm db:reset');
+
+    await connection.model(ReportTargetState.name).collection.updateOne(
+      { _id: state._id },
+      {
+        $set: {
+          targetKey: original.targetKey,
+          targetAuthorId: new Types.ObjectId().toString(),
+        },
+      },
+    );
+    await expect(service.onModuleInit()).rejects.toThrow('pnpm db:reset');
+
+    await connection.model(ReportTargetState.name).collection.updateOne(
+      { _id: state._id },
+      { $set: { targetAuthorId: original.targetAuthorId } },
+    );
+
+    const incorrectAuthorId = new Types.ObjectId().toString();
+    await Promise.all([
+      connection.model(ReportTargetState.name).collection.updateOne(
+        { _id: state._id },
+        { $set: { targetAuthorId: incorrectAuthorId } },
+      ),
+      connection.model(GovernanceCase.name).collection.updateOne(
+        { _id: governanceCase._id },
+        { $set: { targetAuthorId: incorrectAuthorId } },
+      ),
+    ]);
+    await expect(service.onModuleInit()).rejects.toThrow('pnpm db:reset');
+
+    await Promise.all([
+      connection.model(ReportTargetState.name).collection.updateOne(
+        { _id: state._id },
+        { $set: { targetAuthorId: original.targetAuthorId } },
+      ),
+      connection.model(GovernanceCase.name).collection.updateOne(
+        { _id: governanceCase._id },
+        { $set: { targetAuthorId: original.targetAuthorId } },
+      ),
+    ]);
+
+    await connection.model(GovernanceCase.name).collection.updateOne(
+      { _id: governanceCase._id },
+      { $set: { targetAuthorOwnerUserId: 'corrupted-author-owner' } },
+    );
+    await expect(service.onModuleInit()).rejects.toThrow('pnpm db:reset');
+    await connection.model(GovernanceCase.name).collection.updateOne(
+      { _id: governanceCase._id },
+      { $set: { targetAuthorOwnerUserId: original.targetAuthorOwnerUserId } },
+    );
+
+    const report = await connection.model(Report.name).findOne({ targetId: state.targetId });
+    if (!report) throw new Error('测试举报事实创建失败');
+    await connection.model(Report.name).collection.updateOne(
+      { _id: report._id },
+      { $set: { reporterOwnerUserId: 'corrupted-owner' } },
+    );
+    await expect(service.onModuleInit()).rejects.toThrow('pnpm db:reset');
+    await connection.model(Report.name).collection.updateOne(
+      { _id: report._id },
+      { $set: { reporterOwnerUserId: report.reporterOwnerUserId } },
+    );
+    await expect(service.onModuleInit()).resolves.toBeUndefined();
+  });
+
+  it('accepts every valid governance lifecycle mapping and rejects unknown case states', async () => {
+    const { state, governanceCase } = await createOpenCase();
+    const validMappings = [
+      [GOVERNANCE_CASE_STATUS.OPEN, REPORT_TARGET_STATUSES.CASE_OPEN],
+      [GOVERNANCE_CASE_STATUS.EMERGENCY, REPORT_TARGET_STATUSES.CASE_OPEN],
+      [GOVERNANCE_CASE_STATUS.RESOLVED_VIOLATION, REPORT_TARGET_STATUSES.RESOLVED_VIOLATION],
+      [GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION, REPORT_TARGET_STATUSES.RESOLVED_NOT_VIOLATION],
+    ] as const;
+
+    for (const [caseStatus, stateStatus] of validMappings) {
+      const resolved = caseStatus === GOVERNANCE_CASE_STATUS.RESOLVED_VIOLATION
+        || caseStatus === GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION;
+      await connection.model(GovernanceCase.name).collection.updateOne(
+        { _id: governanceCase._id },
+        {
+          $set: {
+            status: caseStatus,
+            resolution: resolved ? caseStatus : null,
+            resolvedAt: resolved ? new Date() : null,
+          },
+        },
+      );
+      await connection.model(ReportTargetState.name).collection.updateOne(
+        { _id: state._id },
+        { $set: { status: stateStatus } },
+      );
+      await expect(service.onModuleInit()).resolves.toBeUndefined();
+    }
+
+    await connection.model(GovernanceCase.name).collection.updateOne(
+      { _id: governanceCase._id },
+      { $set: { resolution: null } },
+    );
+    await expect(service.onModuleInit()).rejects.toThrow('pnpm db:reset');
+
+    await connection.model(GovernanceCase.name).collection.updateOne(
+      { _id: governanceCase._id },
+      { $set: { status: 'BROKEN', resolution: null, resolvedAt: null } },
+    );
+    await connection.model(ReportTargetState.name).collection.updateOne(
+      { _id: state._id },
+      { $set: { status: REPORT_TARGET_STATUSES.CASE_OPEN } },
+    );
+    await expect(service.onModuleInit()).rejects.toThrow('pnpm db:reset');
+
+    await connection.model(GovernanceCase.name).collection.updateOne(
+      { _id: governanceCase._id },
+      { $set: { status: GOVERNANCE_CASE_STATUS.OPEN, resolution: null, resolvedAt: null } },
+    );
+  });
+
+  it('rejects duplicate report target states even when both match the same case', async () => {
+    const { state } = await createOpenCase();
+    const collection = connection.model(ReportTargetState.name).collection;
+    const storedState = await collection.findOne({ _id: state._id });
+    if (!storedState) throw new Error('测试举报状态读取失败');
+    const duplicateId = new Types.ObjectId();
+
+    await Promise.all([
+      collection.dropIndex('uq_report_target_states_target_key'),
+      collection.dropIndex('uq_report_target_states_case_id'),
+    ]);
+    try {
+      await collection.insertOne({ ...storedState, _id: duplicateId });
+      await expect(service.onModuleInit()).rejects.toThrow('pnpm db:reset');
+      await collection.deleteOne({ _id: duplicateId });
+
+      await collection.insertOne({
+        ...storedState,
+        _id: duplicateId,
+        status: REPORT_TARGET_STATUSES.COLLECTING,
+        caseId: null,
+      });
+      await expect(service.onModuleInit()).rejects.toThrow('pnpm db:reset');
+    } finally {
+      await collection.deleteOne({ _id: duplicateId });
+      await Promise.all([
+        collection.createIndex(
+          { targetKey: 1 },
+          { unique: true, name: 'uq_report_target_states_target_key' },
+        ),
+        collection.createIndex(
+          { caseId: 1 },
+          {
+            unique: true,
+            name: 'uq_report_target_states_case_id',
+            partialFilterExpression: { caseId: { $type: 'string' } },
+          },
+        ),
+      ]);
+    }
+  });
+
+  it('rejects a case whose reporter owners are not distinct even when every snapshot agrees', async () => {
+    const { state, governanceCase } = await createOpenCase();
+    const reporterAgentIds: string[] = governanceCase.reporterAgentIds;
+    const originalOwnerUserIds: string[] = governanceCase.reporterOwnerUserIds;
+    const qualifiedReporters: Array<{ agentId: string; ownerUserId: string }> =
+      state.qualifiedReporters;
+    const sharedOwnerUserId = `corrupted-shared-owner-${++sequence}`;
+    const agentObjectIds = reporterAgentIds.map((agentId) => new Types.ObjectId(agentId));
+    const sharedQualifiedReporters = qualifiedReporters.map((reporter) => ({
+      agentId: reporter.agentId,
+      ownerUserId: sharedOwnerUserId,
+    }));
+
+    await connection.model(Agent.name).collection.updateMany(
+      { _id: { $in: agentObjectIds } },
+      { $set: { deletedAt: new Date() } },
+    );
+    await Promise.all([
+      connection.model(Agent.name).collection.updateMany(
+        { _id: { $in: agentObjectIds } },
+        { $set: { userId: sharedOwnerUserId } },
+      ),
+      connection.model(GovernanceCase.name).collection.updateOne(
+        { _id: governanceCase._id },
+        { $set: { reporterOwnerUserIds: reporterAgentIds.map(() => sharedOwnerUserId) } },
+      ),
+      connection.model(ReportTargetState.name).collection.updateOne(
+        { _id: state._id },
+        { $set: { qualifiedReporters: sharedQualifiedReporters } },
+      ),
+      connection.model(Report.name).collection.updateMany(
+        { targetId: state.targetId },
+        { $set: { reporterOwnerUserId: sharedOwnerUserId } },
+      ),
+    ]);
+    await expect(service.onModuleInit()).rejects.toThrow('pnpm db:reset');
+
+    await Promise.all(
+      reporterAgentIds.map((agentId, index) =>
+        connection.model(Agent.name).collection.updateOne(
+          { _id: new Types.ObjectId(agentId) },
+          { $set: { userId: originalOwnerUserIds[index] } },
+        )),
+    );
+    await Promise.all([
+      connection.model(Agent.name).collection.updateMany(
+        { _id: { $in: agentObjectIds } },
+        { $set: { deletedAt: null } },
+      ),
+      connection.model(GovernanceCase.name).collection.updateOne(
+        { _id: governanceCase._id },
+        { $set: { reporterOwnerUserIds: originalOwnerUserIds } },
+      ),
+      connection.model(ReportTargetState.name).collection.updateOne(
+        { _id: state._id },
+        {
+          $set: {
+            qualifiedReporters: qualifiedReporters.map((reporter, index) => ({
+              agentId: reporter.agentId,
+              ownerUserId: originalOwnerUserIds[index],
+            })),
+          },
+        },
+      ),
+      ...reporterAgentIds.map((agentId, index) =>
+        connection.model(Report.name).collection.updateOne(
+          { targetId: state.targetId, reporterAgentId: agentId },
+          { $set: { reporterOwnerUserId: originalOwnerUserIds[index] } },
+        )),
+    ]);
+    await expect(service.onModuleInit()).resolves.toBeUndefined();
+  });
+
+  it('rejects orphan and invalid no-case report target states', async () => {
+    const author = await createAgent();
+    const reporter = await createAgent();
+    const post = await createPost(author.id);
+    await reportPost(reporter.id, reporter.userId, post.id);
+    const state = await connection.model(ReportTargetState.name).findOne({ targetId: post.id });
+    if (!state) throw new Error('测试举报状态创建失败');
+    const nonexistentCaseId = new Types.ObjectId().toString();
+    const invalidShapes = [
+      [REPORT_TARGET_STATUSES.CASE_OPEN, null],
+      [REPORT_TARGET_STATUSES.RESOLVED_VIOLATION, nonexistentCaseId],
+      [REPORT_TARGET_STATUSES.COLLECTING, nonexistentCaseId],
+      [REPORT_TARGET_STATUSES.TARGET_REMOVED, nonexistentCaseId],
+    ] as const;
+
+    for (const [status, caseId] of invalidShapes) {
+      await connection.model(ReportTargetState.name).collection.updateOne(
+        { _id: state._id },
+        { $set: { status, caseId } },
+      );
+      await expect(service.onModuleInit()).rejects.toThrow('pnpm db:reset');
+    }
+
+    await connection.model(ReportTargetState.name).collection.updateOne(
+      { _id: state._id },
+      {
+        $set: { status: REPORT_TARGET_STATUSES.COLLECTING },
+        $unset: { caseId: '' },
+      },
+    );
+    await expect(service.onModuleInit()).rejects.toThrow('pnpm db:reset');
+
+    await connection.model(ReportTargetState.name).collection.updateOne(
+      { _id: state._id },
+      { $set: { status: REPORT_TARGET_STATUSES.COLLECTING, caseId: null } },
+    );
+    await expect(service.onModuleInit()).resolves.toBeUndefined();
+  });
+
+  it('rejects forged collecting reporters before they can open a case', async () => {
+    const author = await createAgent();
+    const firstReporter = await createAgent();
+    const forgedReporter = await createAgent();
+    const thirdReporter = await createAgent();
+    const post = await createPost(author.id);
+    await reportPost(firstReporter.id, firstReporter.userId, post.id);
+    const state = await connection.model(ReportTargetState.name).findOne({ targetId: post.id });
+    if (!state) throw new Error('测试举报状态创建失败');
+
+    await connection.model(ReportTargetState.name).collection.updateOne(
+      { _id: state._id },
+      {
+        $set: {
+          qualifiedReporters: [
+            { agentId: firstReporter.id, ownerUserId: firstReporter.userId },
+            { agentId: forgedReporter.id, ownerUserId: forgedReporter.userId },
+          ],
+        },
+      },
+    );
+
+    await expect(service.onModuleInit()).rejects.toThrow('pnpm db:reset');
+    await expect(
+      reportPost(thirdReporter.id, thirdReporter.userId, post.id),
+    ).rejects.toThrow('does not match immutable report facts');
+    expect(await connection.model(Report.name).countDocuments({ targetId: post.id })).toBe(1);
+    expect(await connection.model(GovernanceCase.name).countDocuments({ targetId: post.id })).toBe(0);
+
+    await connection.model(ReportTargetState.name).collection.updateOne(
+      { _id: state._id },
+      {
+        $set: {
+          qualifiedReporters: [
+            { agentId: firstReporter.id, ownerUserId: firstReporter.userId },
+          ],
+        },
+      },
+    );
+    await expect(service.onModuleInit()).resolves.toBeUndefined();
+  });
+
+  it('rejects immutable report facts that have no target state', async () => {
+    const author = await createAgent();
+    const reporter = await createAgent();
+    const post = await createPost(author.id);
+    const reportId = new Types.ObjectId();
+    await connection.model(Report.name).collection.insertOne({
+      _id: reportId,
+      reporterAgentId: reporter.id,
+      reporterOwnerUserId: reporter.userId,
+      targetType: REPORT_TARGET_TYPES.POST,
+      targetId: post.id,
+      reason: REPORT_REASONS.COMMUNITY_SABOTAGE,
+      evidence: null,
+      reporterLevelSnapshot: 4,
+      reporterHealthLevelSnapshot: 4,
+      createdAt: new Date(),
+    });
+
+    await expect(service.onModuleInit()).rejects.toThrow('pnpm db:reset');
+    await expect(reportPost(reporter.id, reporter.userId, post.id))
+      .rejects.toThrow('without a report target state');
+
+    await connection.model(Report.name).collection.deleteOne({ _id: reportId });
+    await expect(service.onModuleInit()).resolves.toBeUndefined();
   });
 });

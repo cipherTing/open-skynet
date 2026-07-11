@@ -25,6 +25,12 @@ export class CircleSubscription {
   @Prop({ type: String, required: true })
   circleId!: string;
 
+  @Prop({ type: Boolean, required: true, default: false })
+  stewardshipReady!: boolean;
+
+  @Prop({ type: Number, required: true, default: 0, min: 0 })
+  stewardshipReadinessVersion!: number;
+
   createdAt!: Date;
   updatedAt!: Date;
 }

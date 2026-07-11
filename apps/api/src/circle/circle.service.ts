@@ -9,6 +9,7 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types, type ClientSession, type FilterQuery } from 'mongoose';
 import { Agent } from '@/database/schemas/agent.schema';
+import { User } from '@/database/schemas/user.schema';
 import { AgentProgress } from '@/database/schemas/agent-progress.schema';
 import {
   Circle,
@@ -51,6 +52,8 @@ import { UnpinCirclePostDto } from './dto/unpin-circle-post.dto';
 import { ListCircleMaintenanceLogsDto } from './dto/list-circle-maintenance-logs.dto';
 import type { JwtAuthUser } from '@/auth/interfaces/jwt-auth-user.interface';
 import { canOperateAsAgent } from '@/auth/owner-operation';
+import { isUserSuspended } from '@/auth/auth-security';
+import { TransferCircleStewardshipDto } from './dto/transfer-circle-stewardship.dto';
 
 type PublicCircle = {
   id: string;
@@ -211,6 +214,7 @@ export class CircleService implements OnModuleInit {
     private readonly circleMaintenanceLogModel: Model<CircleMaintenanceLog>,
     @InjectModel(Post.name) private readonly postModel: Model<Post>,
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
+    @InjectModel(User.name) private readonly userModel: Model<User>,
     @InjectModel(AgentProgress.name)
     private readonly agentProgressModel: Model<AgentProgress>,
     @InjectModel(AgentGovernanceProfile.name)
@@ -915,6 +919,18 @@ export class CircleService implements OnModuleInit {
     if (!updated) {
       throw new ConflictException('圈子状态已更新，请刷新后重试');
     }
+    await this.circleSubscriptionModel.updateOne(
+      {
+        agentId: nextStewardAgentId,
+        circleId: circle.id,
+        stewardshipReady: true,
+      },
+      {
+        $set: { stewardshipReady: false },
+        $inc: { stewardshipReadinessVersion: 1 },
+      },
+      { session },
+    );
     await this.recordMaintenanceLog(
       {
         circleId: circle.id,
@@ -926,6 +942,8 @@ export class CircleService implements OnModuleInit {
         metadata: {
           previousStewardAgentId,
           nextStewardAgentId,
+          previousMaintenanceVersion: expectedVersion,
+          nextMaintenanceVersion: updated.maintenanceVersion,
         },
       },
       session,
@@ -935,6 +953,153 @@ export class CircleService implements OnModuleInit {
       stewardAgentId: nextStewardAgentId,
       maintenanceVersion: updated.maintenanceVersion,
     };
+  }
+
+  async getStewardshipReadiness(agentId: string, circleId: string) {
+    const circle = await this.ensureCircleExists(circleId);
+    if (circle.isDefault) {
+      throw new BadRequestException('默认圈子不接受维护职责意愿');
+    }
+    const subscription = await this.circleSubscriptionModel.findOne({ agentId, circleId });
+    return {
+      subscribed: subscription !== null,
+      ready: subscription?.stewardshipReady === true,
+      version: subscription?.stewardshipReadinessVersion ?? 0,
+    };
+  }
+
+  async setStewardshipReadiness(agentId: string, circleId: string, ready: boolean) {
+    await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.FORUM_WRITES);
+    const circle = await this.ensureCircleExists(circleId);
+    if (circle.isDefault) {
+      throw new BadRequestException('默认圈子不接受维护职责意愿');
+    }
+    const subscription = await this.circleSubscriptionModel.findOne({ agentId, circleId });
+    if (!subscription) {
+      if (!ready) return { subscribed: false, ready: false, version: 0 };
+      throw new ConflictException('需要先订阅圈子，才能表示愿意接任维护职责');
+    }
+    if (subscription.stewardshipReady === ready) {
+      return {
+        subscribed: true,
+        ready,
+        version: subscription.stewardshipReadinessVersion ?? 0,
+      };
+    }
+    const currentVersion = subscription.stewardshipReadinessVersion ?? 0;
+    const updated = await this.circleSubscriptionModel.findOneAndUpdate(
+      {
+        _id: subscription.id,
+        $or: [
+          { stewardshipReadinessVersion: currentVersion },
+          ...(currentVersion === 0
+            ? [{ stewardshipReadinessVersion: { $exists: false } }]
+            : []),
+        ],
+      },
+      {
+        $set: { stewardshipReady: ready },
+        $inc: { stewardshipReadinessVersion: 1 },
+      },
+      { new: true },
+    );
+    if (!updated) {
+      throw new ConflictException('接任意愿已被其他操作更新，请重新查询');
+    }
+    return {
+      subscribed: true,
+      ready: updated.stewardshipReady,
+      version: updated.stewardshipReadinessVersion,
+    };
+  }
+
+  async transferStewardship(
+    agentId: string,
+    circleId: string,
+    dto: TransferCircleStewardshipDto,
+  ) {
+    ensureValidObjectId(dto.agentId, '目标 Agent 不存在');
+    const publicReason = normalizeVisibleText(dto.publicReason);
+    return this.databaseService.$transaction(async (session) => {
+      await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.FORUM_WRITES, session);
+      const circle = await this.ensureCircleExists(circleId, session);
+      this.assertCanMaintain(circle, agentId);
+      this.assertExpectedMaintenanceVersion(circle, dto.expectedVersion);
+      if (dto.agentId === agentId) {
+        throw new ConflictException('目标 Agent 已经是当前维护者');
+      }
+
+      const readiness = await this.circleSubscriptionModel.findOne(
+        {
+          agentId: dto.agentId,
+          circleId: circle.id,
+          stewardshipReady: true,
+        },
+        null,
+        { session },
+      );
+      if (!readiness) {
+        throw new BadRequestException('目标 Agent 尚未明确表示愿意接任该圈子');
+      }
+      await this.assertCanReceiveStewardship(dto.agentId, session);
+
+      const consumedReadiness = await this.circleSubscriptionModel.findOneAndUpdate(
+        {
+          _id: readiness.id,
+          stewardshipReady: true,
+          $or: [
+            { stewardshipReadinessVersion: readiness.stewardshipReadinessVersion ?? 0 },
+            ...((readiness.stewardshipReadinessVersion ?? 0) === 0
+              ? [{ stewardshipReadinessVersion: { $exists: false } }]
+              : []),
+          ],
+        },
+        {
+          $set: { stewardshipReady: false },
+          $inc: { stewardshipReadinessVersion: 1 },
+        },
+        { new: true, session },
+      );
+      if (!consumedReadiness) {
+        throw new ConflictException('目标 Agent 的接任意愿已改变，请重新确认');
+      }
+
+      const updated = await this.circleModel.findOneAndUpdate(
+        {
+          _id: circle.id,
+          deletedAt: null,
+          isDefault: false,
+          stewardAgentId: agentId,
+          maintenanceVersion: circle.maintenanceVersion,
+        },
+        {
+          $set: { stewardAgentId: dto.agentId },
+          $inc: { maintenanceVersion: 1 },
+        },
+        { new: true, session },
+      );
+      if (!updated) {
+        throw new ConflictException('圈子状态已更新，请刷新后重试');
+      }
+      await this.recordMaintenanceLog(
+        {
+          circleId: circle.id,
+          action: CIRCLE_MAINTENANCE_ACTIONS.STEWARD_TRANSFERRED,
+          actorType: CIRCLE_MAINTENANCE_ACTOR_TYPES.AGENT,
+          actorAgentId: agentId,
+          targetPostId: null,
+          publicReason,
+          metadata: {
+            previousStewardAgentId: agentId,
+            nextStewardAgentId: dto.agentId,
+            previousMaintenanceVersion: circle.maintenanceVersion,
+            nextMaintenanceVersion: updated.maintenanceVersion,
+          },
+        },
+        session,
+      );
+      return this.serializeCircle(updated, undefined, agentId);
+    });
   }
 
   async subscribe(agentId: string, circleId: string) {
@@ -1098,6 +1263,44 @@ export class CircleService implements OnModuleInit {
         code: CIRCLE_ERROR_CODES.WEEKLY_LIMIT_REACHED,
         message: '每个自然周只能创建一个圈子',
       });
+    }
+  }
+
+  private async assertCanReceiveStewardship(
+    agentId: string,
+    session?: ClientSession,
+  ): Promise<void> {
+    const agent = await this.agentModel.findOne(
+      { _id: agentId, deletedAt: null },
+      'userId secretKeyDigest ownerOperationEnabled',
+      { session },
+    );
+    if (!agent) throw new NotFoundException('目标 Agent 不存在');
+    const owner = await this.userModel.findOne(
+      { _id: agent.userId, deletedAt: null },
+      'suspendedAt suspendedUntil',
+      { session },
+    );
+    if (!owner || isUserSuspended(owner)) {
+      throw new BadRequestException('目标 Agent 的主人当前不能履行圈子维护职责');
+    }
+    if (!agent.secretKeyDigest && agent.ownerOperationEnabled !== true) {
+      throw new BadRequestException('目标 Agent 当前没有可用的操作凭证');
+    }
+    const progress = await this.agentProgressModel.findOne(
+      { agentId },
+      'xpTotal',
+      { session },
+    );
+    const governanceProfile = await this.agentGovernanceProfileModel.findOne(
+      { agentId },
+      'healthLevel',
+      { session },
+    );
+    const level = getAgentLevelByXp(progress?.xpTotal ?? 0);
+    const healthLevel = governanceProfile?.healthLevel ?? GOVERNANCE_HEALTH_LEVEL.GOOD;
+    if (level < 4 || healthLevel < GOVERNANCE_HEALTH_LEVEL.WARNING) {
+      throw new BadRequestException('目标 Agent 需要达到 Lv4 且健康等级不低于 WARNING');
     }
   }
 
