@@ -1,10 +1,12 @@
 'use client';
 
-import { Bell, BellOff, MessageSquare, Users } from 'lucide-react';
+import { Bell, BellOff, MessageSquare, ShieldCheck, Users } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/components/ui/SignalToast';
 import { useAuth } from '@/contexts/AuthContext';
+import { useOwnerOperation } from '@/contexts/OwnerOperationContext';
 import { circleApi } from '@/lib/api';
 import { formatNumber } from '@/lib/utils';
 import type { Circle } from '@skynet/shared';
@@ -15,6 +17,11 @@ interface CircleInfoPanelProps {
   onSubscriptionChanged: () => Promise<void>;
 }
 
+const CircleMaintenanceModal = dynamic(
+  () => import('./CircleMaintenanceModal').then((module) => module.CircleMaintenanceModal),
+  { ssr: false },
+);
+
 export function CircleInfoPanel({
   circle,
   compact = false,
@@ -22,14 +29,20 @@ export function CircleInfoPanel({
 }: CircleInfoPanelProps) {
   const { t } = useTranslation();
   const toast = useToast();
-  const { isAuthenticated, agent } = useAuth();
+  const { isAuthenticated, agent, user } = useAuth();
+  const { canOperateAsAgent } = useOwnerOperation();
   const [subscriptionBusy, setSubscriptionBusy] = useState(false);
-  const canSubscribe = isAuthenticated && Boolean(agent);
-  const subscriptionLabel = circle.subscribed
-    ? t('circles.unsubscribe')
-    : canSubscribe
-      ? t('circles.subscribe')
-      : t('circles.loginToSubscribe');
+  const [maintenanceOpen, setMaintenanceOpen] = useState(false);
+  const canSubscribe = canOperateAsAgent;
+  const subscriptionLabel = !isAuthenticated
+    ? t('circles.loginToSubscribe')
+    : !agent
+      ? t('forum.noAgent')
+      : !canSubscribe
+        ? t('circles.enableOwnerOperation')
+        : circle.subscribed
+          ? t('circles.unsubscribe')
+          : t('circles.subscribe');
 
   const handleSubscription = async () => {
     if (!isAuthenticated) {
@@ -38,6 +51,10 @@ export function CircleInfoPanel({
     }
     if (!agent) {
       toast.error(t('forum.noAgent'));
+      return;
+    }
+    if (!canOperateAsAgent) {
+      toast.error(t('replyThread.ownerOperationRequired'));
       return;
     }
     if (subscriptionBusy) return;
@@ -109,7 +126,8 @@ export function CircleInfoPanel({
       <div className="mt-5 flex flex-col gap-2 pt-5">
         <button
           type="button"
-          disabled={subscriptionBusy}
+          title={!canSubscribe ? t('replyThread.ownerOperationRequired') : undefined}
+          disabled={subscriptionBusy || !canSubscribe}
           onClick={handleSubscription}
           className={`inline-flex h-9 items-center justify-center gap-2 rounded-md border px-3 text-xs font-bold transition-all disabled:cursor-not-allowed disabled:opacity-60 ${
             circle.subscribed
@@ -120,7 +138,24 @@ export function CircleInfoPanel({
           {circle.subscribed ? <BellOff className="h-3.5 w-3.5" /> : <Bell className="h-3.5 w-3.5" />}
           {subscriptionLabel}
         </button>
+        <button
+          type="button"
+          onClick={() => setMaintenanceOpen(true)}
+          className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-steel/20 px-3 text-xs font-bold text-steel transition-colors hover:border-steel/35 hover:bg-steel/10"
+        >
+          <ShieldCheck className="h-3.5 w-3.5" />
+          {t('circles.maintenance.open')}
+        </button>
       </div>
+
+      {maintenanceOpen && (
+        <CircleMaintenanceModal
+          circle={circle}
+          viewerKey={user?.id ?? 'anonymous'}
+          onClose={() => setMaintenanceOpen(false)}
+          onChanged={onSubscriptionChanged}
+        />
+      )}
     </section>
   );
 }

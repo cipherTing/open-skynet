@@ -1,8 +1,10 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
+  OnModuleInit,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types, type ClientSession, type FilterQuery } from 'mongoose';
@@ -13,6 +15,11 @@ import {
   CIRCLE_CREATED_BY_TYPES,
 } from '@/database/schemas/circle.schema';
 import { CircleSubscription } from '@/database/schemas/circle-subscription.schema';
+import { CircleRuleRevision } from '@/database/schemas/circle-rule-revision.schema';
+import {
+  CircleMaintenanceLog,
+} from '@/database/schemas/circle-maintenance-log.schema';
+import { Post } from '@/database/schemas/post.schema';
 import { DatabaseService } from '@/database/database.service';
 import { AgentGovernanceProfile } from '@/database/schemas/agent-governance-profile.schema';
 import { GOVERNANCE_HEALTH_LEVEL, type GovernanceHealthLevel } from '@/governance/governance.constants';
@@ -25,12 +32,25 @@ import {
   CIRCLE_SEARCH_MAX_LIMIT,
   CIRCLE_SEARCH_MIN_LIMIT,
   CIRCLE_SORT_OPTIONS,
+  CIRCLE_MAINTENANCE_ACTIONS,
+  CIRCLE_MAINTENANCE_ACTOR_TYPES,
+  type CircleMaintenanceActorType,
+  CIRCLE_PINNED_POST_MAX_COUNT,
+  CIRCLE_RULE_MAX_COUNT,
+  CIRCLE_RULE_MAX_LENGTH,
+  CIRCLE_RULE_REVISION_SOURCES,
   DEFAULT_CIRCLE,
 } from './circle.constants';
 import { CreateCircleDto } from './dto/create-circle.dto';
 import { ListCirclesDto } from './dto/list-circles.dto';
 import { SearchCirclesDto } from './dto/search-circles.dto';
 import { CircleDuplicateNameException } from './circle.errors';
+import { UpdateCircleDto } from './dto/update-circle.dto';
+import { PinCirclePostDto } from './dto/pin-circle-post.dto';
+import { UnpinCirclePostDto } from './dto/unpin-circle-post.dto';
+import { ListCircleMaintenanceLogsDto } from './dto/list-circle-maintenance-logs.dto';
+import type { JwtAuthUser } from '@/auth/interfaces/jwt-auth-user.interface';
+import { canOperateAsAgent } from '@/auth/owner-operation';
 
 type PublicCircle = {
   id: string;
@@ -41,12 +61,18 @@ type PublicCircle = {
   postCount: number;
   lastPostAt: string | null;
   isDefault: boolean;
+  rules: string[];
+  rulesVersion: number;
+  maintenanceVersion: number;
+  pinnedPostIds: string[];
+  stewardAgentId: string | null;
+  canMaintain: boolean;
   subscribed?: boolean;
   createdAt: string;
   updatedAt: string;
 };
 
-type CircleSummary = Pick<PublicCircle, 'id' | 'slug' | 'name' | 'topic'>;
+type CircleSummary = Pick<PublicCircle, 'id' | 'slug' | 'name' | 'topic' | 'pinnedPostIds'>;
 
 type CircleSubscriptionPageItem = {
   circleId: string;
@@ -56,6 +82,19 @@ type CircleSubscriptionAggregatePage = {
   data: CircleSubscriptionPageItem[];
   meta: Array<{ total: number }>;
 };
+
+const CIRCLE_RULES_MAX_TOTAL_BYTES = 4_096;
+
+type NewMaintenanceLog = Pick<
+  CircleMaintenanceLog,
+  | 'circleId'
+  | 'action'
+  | 'actorType'
+  | 'actorAgentId'
+  | 'targetPostId'
+  | 'publicReason'
+  | 'metadata'
+>;
 
 function isDuplicateKeyError(error: unknown): error is { code: 11000 } {
   return (
@@ -89,6 +128,30 @@ function normalizeVisibleText(value: string): string {
     .replace(/[\u200B-\u200D\uFEFF]/g, '')
     .trim()
     .replace(/\s+/g, ' ');
+}
+
+function normalizeRules(rules: string[]): string[] {
+  const normalized = rules.map(normalizeVisibleText);
+  if (normalized.some((rule) => rule.length === 0)) {
+    throw new BadRequestException('圈子规则不能为空');
+  }
+  if (normalized.length > CIRCLE_RULE_MAX_COUNT) {
+    throw new BadRequestException(`圈子规则不能超过 ${CIRCLE_RULE_MAX_COUNT} 条`);
+  }
+  if (normalized.some((rule) => rule.length > CIRCLE_RULE_MAX_LENGTH)) {
+    throw new BadRequestException(`单条圈子规则不能超过 ${CIRCLE_RULE_MAX_LENGTH} 个字符`);
+  }
+  if (new Set(normalized).size !== normalized.length) {
+    throw new BadRequestException('圈子规则不能重复');
+  }
+  if (Buffer.byteLength(JSON.stringify(normalized), 'utf8') > CIRCLE_RULES_MAX_TOTAL_BYTES) {
+    throw new BadRequestException('圈子规则总长度不能超过 4096 字节');
+  }
+  return normalized;
+}
+
+function stringArraysEqual(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 function toSlugBase(name: string): string {
@@ -137,11 +200,16 @@ function getAgentLevelByXp(xpTotal: number): number {
 }
 
 @Injectable()
-export class CircleService {
+export class CircleService implements OnModuleInit {
   constructor(
     @InjectModel(Circle.name) private readonly circleModel: Model<Circle>,
     @InjectModel(CircleSubscription.name)
     private readonly circleSubscriptionModel: Model<CircleSubscription>,
+    @InjectModel(CircleRuleRevision.name)
+    private readonly circleRuleRevisionModel: Model<CircleRuleRevision>,
+    @InjectModel(CircleMaintenanceLog.name)
+    private readonly circleMaintenanceLogModel: Model<CircleMaintenanceLog>,
+    @InjectModel(Post.name) private readonly postModel: Model<Post>,
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
     @InjectModel(AgentProgress.name)
     private readonly agentProgressModel: Model<AgentProgress>,
@@ -151,7 +219,88 @@ export class CircleService {
     private readonly featureFlagService: FeatureFlagService,
   ) {}
 
+  async onModuleInit(): Promise<void> {
+    await this.ensureRuleHistoryIntegrity();
+  }
+
+  private async ensureRuleHistoryIntegrity(): Promise<void> {
+    const circles = await this.circleModel
+      .find({ deletedAt: null })
+      .select('slug isDefault stewardAgentId rules rulesVersion')
+      .sort({ _id: 1 });
+    const defaultCircles = circles.filter((circle) => circle.isDefault);
+    if (
+      defaultCircles.length > 1 ||
+      defaultCircles.some(
+        (circle) =>
+          circle.slug !== DEFAULT_CIRCLE.slug || circle.stewardAgentId !== null,
+      )
+    ) {
+      throw new Error('Default circle integrity check failed');
+    }
+    if (circles.length === 0) return;
+    const revisions = await this.circleRuleRevisionModel
+      .find({ circleId: { $in: circles.map((circle) => circle.id) } })
+      .select('circleId version rules')
+      .sort({ circleId: 1, version: 1 });
+    const revisionsByCircle = new Map<string, CircleRuleRevision[]>();
+    for (const revision of revisions) {
+      const existing = revisionsByCircle.get(revision.circleId) ?? [];
+      existing.push(revision);
+      revisionsByCircle.set(revision.circleId, existing);
+    }
+    for (const circle of circles) {
+      this.assertContiguousRuleVersions(
+        circle.id,
+        circle.rulesVersion,
+        circle.rules,
+        revisionsByCircle.get(circle.id) ?? [],
+      );
+    }
+  }
+
+  private assertContiguousRuleVersions(
+    circleId: string,
+    currentVersion: number,
+    currentRules: string[],
+    revisions: Array<Pick<CircleRuleRevision, 'version' | 'rules'>>,
+  ): void {
+    const complete =
+      revisions.length === currentVersion &&
+      revisions.every((revision, index) => revision.version === index + 1) &&
+      stringArraysEqual(revisions.at(-1)?.rules ?? [], currentRules);
+    if (!complete) {
+      throw new Error(
+        `Circle ${circleId} has incomplete rule history; run scripts/db-reset.sh before starting this version`,
+      );
+    }
+  }
+
   async ensureDefaultCircle(session?: ClientSession): Promise<Circle> {
+    if (session) return this.ensureDefaultCircleInSession(session);
+    const existing = await this.circleModel.findOne({
+      slug: DEFAULT_CIRCLE.slug,
+      deletedAt: null,
+    });
+    if (existing) return existing;
+    try {
+      return await this.databaseService.$transaction((transactionSession) =>
+        this.ensureDefaultCircleInSession(transactionSession),
+      );
+    } catch (error) {
+      if (!isDuplicateKeyError(error)) throw error;
+      const raced = await this.circleModel.findOne({
+        slug: DEFAULT_CIRCLE.slug,
+        deletedAt: null,
+      });
+      if (!raced) throw error;
+      return raced;
+    }
+  }
+
+  private async ensureDefaultCircleInSession(
+    session?: ClientSession,
+  ): Promise<Circle> {
     const existing = await this.circleModel.findOne(
       { slug: DEFAULT_CIRCLE.slug, deletedAt: null },
       null,
@@ -159,44 +308,64 @@ export class CircleService {
     );
     if (existing) return existing;
 
-    try {
-      const created = new this.circleModel({
+    const created = new this.circleModel({
         slug: DEFAULT_CIRCLE.slug,
         name: DEFAULT_CIRCLE.name,
         normalizedName: normalizeCircleName(DEFAULT_CIRCLE.name),
         topic: DEFAULT_CIRCLE.topic,
         createdByType: CIRCLE_CREATED_BY_TYPES.SYSTEM,
         createdByAgentId: null,
+        stewardAgentId: null,
+        rules: [],
+        rulesVersion: 1,
+        maintenanceVersion: 1,
+        pinnedPostIds: [],
         creationWeekKey: null,
         isDefault: true,
-      });
-      await created.save({ session });
-      return created;
-    } catch (error) {
-      if (!isDuplicateKeyError(error)) throw error;
-      const circle = await this.circleModel.findOne(
-        { slug: DEFAULT_CIRCLE.slug, deletedAt: null },
-        null,
-        { session },
-      );
-      if (!circle) throw error;
-      return circle;
-    }
+    });
+    await created.save({ session });
+    await this.circleRuleRevisionModel.create(
+      [{
+        circleId: created.id,
+        version: 1,
+        rules: [],
+        source: CIRCLE_RULE_REVISION_SOURCES.SYSTEM,
+        actorAgentId: null,
+      }],
+      { session },
+    );
+    await this.recordMaintenanceLog(
+      {
+        circleId: created.id,
+        action: CIRCLE_MAINTENANCE_ACTIONS.RULES_UPDATED,
+        actorType: CIRCLE_MAINTENANCE_ACTOR_TYPES.SYSTEM,
+        actorAgentId: null,
+        targetPostId: null,
+        publicReason: '系统建立默认圈子的初始规则版本',
+        metadata: { previousVersion: 0, nextVersion: 1 },
+      },
+      session,
+    );
+    return created;
   }
 
   async getDefaultCircle(): Promise<PublicCircle> {
     const circle = await this.ensureDefaultCircle();
-    return this.serializeCircle(circle, false);
+    return this.serializeCircle(circle, false, null);
   }
 
-  async getCircleBySlug(slug: string, currentUserId?: string): Promise<PublicCircle> {
+  async getCircleBySlug(
+    slug: string,
+    currentUserId?: string,
+    authType?: JwtAuthUser['authType'],
+  ): Promise<PublicCircle> {
     const normalizedSlug = slug.trim().toLocaleLowerCase('und');
     if (!normalizedSlug) {
       throw new NotFoundException('圈子不存在');
     }
     const [circle, subscriptionState] = await Promise.all([
       this.circleModel.findOne({ slug: normalizedSlug, deletedAt: null }),
-      this.getSubscribedCircleIds(currentUserId),
+      this.getSubscribedCircleIds(currentUserId, authType),
     ]);
     if (!circle) {
       throw new NotFoundException('圈子不存在');
@@ -204,6 +373,7 @@ export class CircleService {
     return this.serializeCircle(
       circle,
       subscriptionState ? subscriptionState.circleIds.has(circle.id) : undefined,
+      subscriptionState?.canOperateAsAgent ? subscriptionState.agentId : null,
     );
   }
 
@@ -222,7 +392,7 @@ export class CircleService {
     if (uniqueIds.length > 0) {
       const circles = await this.circleModel
         .find({ _id: { $in: uniqueIds }, deletedAt: null })
-        .select('slug name topic');
+        .select('slug name topic pinnedPostIds');
       for (const circle of circles) {
         summaries.set(circle.id, this.toCircleSummary(circle));
       }
@@ -241,7 +411,11 @@ export class CircleService {
     );
   }
 
-  async listCircles(dto: ListCirclesDto, currentUserId?: string) {
+  async listCircles(
+    dto: ListCirclesDto,
+    currentUserId?: string,
+    authType?: JwtAuthUser['authType'],
+  ) {
     await this.ensureDefaultCircle();
     const page = dto.page ?? 1;
     const pageSize = dto.pageSize ?? 20;
@@ -259,14 +433,15 @@ export class CircleService {
         .skip((page - 1) * pageSize)
         .limit(pageSize),
       this.circleModel.countDocuments(where),
-      this.getSubscribedCircleIds(currentUserId),
+      this.getSubscribedCircleIds(currentUserId, authType),
     ]);
 
     return {
       circles: circles.map((circle) =>
-        this.serializeCircle(
-          circle,
-          subscriptionState ? subscriptionState.circleIds.has(circle.id) : undefined,
+          this.serializeCircle(
+            circle,
+            subscriptionState ? subscriptionState.circleIds.has(circle.id) : undefined,
+            subscriptionState?.canOperateAsAgent ? subscriptionState.agentId : null,
         ),
       ),
       meta: {
@@ -278,7 +453,11 @@ export class CircleService {
     };
   }
 
-  async searchCircles(dto: SearchCirclesDto, currentUserId?: string) {
+  async searchCircles(
+    dto: SearchCirclesDto,
+    currentUserId?: string,
+    authType?: JwtAuthUser['authType'],
+  ) {
     await this.ensureDefaultCircle();
     const limit = clampSearchLimit(dto.limit);
     const rawQuery = normalizeVisibleText(dto.q ?? '');
@@ -303,7 +482,7 @@ export class CircleService {
     const [matches, exactMatch, subscriptionState] = await Promise.all([
       this.circleModel.find(where).limit(50),
       this.circleModel.findOne({ normalizedName: normalizedQuery, deletedAt: null }),
-      this.getSubscribedCircleIds(currentUserId),
+      this.getSubscribedCircleIds(currentUserId, authType),
     ]);
     const ranked = matches
       .map((circle) => ({
@@ -322,6 +501,7 @@ export class CircleService {
         this.serializeCircle(
           circle,
           subscriptionState ? subscriptionState.circleIds.has(circle.id) : undefined,
+          subscriptionState?.canOperateAsAgent ? subscriptionState.agentId : null,
         ),
       );
 
@@ -331,6 +511,7 @@ export class CircleService {
         ? this.serializeCircle(
             exactMatch,
             subscriptionState ? subscriptionState.circleIds.has(exactMatch.id) : undefined,
+            subscriptionState?.canOperateAsAgent ? subscriptionState.agentId : null,
           )
         : null,
     };
@@ -369,10 +550,37 @@ export class CircleService {
           topic,
           createdByType: CIRCLE_CREATED_BY_TYPES.AGENT,
           createdByAgentId: agentId,
+          stewardAgentId: agentId,
+          rules: [],
+          rulesVersion: 1,
+          maintenanceVersion: 1,
+          pinnedPostIds: [],
           creationWeekKey,
           isDefault: false,
         });
         await circle.save({ session });
+        await this.circleRuleRevisionModel.create(
+          [{
+            circleId: circle.id,
+            version: 1,
+            rules: [],
+            source: CIRCLE_RULE_REVISION_SOURCES.AGENT,
+            actorAgentId: agentId,
+          }],
+          { session },
+        );
+        await this.recordMaintenanceLog(
+          {
+            circleId: circle.id,
+            action: CIRCLE_MAINTENANCE_ACTIONS.RULES_UPDATED,
+            actorType: CIRCLE_MAINTENANCE_ACTOR_TYPES.AGENT,
+            actorAgentId: agentId,
+            targetPostId: null,
+            publicReason: '创建圈子并发布初始规则版本',
+            metadata: { previousVersion: 0, nextVersion: 1 },
+          },
+          session,
+        );
         return circle;
       });
     } catch (error) {
@@ -381,7 +589,352 @@ export class CircleService {
       throw error;
     }
 
-    return this.serializeCircle(created, false);
+    return this.serializeCircle(created, false, agentId);
+  }
+
+  async updateCircle(agentId: string, circleId: string, dto: UpdateCircleDto) {
+    await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.FORUM_WRITES);
+    if (dto.topic === undefined && dto.rules === undefined) {
+      throw new BadRequestException('至少提供主题或规则中的一项');
+    }
+    const topic = dto.topic === undefined ? undefined : normalizeVisibleText(dto.topic);
+    if (topic !== undefined && !topic) {
+      throw new BadRequestException('圈子主题不能为空');
+    }
+    const rules = dto.rules === undefined ? undefined : normalizeRules(dto.rules);
+
+    return this.databaseService.$transaction(async (session) => {
+      const circle = await this.ensureCircleExists(circleId, session);
+      this.assertCanMaintain(circle, agentId);
+      this.assertExpectedMaintenanceVersion(circle, dto.expectedVersion);
+      const topicChanged = topic !== undefined && topic !== circle.topic;
+      const rulesChanged = rules !== undefined && !stringArraysEqual(rules, circle.rules);
+      if (!topicChanged && !rulesChanged) {
+        return this.serializeCircle(circle, undefined, agentId);
+      }
+
+      const publicReason = normalizeVisibleText(dto.publicReason ?? '');
+      if (!publicReason) {
+        throw new BadRequestException('更新圈子时必须填写公开原因');
+      }
+      const nextRulesVersion = rulesChanged
+        ? circle.rulesVersion + 1
+        : circle.rulesVersion;
+      const updated = await this.circleModel.findOneAndUpdate(
+        {
+          _id: circle.id,
+          deletedAt: null,
+          isDefault: false,
+          stewardAgentId: agentId,
+          maintenanceVersion: circle.maintenanceVersion,
+        },
+        {
+          $set: {
+            ...(topicChanged ? { topic } : {}),
+            ...(rulesChanged ? { rules } : {}),
+          },
+          $inc: {
+            maintenanceVersion: 1,
+            ...(rulesChanged ? { rulesVersion: 1 } : {}),
+          },
+        },
+        { new: true, session },
+      );
+      if (!updated) {
+        throw new ConflictException('圈子已被其他维护操作更新，请刷新后重试');
+      }
+
+      if (rulesChanged && rules) {
+        await this.circleRuleRevisionModel.create(
+          [{
+            circleId: circle.id,
+            version: nextRulesVersion,
+            rules,
+            source: CIRCLE_RULE_REVISION_SOURCES.AGENT,
+            actorAgentId: agentId,
+          }],
+          { session },
+        );
+      }
+
+      await this.recordMaintenanceLog(
+        {
+          circleId: circle.id,
+          action: CIRCLE_MAINTENANCE_ACTIONS.CIRCLE_UPDATED,
+          actorType: CIRCLE_MAINTENANCE_ACTOR_TYPES.AGENT,
+          actorAgentId: agentId,
+          targetPostId: null,
+          publicReason,
+          metadata: {
+            topicChanged: topicChanged ? 1 : 0,
+            rulesChanged: rulesChanged ? 1 : 0,
+            previousRulesVersion: circle.rulesVersion,
+            nextRulesVersion,
+          },
+        },
+        session,
+      );
+
+      return this.serializeCircle(updated, undefined, agentId);
+    });
+  }
+
+  async pinPost(
+    agentId: string,
+    circleId: string,
+    postId: string,
+    dto: PinCirclePostDto,
+  ) {
+    await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.FORUM_WRITES);
+    ensureValidObjectId(postId, '帖子不存在');
+    return this.databaseService.$transaction(async (session) => {
+      const circle = await this.ensureCircleExists(circleId, session);
+      this.assertCanMaintain(circle, agentId);
+      this.assertExpectedMaintenanceVersion(circle, dto.expectedVersion);
+      const post = await this.postModel.findOne(
+        { _id: postId, circleId: circle.id, deletedAt: null },
+        null,
+        { session },
+      );
+      if (!post) throw new NotFoundException('帖子不存在或不属于该圈子');
+      if (circle.pinnedPostIds.includes(postId)) {
+        throw new ConflictException('该帖子已经置顶');
+      }
+
+      const visiblePinnedPosts = await this.postModel
+        .find(
+          {
+            _id: { $in: circle.pinnedPostIds },
+            circleId: circle.id,
+            deletedAt: null,
+          },
+          null,
+          { session },
+        )
+        .select('_id');
+      const visibleIds = new Set(visiblePinnedPosts.map((item) => item.id));
+      const retainedIds = circle.pinnedPostIds.filter((id) => visibleIds.has(id));
+      if (retainedIds.length >= CIRCLE_PINNED_POST_MAX_COUNT) {
+        throw new ConflictException(`每个圈子最多置顶 ${CIRCLE_PINNED_POST_MAX_COUNT} 个帖子`);
+      }
+      const nextPinnedPostIds = [postId, ...retainedIds];
+      const updated = await this.circleModel.findOneAndUpdate(
+        {
+          _id: circle.id,
+          deletedAt: null,
+          isDefault: false,
+          stewardAgentId: agentId,
+          maintenanceVersion: circle.maintenanceVersion,
+        },
+        {
+          $set: { pinnedPostIds: nextPinnedPostIds },
+          $inc: { maintenanceVersion: 1 },
+        },
+        { new: true, session },
+      );
+      if (!updated) {
+        throw new ConflictException('圈子已被其他维护操作更新，请刷新后重试');
+      }
+      await this.recordMaintenanceLog(
+        {
+          circleId: circle.id,
+          action: CIRCLE_MAINTENANCE_ACTIONS.POST_PINNED,
+          actorType: CIRCLE_MAINTENANCE_ACTOR_TYPES.AGENT,
+          actorAgentId: agentId,
+          targetPostId: postId,
+          publicReason: normalizeVisibleText(dto.publicReason),
+          metadata: { position: 1 },
+        },
+        session,
+      );
+      return this.serializeCircle(updated, undefined, agentId);
+    });
+  }
+
+  async unpinPost(
+    agentId: string,
+    circleId: string,
+    postId: string,
+    dto: UnpinCirclePostDto,
+  ) {
+    await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.FORUM_WRITES);
+    ensureValidObjectId(postId, '帖子不存在');
+    return this.databaseService.$transaction(async (session) => {
+      const circle = await this.ensureCircleExists(circleId, session);
+      this.assertCanMaintain(circle, agentId);
+      this.assertExpectedMaintenanceVersion(circle, dto.expectedVersion);
+      if (!circle.pinnedPostIds.includes(postId)) {
+        throw new ConflictException('该帖子没有置顶');
+      }
+      const updated = await this.circleModel.findOneAndUpdate(
+        {
+          _id: circle.id,
+          deletedAt: null,
+          isDefault: false,
+          stewardAgentId: agentId,
+          maintenanceVersion: circle.maintenanceVersion,
+        },
+        {
+          $pull: { pinnedPostIds: postId },
+          $inc: { maintenanceVersion: 1 },
+        },
+        { new: true, session },
+      );
+      if (!updated) {
+        throw new ConflictException('圈子已被其他维护操作更新，请刷新后重试');
+      }
+      await this.recordMaintenanceLog(
+        {
+          circleId: circle.id,
+          action: CIRCLE_MAINTENANCE_ACTIONS.POST_UNPINNED,
+          actorType: CIRCLE_MAINTENANCE_ACTOR_TYPES.AGENT,
+          actorAgentId: agentId,
+          targetPostId: postId,
+          publicReason: normalizeVisibleText(dto.publicReason),
+          metadata: {},
+        },
+        session,
+      );
+      return this.serializeCircle(updated, undefined, agentId);
+    });
+  }
+
+  async unpinRemovedPost(
+    postId: string,
+    publicReason: string,
+    actorType: CircleMaintenanceActorType,
+    session?: ClientSession,
+  ): Promise<void> {
+    const circle = await this.circleModel.findOne(
+      { pinnedPostIds: postId, deletedAt: null },
+      null,
+      { session },
+    );
+    if (!circle) return;
+    const updated = await this.circleModel.findOneAndUpdate(
+      {
+        _id: circle.id,
+        maintenanceVersion: circle.maintenanceVersion,
+        pinnedPostIds: postId,
+      },
+      {
+        $pull: { pinnedPostIds: postId },
+        $inc: { maintenanceVersion: 1 },
+      },
+      { new: true, session },
+    );
+    if (!updated) {
+      throw new ConflictException('置顶状态已被其他维护操作更新');
+    }
+    await this.recordMaintenanceLog(
+      {
+        circleId: circle.id,
+        action: CIRCLE_MAINTENANCE_ACTIONS.POST_UNPINNED,
+        actorType,
+        actorAgentId: null,
+        targetPostId: postId,
+        publicReason,
+        metadata: {},
+      },
+      session,
+    );
+  }
+
+  async listMaintenanceLogs(
+    circleId: string,
+    dto: ListCircleMaintenanceLogsDto,
+  ) {
+    const circle = await this.ensureCircleExists(circleId);
+    const page = dto.page ?? 1;
+    const pageSize = dto.pageSize ?? 20;
+    const where = { circleId: circle.id };
+    const [logs, total] = await Promise.all([
+      this.circleMaintenanceLogModel
+        .find(where)
+        .sort({ createdAt: -1, _id: -1 })
+        .skip((page - 1) * pageSize)
+        .limit(pageSize),
+      this.circleMaintenanceLogModel.countDocuments(where),
+    ]);
+    return {
+      items: logs.map((log) => ({
+        id: log.id,
+        circleId: log.circleId,
+        action: log.action,
+        actorType: log.actorType,
+        actorAgentId: log.actorAgentId,
+        targetPostId: log.targetPostId,
+        publicReason: log.publicReason,
+        metadata: log.metadata,
+        createdAt: log.createdAt.toISOString(),
+      })),
+      meta: {
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    };
+  }
+
+  async transferStewardByAdmin(
+    circleId: string,
+    nextStewardAgentId: string,
+    expectedVersion: number,
+    publicReason: string,
+    session?: ClientSession,
+  ): Promise<{
+    previousStewardAgentId: string | null;
+    stewardAgentId: string;
+    maintenanceVersion: number;
+  }> {
+    const circle = await this.ensureCircleExists(circleId, session);
+    if (circle.isDefault) {
+      throw new BadRequestException('默认圈子不能设置维护者');
+    }
+    if (circle.maintenanceVersion !== expectedVersion) {
+      throw new ConflictException('圈子状态已更新，请刷新后重试');
+    }
+    if (circle.stewardAgentId === nextStewardAgentId) {
+      throw new ConflictException('目标 Agent 已经是当前维护者');
+    }
+    const previousStewardAgentId = circle.stewardAgentId;
+    const updated = await this.circleModel.findOneAndUpdate(
+      {
+        _id: circle.id,
+        deletedAt: null,
+        isDefault: false,
+        maintenanceVersion: expectedVersion,
+      },
+      {
+        $set: { stewardAgentId: nextStewardAgentId },
+        $inc: { maintenanceVersion: 1 },
+      },
+      { new: true, session },
+    );
+    if (!updated) {
+      throw new ConflictException('圈子状态已更新，请刷新后重试');
+    }
+    await this.recordMaintenanceLog(
+      {
+        circleId: circle.id,
+        action: CIRCLE_MAINTENANCE_ACTIONS.STEWARD_TRANSFERRED,
+        actorType: CIRCLE_MAINTENANCE_ACTOR_TYPES.ADMIN,
+        actorAgentId: null,
+        targetPostId: null,
+        publicReason: normalizeVisibleText(publicReason),
+        metadata: {
+          previousStewardAgentId,
+          nextStewardAgentId,
+        },
+      },
+      session,
+    );
+    return {
+      previousStewardAgentId,
+      stewardAgentId: nextStewardAgentId,
+      maintenanceVersion: updated.maintenanceVersion,
+    };
   }
 
   async subscribe(agentId: string, circleId: string) {
@@ -416,7 +969,13 @@ export class CircleService {
     return { subscribed: false };
   }
 
-  async listAgentCircles(agentId: string, page: number, pageSize: number, currentUserId?: string) {
+  async listAgentCircles(
+    agentId: string,
+    page: number,
+    pageSize: number,
+    currentUserId?: string,
+    authType?: JwtAuthUser['authType'],
+  ) {
     ensureValidObjectId(agentId, 'Agent 不存在');
     const agent = await this.agentModel.findById(agentId).select('_id');
     if (!agent) throw new NotFoundException('Agent 不存在');
@@ -448,7 +1007,7 @@ export class CircleService {
           },
         },
       ]),
-      this.getSubscribedCircleIds(currentUserId),
+      this.getSubscribedCircleIds(currentUserId, authType),
     ]);
     const subscriptions = pageResult[0]?.data ?? [];
     const total = pageResult[0]?.meta[0]?.total ?? 0;
@@ -464,6 +1023,7 @@ export class CircleService {
             ? this.serializeCircle(
                 circle,
                 subscriptionState ? subscriptionState.circleIds.has(circle.id) : undefined,
+                subscriptionState?.canOperateAsAgent ? subscriptionState.agentId : null,
               )
             : null;
         })
@@ -477,11 +1037,23 @@ export class CircleService {
     };
   }
 
+  async getSubscribedCircleIdsForUser(currentUserId: string): Promise<string[]> {
+    const subscriptionState = await this.getSubscribedCircleIds(currentUserId);
+    return subscriptionState ? [...subscriptionState.circleIds] : [];
+  }
+
   private async getSubscribedCircleIds(
     currentUserId?: string,
-  ): Promise<{ agentId: string; circleIds: Set<string> } | null> {
+    authType?: JwtAuthUser['authType'],
+  ): Promise<{
+    agentId: string;
+    circleIds: Set<string>;
+    canOperateAsAgent: boolean;
+  } | null> {
     if (!currentUserId) return null;
-    const agent = await this.agentModel.findOne({ userId: currentUserId }).select('_id');
+    const agent = await this.agentModel
+      .findOne({ userId: currentUserId })
+      .select('_id ownerOperationEnabled');
     if (!agent) return null;
     const subscriptions = await this.circleSubscriptionModel
       .find({ agentId: agent.id })
@@ -490,6 +1062,8 @@ export class CircleService {
     return {
       agentId: agent.id,
       circleIds: new Set(subscriptions.map((subscription) => subscription.circleId)),
+      canOperateAsAgent:
+        authType !== undefined && canOperateAsAgent({ authType }, agent),
     };
   }
 
@@ -577,7 +1151,36 @@ export class CircleService {
     return 5;
   }
 
-  private serializeCircle(circle: Circle, subscribed?: boolean): PublicCircle {
+  private assertCanMaintain(circle: Circle, agentId: string): void {
+    if (circle.isDefault) {
+      throw new ForbiddenException('默认圈子由系统维护');
+    }
+    if (!circle.stewardAgentId || circle.stewardAgentId !== agentId) {
+      throw new ForbiddenException('只有当前圈子维护者可以执行此操作');
+    }
+  }
+
+  private assertExpectedMaintenanceVersion(
+    circle: Circle,
+    expectedVersion: number,
+  ): void {
+    if (circle.maintenanceVersion !== expectedVersion) {
+      throw new ConflictException('圈子状态已更新，请刷新后重试');
+    }
+  }
+
+  private async recordMaintenanceLog(
+    log: NewMaintenanceLog,
+    session?: ClientSession,
+  ): Promise<void> {
+    await new this.circleMaintenanceLogModel(log).save({ session });
+  }
+
+  private serializeCircle(
+    circle: Circle,
+    subscribed?: boolean,
+    currentAgentId: string | null = null,
+  ): PublicCircle {
     return {
       id: circle.id,
       slug: circle.slug,
@@ -587,18 +1190,30 @@ export class CircleService {
       postCount: Math.max(0, circle.postCount ?? 0),
       lastPostAt: circle.lastPostAt?.toISOString() ?? null,
       isDefault: circle.isDefault === true,
+      rules: [...circle.rules],
+      rulesVersion: circle.rulesVersion,
+      maintenanceVersion: circle.maintenanceVersion,
+      pinnedPostIds: [...circle.pinnedPostIds],
+      stewardAgentId: circle.stewardAgentId,
+      canMaintain:
+        circle.isDefault !== true &&
+        currentAgentId !== null &&
+        circle.stewardAgentId === currentAgentId,
       ...(subscribed === undefined ? {} : { subscribed }),
       createdAt: circle.createdAt.toISOString(),
       updatedAt: circle.updatedAt.toISOString(),
     };
   }
 
-  private toCircleSummary(circle: Pick<Circle, 'id' | 'slug' | 'name' | 'topic'>): CircleSummary {
+  private toCircleSummary(
+    circle: Pick<Circle, 'id' | 'slug' | 'name' | 'topic' | 'pinnedPostIds'>,
+  ): CircleSummary {
     return {
       id: circle.id,
       slug: circle.slug,
       name: circle.name,
       topic: circle.topic,
+      pinnedPostIds: [...circle.pinnedPostIds],
     };
   }
 }

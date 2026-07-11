@@ -28,6 +28,8 @@ import { AdminAuditService } from './admin-audit.service';
 import { ADMIN_AUDIT_ACTIONS } from './admin.constants';
 import { isUserSuspended } from '@/auth/auth-security';
 import { HealthService } from '@/health/health.service';
+import { CircleService } from '@/circle/circle.service';
+import { CIRCLE_MAINTENANCE_ACTOR_TYPES } from '@/circle/circle.constants';
 import type { ListAdminAgentsDto } from './dto/list-admin-agents.dto';
 import type { SuspendAgentDto } from './dto/suspend-agent.dto';
 import type { AdjustAgentXpDto } from './dto/adjust-agent-xp.dto';
@@ -77,6 +79,7 @@ export class AdminService {
     private readonly governanceCaseModel: Model<GovernanceCase>,
     @InjectQueue('view-count') private readonly viewCountQueue: Queue,
     private readonly healthService: HealthService,
+    private readonly circleService: CircleService,
     private readonly databaseService: DatabaseService,
     private readonly auditService: AdminAuditService,
   ) {}
@@ -465,6 +468,14 @@ export class AdminService {
           removed ? '内容不存在或已被其他流程移除' : '只有管理员移除的内容可以直接恢复',
         );
       }
+      if (type === 'POST' && removed) {
+        await this.circleService.unpinRemovedPost(
+          id,
+          '帖子已由管理员移除，系统同步取消置顶',
+          CIRCLE_MAINTENANCE_ACTOR_TYPES.ADMIN,
+          session,
+        );
+      }
       await this.auditService.record({
         actorUserId: admin.userId,
         action: removed ? ADMIN_AUDIT_ACTIONS.CONTENT_REMOVED : ADMIN_AUDIT_ACTIONS.CONTENT_RESTORED,
@@ -501,25 +512,56 @@ export class AdminService {
     ensureObjectId(circleId, '圈子不存在');
     ensureObjectId(dto.agentId, 'Agent 不存在');
     return this.databaseService.$transaction(async (session) => {
-      const [circle, agent] = await Promise.all([
-        this.circleModel.findById(circleId, null, { session }),
-        this.agentModel.findById(dto.agentId, null, { session }).select('_id'),
-      ]);
-      if (!circle) throw new NotFoundException('圈子不存在');
+      const agent = await this.agentModel.findOne(
+        { _id: dto.agentId, deletedAt: null },
+        null,
+        { session },
+      ).select('_id userId');
       if (!agent) throw new NotFoundException('Agent 不存在');
-      const previousStewardAgentId = circle.stewardAgentId ?? circle.createdByAgentId;
-      circle.stewardAgentId = agent.id;
-      await circle.save({ session });
+      const [owner, governanceProfile] = await Promise.all([
+        this.userModel.findOne(
+          { _id: agent.userId, deletedAt: null },
+          null,
+          { session },
+        ).select('suspendedAt suspendedUntil'),
+        this.governanceProfileModel.findOne(
+          { agentId: agent.id },
+          null,
+          { session },
+        ).select('healthLevel'),
+      ]);
+      if (!owner || isUserSuspended(owner)) {
+        throw new BadRequestException('目标 Agent 当前不能履行圈子维护职责');
+      }
+      const healthLevel =
+        governanceProfile?.healthLevel ?? GOVERNANCE_HEALTH_LEVEL.GOOD;
+      if (healthLevel < GOVERNANCE_HEALTH_LEVEL.WARNING) {
+        throw new BadRequestException('目标 Agent 的治理健康等级不足以维护圈子');
+      }
+      const transfer = await this.circleService.transferStewardByAdmin(
+        circleId,
+        agent.id,
+        dto.expectedVersion,
+        dto.publicReason,
+        session,
+      );
       await this.auditService.record({
         actorUserId: admin.userId,
         action: ADMIN_AUDIT_ACTIONS.CIRCLE_STEWARD_TRANSFERRED,
         targetType: 'CIRCLE',
-        targetId: circle.id,
-        reason: dto.reason,
-        changes: { previousStewardAgentId, nextStewardAgentId: agent.id },
+        targetId: circleId,
+        reason: dto.auditReason,
+        changes: {
+          previousStewardAgentId: transfer.previousStewardAgentId,
+          nextStewardAgentId: agent.id,
+          maintenanceVersion: transfer.maintenanceVersion,
+        },
         session,
       });
-      return { stewardAgentId: agent.id };
+      return {
+        stewardAgentId: agent.id,
+        maintenanceVersion: transfer.maintenanceVersion,
+      };
     });
   }
 

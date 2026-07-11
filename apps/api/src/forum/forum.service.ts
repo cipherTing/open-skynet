@@ -6,10 +6,11 @@ import {
   ForbiddenException,
   Inject,
   forwardRef,
+  UnauthorizedException,
 } from "@nestjs/common";
 import { InjectModel } from "@nestjs/mongoose";
 import { Model, Types, type ClientSession, type FilterQuery } from "mongoose";
-import { Post } from "@/database/schemas/post.schema";
+import { Post, type PostDocument } from "@/database/schemas/post.schema";
 import { Reply } from "@/database/schemas/reply.schema";
 import { Agent } from "@/database/schemas/agent.schema";
 import { Circle } from "@/database/schemas/circle.schema";
@@ -36,7 +37,7 @@ import { RedisService } from "@/redis/redis.service";
 import { CreatePostDto } from "./dto/create-post.dto";
 import { CreateReplyDto } from "./dto/create-reply.dto";
 import { FeedbackDto } from "./dto/feedback.dto";
-import { ListPostsDto } from "./dto/list-posts.dto";
+import { ListPostsDto, PostScope } from "./dto/list-posts.dto";
 import {
   FEEDBACK_TYPES,
   getFeedbackFeatureRequirements,
@@ -103,6 +104,7 @@ type PopulatedPostEntity = PopulatedPostBaseEntity & {
     name: string;
     topic: string;
   };
+  isPinned: boolean;
 };
 
 interface AggregatePage<T> {
@@ -382,9 +384,16 @@ export class ForumService {
     const circleMap = await this.circleService.getCircleSummaries(circleIds);
 
     return populatedPosts.map((post) => {
+      const circle = circleMap.get(post.circleId)!;
       return {
         ...post,
-        circle: circleMap.get(post.circleId)!,
+        circle: {
+          id: circle.id,
+          slug: circle.slug,
+          name: circle.name,
+          topic: circle.topic,
+        },
+        isPinned: circle.pinnedPostIds.includes(post.id),
       };
     });
   }
@@ -741,11 +750,33 @@ export class ForumService {
   }
 
   async listPosts(dto: ListPostsDto, currentUserId?: string) {
-    const { page = 1, pageSize = 20, sortBy = "hot", search, circleId } = dto;
+    const {
+      page = 1,
+      pageSize = 20,
+      sortBy = "hot",
+      search,
+      circleId,
+      scope = PostScope.ALL,
+    } = dto;
 
     const where: FilterQuery<Post> = { deletedAt: null };
+    let requestedCircle: Circle | null = null;
+    if (scope === PostScope.SUBSCRIBED) {
+      if (!currentUserId) {
+        throw new UnauthorizedException("登录后才能查看已订阅圈子的帖子");
+      }
+      if (circleId) {
+        throw new BadRequestException("订阅流不能同时指定单个圈子");
+      }
+      const subscribedCircleIds =
+        await this.circleService.getSubscribedCircleIdsForUser(currentUserId);
+      if (subscribedCircleIds.length === 0) {
+        return { posts: [], meta: createEmptyMeta(page, pageSize) };
+      }
+      where.circleId = { $in: subscribedCircleIds };
+    }
     if (circleId) {
-      await this.circleService.ensureCircleExists(circleId);
+      requestedCircle = await this.circleService.ensureCircleExists(circleId);
       where.circleId = circleId;
     }
     if (search) {
@@ -761,14 +792,55 @@ export class ForumService {
         ? { replyCount: -1, viewCount: -1, createdAt: -1 }
         : { createdAt: -1 };
 
-    const [posts, total] = await Promise.all([
-      this.postModel
-        .find(where)
-        .sort(sort)
-        .skip((page - 1) * pageSize)
-        .limit(pageSize),
-      this.postModel.countDocuments(where),
-    ]);
+    let posts: PostDocument[];
+    let total: number;
+    if (requestedCircle && !search) {
+      const visiblePinnedPosts = await this.postModel.find({
+        _id: { $in: requestedCircle.pinnedPostIds },
+        circleId: requestedCircle.id,
+        deletedAt: null,
+      });
+      const pinnedPostMap = new Map(
+        visiblePinnedPosts.map((post) => [post.id, post]),
+      );
+      const orderedPinnedPosts = requestedCircle.pinnedPostIds.flatMap((id) => {
+        const post = pinnedPostMap.get(id);
+        return post ? [post] : [];
+      });
+      const normalWhere: FilterQuery<Post> = {
+        ...where,
+        ...(orderedPinnedPosts.length > 0
+          ? { _id: { $nin: orderedPinnedPosts.map((post) => post.id) } }
+          : {}),
+      };
+      const normalLimit =
+        page === 1 ? Math.max(0, pageSize - orderedPinnedPosts.length) : pageSize;
+      const normalSkip =
+        page === 1
+          ? 0
+          : Math.max(0, (page - 1) * pageSize - orderedPinnedPosts.length);
+      const [normalPosts, totalPosts] = await Promise.all([
+        normalLimit === 0
+          ? Promise.resolve([])
+          : this.postModel
+              .find(normalWhere)
+              .sort(sort)
+              .skip(normalSkip)
+              .limit(normalLimit),
+        this.postModel.countDocuments(where),
+      ]);
+      posts = page === 1 ? [...orderedPinnedPosts, ...normalPosts] : normalPosts;
+      total = totalPosts;
+    } else {
+      [posts, total] = await Promise.all([
+        this.postModel
+          .find(where)
+          .sort(sort)
+          .skip((page - 1) * pageSize)
+          .limit(pageSize),
+        this.postModel.countDocuments(where),
+      ]);
+    }
 
     const populatedPosts = await this.populatePostRelations(posts);
 
@@ -860,11 +932,10 @@ export class ForumService {
 
   async createPost(agentId: string, dto: CreatePostDto) {
     await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.FORUM_WRITES);
-    await this.circleService.ensureCircleExists(dto.circleId);
     const postId = new Types.ObjectId();
     const { post, progressDelta } = await this.databaseService.$transaction(
       async (session) => {
-        await this.circleService.ensureCircleExists(dto.circleId, session);
+        const circle = await this.circleService.ensureCircleExists(dto.circleId, session);
         const actionDelta =
           await this.progressionService.applySuccessfulAction(
             {
@@ -881,6 +952,7 @@ export class ForumService {
           content: dto.content,
           authorId: agentId,
           circleId: dto.circleId,
+          circleRulesVersion: circle.rulesVersion,
         });
         await createdPost.save({ session });
         await this.circleService.incrementPostCount(dto.circleId, createdPost.createdAt, session);
@@ -964,29 +1036,42 @@ export class ForumService {
   async createReply(agentId: string, postId: string, dto: CreateReplyDto) {
     await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.FORUM_WRITES);
     ensureValidObjectId(postId, "帖子不存在");
-    const post = await this.postModel.findOne({ _id: postId, deletedAt: null });
-    if (!post) {
-      throw new NotFoundException("帖子不存在");
-    }
-
     if (dto.parentReplyId) {
       ensureValidObjectId(dto.parentReplyId, "父级回复不存在");
-      const parentReply = await this.replyModel.findById(dto.parentReplyId);
-      if (!parentReply) {
-        throw new NotFoundException("父级回复不存在");
-      }
-      if (parentReply.postId !== postId) {
-        throw new BadRequestException("父级回复不属于该帖子");
-      }
-      if (parentReply.parentReplyId !== null) {
-        throw new BadRequestException("不能回复嵌套回复（最多两层）");
-      }
     }
 
     const replyId = new Types.ObjectId();
     const isChildReply = Boolean(dto.parentReplyId);
     const { reply, progressDelta } = await this.databaseService.$transaction(
       async (session) => {
+        const post = await this.postModel.findOne(
+          { _id: postId, deletedAt: null },
+          null,
+          { session },
+        );
+        if (!post) {
+          throw new NotFoundException("帖子不存在");
+        }
+        const circle = await this.circleService.ensureCircleExists(
+          post.circleId,
+          session,
+        );
+        if (dto.parentReplyId) {
+          const parentReply = await this.replyModel.findOne(
+            { _id: dto.parentReplyId, deletedAt: null },
+            null,
+            { session },
+          );
+          if (!parentReply) {
+            throw new NotFoundException("父级回复不存在");
+          }
+          if (parentReply.postId !== postId) {
+            throw new BadRequestException("父级回复不属于该帖子");
+          }
+          if (parentReply.parentReplyId !== null) {
+            throw new BadRequestException("不能回复嵌套回复（最多两层）");
+          }
+        }
         const actionDelta =
           await this.progressionService.applySuccessfulAction(
             {
@@ -1005,6 +1090,7 @@ export class ForumService {
           postId,
           authorId: agentId,
           parentReplyId: dto.parentReplyId ?? null,
+          circleRulesVersion: circle.rulesVersion,
         });
         await createdReply.save({ session });
         await this.postModel.findByIdAndUpdate(

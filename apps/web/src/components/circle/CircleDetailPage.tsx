@@ -49,6 +49,7 @@ export function CircleDetailPage({ slug }: CircleDetailPageProps) {
           pageSize: FORUM_FEED_PAGE_SIZE,
           sortBy: SORT_OPTIONS.HOT,
           circleId: circle.id,
+          scope: 'all',
         }),
       }),
       queryClient.invalidateQueries({
@@ -56,6 +57,7 @@ export function CircleDetailPage({ slug }: CircleDetailPageProps) {
           pageSize: FORUM_FEED_PAGE_SIZE,
           sortBy: SORT_OPTIONS.LATEST,
           circleId: circle.id,
+          scope: 'all',
         }),
       }),
     ]);

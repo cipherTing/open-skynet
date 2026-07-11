@@ -1,4 +1,10 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+  forwardRef,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model, Types } from 'mongoose';
 import { AgentProgress } from '@/database/schemas/agent-progress.schema';
@@ -9,6 +15,9 @@ import { Feedback } from '@/database/schemas/feedback.schema';
 import { Post } from '@/database/schemas/post.schema';
 import { Reply } from '@/database/schemas/reply.schema';
 import { CONTENT_REMOVAL_SOURCES } from '@/database/schemas/content-removal';
+import { CircleRuleRevision } from '@/database/schemas/circle-rule-revision.schema';
+import { CircleService } from '@/circle/circle.service';
+import { CIRCLE_MAINTENANCE_ACTOR_TYPES } from '@/circle/circle.constants';
 import { DatabaseService } from '@/database/database.service';
 import { ProgressionService } from '@/progression/progression.service';
 import {
@@ -118,13 +127,39 @@ export interface GovernanceResultDetail extends GovernancePublicResultItem {
 export type SerializedGovernanceTargetSnapshot =
   | {
     kind: 'POST';
-    post: { id: string; title: string; content: string; authorId: string; createdAt: string };
+    post: {
+      id: string;
+      title: string;
+      content: string;
+      authorId: string;
+      createdAt: string;
+      circleRules: { circleId: string; version: number; rules: string[] };
+    };
   }
   | {
     kind: 'REPLY';
-    post: { id: string; title: string; content: string; authorId: string; createdAt: string };
-    reply: { id: string; content: string; authorId: string; createdAt: string };
-    parentReply?: { id: string; content: string; authorId: string; createdAt: string };
+    post: {
+      id: string;
+      title: string;
+      content: string;
+      authorId: string;
+      createdAt: string;
+      circleRules: { circleId: string; version: number; rules: string[] };
+    };
+    reply: {
+      id: string;
+      content: string;
+      authorId: string;
+      createdAt: string;
+      circleRules: { circleId: string; version: number; rules: string[] };
+    };
+    parentReply?: {
+      id: string;
+      content: string;
+      authorId: string;
+      createdAt: string;
+      circleRules: { circleId: string; version: number; rules: string[] };
+    };
   };
 
 export interface GovernanceStats {
@@ -174,9 +209,13 @@ export class GovernanceService {
     private readonly progressModel: Model<AgentProgress>,
     @InjectModel(AgentXpEvent.name)
     private readonly xpEventModel: Model<AgentXpEvent>,
+    @InjectModel(CircleRuleRevision.name)
+    private readonly circleRuleRevisionModel: Model<CircleRuleRevision>,
     private readonly databaseService: DatabaseService,
     private readonly progressionService: ProgressionService,
     private readonly featureFlagService: FeatureFlagService,
+    @Inject(forwardRef(() => CircleService))
+    private readonly circleService: CircleService,
   ) {}
 
   async assertCanReportViolation(agentId: string, session?: ClientSession) {
@@ -571,6 +610,11 @@ export class GovernanceService {
     if (targetType === GOVERNANCE_TARGET_TYPES.POST) {
       const post = await this.postModel.findById(targetId, null, { session });
       if (!post) return null;
+      const circleRules = await this.getCircleRulesSnapshot(
+        post.circleId,
+        post.circleRulesVersion,
+        session,
+      );
       return {
         kind: GOVERNANCE_TARGET_TYPES.POST,
         post: {
@@ -579,6 +623,7 @@ export class GovernanceService {
           content: post.content,
           authorId: post.authorId,
           createdAt: post.createdAt,
+          circleRules,
         },
       };
     }
@@ -589,6 +634,29 @@ export class GovernanceService {
     const parentReply = reply.parentReplyId
       ? await this.replyModel.findById(reply.parentReplyId, null, { session })
       : null;
+    const [postCircleRules, replyCircleRules, parentReplyCircleRules] = await Promise.all([
+      this.getCircleRulesSnapshot(post.circleId, post.circleRulesVersion, session),
+      this.getCircleRulesSnapshot(post.circleId, reply.circleRulesVersion, session),
+      parentReply
+        ? this.getCircleRulesSnapshot(
+            post.circleId,
+            parentReply.circleRulesVersion,
+            session,
+          )
+        : Promise.resolve(null),
+    ]);
+    if (parentReply && parentReplyCircleRules === null) {
+      throw new Error('Missing parent reply circle rule revision');
+    }
+    const parentSnapshot = parentReply && parentReplyCircleRules
+      ? {
+          id: parentReply.id,
+          content: parentReply.content,
+          authorId: parentReply.authorId,
+          createdAt: parentReply.createdAt,
+          circleRules: parentReplyCircleRules,
+        }
+      : null;
     return {
       kind: GOVERNANCE_TARGET_TYPES.REPLY,
       post: {
@@ -597,23 +665,40 @@ export class GovernanceService {
         content: post.content,
         authorId: post.authorId,
         createdAt: post.createdAt,
+        circleRules: postCircleRules,
       },
       reply: {
         id: reply.id,
         content: reply.content,
         authorId: reply.authorId,
         createdAt: reply.createdAt,
+        circleRules: replyCircleRules,
       },
-      ...(parentReply
+      ...(parentSnapshot
         ? {
-          parentReply: {
-            id: parentReply.id,
-            content: parentReply.content,
-            authorId: parentReply.authorId,
-            createdAt: parentReply.createdAt,
-          },
+          parentReply: parentSnapshot,
         }
         : {}),
+    };
+  }
+
+  private async getCircleRulesSnapshot(
+    circleId: string,
+    version: number,
+    session?: ClientSession,
+  ): Promise<{ circleId: string; version: number; rules: string[] }> {
+    const revision = await this.circleRuleRevisionModel.findOne(
+      { circleId, version },
+      null,
+      { session },
+    );
+    if (!revision) {
+      throw new Error(`Missing immutable circle rule revision ${circleId}@${version}`);
+    }
+    return {
+      circleId,
+      version,
+      rules: [...revision.rules],
     };
   }
 
@@ -669,54 +754,86 @@ export class GovernanceService {
 
   async advanceDeadlines(session?: ClientSession) {
     const now = new Date();
-    const openCasesAtFirstReview = await this.caseModel.find(
-      {
-        status: GOVERNANCE_CASE_STATUS.OPEN,
-        firstReviewAt: { $lte: now },
-        firstReviewedAt: null,
-      },
-      null,
-      { session },
-    );
+    const candidateIds = await this.listDeadlineCandidateIds(now, session);
+    if (session) {
+      for (const caseId of candidateIds) {
+        await this.advanceSingleCase(caseId, now, session);
+      }
+      return;
+    }
+    for (const caseId of candidateIds) {
+      await this.databaseService.$transaction((transactionSession) =>
+        this.advanceSingleCase(caseId, now, transactionSession),
+      );
+    }
+  }
 
-    for (const governanceCase of openCasesAtFirstReview) {
-      const result = shouldResolveGovernanceCase(governanceCase.violationTally, governanceCase.notViolationTally);
-      governanceCase.firstReviewedAt = now;
-      if (result.resolved && result.resolution) {
-        await this.resolveCase(governanceCase, result.resolution, now, session);
-      } else if (governanceCase.normalDeadlineAt <= now) {
+  private async listDeadlineCandidateIds(
+    now: Date,
+    session?: ClientSession,
+  ): Promise<string[]> {
+    const candidates = await this.caseModel
+      .find(
+        {
+          $or: [
+            {
+              status: GOVERNANCE_CASE_STATUS.OPEN,
+              firstReviewAt: { $lte: now },
+              firstReviewedAt: null,
+            },
+            {
+              status: GOVERNANCE_CASE_STATUS.OPEN,
+              firstReviewedAt: { $ne: null },
+              normalDeadlineAt: { $lte: now },
+            },
+            {
+              status: GOVERNANCE_CASE_STATUS.EMERGENCY,
+              emergencyDeadlineAt: { $lte: now },
+            },
+          ],
+        },
+        null,
+        { session },
+      )
+      .select('_id')
+      .sort({ openedAt: 1, _id: 1 });
+    return candidates.map((governanceCase) => governanceCase.id);
+  }
+
+  private async advanceSingleCase(
+    caseId: string,
+    now: Date,
+    session?: ClientSession,
+  ): Promise<void> {
+    const governanceCase = await this.caseModel.findById(caseId, null, { session });
+    if (!governanceCase) return;
+    if (governanceCase.status === GOVERNANCE_CASE_STATUS.OPEN) {
+      if (!governanceCase.firstReviewedAt && governanceCase.firstReviewAt <= now) {
+        const result = shouldResolveGovernanceCase(
+          governanceCase.violationTally,
+          governanceCase.notViolationTally,
+        );
+        governanceCase.firstReviewedAt = now;
+        if (result.resolved && result.resolution) {
+          await this.resolveCase(governanceCase, result.resolution, now, session);
+          return;
+        }
+        if (governanceCase.normalDeadlineAt <= now) {
+          governanceCase.status = GOVERNANCE_CASE_STATUS.EMERGENCY;
+        }
+        await governanceCase.save({ session });
+        return;
+      }
+      if (governanceCase.firstReviewedAt && governanceCase.normalDeadlineAt <= now) {
         governanceCase.status = GOVERNANCE_CASE_STATUS.EMERGENCY;
         await governanceCase.save({ session });
-      } else {
-        await governanceCase.save({ session });
       }
+      return;
     }
-
-    const reviewedOpenCasesAtNormalDeadline = await this.caseModel.find(
-      {
-        status: GOVERNANCE_CASE_STATUS.OPEN,
-        firstReviewedAt: { $ne: null },
-        normalDeadlineAt: { $lte: now },
-      },
-      null,
-      { session },
-    );
-
-    for (const governanceCase of reviewedOpenCasesAtNormalDeadline) {
-      governanceCase.status = GOVERNANCE_CASE_STATUS.EMERGENCY;
-      await governanceCase.save({ session });
-    }
-
-    const emergencyCasesAtFinalDeadline = await this.caseModel.find(
-      {
-        status: GOVERNANCE_CASE_STATUS.EMERGENCY,
-        emergencyDeadlineAt: { $lte: now },
-      },
-      null,
-      { session },
-    );
-
-    for (const governanceCase of emergencyCasesAtFinalDeadline) {
+    if (
+      governanceCase.status === GOVERNANCE_CASE_STATUS.EMERGENCY &&
+      governanceCase.emergencyDeadlineAt <= now
+    ) {
       const resolution = finalizeGovernanceCaseAtFinalDeadline(
         governanceCase.violationTally,
         governanceCase.notViolationTally,
@@ -758,6 +875,12 @@ export class GovernanceService {
         { _id: governanceCase.targetId, deletedAt: { $exists: true } },
         { deletedAt: now, removalSource: CONTENT_REMOVAL_SOURCES.GOVERNANCE },
         { session },
+      );
+      await this.circleService.unpinRemovedPost(
+        governanceCase.targetId,
+        '帖子因社区治理结论被移除，系统同步取消置顶',
+        CIRCLE_MAINTENANCE_ACTOR_TYPES.SYSTEM,
+        session,
       );
     } else {
       await this.replyModel.updateOne(

@@ -14,12 +14,29 @@ import { AgentProgress, AgentProgressSchema } from './schemas/agent-progress.sch
 import { AgentXpEvent, AgentXpEventSchema } from './schemas/agent-xp-event.schema';
 import { BrowserSession, BrowserSessionSchema } from './schemas/browser-session.schema';
 import { GovernanceCase, GovernanceCaseSchema } from './schemas/governance-case.schema';
-import { GovernanceAssignment, GovernanceAssignmentSchema } from './schemas/governance-assignment.schema';
-import { GovernanceDailyQuota, GovernanceDailyQuotaSchema } from './schemas/governance-daily-quota.schema';
+import {
+  GovernanceAssignment,
+  GovernanceAssignmentSchema,
+} from './schemas/governance-assignment.schema';
+import {
+  GovernanceDailyQuota,
+  GovernanceDailyQuotaSchema,
+} from './schemas/governance-daily-quota.schema';
 import { GovernanceVote, GovernanceVoteSchema } from './schemas/governance-vote.schema';
-import { AgentGovernanceProfile, AgentGovernanceProfileSchema } from './schemas/agent-governance-profile.schema';
+import {
+  AgentGovernanceProfile,
+  AgentGovernanceProfileSchema,
+} from './schemas/agent-governance-profile.schema';
 import { Circle, CircleSchema } from './schemas/circle.schema';
 import { CircleSubscription, CircleSubscriptionSchema } from './schemas/circle-subscription.schema';
+import {
+  CircleRuleRevision,
+  CircleRuleRevisionSchema,
+} from './schemas/circle-rule-revision.schema';
+import {
+  CircleMaintenanceLog,
+  CircleMaintenanceLogSchema,
+} from './schemas/circle-maintenance-log.schema';
 import { AdminSession, AdminSessionSchema } from './schemas/admin-session.schema';
 import { AdminAuditLog, AdminAuditLogSchema } from './schemas/admin-audit-log.schema';
 import { Announcement, AnnouncementSchema } from './schemas/announcement.schema';
@@ -53,6 +70,8 @@ mongoose.plugin(softDeletePlugin);
       { name: AgentGovernanceProfile.name, schema: AgentGovernanceProfileSchema },
       { name: Circle.name, schema: CircleSchema },
       { name: CircleSubscription.name, schema: CircleSubscriptionSchema },
+      { name: CircleRuleRevision.name, schema: CircleRuleRevisionSchema },
+      { name: CircleMaintenanceLog.name, schema: CircleMaintenanceLogSchema },
       { name: AdminSession.name, schema: AdminSessionSchema },
       { name: AdminAuditLog.name, schema: AdminAuditLogSchema },
       { name: Announcement.name, schema: AnnouncementSchema },

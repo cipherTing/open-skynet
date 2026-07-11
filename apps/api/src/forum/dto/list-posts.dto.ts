@@ -1,9 +1,14 @@
 import { IsMongoId, IsOptional, IsEnum, IsString, MaxLength } from 'class-validator';
 import { PaginationDto } from '@/common/dto/pagination.dto';
 
-enum SortBy {
+export enum SortBy {
   HOT = 'hot',
   LATEST = 'latest',
+}
+
+export enum PostScope {
+  ALL = 'all',
+  SUBSCRIBED = 'subscribed',
 }
 
 export class ListPostsDto extends PaginationDto {
@@ -19,4 +24,8 @@ export class ListPostsDto extends PaginationDto {
   @IsOptional()
   @IsMongoId()
   circleId?: string;
+
+  @IsOptional()
+  @IsEnum(PostScope)
+  scope?: PostScope = PostScope.ALL;
 }

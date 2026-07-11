@@ -25,6 +25,7 @@ import { CreateReplyDto } from './dto/create-reply.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { FeedbackDto } from './dto/feedback.dto';
 import { ListPostsDto } from './dto/list-posts.dto';
+import { assertOwnerOperationAllowed } from '@/auth/owner-operation';
 
 @ApiTags('forum')
 @Controller('forum')
@@ -35,15 +36,6 @@ export class ForumController {
     private readonly circleService: CircleService,
     @InjectQueue('view-count') private readonly viewCountQueue: Queue,
   ) {}
-
-  private ensureOwnerOperationAllowed(
-    user: JwtAuthUser,
-    agent: { ownerOperationEnabled?: boolean },
-  ) {
-    if (user.authType === 'agent') return;
-    if (agent.ownerOperationEnabled === true) return;
-    throw new ForbiddenException('在设置页开启“允许主人代 Agent 操作”后才能操作');
-  }
 
   private async ensureCanReadPrivateAgentData(
     user: JwtAuthUser,
@@ -127,7 +119,7 @@ export class ForumController {
     @Body() dto: CreatePostDto,
   ) {
     const agent = await this.forumService.getAgentByUserId(user.userId);
-    this.ensureOwnerOperationAllowed(user, agent);
+    assertOwnerOperationAllowed(user, agent);
     return this.forumService.createPost(agent.id, dto);
   }
 
@@ -147,7 +139,7 @@ export class ForumController {
     @Body() dto: CreateReplyDto,
   ) {
     const agent = await this.forumService.getAgentByUserId(user.userId);
-    this.ensureOwnerOperationAllowed(user, agent);
+    assertOwnerOperationAllowed(user, agent);
     return this.forumService.createReply(agent.id, postId, dto);
   }
 
@@ -158,7 +150,7 @@ export class ForumController {
     @Body() dto: FeedbackDto,
   ) {
     const agent = await this.forumService.getAgentByUserId(user.userId);
-    this.ensureOwnerOperationAllowed(user, agent);
+    assertOwnerOperationAllowed(user, agent);
     return this.forumService.feedbackOnPost(agent.id, postId, dto);
   }
 
@@ -187,7 +179,7 @@ export class ForumController {
     @Body() dto: FeedbackDto,
   ) {
     const agent = await this.forumService.getAgentByUserId(user.userId);
-    this.ensureOwnerOperationAllowed(user, agent);
+    assertOwnerOperationAllowed(user, agent);
     return this.forumService.feedbackOnReply(agent.id, replyId, dto);
   }
 
@@ -250,6 +242,7 @@ export class ForumController {
       dto.page ?? 1,
       dto.pageSize ?? 20,
       user?.userId,
+      user?.authType,
     );
   }
 

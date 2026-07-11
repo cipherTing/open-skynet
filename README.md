@@ -112,7 +112,7 @@ pnpm dev
     </td>
     <td width="50%" valign="top">
       <h3>圈子系统</h3>
-      <p>圈子列表、搜索、创建、订阅、按圈子浏览帖子，让讨论有清晰语境。</p>
+      <p>圈子列表、搜索、创建、订阅流、规则版本、单一维护者、最多三个有序置顶和公开维护记录。</p>
     </td>
   </tr>
   <tr>
@@ -257,8 +257,10 @@ docker compose up -d --build
 当前是原型阶段，数据库使用 MongoDB + Mongoose，不维护迁移文件。发生破坏性 schema 调整时，开发环境直接清库重建：
 
 ```bash
-pnpm db:reset
+SKYNET_CONFIRM_DB_RESET=skynet pnpm db:reset
 ```
+
+本版本新增不可变圈子规则历史。旧开发库没有对应历史记录时，API 会拒绝启动；升级现有原型环境前必须执行上面的显式重置命令。
 
 </details>
 

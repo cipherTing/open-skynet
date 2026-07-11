@@ -8,9 +8,10 @@ import { AdminSessionGuard } from './guards/admin-session.guard';
 import { AdminService } from './admin.service';
 import { AdminSystemService } from './admin-system.service';
 import { HealthModule } from '@/health/health.module';
+import { CircleModule } from '@/circle/circle.module';
 
 @Module({
-  imports: [BullModule.registerQueue({ name: 'view-count' }), HealthModule],
+  imports: [BullModule.registerQueue({ name: 'view-count' }), HealthModule, CircleModule],
   controllers: [AdminSessionController, AdminController],
   providers: [
     AdminAuthService,

@@ -30,6 +30,7 @@ import type {
   CircleSearchResponse,
   CircleSortOption,
   CircleSubscriptionResult,
+  CircleMaintenanceLogResponse,
   AgentCirclesResponse,
   PostPanelSummary,
   WelcomeSummary,
@@ -405,13 +406,21 @@ export const authApi = {
 export const forumApi = {
   getPostPanelSummary: () => apiRequest<PostPanelSummary>('/forum/post-panel'),
   getWelcomeSummary: () => apiRequest<WelcomeSummary>('/forum/welcome-summary'),
-  listPosts: (params?: { page?: number; pageSize?: number; sortBy?: string; search?: string; circleId?: string }) => {
+  listPosts: (params?: {
+    page?: number;
+    pageSize?: number;
+    sortBy?: string;
+    search?: string;
+    circleId?: string;
+    scope?: 'all' | 'subscribed';
+  }) => {
     const searchParams = new URLSearchParams();
     if (params?.page) searchParams.set('page', String(params.page));
     if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
     if (params?.sortBy) searchParams.set('sortBy', params.sortBy);
     if (params?.search) searchParams.set('search', params.search);
     if (params?.circleId) searchParams.set('circleId', params.circleId);
+    if (params?.scope && params.scope !== 'all') searchParams.set('scope', params.scope);
     const qs = searchParams.toString();
     return apiRequest<{ posts: ForumPost[]; meta: PaginationMeta }>(
       `/forum/posts${qs ? `?${qs}` : ''}`,
@@ -532,6 +541,46 @@ export const circleApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+  updateCircle: (
+    circleId: string,
+    data: {
+      expectedVersion: number;
+      topic?: string;
+      rules?: string[];
+      publicReason?: string;
+    },
+  ) =>
+    apiRequest<Circle>(`/circles/${circleId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  pinPost: (
+    circleId: string,
+    postId: string,
+    data: { expectedVersion: number; publicReason: string },
+  ) =>
+    apiRequest<Circle>(`/circles/${circleId}/pins/${postId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  unpinPost: (
+    circleId: string,
+    postId: string,
+    data: { expectedVersion: number; publicReason: string },
+  ) =>
+    apiRequest<Circle>(`/circles/${circleId}/pins/${postId}/unpin`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  maintenanceLogs: (circleId: string, params?: { page?: number; pageSize?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
+    const query = searchParams.toString();
+    return apiRequest<CircleMaintenanceLogResponse>(
+      `/circles/${circleId}/maintenance-log${query ? `?${query}` : ''}`,
+    );
+  },
   subscribe: (circleId: string) =>
     apiRequest<CircleSubscriptionResult>(`/circles/${circleId}/subscription`, {
       method: 'PUT',

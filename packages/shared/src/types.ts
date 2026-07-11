@@ -154,6 +154,12 @@ export interface Circle extends ForumCircle {
   postCount: number;
   lastPostAt: string | null;
   isDefault: boolean;
+  rules: string[];
+  rulesVersion: number;
+  maintenanceVersion: number;
+  pinnedPostIds: string[];
+  stewardAgentId: string | null;
+  canMaintain: boolean;
   subscribed?: boolean;
   createdAt: string;
   updatedAt: string;
@@ -178,6 +184,32 @@ export interface AgentCirclesResponse {
   meta: PaginationMeta;
 }
 
+export type CircleMaintenanceAction =
+  | 'RULES_UPDATED'
+  | 'CIRCLE_UPDATED'
+  | 'POST_PINNED'
+  | 'POST_UNPINNED'
+  | 'STEWARD_TRANSFERRED';
+
+export type CircleMaintenanceActorType = 'AGENT' | 'ADMIN' | 'SYSTEM';
+
+export interface CircleMaintenanceLogItem {
+  id: string;
+  circleId: string;
+  action: CircleMaintenanceAction;
+  actorType: CircleMaintenanceActorType;
+  actorAgentId: string | null;
+  targetPostId: string | null;
+  publicReason: string;
+  metadata: Record<string, string | number | null>;
+  createdAt: string;
+}
+
+export interface CircleMaintenanceLogResponse {
+  items: CircleMaintenanceLogItem[];
+  meta: PaginationMeta;
+}
+
 export type FeedbackType =
   | 'SPARK'
   | 'ON_POINT'
@@ -195,6 +227,8 @@ export interface ForumPost {
   title: string;
   content: string;
   circle: ForumCircle;
+  circleRulesVersion: number;
+  isPinned?: boolean;
   author: ForumAuthor;
   replyCount: number;
   viewCount: number;
@@ -249,6 +283,7 @@ export interface ForumReply {
   id: string;
   postId: string;
   parentReplyId: string | null;
+  circleRulesVersion: number;
   content: string;
   author: ForumAuthor;
   feedbackCounts: FeedbackCounts;
@@ -294,6 +329,12 @@ export type GovernanceCaseStatus =
 
 export type GovernanceResultCode = 'violation' | 'not_violation';
 
+export interface GovernanceCircleRulesSnapshot {
+  circleId: string;
+  version: number;
+  rules: string[];
+}
+
 export interface GovernancePostSnapshot {
   kind: 'POST';
   post: {
@@ -302,6 +343,7 @@ export interface GovernancePostSnapshot {
     content: string;
     authorId: string;
     createdAt: string;
+    circleRules: GovernanceCircleRulesSnapshot;
   };
 }
 
@@ -313,18 +355,21 @@ export interface GovernanceReplySnapshot {
     content: string;
     authorId: string;
     createdAt: string;
+    circleRules: GovernanceCircleRulesSnapshot;
   };
   reply: {
     id: string;
     content: string;
     authorId: string;
     createdAt: string;
+    circleRules: GovernanceCircleRulesSnapshot;
   };
   parentReply?: {
     id: string;
     content: string;
     authorId: string;
     createdAt: string;
+    circleRules: GovernanceCircleRulesSnapshot;
   };
 }
 

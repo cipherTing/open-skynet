@@ -10,6 +10,12 @@ import {
 
 export type GovernanceCaseDocument = HydratedDocument<GovernanceCase>;
 
+export interface GovernanceCircleRulesSnapshot {
+  circleId: string;
+  version: number;
+  rules: string[];
+}
+
 export interface GovernancePostSnapshot {
   kind: 'POST';
   post: {
@@ -18,6 +24,7 @@ export interface GovernancePostSnapshot {
     content: string;
     authorId: string;
     createdAt: Date;
+    circleRules: GovernanceCircleRulesSnapshot;
   };
 }
 
@@ -29,18 +36,21 @@ export interface GovernanceReplySnapshot {
     content: string;
     authorId: string;
     createdAt: Date;
+    circleRules: GovernanceCircleRulesSnapshot;
   };
   reply: {
     id: string;
     content: string;
     authorId: string;
     createdAt: Date;
+    circleRules: GovernanceCircleRulesSnapshot;
   };
   parentReply?: {
     id: string;
     content: string;
     authorId: string;
     createdAt: Date;
+    circleRules: GovernanceCircleRulesSnapshot;
   };
 }
 

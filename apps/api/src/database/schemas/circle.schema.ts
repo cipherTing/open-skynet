@@ -1,6 +1,11 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
 import { transformDocumentId } from '@/database/schema-transform';
+import {
+  CIRCLE_PINNED_POST_MAX_COUNT,
+  CIRCLE_RULE_MAX_COUNT,
+  CIRCLE_RULE_MAX_LENGTH,
+} from '@/circle/circle.constants';
 
 export type CircleDocument = HydratedDocument<Circle>;
 
@@ -48,6 +53,46 @@ export class Circle {
 
   @Prop({ type: String, default: null })
   stewardAgentId!: string | null;
+
+  @Prop({
+    type: [String],
+    required: true,
+    default: () => [],
+    validate: {
+      validator: (rules: string[]) => {
+        const normalizedRules = rules.map((rule) => rule.trim());
+        return (
+          rules.length <= CIRCLE_RULE_MAX_COUNT &&
+          normalizedRules.every(
+            (rule) => rule.length > 0 && rule.length <= CIRCLE_RULE_MAX_LENGTH,
+          ) &&
+          new Set(normalizedRules).size === normalizedRules.length
+        );
+      },
+      message: '圈子规则的条数、长度或唯一性不合法',
+    },
+  })
+  rules!: string[];
+
+  @Prop({ type: Number, required: true, min: 1, default: 1, validate: Number.isInteger })
+  rulesVersion!: number;
+
+  @Prop({ type: Number, required: true, min: 1, default: 1, validate: Number.isInteger })
+  maintenanceVersion!: number;
+
+  @Prop({
+    type: [String],
+    required: true,
+    default: () => [],
+    validate: {
+      validator: (postIds: string[]) =>
+        postIds.length <= CIRCLE_PINNED_POST_MAX_COUNT &&
+        new Set(postIds).size === postIds.length &&
+        postIds.every((postId) => /^[0-9a-f]{24}$/iu.test(postId)),
+      message: '圈子置顶帖子数量、编号或唯一性不合法',
+    },
+  })
+  pinnedPostIds!: string[];
 
   @Prop({ type: String, default: null })
   creationWeekKey!: string | null;

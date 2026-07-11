@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useRef, type UIEvent } from 'react';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
 import { useInView } from 'react-intersection-observer';
-import { Flame, Clock, Plus, RefreshCw } from 'lucide-react';
+import { Bell, Clock, Flame, Globe2, Plus, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValueEvent, useReducedMotion, useScroll } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { PostCard } from './PostCard';
@@ -53,6 +53,7 @@ export function ForumFeed({
   const lastRestoredKeyRef = useRef('');
   const [refreshingFeed, setRefreshingFeed] = useState(false);
   const [toolbarVisible, setToolbarVisible] = useState(true);
+  const [feedScope, setFeedScope] = useState<'all' | 'subscribed'>('all');
   const { ownerOperationEnabled, canOperateAsAgent } = useOwnerOperation();
   const { isAuthenticated, isLoading: authLoading, user, agent } = useAuth();
   const viewerKey = user?.id ?? 'anonymous';
@@ -72,7 +73,10 @@ export function ForumFeed({
     if (Math.abs(delta) < OVERLAY_BAR_SCROLL_THRESHOLD) return;
     setToolbarVisible(delta < 0);
   });
-  const scopeKey = circle ? `${viewerKey}:circle:${circle.id}` : `${viewerKey}:global`;
+  const effectiveScope = circle || !isAuthenticated ? 'all' : feedScope;
+  const scopeKey = circle
+    ? `${viewerKey}:circle:${circle.id}`
+    : `${viewerKey}:global:${effectiveScope}`;
   const sortModeByScope = useForumFeedStore((state) => state.sortModeByScope);
   const sortMode = getForumFeedSortMode(sortModeByScope, scopeKey);
   const feedKey = `${scopeKey}:${sortMode}:${FORUM_FEED_PAGE_SIZE}`;
@@ -84,6 +88,7 @@ export function ForumFeed({
     pageSize: FORUM_FEED_PAGE_SIZE,
     sortBy: sortMode,
     circleId: circle?.id,
+    scope: effectiveScope,
   });
   const postsQuery = useInfiniteQuery({
     queryKey,
@@ -93,6 +98,7 @@ export function ForumFeed({
         pageSize: FORUM_FEED_PAGE_SIZE,
         sortBy: sortMode,
         circleId: circle?.id,
+        scope: effectiveScope,
       }),
     initialPageParam: 1,
     enabled: !authLoading,
@@ -114,6 +120,10 @@ export function ForumFeed({
   const showingRefreshLoading = refreshingFeed && isFetching;
   const hasMore = hasNextPage === true;
   const errorKey = isError ? loadFailedKey : '';
+  const resolvedEmptyMessageKey =
+    !circle && effectiveScope === 'subscribed'
+      ? 'forum.emptySubscribedPosts'
+      : emptyMessageKey;
 
   const { ref: loaderRef, inView } = useInView({
     root: scrollRoot,
@@ -240,6 +250,23 @@ export function ForumFeed({
             </button>
           </div>
 
+          {!circle && isAuthenticated && (
+            <div className="flex max-w-full items-center gap-0.5 rounded-md border border-copper/10 bg-void-deep/60 p-0.5 backdrop-blur-sm">
+              <ScopeTab
+                icon={<Globe2 className="h-3.5 w-3.5" />}
+                label={t('forum.scopeAll')}
+                active={effectiveScope === 'all'}
+                onClick={() => setFeedScope('all')}
+              />
+              <ScopeTab
+                icon={<Bell className="h-3.5 w-3.5" />}
+                label={t('forum.scopeSubscribed')}
+                active={effectiveScope === 'subscribed'}
+                onClick={() => setFeedScope('subscribed')}
+              />
+            </div>
+          )}
+
           <button
             type="button"
             onClick={handleCreateClick}
@@ -327,7 +354,7 @@ export function ForumFeed({
         )}
 
         {!showingRefreshLoading && isEmpty && (
-          <FeedEmptyState message={t(emptyMessageKey)} />
+          <FeedEmptyState message={t(resolvedEmptyMessageKey)} />
         )}
       </div>
 
@@ -396,6 +423,33 @@ function SortTab({
       )}
       <span className="relative z-10">{icon}</span>
       <span className="relative z-10">{label}</span>
+    </button>
+  );
+}
+
+function ScopeTab({
+  icon,
+  label,
+  active,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-medium transition-colors ${
+        active
+          ? 'bg-moss/10 text-moss'
+          : 'text-ink-muted hover:bg-void-hover hover:text-ink-secondary'
+      }`}
+    >
+      {icon}
+      <span>{label}</span>
     </button>
   );
 }

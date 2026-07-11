@@ -1,7 +1,7 @@
 import { Test, type TestingModule } from '@nestjs/testing';
 import { getConnectionToken, MongooseModule } from '@nestjs/mongoose';
 import { Connection } from 'mongoose';
-import { MongoMemoryServer } from 'mongodb-memory-server';
+import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { DatabaseService } from '@/database/database.service';
 import { GovernanceService } from './governance.service';
 import { ProgressionService } from '@/progression/progression.service';
@@ -17,6 +17,11 @@ import { AgentGovernanceProfile, AgentGovernanceProfileSchema } from '@/database
 import { AgentProgress, AgentProgressSchema } from '@/database/schemas/agent-progress.schema';
 import { AgentXpEvent, AgentXpEventSchema } from '@/database/schemas/agent-xp-event.schema';
 import { FeatureFlag, FeatureFlagSchema } from '@/database/schemas/feature-flag.schema';
+import {
+  CircleRuleRevision,
+  CircleRuleRevisionSchema,
+} from '@/database/schemas/circle-rule-revision.schema';
+import { CircleService } from '@/circle/circle.service';
 import { GOVERNANCE_ASSIGNMENT_STATUS, GOVERNANCE_CASE_STATUS, GOVERNANCE_DECISIONS, GOVERNANCE_ERROR_CODES, GOVERNANCE_HEALTH_LEVEL, GOVERNANCE_TARGET_TYPES } from './governance.constants';
 import { FeatureFlagService } from '@/system/feature-flag.service';
 
@@ -25,16 +30,18 @@ const TEST_CIRCLE_ID = '64f000000000000000000001';
 
 describe('GovernanceService integration', () => {
   jest.setTimeout(60_000);
-  let mongod: MongoMemoryServer;
+  let replicaSet: MongoMemoryReplSet;
   let moduleRef: TestingModule;
   let connection: Connection;
   let service: GovernanceService;
+  let unpinRemovedPost: jest.MockedFunction<CircleService['unpinRemovedPost']>;
 
   beforeAll(async () => {
-    mongod = await MongoMemoryServer.create();
+    replicaSet = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
+    unpinRemovedPost = jest.fn().mockResolvedValue(undefined);
     moduleRef = await Test.createTestingModule({
       imports: [
-        MongooseModule.forRoot(mongod.getUri()),
+        MongooseModule.forRoot(replicaSet.getUri()),
         MongooseModule.forFeature([
           { name: Agent.name, schema: AgentSchema },
           { name: Post.name, schema: PostSchema },
@@ -48,6 +55,7 @@ describe('GovernanceService integration', () => {
           { name: AgentProgress.name, schema: AgentProgressSchema },
           { name: AgentXpEvent.name, schema: AgentXpEventSchema },
           { name: FeatureFlag.name, schema: FeatureFlagSchema },
+          { name: CircleRuleRevision.name, schema: CircleRuleRevisionSchema },
         ]),
       ],
       providers: [
@@ -55,14 +63,42 @@ describe('GovernanceService integration', () => {
         ProgressionService,
         DatabaseService,
         FeatureFlagService,
+        {
+          provide: CircleService,
+          useValue: { unpinRemovedPost },
+        },
       ],
     }).compile();
 
     connection = moduleRef.get<Connection>(getConnectionToken());
     service = moduleRef.get(GovernanceService);
+    await connection.model(CircleRuleRevision.name).insertMany([
+      {
+        circleId: TEST_CIRCLE_ID,
+        version: 1,
+        rules: ['友好交流，不破坏社区'],
+        source: 'SYSTEM',
+        actorAgentId: null,
+      },
+      {
+        circleId: TEST_CIRCLE_ID,
+        version: 2,
+        rules: ['回复时尊重讨论上下文'],
+        source: 'AGENT',
+        actorAgentId: null,
+      },
+      {
+        circleId: TEST_CIRCLE_ID,
+        version: 3,
+        rules: ['不得发布破坏社区的内容'],
+        source: 'AGENT',
+        actorAgentId: null,
+      },
+    ]);
   });
 
   beforeEach(async () => {
+    unpinRemovedPost.mockReset().mockResolvedValue(undefined);
     const now = new Date();
     await connection.model(GovernanceCase.name).updateMany(
       { status: { $in: [GOVERNANCE_CASE_STATUS.OPEN, GOVERNANCE_CASE_STATUS.EMERGENCY] } },
@@ -88,7 +124,7 @@ describe('GovernanceService integration', () => {
 
   afterAll(async () => {
     if (moduleRef) await moduleRef.close();
-    if (mongod) await mongod.stop();
+    if (replicaSet) await replicaSet.stop();
   });
 
   async function createAgent(name: string, xpTotal = 0) {
@@ -175,6 +211,11 @@ describe('GovernanceService integration', () => {
     expect(governanceCase.targetSnapshot.post.title).toBe('bad post');
     expect(governanceCase.targetSnapshot.post.content).toBe('bad content');
     expect(governanceCase.targetSnapshot.post.authorId).toBe(governanceCase.targetAuthorId);
+    expect(governanceCase.targetSnapshot.post.circleRules).toEqual({
+      circleId: TEST_CIRCLE_ID,
+      version: 1,
+      rules: ['友好交流，不破坏社区'],
+    });
   });
 
   it('creates structured reply snapshots with post and parent reply context', async () => {
@@ -193,6 +234,7 @@ describe('GovernanceService integration', () => {
       content: 'parent reply content',
       authorId: parentAuthor.id,
       feedbackCounts: {},
+      circleRulesVersion: 2,
     });
     const reply = await connection.model(Reply.name).create({
       postId: post.id,
@@ -200,6 +242,7 @@ describe('GovernanceService integration', () => {
       content: 'child reply content',
       authorId: replyAuthor.id,
       feedbackCounts: {},
+      circleRulesVersion: 3,
     });
     await createReplyReportersForThreshold(reply.id, 5);
 
@@ -215,6 +258,18 @@ describe('GovernanceService integration', () => {
     expect(governanceCase!.targetSnapshot.post.content).toBe('thread root content');
     expect(governanceCase!.targetSnapshot.reply.content).toBe('child reply content');
     expect(governanceCase!.targetSnapshot.parentReply?.content).toBe('parent reply content');
+    expect(governanceCase!.targetSnapshot.post.circleRules).toMatchObject({
+      version: 1,
+      rules: ['友好交流，不破坏社区'],
+    });
+    expect(governanceCase!.targetSnapshot.parentReply?.circleRules).toMatchObject({
+      version: 2,
+      rules: ['回复时尊重讨论上下文'],
+    });
+    expect(governanceCase!.targetSnapshot.reply.circleRules).toMatchObject({
+      version: 3,
+      rules: ['不得发布破坏社区的内容'],
+    });
     expect(governanceCase!.targetAuthorId).toBe(replyAuthor.id);
   });
 
@@ -431,6 +486,64 @@ describe('GovernanceService integration', () => {
 
     const profile = await connection.model(AgentGovernanceProfile.name).findOne({ agentId: author.id }).lean<{ healthLevel?: number }>();
     expect(profile?.healthLevel).toBe(GOVERNANCE_HEALTH_LEVEL.WARNING);
+  });
+
+  it('rolls back the whole case resolution when pinned-post cleanup fails', async () => {
+    const { author, post, governanceCase } = await createViolationCase();
+    await connection.model(GovernanceCase.name).findByIdAndUpdate(governanceCase.id, {
+      violationTally: 6,
+      notViolationTally: 0,
+      firstReviewAt: new Date(Date.now() - 1000),
+    });
+    unpinRemovedPost.mockRejectedValueOnce(new Error('pin cleanup failed'));
+
+    await expect(service.advanceDeadlines()).rejects.toThrow('pin cleanup failed');
+
+    const [unchangedCase, visiblePost, profile, penaltyCount] = await Promise.all([
+      connection.model(GovernanceCase.name).findById(governanceCase.id),
+      connection.model(Post.name).findById(post.id),
+      connection.model(AgentGovernanceProfile.name).findOne({ agentId: author.id }),
+      connection.model(AgentXpEvent.name).countDocuments({
+        agentId: author.id,
+        sourceType: 'GOVERNANCE_PENALTY',
+        sourceId: governanceCase.id,
+      }),
+    ]);
+    expect(unchangedCase?.status).toBe(GOVERNANCE_CASE_STATUS.OPEN);
+    expect(unchangedCase?.firstReviewedAt).toBeNull();
+    expect(visiblePost?.deletedAt).toBeNull();
+    expect(profile).toBeNull();
+    expect(penaltyCount).toBe(0);
+  });
+
+  it('resolves one case only once when two scheduler instances race', async () => {
+    const { author, governanceCase } = await createViolationCase();
+    await connection.model(AgentGovernanceProfile.name).create({
+      agentId: author.id,
+      healthLevel: GOVERNANCE_HEALTH_LEVEL.WARNING,
+      violationCount: 0,
+    });
+    await connection.model(GovernanceCase.name).findByIdAndUpdate(governanceCase.id, {
+      violationTally: 6,
+      notViolationTally: 0,
+      firstReviewAt: new Date(Date.now() - 1000),
+    });
+
+    await Promise.all([service.advanceDeadlines(), service.advanceDeadlines()]);
+
+    const [resolvedCase, profile, penaltyCount] = await Promise.all([
+      connection.model(GovernanceCase.name).findById(governanceCase.id),
+      connection.model(AgentGovernanceProfile.name).findOne({ agentId: author.id }),
+      connection.model(AgentXpEvent.name).countDocuments({
+        agentId: author.id,
+        sourceType: 'GOVERNANCE_PENALTY',
+        sourceId: governanceCase.id,
+      }),
+    ]);
+    expect(resolvedCase?.status).toBe(GOVERNANCE_CASE_STATUS.RESOLVED_VIOLATION);
+    expect(profile?.violationCount).toBe(1);
+    expect(profile?.healthLevel).toBe(GOVERNANCE_HEALTH_LEVEL.PENALIZED);
+    expect(penaltyCount).toBe(1);
   });
 
   it('extends unresolved cases at 8h and moves to emergency at 48h', async () => {

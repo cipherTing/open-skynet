@@ -4,6 +4,7 @@ export type ForumPostListParams = {
   pageSize: number;
   circleId?: string;
   search?: string;
+  scope?: 'all' | 'subscribed';
   sortBy: SortOption;
 };
 
@@ -47,6 +48,8 @@ export const circleKeys = {
     [...circleKeys.root, 'viewer', viewerKey, 'search', { q, limit }] as const,
   defaultCircle: (viewerKey: string) =>
     [...circleKeys.root, 'viewer', viewerKey, 'default'] as const,
+  maintenanceLogs: (circleId: string) =>
+    [...circleKeys.root, 'detail', circleId, 'maintenance-log'] as const,
 };
 
 export const userKeys = {

@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { EmptyState, ErrorState, InlineLoading } from '@/components/ui/LoadingState';
 import { useToast } from '@/components/ui/SignalToast';
 import { useAuth } from '@/contexts/AuthContext';
+import { useOwnerOperation } from '@/contexts/OwnerOperationContext';
 import { circleApi, userApi } from '@/lib/api';
 import { circleKeys, forumKeys, userKeys } from '@/lib/query-keys';
 import { formatNumber } from '@/lib/utils';
@@ -34,6 +35,7 @@ export function CircleGrid() {
   const toast = useToast();
   const queryClient = useQueryClient();
   const { user, agent, isAuthenticated, isLoading: authLoading } = useAuth();
+  const { canOperateAsAgent } = useOwnerOperation();
   const viewerKey = user?.id ?? 'anonymous';
   const [sortBy, setSortBy] = useState<CircleSortOption>(CIRCLE_SORT_OPTIONS.RECOMMENDED);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -60,8 +62,7 @@ export function CircleGrid() {
   const loading = circleQuery.isPending || circleQuery.isFetchingNextPage;
   const currentAgentLevel = progressionQuery.data?.level.level ?? agent?.level?.level ?? 0;
   const canCreateCircle =
-    isAuthenticated &&
-    Boolean(agent) &&
+    canOperateAsAgent &&
     !progressionQuery.isPending &&
     currentAgentLevel >= 4 &&
     (agent?.healthLevel?.value ?? 4) >= 3;
@@ -69,11 +70,18 @@ export function CircleGrid() {
     ? t('forum.loginRequired')
     : !agent
       ? t('forum.noAgent')
+      : !canOperateAsAgent
+        ? t('replyThread.ownerOperationRequired')
       : progressionQuery.isPending
         ? t('circles.checkingEligibility')
       : !canCreateCircle
         ? t('circles.createRequiresLevel')
         : '';
+  const subscriptionUnavailableLabel = !isAuthenticated
+    ? t('circles.loginToSubscribe')
+    : !agent
+      ? t('forum.noAgent')
+      : t('circles.enableOwnerOperation');
 
   const refreshCircleData = async () => {
     await Promise.all([
@@ -85,6 +93,10 @@ export function CircleGrid() {
   const handleSubscription = async (circle: Circle) => {
     if (!isAuthenticated || !agent) {
       toast.error(t('forum.loginRequired'));
+      return;
+    }
+    if (!canOperateAsAgent) {
+      toast.error(t('replyThread.ownerOperationRequired'));
       return;
     }
     if (busyCircleId) return;
@@ -191,7 +203,8 @@ export function CircleGrid() {
               <CircleCard
                 key={circle.id}
                 circle={circle}
-                canSubscribe={isAuthenticated && Boolean(agent)}
+                canSubscribe={canOperateAsAgent}
+                subscriptionUnavailableLabel={subscriptionUnavailableLabel}
                 busy={busyCircleId === circle.id}
                 onOpen={() => handleOpenCircle(circle)}
                 onSubscription={() => void handleSubscription(circle)}
@@ -238,22 +251,24 @@ export function CircleGrid() {
 function CircleCard({
   circle,
   canSubscribe,
+  subscriptionUnavailableLabel,
   busy,
   onOpen,
   onSubscription,
 }: {
   circle: Circle;
   canSubscribe: boolean;
+  subscriptionUnavailableLabel: string;
   busy: boolean;
   onOpen: () => void;
   onSubscription: () => void;
 }) {
   const { t } = useTranslation();
-  const subscriptionLabel = circle.subscribed
-    ? t('circles.unsubscribe')
-    : canSubscribe
-      ? t('circles.subscribe')
-      : t('circles.loginToSubscribe');
+  const subscriptionLabel = canSubscribe
+    ? circle.subscribed
+      ? t('circles.unsubscribe')
+      : t('circles.subscribe')
+    : subscriptionUnavailableLabel;
 
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.target !== event.currentTarget) return;

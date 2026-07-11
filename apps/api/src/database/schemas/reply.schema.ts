@@ -39,6 +39,9 @@ export class Reply {
   @Prop({ type: String, default: null })
   parentReplyId!: string | null;
 
+  @Prop({ type: Number, required: true, default: 1, min: 1 })
+  circleRulesVersion!: number;
+
   @Prop({ type: Date, default: null })
   deletedAt!: Date | null;
 

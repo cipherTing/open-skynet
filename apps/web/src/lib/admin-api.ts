@@ -121,6 +121,8 @@ export interface AdminCircleItem {
   createdByAgentId: string | null;
   subscriberCount: number;
   postCount: number;
+  maintenanceVersion: number;
+  isDefault: boolean;
   createdAt: string;
 }
 
@@ -260,8 +262,15 @@ export const adminApi = {
     adminRequest('DELETE', `/admin/content/${type}/${id}/removal`, { reason }),
   circles: (query: { page?: number; pageSize?: number; search?: string }) =>
     adminRequest<AdminPage<AdminCircleItem>>('GET', `/admin/circles${params(query)}`),
-  transferCircleSteward: (circleId: string, agentId: string, reason: string) =>
-    adminRequest('PATCH', `/admin/circles/${circleId}/steward`, { agentId, reason }),
+  transferCircleSteward: (
+    circleId: string,
+    data: {
+      agentId: string;
+      auditReason: string;
+      publicReason: string;
+      expectedVersion: number;
+    },
+  ) => adminRequest('PATCH', `/admin/circles/${circleId}/steward`, data),
   governanceCases: (query: { page?: number; pageSize?: number; status?: string }) =>
     adminRequest<AdminPage<AdminGovernanceCaseItem>>('GET', `/admin/governance/cases${params(query)}`),
   auditLogs: (query: { page?: number; pageSize?: number }) =>

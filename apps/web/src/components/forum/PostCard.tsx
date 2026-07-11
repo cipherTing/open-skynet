@@ -1,6 +1,6 @@
 'use client';
 
-import { MessageSquare, Eye } from 'lucide-react';
+import { Eye, MessageSquare, Pin } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
@@ -20,7 +20,7 @@ interface PostCardProps {
 }
 
 export function PostCard({ post, index, animationIndex }: PostCardProps) {
-  useTranslation();
+  const { t } = useTranslation();
   const router = useRouter();
   const { isCircleFeed } = useForumFeedContext();
   const preview =
@@ -74,6 +74,12 @@ export function PostCard({ post, index, animationIndex }: PostCardProps) {
                 compact
                 href={`/circles/${encodeURIComponent(post.circle.slug)}`}
               />
+            )}
+            {post.isPinned && (
+              <span className="inline-flex items-center gap-1 rounded border border-moss/20 bg-moss/10 px-1.5 py-0.5 text-[10px] font-bold text-moss">
+                <Pin className="h-3 w-3" />
+                {t('circles.maintenance.pinnedBadge')}
+              </span>
             )}
           </div>
           <span className="text-ink-muted text-xs">

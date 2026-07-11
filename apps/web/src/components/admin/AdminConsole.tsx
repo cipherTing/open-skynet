@@ -477,7 +477,15 @@ function CirclesSection({ onAction }: { onAction: (action: AdminAction) => void 
                 <td className="px-3 py-3"><div className="font-medium text-ink-primary">/{circle.name}</div><div className="mt-1 max-w-md truncate text-xs text-ink-muted">{circle.topic}</div></td>
                 <td className="px-3 py-3 font-mono text-xs text-ink-muted">{circle.stewardAgentId ?? circle.createdByAgentId ?? '-'}</td>
                 <td className="px-3 py-3 text-xs text-ink-secondary">{t('admin.circles.metrics', { subscribers: circle.subscriberCount, posts: circle.postCount })}</td>
-                <td className="px-3 py-3"><ActionButton onClick={() => onAction({ kind: 'transferSteward', target: circle })}>{t('admin.circles.transfer')}</ActionButton></td>
+                <td className="px-3 py-3">
+                  {circle.isDefault ? (
+                    <span className="text-xs text-ink-muted">{t('admin.circles.systemManaged')}</span>
+                  ) : (
+                    <ActionButton onClick={() => onAction({ kind: 'transferSteward', target: circle })}>
+                      {t('admin.circles.transfer')}
+                    </ActionButton>
+                  )}
+                </td>
               </tr>
             ))}
           </AdminTable>
@@ -572,6 +580,7 @@ function AdminActionDialog({ action, onClose }: { action: AdminAction; onClose: 
   const queryClient = useQueryClient();
   const [reason, setReason] = useState('');
   const [extra, setExtra] = useState('');
+  const [publicReason, setPublicReason] = useState('');
   const mutation = useMutation({
     mutationFn: async () => {
       if (action.kind === 'suspend') return adminApi.suspendAgent(action.target.id, { reason, ...(extra ? { suspendedUntil: new Date(extra).toISOString() } : {}) });
@@ -581,10 +590,18 @@ function AdminActionDialog({ action, onClose }: { action: AdminAction; onClose: 
       if (action.kind === 'adjustHealth') return adminApi.adjustAgentHealth(action.target.id, { reason, healthLevel: Number(extra) });
       if (action.kind === 'removeContent') return adminApi.removeContent(action.contentType, recordId(action.target), reason);
       if (action.kind === 'restoreContent') return adminApi.restoreContent(action.contentType, recordId(action.target), reason);
-      return adminApi.transferCircleSteward(recordId(action.target), extra, reason);
+      return adminApi.transferCircleSteward(recordId(action.target), {
+        agentId: extra,
+        auditReason: reason,
+        publicReason,
+        expectedVersion: action.target.maintenanceVersion,
+      });
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['admin'] });
+      if (action.kind === 'transferSteward') {
+        await queryClient.invalidateQueries({ queryKey: ['circles'] });
+      }
       toast.success(action.kind === 'transferSteward' ? t('admin.circles.success') : action.kind === 'removeContent' || action.kind === 'restoreContent' ? t('admin.content.success') : t('admin.agents.success'));
       onClose();
     },
@@ -632,9 +649,23 @@ function AdminActionDialog({ action, onClose }: { action: AdminAction; onClose: 
             </label>
           )}
           <label className="block text-xs text-ink-secondary">
-            {t('admin.action.reason')}
+            {action.kind === 'transferSteward'
+              ? t('admin.circles.auditReason')
+              : t('admin.action.reason')}
             <textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder={t('admin.action.reasonHint')} rows={3} className="skynet-input mt-2 w-full resize-none rounded-md px-3 py-2 text-sm" />
           </label>
+          {action.kind === 'transferSteward' && (
+            <label className="mt-4 block text-xs text-ink-secondary">
+              {t('admin.circles.publicReason')}
+              <textarea
+                value={publicReason}
+                onChange={(event) => setPublicReason(event.target.value)}
+                placeholder={t('admin.circles.publicReasonHint')}
+                rows={3}
+                className="skynet-input mt-2 w-full resize-none rounded-md px-3 py-2 text-sm"
+              />
+            </label>
+          )}
           {mutation.isError && <p className="mt-3 text-xs text-ochre">{t('admin.action.failed')}</p>}
           <div className="mt-5 flex justify-end gap-2">
             <AlertDialog.Cancel asChild>
@@ -645,7 +676,12 @@ function AdminActionDialog({ action, onClose }: { action: AdminAction; onClose: 
             <AlertDialog.Action asChild>
               <button
                 type="button"
-                disabled={reason.trim().length < 4 || (needsExtra && !extra) || mutation.isPending}
+                disabled={
+                  reason.trim().length < 4 ||
+                  (needsExtra && !extra) ||
+                  (action.kind === 'transferSteward' && !publicReason.trim()) ||
+                  mutation.isPending
+                }
                 onClick={(event) => {
                   event.preventDefault();
                   mutation.mutate();
