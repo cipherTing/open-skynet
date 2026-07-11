@@ -7,10 +7,14 @@ import { createHash, randomBytes } from 'crypto';
 import { User } from '@/database/schemas/user.schema';
 import { Agent } from '@/database/schemas/agent.schema';
 import { BrowserSession } from '@/database/schemas/browser-session.schema';
+import { AdminSession } from '@/database/schemas/admin-session.schema';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { isUserSuspended } from './auth-security';
 
 const BROWSER_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const BROWSER_SESSION_ABSOLUTE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const REFRESH_REPLAY_GRACE_MS = 10_000;
 
 function isDuplicateKeyError(error: unknown): error is { code: 11000 } {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 11000;
@@ -23,6 +27,8 @@ export class AuthService {
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
     @InjectModel(BrowserSession.name)
     private readonly browserSessionModel: Model<BrowserSession>,
+    @InjectModel(AdminSession.name)
+    private readonly adminSessionModel: Model<AdminSession>,
     private readonly jwtService: JwtService,
   ) {}
 
@@ -80,10 +86,17 @@ export class AuthService {
 
   async logout(userId: string, browserSessionId?: string) {
     if (browserSessionId) {
-      await this.browserSessionModel.findOneAndUpdate(
-        { _id: browserSessionId, userId },
-        { revokedAt: new Date() },
-      );
+      const revokedAt = new Date();
+      await Promise.all([
+        this.browserSessionModel.findOneAndUpdate(
+          { _id: browserSessionId, userId },
+          { revokedAt },
+        ),
+        this.adminSessionModel.updateMany(
+          { browserSessionId, userId, revokedAt: null },
+          { revokedAt },
+        ),
+      ]);
       return;
     }
 
@@ -102,7 +115,7 @@ export class AuthService {
       throw new UnauthorizedException('用户名或密码错误');
     }
 
-    if (user.suspendedAt) {
+    if (isUserSuspended(user)) {
       throw new UnauthorizedException('该账号已被封禁');
     }
 
@@ -143,12 +156,30 @@ export class AuthService {
     const now = new Date();
     const tokenHash = this.hashRefreshToken(refreshToken);
     const browserSession = await this.browserSessionModel.findOne({
-      tokenHash,
       revokedAt: null,
+      $or: [
+        { currentTokenHash: tokenHash },
+        { previousTokenHash: tokenHash },
+      ],
     });
 
-    if (!browserSession || browserSession.expiresAt.getTime() <= now.getTime()) {
+    if (
+      !browserSession ||
+      browserSession.expiresAt.getTime() <= now.getTime() ||
+      browserSession.absoluteExpiresAt.getTime() <= now.getTime()
+    ) {
       throw new UnauthorizedException('登录已过期，请重新登录');
+    }
+
+    const usedPreviousToken = browserSession.previousTokenHash === tokenHash;
+    if (usedPreviousToken) {
+      if (
+        !browserSession.previousTokenValidUntil ||
+        browserSession.previousTokenValidUntil.getTime() <= now.getTime()
+      ) {
+        await this.revokeBrowserSession(browserSession.id);
+        throw new UnauthorizedException('检测到已使用的刷新令牌，请重新登录');
+      }
     }
 
     const user = await this.userModel.findById(browserSession.userId);
@@ -157,14 +188,25 @@ export class AuthService {
       throw new UnauthorizedException('用户不存在');
     }
 
-    if (user.suspendedAt) {
+    if (isUserSuspended(user)) {
       await this.revokeBrowserSession(browserSession.id);
       throw new UnauthorizedException('该账号已被封禁');
     }
 
-    const refreshExpiresAt = new Date(now.getTime() + BROWSER_SESSION_TTL_MS);
-    browserSession.expiresAt = refreshExpiresAt;
-    await browserSession.save();
+    let nextRefreshToken: string | null = null;
+    if (!usedPreviousToken) {
+      nextRefreshToken = randomBytes(32).toString('base64url');
+      browserSession.previousTokenHash = browserSession.currentTokenHash;
+      browserSession.previousTokenValidUntil = new Date(now.getTime() + REFRESH_REPLAY_GRACE_MS);
+      browserSession.currentTokenHash = this.hashRefreshToken(nextRefreshToken);
+      browserSession.expiresAt = new Date(
+        Math.min(
+          now.getTime() + BROWSER_SESSION_TTL_MS,
+          browserSession.absoluteExpiresAt.getTime(),
+        ),
+      );
+      await browserSession.save();
+    }
 
     const agent = await this.agentModel.findOne({ userId: user.id });
     const token = this.generateToken(user, browserSession.id);
@@ -173,8 +215,8 @@ export class AuthService {
       user: this.serializeUser(user),
       agent: agent ? this.serializeAgent(agent) : null,
       token,
-      refreshToken,
-      refreshExpiresAt,
+      refreshToken: nextRefreshToken,
+      refreshExpiresAt: browserSession.expiresAt,
     };
   }
 
@@ -187,7 +229,12 @@ export class AuthService {
       revokedAt: null,
     });
 
-    return Boolean(browserSession && browserSession.expiresAt.getTime() > Date.now());
+    const now = Date.now();
+    return Boolean(
+      browserSession &&
+      browserSession.expiresAt.getTime() > now &&
+      browserSession.absoluteExpiresAt.getTime() > now,
+    );
   }
 
   async validateUser(payload: { sub: string; username: string }) {
@@ -197,7 +244,7 @@ export class AuthService {
       throw new UnauthorizedException('用户不存在');
     }
 
-    if (user.suspendedAt) {
+    if (isUserSuspended(user)) {
       throw new UnauthorizedException('该账号已被封禁');
     }
 
@@ -212,11 +259,16 @@ export class AuthService {
 
   private async createBrowserSession(userId: string) {
     const refreshToken = randomBytes(32).toString('base64url');
-    const expiresAt = new Date(Date.now() + BROWSER_SESSION_TTL_MS);
+    const now = Date.now();
+    const expiresAt = new Date(now + BROWSER_SESSION_TTL_MS);
+    const absoluteExpiresAt = new Date(now + BROWSER_SESSION_ABSOLUTE_TTL_MS);
     const browserSession = await this.browserSessionModel.create({
       userId,
-      tokenHash: this.hashRefreshToken(refreshToken),
+      currentTokenHash: this.hashRefreshToken(refreshToken),
+      previousTokenHash: null,
+      previousTokenValidUntil: null,
       expiresAt,
+      absoluteExpiresAt,
     });
 
     return {
@@ -234,6 +286,7 @@ export class AuthService {
     return {
       id: user.id,
       username: user.username,
+      role: user.role,
       createdAt: user.createdAt.toISOString(),
     };
   }
@@ -251,13 +304,14 @@ export class AuthService {
   }
 
   private generateToken(
-    user: { id: string; username: string; tokenVersion: number },
+    user: { id: string; username: string; tokenVersion: number; role: string },
     browserSessionId: string,
   ) {
     return this.jwtService.sign({
       sub: user.id,
       username: user.username,
       tokenVersion: user.tokenVersion,
+      role: user.role,
       browserSessionId,
     });
   }

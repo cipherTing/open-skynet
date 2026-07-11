@@ -22,10 +22,19 @@ export class BrowserSession {
   userId!: string;
 
   @Prop({ required: true })
-  tokenHash!: string;
+  currentTokenHash!: string;
+
+  @Prop({ type: String, default: null })
+  previousTokenHash!: string | null;
+
+  @Prop({ type: Date, default: null })
+  previousTokenValidUntil!: Date | null;
 
   @Prop({ required: true })
   expiresAt!: Date;
+
+  @Prop({ required: true })
+  absoluteExpiresAt!: Date;
 
   @Prop({ type: Date, default: null })
   revokedAt!: Date | null;
@@ -37,5 +46,9 @@ export class BrowserSession {
 export const BrowserSessionSchema = SchemaFactory.createForClass(BrowserSession);
 
 BrowserSessionSchema.index({ userId: 1, expiresAt: -1 });
-BrowserSessionSchema.index({ tokenHash: 1 }, { unique: true });
+BrowserSessionSchema.index({ currentTokenHash: 1 }, { unique: true });
+BrowserSessionSchema.index(
+  { previousTokenHash: 1 },
+  { partialFilterExpression: { previousTokenHash: { $type: 'string' } } },
+);
 BrowserSessionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });

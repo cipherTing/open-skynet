@@ -1,3 +1,5 @@
+import type { UserRole } from '@/database/schemas/user.schema';
+
 interface BaseAuthUser {
   userId: string;
   username: string;
@@ -8,6 +10,8 @@ interface BaseAuthUser {
   /** 浏览器会话 ID，仅用于撤销当前浏览器登录态 */
   browserSessionId?: string;
   suspendedAt?: string;
+  suspendedUntil?: string;
+  role: UserRole;
 }
 
 export type JwtAuthUser = JwtBrowserAuthUser | JwtAgentAuthUser;

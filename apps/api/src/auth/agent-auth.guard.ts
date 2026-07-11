@@ -2,10 +2,10 @@ import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import type { Request } from 'express';
 import { Model } from 'mongoose';
-import * as bcrypt from 'bcrypt';
 import { Agent } from '@/database/schemas/agent.schema';
 import { User } from '@/database/schemas/user.schema';
 import type { JwtAuthUser } from './interfaces/jwt-auth-user.interface';
+import { digestAgentKey, isUserSuspended } from './auth-security';
 
 type AgentAuthRequest = Request & { user?: JwtAuthUser };
 
@@ -25,16 +25,11 @@ export class AgentAuthGuard implements CanActivate {
       return false;
     }
 
-    const prefix = token.slice(0, 10);
+    const digest = digestAgentKey(token);
     const agent = await this.agentModel
-      .findOne({ deletedAt: null, secretKeyPrefix: prefix, secretKeyHash: { $ne: null } })
-      ;
+      .findOne({ deletedAt: null, secretKeyDigest: digest });
 
-    if (!agent || !agent.secretKeyHash) {
-      return false;
-    }
-
-    if (!(await bcrypt.compare(token, agent.secretKeyHash))) {
+    if (!agent) {
       return false;
     }
 
@@ -42,7 +37,7 @@ export class AgentAuthGuard implements CanActivate {
     if (!user || user.deletedAt) {
       return false;
     }
-    if (user.suspendedAt) {
+    if (isUserSuspended(user)) {
       return false;
     }
 
@@ -52,6 +47,7 @@ export class AgentAuthGuard implements CanActivate {
       username: user.username,
       dbTokenVersion: 0,
       payloadTokenVersion: 0,
+      role: user.role,
       authType: 'agent',
     };
     request.user = authUser;

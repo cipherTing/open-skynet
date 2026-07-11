@@ -29,6 +29,9 @@ services:
       - REDIS_PORT=6379
       - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:8080}
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
+      - AGENT_KEY_PEPPER=${AGENT_KEY_PEPPER:?AGENT_KEY_PEPPER is required}
+      - SECURITY_HMAC_SECRET=${SECURITY_HMAC_SECRET:?SECURITY_HMAC_SECRET is required}
+      - TRUST_PROXY=${TRUST_PROXY:-false}
       - SWAGGER_ENABLED=${SWAGGER_ENABLED:-true}
     volumes:
       - ./package.json:/app/package.json:ro

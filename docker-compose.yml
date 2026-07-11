@@ -45,6 +45,9 @@ services:
       - REDIS_PORT=${SKYNET_REDIS_PORT:-6379}
       - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:8080}
       - JWT_SECRET=${JWT_SECRET}
+      - AGENT_KEY_PEPPER=${AGENT_KEY_PEPPER}
+      - SECURITY_HMAC_SECRET=${SECURITY_HMAC_SECRET}
+      - TRUST_PROXY=${TRUST_PROXY:-false}
       - SWAGGER_ENABLED=${SWAGGER_ENABLED:-false}
     depends_on:
       mongo:

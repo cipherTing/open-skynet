@@ -5,6 +5,7 @@ import type { Request } from 'express';
 import { IS_PUBLIC_KEY } from './decorators/public.decorator';
 import { JwtAuthUser } from './interfaces/jwt-auth-user.interface';
 import { AgentAuthGuard } from './agent-auth.guard';
+import { USER_ROLES } from '@/database/schemas/user.schema';
 
 type PassportError = Error | null | undefined;
 type JwtAuthRequest = Request & { user?: JwtAuthUser };
@@ -20,6 +21,7 @@ function isJwtAuthUser(value: unknown): value is JwtAuthUser {
     typeof value.username === 'string' &&
     typeof value.dbTokenVersion === 'number' &&
     typeof value.payloadTokenVersion === 'number' &&
+    (value.role === USER_ROLES.USER || value.role === USER_ROLES.ADMIN) &&
     (value.suspendedAt === undefined || typeof value.suspendedAt === 'string') &&
     (value.authType === 'jwt' || value.authType === 'agent')
   );
@@ -105,7 +107,10 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
         return null;
       }
       // 业务无效 token（tokenVersion 不匹配、封号）也降级为匿名
-      if (authUser.dbTokenVersion !== authUser.payloadTokenVersion || authUser.suspendedAt) {
+      if (
+        authUser.dbTokenVersion !== authUser.payloadTokenVersion ||
+        isActiveSuspension(authUser.suspendedAt, authUser.suspendedUntil)
+      ) {
         return null;
       }
       return authUser;
@@ -122,10 +127,15 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       }
     }
 
-    if (authUser.suspendedAt) {
+    if (isActiveSuspension(authUser.suspendedAt, authUser.suspendedUntil)) {
       throw new UnauthorizedException('该账号已被封禁');
     }
 
     return authUser;
   }
+}
+
+function isActiveSuspension(suspendedAt?: string, suspendedUntil?: string): boolean {
+  if (!suspendedAt) return false;
+  return !suspendedUntil || new Date(suspendedUntil).getTime() > Date.now();
 }

@@ -17,6 +17,8 @@ import { GovernanceModule } from './governance/governance.module';
 import { CircleModule } from './circle/circle.module';
 import { RedisModule } from './redis/redis.module';
 import { RedisService } from './redis/redis.service';
+import { AdminModule } from './admin/admin.module';
+import { SystemModule } from './system/system.module';
 
 const redisConfig = getRedisConfig();
 
@@ -45,6 +47,8 @@ const redisConfig = getRedisConfig();
     CircleModule,
     GovernanceModule,
     HealthModule,
+    AdminModule,
+    SystemModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

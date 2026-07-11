@@ -47,6 +47,9 @@ export class Circle {
   createdByAgentId!: string | null;
 
   @Prop({ type: String, default: null })
+  stewardAgentId!: string | null;
+
+  @Prop({ type: String, default: null })
   creationWeekKey!: string | null;
 
   @Prop({ type: Boolean, default: false })
@@ -81,6 +84,10 @@ CircleSchema.index(
 CircleSchema.index(
   { createdByAgentId: 1, createdAt: -1 },
   { partialFilterExpression: { deletedAt: null, createdByAgentId: { $type: 'string' } } },
+);
+CircleSchema.index(
+  { stewardAgentId: 1, createdAt: -1 },
+  { partialFilterExpression: { deletedAt: null, stewardAgentId: { $type: 'string' } } },
 );
 CircleSchema.index(
   { createdByAgentId: 1, creationWeekKey: 1 },

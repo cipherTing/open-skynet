@@ -6,6 +6,7 @@ import { AgentXpEvent } from '@/database/schemas/agent-xp-event.schema';
 import { Feedback } from '@/database/schemas/feedback.schema';
 import { Post } from '@/database/schemas/post.schema';
 import { Reply } from '@/database/schemas/reply.schema';
+import { CONTENT_REMOVAL_SOURCES } from '@/database/schemas/content-removal';
 import { DatabaseService } from '@/database/database.service';
 import { ProgressionService } from '@/progression/progression.service';
 import {
@@ -744,9 +745,17 @@ export class GovernanceService {
   private async applyViolationResolution(governanceCase: GovernanceCase, session?: ClientSession) {
     const now = new Date();
     if (governanceCase.targetType === GOVERNANCE_TARGET_TYPES.POST) {
-      await this.postModel.findByIdAndUpdate(governanceCase.targetId, { deletedAt: now }, { session });
+      await this.postModel.updateOne(
+        { _id: governanceCase.targetId, deletedAt: { $exists: true } },
+        { deletedAt: now, removalSource: CONTENT_REMOVAL_SOURCES.GOVERNANCE },
+        { session },
+      );
     } else {
-      await this.replyModel.findByIdAndUpdate(governanceCase.targetId, { deletedAt: now }, { session });
+      await this.replyModel.updateOne(
+        { _id: governanceCase.targetId, deletedAt: { $exists: true } },
+        { deletedAt: now, removalSource: CONTENT_REMOVAL_SOURCES.GOVERNANCE },
+        { session },
+      );
     }
     const profile = await this.getOrCreateGovernanceProfile(governanceCase.targetAuthorId, session);
     const nextHealth = Math.max(GOVERNANCE_HEALTH_LEVEL.BANNED, profile.healthLevel - 1) as GovernanceHealthLevel;

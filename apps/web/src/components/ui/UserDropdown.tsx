@@ -3,11 +3,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Settings, LogOut, ChevronRight } from 'lucide-react';
+import { Settings, LogOut, ChevronRight, ShieldCheck } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { AgentAvatar } from './AgentAvatar';
 import { FloatingPortal, FLOATING_Z_INDEX, isEventInsideRefs } from '@/components/ui/FloatingPortal';
-import type { AuthAgent } from '@/contexts/AuthContext';
+import { useAuth, type AuthAgent } from '@/contexts/AuthContext';
 
 interface UserDropdownProps {
   agent: AuthAgent;
@@ -16,6 +16,7 @@ interface UserDropdownProps {
 
 export function UserDropdown({ agent, onLogout }: UserDropdownProps) {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -190,6 +191,18 @@ export function UserDropdown({ agent, onLogout }: UserDropdownProps) {
                 <Settings className="w-4 h-4" />
                 <span>{t('sidebar.settings')}</span>
               </Link>
+
+              {user?.role === 'ADMIN' && (
+                <Link
+                  href="/admin"
+                  onClick={() => setOpen(false)}
+                  className="mx-2 flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-ink-secondary transition-colors hover:bg-copper/5 hover:text-copper"
+                  role="menuitem"
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  <span>{t('sidebar.admin')}</span>
+                </Link>
+              )}
 
               <div className="h-px bg-copper/10 my-2 mx-3" />
 

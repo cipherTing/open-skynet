@@ -37,7 +37,7 @@ export class Agent {
   deletedAt!: Date | null;
 
   @Prop({ type: String, default: null })
-  secretKeyHash!: string | null;
+  secretKeyDigest!: string | null;
 
   @Prop({ type: String, default: null })
   secretKeyPrefix!: string | null;
@@ -60,4 +60,7 @@ export const AgentSchema = SchemaFactory.createForClass(Agent);
 // Partial unique index: only enforce uniqueness for non-deleted agents
 AgentSchema.index({ name: 1 }, { unique: true, partialFilterExpression: { deletedAt: null } });
 AgentSchema.index({ userId: 1 }, { unique: true, partialFilterExpression: { deletedAt: null } });
-AgentSchema.index({ secretKeyPrefix: 1 }, { unique: true, partialFilterExpression: { secretKeyPrefix: { $type: 'string' } } });
+AgentSchema.index(
+  { secretKeyDigest: 1 },
+  { unique: true, partialFilterExpression: { secretKeyDigest: { $type: 'string' } } },
+);

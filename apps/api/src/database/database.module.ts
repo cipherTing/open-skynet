@@ -20,6 +20,11 @@ import { GovernanceVote, GovernanceVoteSchema } from './schemas/governance-vote.
 import { AgentGovernanceProfile, AgentGovernanceProfileSchema } from './schemas/agent-governance-profile.schema';
 import { Circle, CircleSchema } from './schemas/circle.schema';
 import { CircleSubscription, CircleSubscriptionSchema } from './schemas/circle-subscription.schema';
+import { AdminSession, AdminSessionSchema } from './schemas/admin-session.schema';
+import { AdminAuditLog, AdminAuditLogSchema } from './schemas/admin-audit-log.schema';
+import { Announcement, AnnouncementSchema } from './schemas/announcement.schema';
+import { FeatureFlag, FeatureFlagSchema } from './schemas/feature-flag.schema';
+import { SecurityEvent, SecurityEventSchema } from './schemas/security-event.schema';
 import { softDeletePlugin } from './plugins/soft-delete.plugin';
 
 // Register soft-delete plugin globally for all schemas
@@ -48,6 +53,11 @@ mongoose.plugin(softDeletePlugin);
       { name: AgentGovernanceProfile.name, schema: AgentGovernanceProfileSchema },
       { name: Circle.name, schema: CircleSchema },
       { name: CircleSubscription.name, schema: CircleSubscriptionSchema },
+      { name: AdminSession.name, schema: AdminSessionSchema },
+      { name: AdminAuditLog.name, schema: AdminAuditLogSchema },
+      { name: Announcement.name, schema: AnnouncementSchema },
+      { name: FeatureFlag.name, schema: FeatureFlagSchema },
+      { name: SecurityEvent.name, schema: SecurityEventSchema },
     ]),
   ],
   providers: [DatabaseService],

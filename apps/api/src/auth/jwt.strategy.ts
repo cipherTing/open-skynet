@@ -41,6 +41,8 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       payloadTokenVersion: payload.tokenVersion ?? 0,
       browserSessionId: payload.browserSessionId,
       suspendedAt: user.suspendedAt ? user.suspendedAt.toISOString() : undefined,
+      suspendedUntil: user.suspendedUntil ? user.suspendedUntil.toISOString() : undefined,
+      role: user.role,
       authType: 'jwt' as const,
     };
   }

@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createHmac } from 'node:crypto';
 import bcrypt from 'bcrypt';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
@@ -11,6 +12,7 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://mongo:27017/skynet';
 const DEV_PASSWORD = 'Password123';
 const DEMO_SECRET_KEY = 'sk_live_dev_seed_key_20260426_Hermes';
 const RESET_CONFIRMATION = 'skynet';
+const AGENT_KEY_PEPPER = process.env.AGENT_KEY_PEPPER;
 
 const FEEDBACK_TYPES = [
   'SPARK',
@@ -181,8 +183,8 @@ async function createIndexes(db) {
     { unique: true, partialFilterExpression: { deletedAt: null } },
   );
   await db.collection('agents').createIndex(
-    { secretKeyPrefix: 1 },
-    { unique: true, partialFilterExpression: { secretKeyPrefix: { $type: 'string' } } },
+    { secretKeyDigest: 1 },
+    { unique: true, partialFilterExpression: { secretKeyDigest: { $type: 'string' } } },
   );
   await db.collection('posts').createIndex(
     { replyCount: -1, viewCount: -1, createdAt: -1 },
@@ -315,6 +317,7 @@ function makeDefaultCircle(posts) {
     topic: DEFAULT_CIRCLE.topic,
     createdByType: 'SYSTEM',
     createdByAgentId: null,
+    stewardAgentId: null,
     creationWeekKey: null,
     isDefault: true,
     subscriberCount: 0,
@@ -345,6 +348,7 @@ function makePost(index, agents, circleId) {
     authorId: idOf(author),
     circleId,
     deletedAt: null,
+    removalSource: 'NONE',
     createdAt,
     updatedAt: createdAt,
   };
@@ -359,6 +363,7 @@ function makeReply({ post, author, parentReplyId, content, createdAt }) {
     authorId: idOf(author),
     parentReplyId,
     deletedAt: null,
+    removalSource: 'NONE',
     createdAt,
     updatedAt: createdAt,
   };
@@ -873,7 +878,12 @@ async function main() {
   await createIndexes(db);
 
   const passwordHash = await bcrypt.hash(DEV_PASSWORD, 12);
-  const secretKeyHash = await bcrypt.hash(DEMO_SECRET_KEY, 12);
+  if (!AGENT_KEY_PEPPER || AGENT_KEY_PEPPER.length < 32) {
+    throw new Error('AGENT_KEY_PEPPER must be at least 32 characters');
+  }
+  const secretKeyDigest = createHmac('sha256', AGENT_KEY_PEPPER)
+    .update(DEMO_SECRET_KEY)
+    .digest('hex');
   const users = [];
   const agents = [];
 
@@ -883,8 +893,11 @@ async function main() {
       _id: objectId(),
       username,
       passwordHash,
+      role: index === 0 ? 'ADMIN' : 'USER',
       tokenVersion: 0,
       suspendedAt: null,
+      suspendedUntil: null,
+      suspensionReason: null,
       deletedAt: null,
       createdAt: now,
       updatedAt: now,
@@ -899,8 +912,8 @@ async function main() {
       ownerOperationEnabled: false,
       avatarSeed: `${name.toLowerCase()}-${index + 1}`,
       deletedAt: null,
-      secretKeyHash: index === 1 ? secretKeyHash : null,
-      secretKeyPrefix: index === 1 ? DEMO_SECRET_KEY.slice(0, 10) : null,
+      secretKeyDigest: index === 1 ? secretKeyDigest : null,
+      secretKeyPrefix: index === 1 ? DEMO_SECRET_KEY.slice(0, 16) : null,
       secretKeyLastFour: index === 1 ? DEMO_SECRET_KEY.slice(-4) : null,
       secretKeyCreatedAt: index === 1 ? now : null,
       userId: idOf(user),

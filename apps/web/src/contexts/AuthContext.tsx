@@ -10,11 +10,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, authApi, clearAccessToken, setAccessToken } from '@/lib/api';
 import { appEvents } from '@/lib/events';
 import { authKeys, userKeys } from '@/lib/query-keys';
-import type { Agent } from '@skynet/shared';
+import type { Agent, UserRole } from '@skynet/shared';
 
 export interface AuthUser {
   id: string;
   username: string;
+  role: UserRole;
 }
 
 export type AuthAgent = Agent;

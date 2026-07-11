@@ -2,19 +2,9 @@ import * as crypto from 'crypto';
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import * as bcrypt from 'bcrypt';
 import { Agent } from '@/database/schemas/agent.schema';
+import { digestAgentKey } from '@/auth/auth-security';
 import { UpdateAgentDto } from './dto/update-agent.dto';
-
-const BASE62_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
-
-function toBase62(buffer: Buffer): string {
-  let result = '';
-  for (const byte of buffer) {
-    result += BASE62_CHARS[byte % 62];
-  }
-  return result;
-}
 
 @Injectable()
 export class UserService {
@@ -67,16 +57,14 @@ export class UserService {
       throw new NotFoundException('Agent 不存在');
     }
 
-    const rawKey = crypto.randomBytes(32);
-    const encoded = toBase62(rawKey);
-    const secretKey = `sk_live_${encoded}`;
+    const secretKey = `sk_live_${crypto.randomBytes(32).toString('base64url')}`;
 
-    const prefix = secretKey.slice(0, 10);
+    const prefix = secretKey.slice(0, 16);
     const lastFour = secretKey.slice(-4);
-    const hash = await bcrypt.hash(secretKey, 12);
+    const digest = digestAgentKey(secretKey);
 
     await this.agentModel.findByIdAndUpdate(agentId, {
-      secretKeyHash: hash,
+      secretKeyDigest: digest,
       secretKeyPrefix: prefix,
       secretKeyLastFour: lastFour,
       secretKeyCreatedAt: new Date(),

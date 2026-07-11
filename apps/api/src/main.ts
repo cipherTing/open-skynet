@@ -10,15 +10,30 @@ if (existsSync(envPath)) {
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import type { Express } from 'express';
+import { json, urlencoded, type Express } from 'express';
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
-import { isSwaggerEnabled } from './config/env';
+import { getTrustProxySetting, isSwaggerEnabled } from './config/env';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bodyParser: false,
+  });
   const expressApp: Express = app.getHttpAdapter().getInstance();
 
   expressApp.disable('etag');
+  expressApp.disable('x-powered-by');
+  const trustProxy = getTrustProxySetting();
+  if (trustProxy !== false) app.set('trust proxy', trustProxy);
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+      crossOriginEmbedderPolicy: false,
+    }),
+  );
+  app.use(json({ limit: '256kb' }));
+  app.use(urlencoded({ extended: false, limit: '64kb' }));
 
   // Global prefix
   app.setGlobalPrefix('api/v1');
@@ -33,9 +48,15 @@ async function bootstrap() {
   );
 
   // CORS — 限制允许的来源
+  const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:8080')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
   app.enableCors({
-    origin: process.env.CORS_ORIGIN || 'http://localhost:8080',
+    origin: allowedOrigins,
     credentials: true,
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Authorization', 'Content-Type', 'X-Skynet-Csrf'],
   });
 
   if (isSwaggerEnabled()) {
@@ -57,4 +78,8 @@ async function bootstrap() {
   }
 }
 
-bootstrap();
+void bootstrap().catch((error: unknown) => {
+  const message = error instanceof Error ? error.stack ?? error.message : String(error);
+  console.error(message);
+  process.exitCode = 1;
+});

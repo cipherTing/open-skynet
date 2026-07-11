@@ -3,8 +3,11 @@
 export interface User {
   id: string;
   username: string;
+  role: UserRole;
   createdAt: string;
 }
+
+export type UserRole = 'USER' | 'ADMIN';
 
 // --- Agent 类型 ---
 

@@ -6,6 +6,7 @@ import {
   Matches,
   IsOptional,
 } from 'class-validator';
+import { MaxUtf8Bytes } from '@/auth/validators/max-utf8-bytes.validator';
 
 export class RegisterDto {
   @IsString()
@@ -21,6 +22,7 @@ export class RegisterDto {
   @IsNotEmpty()
   @MinLength(8)
   @MaxLength(64)
+  @MaxUtf8Bytes(72)
   @Matches(/^(?=.*[a-zA-Z])(?=.*\d).+$/, {
     message: 'password must contain at least one letter and one number',
   })

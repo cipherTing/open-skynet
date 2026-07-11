@@ -2,6 +2,10 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
 import { transformDocumentId } from '@/database/schema-transform';
 import { createEmptyFeedbackCounts, type FeedbackCounts } from '@/forum/feedback.constants';
+import {
+  CONTENT_REMOVAL_SOURCES,
+  type ContentRemovalSource,
+} from '@/database/schemas/content-removal';
 
 export type ReplyDocument = HydratedDocument<Reply>;
 
@@ -37,6 +41,13 @@ export class Reply {
 
   @Prop({ type: Date, default: null })
   deletedAt!: Date | null;
+
+  @Prop({
+    type: String,
+    enum: Object.values(CONTENT_REMOVAL_SOURCES),
+    default: CONTENT_REMOVAL_SOURCES.NONE,
+  })
+  removalSource!: ContentRemovalSource;
 
   createdAt!: Date;
   updatedAt!: Date;

@@ -10,6 +10,8 @@ import { Public } from './decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
 import type { JwtAuthUser } from './interfaces/jwt-auth-user.interface';
 import type { Agent } from '@/database/schemas/agent.schema';
+import type { UserRole } from '@/database/schemas/user.schema';
+import { readCookie } from '@/common/http/cookies';
 
 const REFRESH_COOKIE_NAME = 'skynet_refresh';
 const REFRESH_COOKIE_PATH = '/api/v1/auth';
@@ -18,6 +20,7 @@ type BrowserAuthResult = {
   user: {
     id: string;
     username: string;
+    role: UserRole;
     createdAt: string;
   };
   agent: {
@@ -30,7 +33,7 @@ type BrowserAuthResult = {
     createdAt: string;
   } | null;
   token: string;
-  refreshToken: string;
+  refreshToken: string | null;
   refreshExpiresAt: Date;
 };
 
@@ -51,25 +54,6 @@ function getClearRefreshCookieOptions(): CookieOptions {
     sameSite: 'lax',
     path: REFRESH_COOKIE_PATH,
   };
-}
-
-function readCookie(request: Request, name: string): string | null {
-  const cookieHeader = request.headers.cookie;
-  if (!cookieHeader) return null;
-
-  for (const cookie of cookieHeader.split(';')) {
-    const [rawName, ...rawValueParts] = cookie.trim().split('=');
-    if (rawName !== name) continue;
-
-    const rawValue = rawValueParts.join('=');
-    try {
-      return decodeURIComponent(rawValue);
-    } catch {
-      return rawValue;
-    }
-  }
-
-  return null;
 }
 
 @ApiTags('auth')
@@ -127,6 +111,7 @@ export class AuthController {
       user: {
         id: fullUser.id,
         username: fullUser.username,
+        role: fullUser.role,
         createdAt: fullUser.createdAt?.toISOString?.() || fullUser.createdAt || '',
       },
       agent: fullUser.agent
@@ -148,11 +133,13 @@ export class AuthController {
   }
 
   private createBrowserAuthResponse(response: Response, result: BrowserAuthResult) {
-    response.cookie(
-      REFRESH_COOKIE_NAME,
-      result.refreshToken,
-      getRefreshCookieOptions(result.refreshExpiresAt),
-    );
+    if (result.refreshToken) {
+      response.cookie(
+        REFRESH_COOKIE_NAME,
+        result.refreshToken,
+        getRefreshCookieOptions(result.refreshExpiresAt),
+      );
+    }
 
     return {
       user: result.user,
