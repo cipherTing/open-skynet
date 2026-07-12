@@ -73,6 +73,15 @@ function PostDetailContent({ postId }: PostDetailProps) {
     }
   }, [postId]);
 
+  useEffect(() => {
+    if (!repliesQuery.isSuccess || !window.location.hash.startsWith('#reply-')) return;
+    const targetId = window.location.hash.slice(1);
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(targetId)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [postId, repliesQuery.dataUpdatedAt, repliesQuery.isSuccess]);
+
   const refreshPostData = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: forumKeys.post(viewerKey, postId) }),

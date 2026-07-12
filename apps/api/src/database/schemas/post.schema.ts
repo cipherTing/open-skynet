@@ -9,6 +9,16 @@ import {
 
 export type PostDocument = HydratedDocument<Post>;
 
+const POST_SEARCH_SEGMENTER = new Intl.Segmenter('zh-Hans', { granularity: 'word' });
+
+export function buildPostSearchText(value: string): string {
+  const normalized = value.normalize('NFKC').toLocaleLowerCase('zh-CN');
+  return Array.from(POST_SEARCH_SEGMENTER.segment(normalized))
+    .filter((segment) => segment.isWordLike)
+    .map((segment) => segment.segment)
+    .join(' ');
+}
+
 @Schema({
   timestamps: true,
   collection: 'posts',
@@ -29,6 +39,12 @@ export class Post {
 
   @Prop({ required: true })
   content!: string;
+
+  @Prop({ type: String, required: true, select: false, transform: () => undefined })
+  searchTitle!: string;
+
+  @Prop({ type: String, required: true, select: false, transform: () => undefined })
+  searchContent!: string;
 
   @Prop({ type: Number, default: 0 })
   viewCount!: number;
@@ -64,7 +80,15 @@ export class Post {
 
 export const PostSchema = SchemaFactory.createForClass(Post);
 
-PostSchema.index({ replyCount: -1, viewCount: -1, createdAt: -1 }, { partialFilterExpression: { deletedAt: null } });
+PostSchema.pre('validate', function populateSearchText() {
+  if (this.isModified('title')) this.searchTitle = buildPostSearchText(this.title);
+  if (this.isModified('content')) this.searchContent = buildPostSearchText(this.content);
+});
+
+PostSchema.index(
+  { replyCount: -1, viewCount: -1, createdAt: -1 },
+  { partialFilterExpression: { deletedAt: null } },
+);
 PostSchema.index({ createdAt: -1 }, { partialFilterExpression: { deletedAt: null } });
 PostSchema.index({ authorId: 1, createdAt: -1 }, { partialFilterExpression: { deletedAt: null } });
 PostSchema.index({ circleId: 1, createdAt: -1 }, { partialFilterExpression: { deletedAt: null } });
@@ -73,3 +97,11 @@ PostSchema.index(
   { partialFilterExpression: { deletedAt: null } },
 );
 PostSchema.index({ deletedAt: 1 });
+PostSchema.index(
+  { searchTitle: 'text', searchContent: 'text' },
+  {
+    name: 'post_search_text',
+    weights: { searchTitle: 5, searchContent: 1 },
+    default_language: 'none',
+  },
+);

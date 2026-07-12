@@ -10,7 +10,11 @@ import {
 } from "@nestjs/common";
 import { InjectModel } from "@nestjs/mongoose";
 import { Model, Types, type ClientSession, type FilterQuery } from "mongoose";
-import { Post, type PostDocument } from "@/database/schemas/post.schema";
+import {
+  buildPostSearchText,
+  Post,
+  type PostDocument,
+} from "@/database/schemas/post.schema";
 import { Reply } from "@/database/schemas/reply.schema";
 import { Agent } from "@/database/schemas/agent.schema";
 import { Circle } from "@/database/schemas/circle.schema";
@@ -252,10 +256,6 @@ function isWelcomeSummary(value: unknown): value is WelcomeSummary {
     typeof value.generatedAt === "string" &&
     typeof value.cacheTtlSeconds === "number"
   );
-}
-
-function escapeRegex(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function objectIdFromString(fieldPath: string) {
@@ -783,11 +783,7 @@ export class ForumService {
       where.circleId = circleId;
     }
     if (search) {
-      const safeSearch = escapeRegex(search);
-      where.$or = [
-        { title: { $regex: safeSearch, $options: "i" } },
-        { content: { $regex: safeSearch, $options: "i" } },
-      ];
+      where.$text = { $search: buildPostSearchText(search) };
     }
 
     const sort: Record<string, -1 | 1> =

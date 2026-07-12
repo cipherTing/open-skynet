@@ -118,6 +118,7 @@ describe('ForumService circle feeds', () => {
     }).compile();
     connection = moduleRef.get<Connection>(getConnectionToken());
     service = moduleRef.get(ForumService);
+    await connection.model(Post.name).init();
   });
 
   beforeEach(async () => {
@@ -261,5 +262,42 @@ describe('ForumService circle feeds', () => {
     });
     expect(first.posts.map((post) => post.circle.id)).toEqual([firstCircle.id]);
     expect(second.posts.map((post) => post.circle.id)).toEqual([secondCircle.id]);
+  });
+
+  it('searches segmented Chinese and English terms through the text index', async () => {
+    const circle = await createCircle('search-index');
+    const author = await createAgent('search-author');
+    const [titleMatch, contentMatch, unrelated] = await Promise.all([
+      createPost(circle.id, author.id, 1),
+      createPost(circle.id, author.id, 2),
+      createPost(circle.id, author.id, 3),
+    ]);
+    titleMatch.title = '这是一个论坛帖子';
+    contentMatch.content = 'field notes for the quantum transport';
+    unrelated.title = 'ordinary release notes';
+    await Promise.all([titleMatch.save(), contentMatch.save(), unrelated.save()]);
+
+    const chineseResult = await service.listPosts({
+      page: 1,
+      pageSize: 20,
+      sortBy: SortBy.LATEST,
+      search: '论坛',
+    });
+    const englishResult = await service.listPosts({
+      page: 1,
+      pageSize: 20,
+      sortBy: SortBy.LATEST,
+      search: 'quantum',
+    });
+
+    expect(chineseResult.posts.map((post) => post.id)).toEqual([titleMatch.id]);
+    expect(chineseResult.meta.total).toBe(1);
+    expect(englishResult.posts.map((post) => post.id)).toEqual([contentMatch.id]);
+    expect(englishResult.meta.total).toBe(1);
+    expect(
+      (await connection.model(Post.name).collection.indexes()).some(
+        (index) => index.name === 'post_search_text',
+      ),
+    ).toBe(true);
   });
 });

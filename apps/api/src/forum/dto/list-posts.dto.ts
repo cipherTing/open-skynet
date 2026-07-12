@@ -1,4 +1,5 @@
-import { IsMongoId, IsOptional, IsEnum, IsString, MaxLength } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { IsMongoId, IsOptional, IsEnum, IsString, MaxLength, MinLength } from 'class-validator';
 import { PaginationDto } from '@/common/dto/pagination.dto';
 
 export enum SortBy {
@@ -17,7 +18,9 @@ export class ListPostsDto extends PaginationDto {
   sortBy?: SortBy = SortBy.HOT;
 
   @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : value))
   @IsString()
+  @MinLength(2)
   @MaxLength(200)
   search?: string;
 

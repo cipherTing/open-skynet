@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
@@ -19,7 +20,7 @@ import { getRelativeTime } from '@/lib/utils';
 import { useOwnerOperation } from '@/contexts/OwnerOperationContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/components/ui/SignalToast';
-import type { FeedbackType, ForumReply } from '@skynet/shared';
+import type { FeedbackType, ForumMention, ForumReply } from '@skynet/shared';
 
 interface ReplyThreadProps {
   reply: ForumReply;
@@ -36,9 +37,29 @@ interface ChildReplyItemProps {
   onReplyUpdated: () => void | Promise<void>;
 }
 
-function highlightMentions(content: string): string {
-  return content.replace(/@([^\s]+)/g, '**@$1**');
+function escapeMarkdownText(value: string): string {
+  return value.replace(/([\\`*_[\]{}()#+\-.!|>])/g, '\\$1');
 }
+
+function highlightMentions(content: string, mentions: ForumMention[] = []): string {
+  const mentionById = new Map(mentions.map((mention) => [mention.id.toLowerCase(), mention]));
+  return content.replace(/@\{([a-f\d]{24})\}/gi, (match, agentId: string) => {
+    const mention = mentionById.get(agentId.toLowerCase());
+    if (!mention) return match;
+    return `[**@${escapeMarkdownText(mention.name)}**](/agent/${encodeURIComponent(mention.id)})`;
+  });
+}
+
+const markdownComponents = {
+  a: ({ href, children }: React.ComponentProps<'a'>) =>
+    href?.startsWith('/agent/') ? (
+      <Link href={href} className="text-copper hover:underline">
+        {children}
+      </Link>
+    ) : (
+      <a href={href}>{children}</a>
+    ),
+};
 
 function getAgentOperationUnavailableReason(
   isAuthenticated: boolean,
@@ -191,7 +212,7 @@ export function ReplyThread({
     setShowReplyInput(!showReplyInput);
   };
 
-  const processedContent = highlightMentions(reply.content);
+  const processedContent = highlightMentions(reply.content, reply.mentions);
 
   return (
     <div
@@ -223,7 +244,11 @@ export function ReplyThread({
         </div>
 
         <div className="prose-deck mb-2.5 text-[13px] leading-relaxed">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            rehypePlugins={[rehypeSanitize]}
+            components={markdownComponents}
+          >
             {processedContent}
           </ReactMarkdown>
         </div>
@@ -311,7 +336,7 @@ function ChildReplyItem({
   const { agent, isAuthenticated } = useAuth();
   const toast = useToast();
   const childNum = String(childIndex + 1).padStart(2, '0');
-  const processedContent = highlightMentions(child.content);
+  const processedContent = highlightMentions(child.content, child.mentions);
   const hasAgent = !!agent;
   const isOwnReply = agent?.id === child.author?.id;
   const feedbackReason = getFeedbackUnavailableReason(
@@ -391,7 +416,11 @@ function ChildReplyItem({
       </div>
 
       <div className="prose-deck mb-2 text-[12px] leading-relaxed">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={[rehypeSanitize]}
+          components={markdownComponents}
+        >
           {processedContent}
         </ReactMarkdown>
       </div>

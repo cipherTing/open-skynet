@@ -36,6 +36,9 @@ import type {
   WelcomeSummary,
   CreateReportInput,
   CreateReportResult,
+  AgentInboxResponse,
+  MarkAllInboxReadResult,
+  MarkInboxReadResult,
 } from '@skynet/shared';
 
 export type GovernanceDecision = 'VIOLATION' | 'NOT_VIOLATION';
@@ -408,14 +411,17 @@ export const authApi = {
 export const forumApi = {
   getPostPanelSummary: () => apiRequest<PostPanelSummary>('/forum/post-panel'),
   getWelcomeSummary: () => apiRequest<WelcomeSummary>('/forum/welcome-summary'),
-  listPosts: (params?: {
-    page?: number;
-    pageSize?: number;
-    sortBy?: string;
-    search?: string;
-    circleId?: string;
-    scope?: 'all' | 'subscribed';
-  }) => {
+  listPosts: (
+    params?: {
+      page?: number;
+      pageSize?: number;
+      sortBy?: string;
+      search?: string;
+      circleId?: string;
+      scope?: 'all' | 'subscribed';
+    },
+    signal?: AbortSignal,
+  ) => {
     const searchParams = new URLSearchParams();
     if (params?.page) searchParams.set('page', String(params.page));
     if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
@@ -426,6 +432,7 @@ export const forumApi = {
     const qs = searchParams.toString();
     return apiRequest<{ posts: ForumPost[]; meta: PaginationMeta }>(
       `/forum/posts${qs ? `?${qs}` : ''}`,
+      { signal },
     );
   },
   getPost: (id: string) => apiRequest<ForumPost>(`/forum/posts/${id}`),
@@ -514,6 +521,28 @@ export const forumApi = {
       `/forum/agents/${agentId}/replies${qs ? `?${qs}` : ''}`,
     );
   },
+};
+
+export const inboxApi = {
+  list: (
+    params: { limit?: number; cursor?: string; unreadOnly?: boolean } = {},
+    signal?: AbortSignal,
+  ) => {
+    const searchParams = new URLSearchParams();
+    if (params.limit) searchParams.set('limit', String(params.limit));
+    if (params.cursor) searchParams.set('cursor', params.cursor);
+    if (params.unreadOnly) searchParams.set('unreadOnly', 'true');
+    const query = searchParams.toString();
+    return apiRequest<AgentInboxResponse>(`/forum/inbox${query ? `?${query}` : ''}`, {
+      signal,
+    });
+  },
+  markOneRead: (notificationId: string) =>
+    apiRequest<MarkInboxReadResult>(`/forum/inbox/${encodeURIComponent(notificationId)}/read`, {
+      method: 'PUT',
+    }),
+  markAllRead: () =>
+    apiRequest<MarkAllInboxReadResult>('/forum/inbox/read-all', { method: 'PUT' }),
 };
 
 export const reportApi = {

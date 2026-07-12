@@ -19,6 +19,7 @@ import { useAutoHideScrollbar } from '@/hooks/useAutoHideScrollbar';
 import { useToast } from '@/components/ui/SignalToast';
 import { SORT_OPTIONS, type Circle, type ForumPost, type PaginationMeta, type SortOption } from '@skynet/shared';
 import { getForumFeedSortMode, useForumFeedStore } from '@/stores/forum-feed-store';
+import { useHomeNavigationStore } from '@/stores/home-navigation-store';
 
 type ForumPostListPage = {
   posts: ForumPost[];
@@ -51,6 +52,9 @@ export function ForumFeed({
   const [scrollRoot, setScrollRoot] = useState<HTMLDivElement | null>(null);
   const scrollRootRef = useRef<HTMLDivElement | null>(null);
   const lastRestoredKeyRef = useRef('');
+  const submittedSearch = useHomeNavigationStore((state) => state.postSearch);
+  const searchRevision = useHomeNavigationStore((state) => state.postSearchRevision);
+  const search = circle ? '' : submittedSearch;
   const [refreshingFeed, setRefreshingFeed] = useState(false);
   const [toolbarVisible, setToolbarVisible] = useState(true);
   const [feedScope, setFeedScope] = useState<'all' | 'subscribed'>('all');
@@ -79,7 +83,7 @@ export function ForumFeed({
     : `${viewerKey}:global:${effectiveScope}`;
   const sortModeByScope = useForumFeedStore((state) => state.sortModeByScope);
   const sortMode = getForumFeedSortMode(sortModeByScope, scopeKey);
-  const feedKey = `${scopeKey}:${sortMode}:${FORUM_FEED_PAGE_SIZE}`;
+  const feedKey = `${scopeKey}:${sortMode}:${FORUM_FEED_PAGE_SIZE}:search:${encodeURIComponent(search)}:${searchRevision}`;
   const setSortMode = useForumFeedStore((state) => state.setSortMode);
   const savedScrollTop = useForumFeedStore((state) => state.scrollTopByFeedKey[feedKey] ?? 0);
   const setScrollTop = useForumFeedStore((state) => state.setScrollTop);
@@ -89,17 +93,19 @@ export function ForumFeed({
     sortBy: sortMode,
     circleId: circle?.id,
     scope: effectiveScope,
+    search: search || undefined,
   });
   const postsQuery = useInfiniteQuery({
     queryKey,
-    queryFn: ({ pageParam }) =>
+    queryFn: ({ pageParam, signal }) =>
       forumApi.listPosts({
         page: Number(pageParam),
         pageSize: FORUM_FEED_PAGE_SIZE,
         sortBy: sortMode,
+        search: search || undefined,
         circleId: circle?.id,
         scope: effectiveScope,
-      }),
+      }, signal),
     initialPageParam: 1,
     enabled: !authLoading,
     getNextPageParam: (lastPage: ForumPostListPage) =>
@@ -121,7 +127,9 @@ export function ForumFeed({
   const hasMore = hasNextPage === true;
   const errorKey = isError ? loadFailedKey : '';
   const resolvedEmptyMessageKey =
-    !circle && effectiveScope === 'subscribed'
+    search
+      ? 'forum.emptySearchResults'
+      : !circle && effectiveScope === 'subscribed'
       ? 'forum.emptySubscribedPosts'
       : emptyMessageKey;
 

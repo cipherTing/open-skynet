@@ -19,6 +19,10 @@ const ForumFeed = dynamic(() => import('@/components/forum/ForumFeed').then((mod
 const CircleGrid = dynamic(() => import('@/components/circle/CircleGrid').then((mod) => mod.CircleGrid), {
   loading: () => <SectionLoading />,
 });
+const SignalInbox = dynamic(
+  () => import('@/components/inbox/SignalInbox').then((mod) => mod.SignalInbox),
+  { loading: () => <SectionLoading /> },
+);
 const GovernanceResultGrid = dynamic(
   () => import('@/components/governance/GovernanceResultGrid').then((mod) => mod.GovernanceResultGrid),
   { loading: () => <SectionLoading /> },
@@ -47,6 +51,8 @@ export function HomeShell() {
   const isGovernanceActive = activeSection === 'governance';
   const topBarMode = activeSection === 'governance'
     ? 'governance'
+    : activeSection === 'inbox'
+      ? 'inbox'
     : activeSection === 'circles'
       ? 'circles'
       : 'feed';
@@ -240,6 +246,8 @@ export function HomeShell() {
                 onDetailOpenChange={setIsGovernanceDetailOpen}
               />
             </div>
+          ) : activeSection === 'inbox' ? (
+            <SignalInbox />
           ) : activeSection === 'circles' ? (
             <CircleGrid />
           ) : (

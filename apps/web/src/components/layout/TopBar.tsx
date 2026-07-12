@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, RefreshCw, Search, Radio } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Search, Radio, X } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
@@ -24,7 +24,7 @@ export interface TopBarGovernanceControls {
 interface TopBarProps {
   disableScrollFade?: boolean;
   position?: 'sticky' | 'static';
-  mode?: 'feed' | 'circles' | 'governance' | 'detail';
+  mode?: 'feed' | 'inbox' | 'circles' | 'governance' | 'detail';
   detailTitle?: string;
   detailTitleKey?: string;
   backHref?: string;
@@ -68,7 +68,12 @@ export function TopBar({
   const { t } = useTranslation();
   const router = useRouter();
   const setHomeActiveSection = useHomeNavigationStore((state) => state.setActiveSection);
+  const postSearch = useHomeNavigationStore((state) => state.postSearch);
+  const setPostSearch = useHomeNavigationStore((state) => state.setPostSearch);
   const [scrolled, setScrolled] = useState(false);
+  const [searchInput, setSearchInput] = useState(postSearch);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchError, setSearchError] = useState('');
   const effectiveScrolled = !disableScrollFade && scrolled;
   const isGovernanceMode = mode === 'governance';
   const isFeedMode = mode === 'feed';
@@ -76,14 +81,35 @@ export function TopBar({
   const hasBackLink = Boolean(resolvedBackLabel && (backHref || preferHistoryBack));
   const backControlClassName =
     'inline-flex min-w-0 items-center gap-1.5 rounded-md border border-border-subtle bg-surface-1/45 px-2.5 py-1.5 text-xs font-bold tracking-wide text-ink-secondary transition-all hover:border-border-accent hover:bg-accent-muted hover:text-copper sm:max-w-none';
-  const showsCompactSectionLabel = isGovernanceMode || mode === 'detail';
+  const showsCompactSectionLabel = isGovernanceMode || mode === 'inbox' || mode === 'detail';
   const sectionLabel = isGovernanceMode
     ? t('governance.plazaTitle')
+    : mode === 'inbox'
+      ? t('inbox.title')
     : mode === 'circles'
       ? t('circles.plazaTitle')
       : mode === 'detail'
         ? detailTitle ?? (detailTitleKey ? t(detailTitleKey) : t('app.terminal'))
         : t('app.terminal');
+
+  const submitSearch = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const normalized = searchInput.trim();
+    if (normalized.length === 1) {
+      setSearchError(t('app.searchMinLength'));
+      return;
+    }
+    setSearchError('');
+    setSearchInput(normalized);
+    setPostSearch(normalized);
+    setSearchOpen(false);
+  };
+
+  const clearSearch = () => {
+    setSearchInput('');
+    setSearchError('');
+    setPostSearch('');
+  };
 
   useEffect(() => {
     if (disableScrollFade) {
@@ -98,7 +124,7 @@ export function TopBar({
   }, [disableScrollFade]);
 
   return (
-      <motion.header
+    <motion.header
       initial={disableScrollFade ? false : { opacity: 0, y: -10 }}
       animate={{ opacity: effectiveScrolled ? 0 : 1, y: effectiveScrolled ? -10 : 0 }}
       transition={{ duration: 0.3 }}
@@ -212,17 +238,51 @@ export function TopBar({
         </div>
 
         {/* 右: 搜索 + 主题 + 语言 + 时钟 */}
-        <div className="flex items-center gap-3 pointer-events-auto">
+        <div className="relative flex items-center gap-3 pointer-events-auto">
           {/* 搜索 */}
           {isFeedMode && (
-            <div className="relative group hidden xl:block">
-              <Search className="skynet-input-icon absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" />
-              <input
-                type="text"
+            <>
+              <SearchForm
+                className="hidden xl:flex"
+                value={searchInput}
+                error={searchError}
+                onChange={(value) => {
+                  setSearchInput(value);
+                  setSearchError('');
+                }}
+                onClear={clearSearch}
+                onSubmit={submitSearch}
                 placeholder={t('app.searchPosts')}
-                className="skynet-input w-56 rounded-lg py-2 pl-9 pr-3 font-sans text-sm tracking-wide"
+                clearLabel={t('app.clearSearch')}
               />
-            </div>
+              <PortalTooltip content={t('app.openSearch')} placement="bottom">
+                <button
+                  type="button"
+                  aria-label={t('app.openSearch')}
+                  aria-expanded={searchOpen}
+                  onClick={() => setSearchOpen((open) => !open)}
+                  className="flex h-8 w-8 items-center justify-center rounded-md border border-border-subtle text-ink-muted transition-colors hover:border-border-accent hover:text-copper xl:hidden"
+                >
+                  {searchOpen ? <X className="h-4 w-4" /> : <Search className="h-4 w-4" />}
+                </button>
+              </PortalTooltip>
+              {searchOpen ? (
+                <SearchForm
+                  className="absolute right-0 top-10 flex xl:hidden"
+                  value={searchInput}
+                  error={searchError}
+                  onChange={(value) => {
+                    setSearchInput(value);
+                    setSearchError('');
+                  }}
+                  onClear={clearSearch}
+                  onSubmit={submitSearch}
+                  placeholder={t('app.searchPosts')}
+                  clearLabel={t('app.clearSearch')}
+                  autoFocus
+                />
+              ) : null}
+            </>
           )}
 
           <ThemeToggle />
@@ -242,5 +302,63 @@ export function TopBar({
         </div>
       </div>
     </motion.header>
+  );
+}
+
+interface SearchFormProps {
+  className: string;
+  value: string;
+  error: string;
+  placeholder: string;
+  clearLabel: string;
+  autoFocus?: boolean;
+  onChange: (value: string) => void;
+  onClear: () => void;
+  onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+}
+
+function SearchForm({
+  className,
+  value,
+  error,
+  placeholder,
+  clearLabel,
+  autoFocus = false,
+  onChange,
+  onClear,
+  onSubmit,
+}: SearchFormProps) {
+  return (
+    <form className={`relative ${className}`} role="search" onSubmit={onSubmit}>
+      <Search className="skynet-input-icon absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" />
+      <input
+        type="search"
+        value={value}
+        autoFocus={autoFocus}
+        aria-invalid={Boolean(error)}
+        aria-describedby={error ? 'post-search-error' : undefined}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="skynet-input w-56 rounded-lg py-2 pl-9 pr-9 font-sans text-sm tracking-wide"
+      />
+      {value ? (
+        <button
+          type="button"
+          aria-label={clearLabel}
+          onClick={onClear}
+          className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center text-ink-muted hover:text-copper"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      ) : null}
+      {error ? (
+        <span
+          id="post-search-error"
+          className="absolute right-0 top-full mt-1 whitespace-nowrap rounded bg-surface-2 px-2 py-1 text-[11px] text-signal-warning"
+        >
+          {error}
+        </span>
+      ) : null}
+    </form>
   );
 }

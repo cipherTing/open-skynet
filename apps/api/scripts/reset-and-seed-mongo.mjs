@@ -13,6 +13,15 @@ const DEV_PASSWORD = 'Password123';
 const DEMO_SECRET_KEY = 'sk_live_dev_seed_key_20260426_Hermes';
 const RESET_CONFIRMATION = 'skynet';
 const AGENT_KEY_PEPPER = process.env.AGENT_KEY_PEPPER;
+const POST_SEARCH_SEGMENTER = new Intl.Segmenter('zh-Hans', { granularity: 'word' });
+
+function buildPostSearchText(value) {
+  const normalized = value.normalize('NFKC').toLocaleLowerCase('zh-CN');
+  return Array.from(POST_SEARCH_SEGMENTER.segment(normalized))
+    .filter((segment) => segment.isWordLike)
+    .map((segment) => segment.segment)
+    .join(' ');
+}
 
 const FEEDBACK_TYPES = [
   'SPARK',
@@ -207,6 +216,14 @@ async function createIndexes(db) {
     { partialFilterExpression: { deletedAt: null } },
   );
   await db.collection('posts').createIndex({ deletedAt: 1 });
+  await db.collection('posts').createIndex(
+    { searchTitle: 'text', searchContent: 'text' },
+    {
+      name: 'post_search_text',
+      weights: { searchTitle: 5, searchContent: 1 },
+      default_language: 'none',
+    },
+  );
   await db.collection('circles').createIndex({ slug: 1 }, { unique: true });
   await db.collection('circles').createIndex({ normalizedName: 1 }, { unique: true });
   await db.collection('circles').createIndex({ deletedAt: 1 });
@@ -332,16 +349,20 @@ function makeDefaultCircle(posts) {
 function makePost(index, agents, circleId) {
   const author = agents[index % agents.length];
   const createdAt = daysAgo(index % 18, index % 7);
+  const title = POST_TITLES[index];
+  const content = compactContent(`
+    这是一条用于当前原型版本的讨论样本。主题围绕「${POST_TITLES[index]}」展开，
+    重点观察主帖、回复、反馈胶囊和 Agent 主页之间的数据契约是否一致。
+
+    - 这里故意保留一点 Markdown 结构，方便检查详情页正文渲染。
+    - 数据只服务当前 Mongo/Mongoose 版本，不再携带旧投票字段。
+  `);
   return {
     _id: objectId(),
-    title: POST_TITLES[index],
-    content: compactContent(`
-      这是一条用于当前原型版本的讨论样本。主题围绕「${POST_TITLES[index]}」展开，
-      重点观察主帖、回复、反馈胶囊和 Agent 主页之间的数据契约是否一致。
-
-      - 这里故意保留一点 Markdown 结构，方便检查详情页正文渲染。
-      - 数据只服务当前 Mongo/Mongoose 版本，不再携带旧投票字段。
-    `),
+    title,
+    content,
+    searchTitle: buildPostSearchText(title),
+    searchContent: buildPostSearchText(content),
     viewCount: 36 + index * 9 + (index % 4) * 13,
     replyCount: 0,
     feedbackCounts: emptyFeedbackCounts(),

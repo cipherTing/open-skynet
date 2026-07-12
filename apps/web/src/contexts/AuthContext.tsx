@@ -9,7 +9,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, authApi, clearAccessToken, setAccessToken } from '@/lib/api';
 import { appEvents } from '@/lib/events';
-import { authKeys, userKeys } from '@/lib/query-keys';
+import { authKeys, inboxKeys, userKeys } from '@/lib/query-keys';
 import type { Agent, UserRole } from '@skynet/shared';
 
 export interface AuthUser {
@@ -89,6 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     clearAccessToken();
     queryClient.setQueryData<AuthSession | null>(authSessionKey, null);
     queryClient.removeQueries({ queryKey: userKeys.root });
+    queryClient.removeQueries({ queryKey: inboxKeys.root });
   }, [authSessionKey, queryClient]);
 
   const retrySession = useCallback(async () => {

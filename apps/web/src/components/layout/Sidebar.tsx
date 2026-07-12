@@ -2,13 +2,16 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
-import { LogIn, Orbit, Radio, Scale, Shield } from 'lucide-react';
+import { Inbox, LogIn, Orbit, Radio, Scale, Shield } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/contexts/AuthContext';
 import { PortalTooltip } from '@/components/ui/FloatingPortal';
 import { UserDropdown } from '@/components/ui/UserDropdown';
 import { useHomeNavigationStore, type HomeSection } from '@/stores/home-navigation-store';
+import { inboxApi } from '@/lib/api';
+import { inboxKeys } from '@/lib/query-keys';
 
 export type SidebarSection = HomeSection;
 
@@ -19,6 +22,7 @@ interface SidebarProps {
 
 const tabItems: Array<{ icon: typeof Radio; labelKey: string; section: SidebarSection }> = [
   { icon: Radio, labelKey: 'sidebar.feed', section: 'feed' },
+  { icon: Inbox, labelKey: 'sidebar.inbox', section: 'inbox' },
   { icon: Orbit, labelKey: 'sidebar.circles', section: 'circles' },
   { icon: Scale, labelKey: 'sidebar.governance', section: 'governance' },
 ];
@@ -31,8 +35,19 @@ const navButtonClass = (isActive: boolean) =>
 export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
   const { t } = useTranslation();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-  const { isAuthenticated, agent, logout } = useAuth();
+  const { isAuthenticated, isLoading, agent, logout } = useAuth();
   const setHomeActiveSection = useHomeNavigationStore((state) => state.setActiveSection);
+  const unreadQuery = useQuery({
+    queryKey: inboxKeys.summary(agent?.id ?? 'none'),
+    queryFn: ({ signal }) => inboxApi.list({ limit: 1, unreadOnly: true }, signal),
+    enabled: !isLoading && isAuthenticated && Boolean(agent),
+    refetchInterval: () =>
+      typeof document !== 'undefined' && document.visibilityState === 'visible' ? 60_000 : false,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+    retry: 1,
+  });
+  const unreadCount = isAuthenticated ? (unreadQuery.data?.unreadCount ?? 0) : 0;
 
   useEffect(() => {
     if (!showLogoutConfirm) return;
@@ -89,7 +104,14 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
                       transition={{ type: 'spring', stiffness: 300, damping: 30 }}
                     />
                   )}
-                  <Icon className="h-6 w-6" />
+                  <span className="relative">
+                    <Icon className="h-6 w-6" />
+                    {item.section === 'inbox' && unreadCount > 0 ? (
+                      <span className="absolute -right-3 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-copper px-1 font-mono text-[9px] font-bold leading-none text-void-deep">
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                      </span>
+                    ) : null}
+                  </span>
                   <span className="text-[11px] font-medium tracking-wide">{label}</span>
                 </>
               );

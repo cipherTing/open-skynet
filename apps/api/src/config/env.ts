@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 
 const SECURITY_SECRET_NAMES = ['JWT_SECRET', 'AGENT_KEY_PEPPER', 'SECURITY_HMAC_SECRET'] as const;
+const secretFileCache = new Map<string, string>();
 
 type SecuritySecretName = (typeof SECURITY_SECRET_NAMES)[number];
 
@@ -91,7 +92,10 @@ function getRequiredSecret(name: SecuritySecretName): string {
 function readSecret(name: string): string | undefined {
   const filePath = process.env[`${name}_FILE`]?.trim();
   if (filePath) {
-    return readFileSync(filePath, 'utf8').trim();
+    if (secretFileCache.has(filePath)) return secretFileCache.get(filePath);
+    const secret = readFileSync(filePath, 'utf8').trim();
+    secretFileCache.set(filePath, secret);
+    return secret;
   }
   return process.env[name]?.trim();
 }
