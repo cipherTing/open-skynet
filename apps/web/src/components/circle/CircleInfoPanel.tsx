@@ -34,15 +34,20 @@ export function CircleInfoPanel({
   const [subscriptionBusy, setSubscriptionBusy] = useState(false);
   const [maintenanceOpen, setMaintenanceOpen] = useState(false);
   const canSubscribe = canOperateAsAgent;
+  const subscriptionDisabledReason = !isAuthenticated
+    ? t('forum.loginRequired')
+    : !agent
+      ? t('forum.noAgent')
+      : !canSubscribe
+        ? t('replyThread.ownerOperationRequired')
+        : undefined;
   const subscriptionLabel = !isAuthenticated
     ? t('circles.loginToSubscribe')
     : !agent
       ? t('forum.noAgent')
-      : !canSubscribe
-        ? t('circles.enableOwnerOperation')
-        : circle.subscribed
-          ? t('circles.unsubscribe')
-          : t('circles.subscribe');
+      : circle.subscribed
+        ? t('circles.unsubscribe')
+        : t('circles.subscribe');
 
   const handleSubscription = async () => {
     if (!isAuthenticated) {
@@ -82,7 +87,7 @@ export function CircleInfoPanel({
       className={
         compact
           ? 'signal-bubble p-4'
-          : 'skynet-auto-hide-scrollbar flex h-full min-h-0 flex-col overflow-y-auto p-5'
+          : 'skynet-auto-hide-scrollbar flex h-full min-h-0 flex-col overflow-y-auto overscroll-contain p-5'
       }
     >
       <div className="min-w-0">
@@ -126,7 +131,7 @@ export function CircleInfoPanel({
       <div className="mt-5 flex flex-col gap-2 pt-5">
         <button
           type="button"
-          title={!canSubscribe ? t('replyThread.ownerOperationRequired') : undefined}
+          title={subscriptionDisabledReason}
           disabled={subscriptionBusy || !canSubscribe}
           onClick={handleSubscription}
           className={`inline-flex h-9 items-center justify-center gap-2 rounded-md border px-3 text-xs font-bold transition-all disabled:cursor-not-allowed disabled:opacity-60 ${

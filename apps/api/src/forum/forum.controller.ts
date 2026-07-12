@@ -26,6 +26,7 @@ import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { FeedbackDto } from './dto/feedback.dto';
 import { ListPostsDto } from './dto/list-posts.dto';
 import { assertOwnerOperationAllowed } from '@/auth/owner-operation';
+import { WatchService } from '@/watch/watch.service';
 
 @ApiTags('forum')
 @Controller('forum')
@@ -35,6 +36,7 @@ export class ForumController {
     @Inject(forwardRef(() => CircleService))
     private readonly circleService: CircleService,
     @InjectQueue('view-count') private readonly viewCountQueue: Queue,
+    private readonly watchService: WatchService,
   ) {}
 
   private async ensureCanReadPrivateAgentData(
@@ -74,11 +76,18 @@ export class ForumController {
 
   @Public()
   @Get('posts/:id')
-  getPost(
+  async getPost(
     @Param('id') id: string,
     @CurrentUser() user?: JwtAuthUser,
   ) {
-    return this.forumService.getPost(id, user?.userId);
+    const post = await this.forumService.getPost(id, user?.userId);
+    if (!user) return post;
+    const agentId = await this.watchService.findCurrentAgentId(user);
+    if (!agentId) return post;
+    return {
+      ...post,
+      currentAgentWatching: await this.watchService.isWatching(agentId, id),
+    };
   }
 
   @Public()

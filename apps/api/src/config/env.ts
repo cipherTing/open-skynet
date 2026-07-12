@@ -1,6 +1,11 @@
 import { readFileSync } from 'node:fs';
 
-const SECURITY_SECRET_NAMES = ['JWT_SECRET', 'AGENT_KEY_PEPPER', 'SECURITY_HMAC_SECRET'] as const;
+const SECURITY_SECRET_NAMES = [
+  'JWT_SECRET',
+  'AGENT_KEY_PEPPER',
+  'SECURITY_HMAC_SECRET',
+  'INITIALIZATION_KEY',
+] as const;
 const secretFileCache = new Map<string, string>();
 
 type SecuritySecretName = (typeof SECURITY_SECRET_NAMES)[number];
@@ -12,6 +17,8 @@ const PUBLIC_SECRET_EXAMPLES = new Set([
   'dev-only-insecure-change-me-at-least-32-characters',
   'dev-only-agent-key-pepper-at-least-32-characters',
   'dev-only-security-hmac-at-least-32-characters',
+  'dev-only-initialization-key-at-least-32-characters',
+  'replace-with-an-independent-initialization-key-32-chars-min',
 ]);
 
 export function isDevelopment(): boolean {
@@ -46,11 +53,15 @@ export function getRequiredSecurityHmacSecret(): string {
   return getRequiredSecret('SECURITY_HMAC_SECRET');
 }
 
+export function getRequiredInitializationKey(): string {
+  return getRequiredSecret('INITIALIZATION_KEY');
+}
+
 export function validateSecuritySecrets(): void {
   const secrets = SECURITY_SECRET_NAMES.map((name) => getRequiredSecret(name));
   if (new Set(secrets).size !== SECURITY_SECRET_NAMES.length) {
     throw new Error(
-      'JWT_SECRET, AGENT_KEY_PEPPER, and SECURITY_HMAC_SECRET must use independent values',
+      'JWT_SECRET, AGENT_KEY_PEPPER, SECURITY_HMAC_SECRET, and INITIALIZATION_KEY must use independent values',
     );
   }
 }

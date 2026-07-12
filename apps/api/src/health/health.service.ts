@@ -22,10 +22,7 @@ export class HealthService {
 
   async ready() {
     const dependencies = await this.readDependencies();
-    if (
-      dependencies.mongo.status !== 'ok' ||
-      dependencies.redis.status !== 'ok'
-    ) {
+    if (dependencies.mongo.status !== 'ok' || dependencies.redis.status !== 'ok') {
       throw new ServiceUnavailableException({
         code: 'SERVICE_NOT_READY',
         message: '服务依赖尚未就绪',
@@ -43,6 +40,17 @@ export class HealthService {
         const database = this.connection.db;
         if (!database) throw new Error('MongoDB database handle is unavailable');
         await this.withTimeout(database.admin().ping(), 'MongoDB');
+        const hello = await this.withTimeout(
+          database.admin().command({ hello: 1 }),
+          'MongoDB replica set',
+        );
+        if (
+          typeof hello.setName !== 'string' ||
+          hello.setName.length === 0 ||
+          hello.isWritablePrimary !== true
+        ) {
+          throw new Error('MongoDB writable replica-set primary is unavailable');
+        }
       }),
       this.measure(async () => {
         await this.withTimeout(this.redisService.getClient().ping(), 'Redis');

@@ -21,6 +21,42 @@ export class DatabaseService {
 
   constructor(@InjectConnection() public readonly connection: Connection) {}
 
+  private async detectReplicaSet(): Promise<boolean> {
+    if (this.connection.readyState !== 1) {
+      throw new Error("MongoDB connection is not ready");
+    }
+    const database = this.connection.db;
+    if (!database) {
+      throw new Error("MongoDB database handle is not ready");
+    }
+
+    try {
+      const status = await database.admin().command({ hello: 1 });
+      return isReplicaSetStatus(status) && typeof status.setName === "string";
+    } catch (error) {
+      throw new Error("Failed to inspect MongoDB transaction support", {
+        cause: error,
+      });
+    }
+  }
+
+  private async runReplicaSetTransaction<T>(
+    fn: (session: ClientSession) => Promise<T>,
+  ): Promise<T> {
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        return await this.connection.transaction((session) => fn(session));
+      } catch (error) {
+        if (attempt < maxAttempts && isOptimisticConcurrencyError(error)) {
+          continue;
+        }
+        throw error;
+      }
+    }
+    throw new Error("MongoDB transaction retry attempts exhausted");
+  }
+
   private async runWithoutReplicaSet<T>(
     fn: (session?: ClientSession) => Promise<T>,
   ): Promise<T> {
@@ -46,37 +82,10 @@ export class DatabaseService {
   async $transaction<T>(
     fn: (session?: ClientSession) => Promise<T>,
   ): Promise<T> {
-    if (this.connection.readyState !== 1) {
-      throw new Error("MongoDB connection is not ready");
-    }
-    const database = this.connection.db;
-    if (!database) {
-      throw new Error("MongoDB database handle is not ready");
-    }
-
-    let isReplicaSet = false;
-    try {
-      const status = await database.admin().command({ hello: 1 });
-      isReplicaSet =
-        isReplicaSetStatus(status) && typeof status.setName === "string";
-    } catch (error) {
-      throw new Error("Failed to inspect MongoDB transaction support", {
-        cause: error,
-      });
-    }
+    const isReplicaSet = await this.detectReplicaSet();
 
     if (isReplicaSet) {
-      const maxAttempts = 3;
-      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-        try {
-          return await this.connection.transaction((session) => fn(session));
-        } catch (error) {
-          if (attempt < maxAttempts && isOptimisticConcurrencyError(error)) {
-            continue;
-          }
-          throw error;
-        }
-      }
+      return this.runReplicaSetTransaction(fn);
     }
 
     if (isProduction()) {
@@ -87,5 +96,18 @@ export class DatabaseService {
 
     // Fallback: serial execution without transaction in development.
     return this.runWithoutReplicaSet(fn);
+  }
+
+  /**
+   * 执行必须由 MongoDB 副本集保障的事务。
+   * 未启用副本集时，在执行回调前直接拒绝，不允许降级为串行操作。
+   */
+  async $requiredTransaction<T>(
+    fn: (session: ClientSession) => Promise<T>,
+  ): Promise<T> {
+    if (!(await this.detectReplicaSet())) {
+      throw new Error("MongoDB replica set is required for this transaction");
+    }
+    return this.runReplicaSetTransaction(fn);
   }
 }

@@ -62,6 +62,7 @@ services:
       JWT_SECRET_FILE: /run/secrets/jwt_secret
       AGENT_KEY_PEPPER_FILE: /run/secrets/agent_key_pepper
       SECURITY_HMAC_SECRET_FILE: /run/secrets/security_hmac_secret
+      INITIALIZATION_KEY_FILE: /run/secrets/initialization_key
       TRUST_PROXY: ${TRUST_PROXY:-false}
       SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
     depends_on:
@@ -75,6 +76,7 @@ services:
       - jwt_secret
       - agent_key_pepper
       - security_hmac_secret
+      - initialization_key
     networks:
       frontend:
         gw_priority: 100
@@ -148,3 +150,5 @@ secrets:
     file: ${AGENT_KEY_PEPPER_FILE_PATH:-./secrets/agent_key_pepper}
   security_hmac_secret:
     file: ${SECURITY_HMAC_SECRET_FILE_PATH:-./secrets/security_hmac_secret}
+  initialization_key:
+    file: ${INITIALIZATION_KEY_FILE_PATH:-./secrets/initialization_key}

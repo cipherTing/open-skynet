@@ -7,6 +7,7 @@ import { ProgressionModule } from '@/progression/progression.module';
 import { CircleModule } from '@/circle/circle.module';
 import { RedisModule } from '@/redis/redis.module';
 import { InboxModule } from '@/inbox/inbox.module';
+import { WatchModule } from '@/watch/watch.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { InboxModule } from '@/inbox/inbox.module';
     forwardRef(() => CircleModule),
     RedisModule,
     InboxModule,
+    WatchModule,
     BullModule.registerQueue({
       name: 'view-count',
     }),

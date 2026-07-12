@@ -105,7 +105,7 @@ export function SystemAnnouncementBar() {
       role="region"
       aria-label={t('announcement.region')}
       aria-live="polite"
-      className={`relative z-30 border-b ${style.border} bg-void-deep/95 px-4 py-2.5 backdrop-blur-md`}
+      className={`relative z-30 flex-none border-b ${style.border} bg-void-deep/95 px-4 py-2.5 backdrop-blur-md`}
     >
       <div className="mx-auto flex max-w-[1600px] items-start gap-3 sm:items-center">
         <Icon className={`mt-0.5 h-4 w-4 shrink-0 sm:mt-0 ${style.text}`} />

@@ -22,6 +22,10 @@ import { InteractionHistory } from '@/database/schemas/interaction-history.schem
 import { Post, PostSchema } from '@/database/schemas/post.schema';
 import { PostFavorite } from '@/database/schemas/post-favorite.schema';
 import { Reply, ReplySchema } from '@/database/schemas/reply.schema';
+import {
+  PostWatchRegistry,
+  PostWatchRegistrySchema,
+} from '@/database/schemas/post-watch-registry.schema';
 import { ViewHistory } from '@/database/schemas/view-history.schema';
 import { DatabaseService } from '@/database/database.service';
 import { CircleService } from '@/circle/circle.service';
@@ -50,6 +54,7 @@ describe('ForumService reply inbox transaction', () => {
           { name: AgentXpEvent.name, schema: AgentXpEventSchema },
           { name: Post.name, schema: PostSchema },
           { name: Reply.name, schema: ReplySchema },
+          { name: PostWatchRegistry.name, schema: PostWatchRegistrySchema },
         ]),
       ],
       providers: [
@@ -109,6 +114,50 @@ describe('ForumService reply inbox transaction', () => {
         content: `must roll back @{${missingMentionId}}`,
       }),
     ).rejects.toThrow('提及的 Agent 不存在或已离线');
+
+    const unchangedPost = await connection.model(Post.name).findById(post.id);
+    expect(unchangedPost?.replyCount).toBe(0);
+    expect(await connection.model(Reply.name).countDocuments()).toBe(0);
+    expect(await connection.model(AgentNotification.name).countDocuments()).toBe(0);
+    expect(await connection.model(AgentProgress.name).countDocuments()).toBe(0);
+    expect(await connection.model(AgentXpEvent.name).countDocuments()).toBe(0);
+  });
+
+  it('rolls back the full reply transaction when a watch registry exceeds its invariant', async () => {
+    const [actor, postAuthor] = await Promise.all([
+      connection.model(Agent.name).create({
+        name: 'watch-invariant-actor',
+        description: 'actor',
+        avatarSeed: 'watch-invariant-actor-avatar',
+        userId: 'watch-invariant-actor-user',
+      }),
+      connection.model(Agent.name).create({
+        name: 'watch-invariant-author',
+        description: 'author',
+        avatarSeed: 'watch-invariant-author-avatar',
+        userId: 'watch-invariant-author-user',
+      }),
+    ]);
+    const post = await connection.model(Post.name).create({
+      title: 'watch invariant post',
+      content: 'watch invariant content',
+      authorId: postAuthor.id,
+      circleId: new Types.ObjectId().toString(),
+      circleRulesVersion: 1,
+    });
+    await connection.collection('post_watch_registries').insertOne({
+      postId: post.id,
+      watcherAgentIds: Array.from(
+        { length: 101 },
+        () => new Types.ObjectId().toString(),
+      ),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    await expect(
+      forumService.createReply(actor.id, post.id, { content: 'must roll back completely' }),
+    ).rejects.toThrow('Post watch registry invariant violated');
 
     const unchangedPost = await connection.model(Post.name).findById(post.id);
     expect(unchangedPost?.replyCount).toBe(0);

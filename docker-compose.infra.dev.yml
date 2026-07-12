@@ -20,7 +20,11 @@ services:
     user: !reset null
     read_only: false
     healthcheck:
-      disable: true
+      disable: false
+      interval: 2s
+      timeout: 2s
+      retries: 20
+      start_period: 5s
     ports:
       - '127.0.0.1:${API_PORT:-8081}:8081'
     environment:
@@ -33,9 +37,11 @@ services:
       JWT_SECRET_FILE: !reset null
       AGENT_KEY_PEPPER_FILE: !reset null
       SECURITY_HMAC_SECRET_FILE: !reset null
+      INITIALIZATION_KEY_FILE: !reset null
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       AGENT_KEY_PEPPER: ${AGENT_KEY_PEPPER:?AGENT_KEY_PEPPER is required}
       SECURITY_HMAC_SECRET: ${SECURITY_HMAC_SECRET:?SECURITY_HMAC_SECRET is required}
+      INITIALIZATION_KEY: ${INITIALIZATION_KEY:?INITIALIZATION_KEY is required}
       TRUST_PROXY: ${TRUST_PROXY:-false}
       SWAGGER_ENABLED: ${SWAGGER_ENABLED:-true}
     secrets: !reset []
@@ -64,3 +70,7 @@ secrets:
   jwt_secret: !reset null
   agent_key_pepper: !reset null
   security_hmac_secret: !reset null
+
+networks:
+  data:
+    internal: false

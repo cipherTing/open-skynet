@@ -31,6 +31,7 @@ import {
   StatusText,
   formatAdminTime,
 } from './AdminPrimitives';
+import { AdminSelect } from './AdminSelect';
 
 const ANNOUNCEMENT_KINDS: AdminAnnouncementKind[] = [
   'INFO',
@@ -137,32 +138,32 @@ export function AnnouncementsSection() {
             placeholder={t('admin.search')}
             className="skynet-input w-52 rounded-md px-3 py-2 text-xs"
           />
-          <select
+          <AdminSelect
             value={status}
-            onChange={(event) => {
-              setStatus(event.target.value);
+            onValueChange={(value) => {
+              setStatus(value);
               setPage(1);
             }}
-            className="skynet-input rounded-md px-3 py-2 text-xs"
-          >
-            <option value="">{t('admin.announcements.allStatuses')}</option>
-            <option value="DRAFT">{t('admin.announcements.status.DRAFT')}</option>
-            <option value="PUBLISHED">{t('admin.announcements.status.PUBLISHED')}</option>
-            <option value="WITHDRAWN">{t('admin.announcements.status.WITHDRAWN')}</option>
-          </select>
-          <select
+            ariaLabel={t('admin.announcements.statusLabel')}
+            options={[
+              { value: '', label: t('admin.announcements.allStatuses') },
+              { value: 'DRAFT', label: t('admin.announcements.status.DRAFT') },
+              { value: 'PUBLISHED', label: t('admin.announcements.status.PUBLISHED') },
+              { value: 'WITHDRAWN', label: t('admin.announcements.status.WITHDRAWN') },
+            ]}
+          />
+          <AdminSelect
             value={kind}
-            onChange={(event) => {
-              setKind(event.target.value);
+            onValueChange={(value) => {
+              setKind(value);
               setPage(1);
             }}
-            className="skynet-input rounded-md px-3 py-2 text-xs"
-          >
-            <option value="">{t('admin.announcements.allKinds')}</option>
-            {ANNOUNCEMENT_KINDS.map((item) => (
-              <option key={item} value={item}>{t(`admin.announcements.kind.${item}`)}</option>
-            ))}
-          </select>
+            ariaLabel={t('admin.announcements.kindLabel')}
+            options={[
+              { value: '', label: t('admin.announcements.allKinds') },
+              ...ANNOUNCEMENT_KINDS.map((value) => ({ value, label: t(`admin.announcements.kind.${value}`) })),
+            ]}
+          />
           <button
             type="button"
             onClick={() => setEditor('new')}
@@ -349,9 +350,13 @@ function AnnouncementEditor({
           <textarea value={bodyEn} onChange={(event) => setBodyEn(event.target.value)} maxLength={1000} rows={4} className="skynet-input w-full resize-y rounded-md px-3 py-2 text-sm" />
         </AdminField>
         <AdminField label={t('admin.announcements.kindLabel')}>
-          <select value={kind} onChange={(event) => setKind(event.target.value as AdminAnnouncementKind)} className="skynet-input w-full rounded-md px-3 py-2 text-sm">
-            {ANNOUNCEMENT_KINDS.map((value) => <option key={value} value={value}>{t(`admin.announcements.kind.${value}`)}</option>)}
-          </select>
+          <AdminSelect
+            value={kind}
+            ariaLabel={t('admin.announcements.kindLabel')}
+            className="w-full text-sm"
+            options={ANNOUNCEMENT_KINDS.map((value) => ({ value, label: t(`admin.announcements.kind.${value}`) }))}
+            onValueChange={(value) => setKind(value as AdminAnnouncementKind)}
+          />
         </AdminField>
         <AdminField label={t('admin.announcements.link')}>
           <input value={linkUrl} onChange={(event) => setLinkUrl(event.target.value)} placeholder={t('admin.announcements.linkPlaceholder')} maxLength={500} className="skynet-input w-full rounded-md px-3 py-2 text-sm" />
@@ -492,14 +497,8 @@ export function SecurityEventsSection() {
           <p className="mt-1 text-xs text-ink-muted">{t('admin.security.description')}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <select value={type} onChange={(event) => { setType(event.target.value); setPage(1); }} className="skynet-input rounded-md px-3 py-2 text-xs">
-            <option value="">{t('admin.security.allTypes')}</option>
-            {SECURITY_EVENT_TYPES.map((value) => <option key={value} value={value}>{t(`admin.security.types.${value}`)}</option>)}
-          </select>
-          <select value={severity} onChange={(event) => { setSeverity(event.target.value); setPage(1); }} className="skynet-input rounded-md px-3 py-2 text-xs">
-            <option value="">{t('admin.security.allSeverities')}</option>
-            {SECURITY_SEVERITIES.map((value) => <option key={value} value={value}>{value}</option>)}
-          </select>
+          <AdminSelect value={type} ariaLabel={t('admin.security.allTypes')} options={[{ value: '', label: t('admin.security.allTypes') }, ...SECURITY_EVENT_TYPES.map((value) => ({ value, label: t(`admin.security.types.${value}`) }))]} onValueChange={(value) => { setType(value); setPage(1); }} />
+          <AdminSelect value={severity} ariaLabel={t('admin.security.allSeverities')} options={[{ value: '', label: t('admin.security.allSeverities') }, ...SECURITY_SEVERITIES.map((value) => ({ value, label: t(`admin.security.severities.${value}`) }))]} onValueChange={(value) => { setSeverity(value); setPage(1); }} />
         </div>
       </div>
       {query.isPending ? (
@@ -562,8 +561,8 @@ function ReasonDialog({
       }}
     >
       <AlertDialog.Portal>
-        <AlertDialog.Overlay className="fixed inset-0 z-[190] bg-void/75 backdrop-blur-sm" />
-        <AlertDialog.Content className="fixed left-1/2 top-1/2 z-[200] w-[min(calc(100vw-32px),440px)] -translate-x-1/2 -translate-y-1/2 rounded-md border border-border-subtle bg-void-deep p-5 shadow-2xl">
+        <AlertDialog.Overlay className="skynet-dialog-overlay fixed inset-0 z-[190] bg-void/75 backdrop-blur-sm" />
+        <AlertDialog.Content className="skynet-dialog-content fixed left-1/2 top-1/2 z-[200] max-h-[calc(100dvh-32px)] w-[min(calc(100vw-32px),440px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-md border border-border-subtle bg-void-deep p-5 shadow-2xl">
           <AlertDialog.Title className="text-base font-bold text-ink-primary">{title}</AlertDialog.Title>
           <AlertDialog.Description className="mt-2 text-xs leading-5 text-ink-muted">{t('admin.action.reasonHint')}</AlertDialog.Description>
           <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={3} maxLength={500} className="skynet-input mt-4 w-full resize-none rounded-md px-3 py-2 text-sm" />

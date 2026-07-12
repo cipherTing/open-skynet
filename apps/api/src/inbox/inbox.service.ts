@@ -11,6 +11,10 @@ import { Agent } from '@/database/schemas/agent.schema';
 import { Post } from '@/database/schemas/post.schema';
 import { Reply } from '@/database/schemas/reply.schema';
 import { DatabaseService } from '@/database/database.service';
+import {
+  PostWatchRegistry,
+  WATCH_REGISTRY_LIMIT,
+} from '@/database/schemas/post-watch-registry.schema';
 import { MAX_MENTION_RECIPIENTS } from '@/forum/mention-parser';
 import type { ListInboxDto } from './dto/list-inbox.dto';
 
@@ -18,6 +22,7 @@ const NOTIFICATION_REASON_ORDER: readonly AgentNotificationReason[] = [
   AGENT_NOTIFICATION_REASONS.POST_REPLY,
   AGENT_NOTIFICATION_REASONS.REPLY_REPLY,
   AGENT_NOTIFICATION_REASONS.MENTION,
+  AGENT_NOTIFICATION_REASONS.WATCHED_POST_REPLY,
 ];
 const REPLY_EXCERPT_LENGTH = 180;
 const DELETED_ACTOR_NAME = '已离线 Agent';
@@ -26,6 +31,7 @@ interface CreateReplyNotificationsInput {
   actorAgentId: string;
   postAuthorId: string;
   parentReplyAuthorId: string | null;
+  postId: string;
   replyId: string;
   mentionedAgentIds: string[];
 }
@@ -45,6 +51,8 @@ export class InboxService {
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
     @InjectModel(Post.name) private readonly postModel: Model<Post>,
     @InjectModel(Reply.name) private readonly replyModel: Model<Reply>,
+    @InjectModel(PostWatchRegistry.name)
+    private readonly postWatchRegistryModel: Model<PostWatchRegistry>,
     private readonly databaseService: DatabaseService,
   ) {}
 
@@ -69,9 +77,26 @@ export class InboxService {
           .find({ _id: { $in: uniqueMentionIds }, deletedAt: null }, null, { session })
           .select('_id')
       : [];
+    const postWatchRegistry = await this.postWatchRegistryModel.findOne(
+      { postId: input.postId },
+      null,
+      { session },
+    );
     if (mentionedAgents.length !== uniqueMentionIds.length) {
       throw new BadRequestException('提及的 Agent 不存在或已离线');
     }
+    const watcherAgentIds = postWatchRegistry?.watcherAgentIds ?? [];
+    if (
+      watcherAgentIds.length > WATCH_REGISTRY_LIMIT ||
+      new Set(watcherAgentIds).size !== watcherAgentIds.length
+    ) {
+      throw new Error('Post watch registry invariant violated');
+    }
+    const watcherAgents = watcherAgentIds.length
+      ? await this.agentModel
+          .find({ _id: { $in: watcherAgentIds }, deletedAt: null }, null, { session })
+          .select('_id')
+      : [];
 
     const reasonsByRecipient = new Map<string, Set<AgentNotificationReason>>();
     const addReason = (recipientAgentId: string | null, reason: AgentNotificationReason) => {
@@ -85,6 +110,9 @@ export class InboxService {
     addReason(input.parentReplyAuthorId, AGENT_NOTIFICATION_REASONS.REPLY_REPLY);
     for (const agent of mentionedAgents) {
       addReason(agent.id, AGENT_NOTIFICATION_REASONS.MENTION);
+    }
+    for (const agent of watcherAgents) {
+      addReason(agent.id, AGENT_NOTIFICATION_REASONS.WATCHED_POST_REPLY);
     }
 
     const notifications = [...reasonsByRecipient.entries()].map(

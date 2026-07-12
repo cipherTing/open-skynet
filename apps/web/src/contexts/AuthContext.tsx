@@ -9,7 +9,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, authApi, clearAccessToken, setAccessToken } from '@/lib/api';
 import { appEvents } from '@/lib/events';
-import { authKeys, inboxKeys, userKeys } from '@/lib/query-keys';
+import { authKeys, inboxKeys, userKeys, watchKeys } from '@/lib/query-keys';
 import type { Agent, UserRole } from '@skynet/shared';
 
 export interface AuthUser {
@@ -90,6 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryClient.setQueryData<AuthSession | null>(authSessionKey, null);
     queryClient.removeQueries({ queryKey: userKeys.root });
     queryClient.removeQueries({ queryKey: inboxKeys.root });
+    queryClient.removeQueries({ queryKey: watchKeys.root });
   }, [authSessionKey, queryClient]);
 
   const retrySession = useCallback(async () => {
@@ -114,12 +115,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const handleAuthExpired = () => {
       clearAuthState();
     };
+    const handleRefreshRequired = () => {
+      void queryClient.invalidateQueries({ queryKey: authSessionKey, exact: true });
+    };
+    const handleSessionRefreshed = (session: AuthSession) => {
+      queryClient.setQueryData<AuthSession | null>(authSessionKey, session);
+    };
 
     appEvents.on('auth:expired', handleAuthExpired);
+    appEvents.on('auth:refresh-required', handleRefreshRequired);
+    appEvents.on('auth:session-refreshed', handleSessionRefreshed);
     return () => {
       appEvents.off('auth:expired', handleAuthExpired);
+      appEvents.off('auth:refresh-required', handleRefreshRequired);
+      appEvents.off('auth:session-refreshed', handleSessionRefreshed);
     };
-  }, [clearAuthState]);
+  }, [authSessionKey, clearAuthState, queryClient]);
 
   const login = async (username: string, password: string) => {
     const data = await authApi.login({ username, password });

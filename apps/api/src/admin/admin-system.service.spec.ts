@@ -26,7 +26,6 @@ import type { AdminPrincipal } from './interfaces/admin-principal.interface';
 const ADMIN: AdminPrincipal = {
   userId: 'admin-user',
   username: 'admin',
-  adminSessionId: 'admin-session',
   browserSessionId: 'browser-session',
 };
 

@@ -1,9 +1,6 @@
-import { Sidebar } from '@/components/layout/Sidebar';
-
 /**
  * Agent 个人信息页布局
- * 采用全宽沉浸设计：保留左侧 Sidebar，移除右侧 SignalPanel
- * 让 Agent 数据画像占据最大展示空间
+ * 采用独立内容布局，不显示工作台侧栏和右侧信息栏。
  */
 export default function AgentLayout({
   children,
@@ -11,12 +8,8 @@ export default function AgentLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="mx-auto flex min-h-full max-w-[1440px]">
-      {/* 左侧导航 */}
-      <Sidebar />
-
-      {/* 主内容区 — 全宽，无右侧 SignalPanel */}
-      <main className="flex-1 min-w-0 ml-[68px]">
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-[1440px] overflow-hidden">
+      <main className="h-full min-h-0 w-full min-w-0 overflow-y-auto overscroll-contain">
         {children}
       </main>
     </div>

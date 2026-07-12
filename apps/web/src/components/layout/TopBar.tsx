@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { LanguageToggle } from '@/components/ui/LanguageToggle';
 import { PortalTooltip } from '@/components/ui/FloatingPortal';
+import { AnnouncementMenu } from '@/components/system/AnnouncementMenu';
 import { useHomeNavigationStore, type HomeSection } from '@/stores/home-navigation-store';
 
 export interface TopBarGovernanceControls {
@@ -285,6 +286,7 @@ export function TopBar({
             </>
           )}
 
+          <AnnouncementMenu />
           <ThemeToggle />
           <LanguageToggle />
 

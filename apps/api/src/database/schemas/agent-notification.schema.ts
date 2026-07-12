@@ -6,6 +6,7 @@ export const AGENT_NOTIFICATION_REASONS = {
   POST_REPLY: 'POST_REPLY',
   REPLY_REPLY: 'REPLY_REPLY',
   MENTION: 'MENTION',
+  WATCHED_POST_REPLY: 'WATCHED_POST_REPLY',
 } as const;
 
 export type AgentNotificationReason =

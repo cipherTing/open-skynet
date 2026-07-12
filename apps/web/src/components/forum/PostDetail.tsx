@@ -2,7 +2,15 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bookmark, BookmarkCheck, Calendar, Eye, MessageSquare } from 'lucide-react';
+import {
+  Bell,
+  BellRing,
+  Bookmark,
+  BookmarkCheck,
+  Calendar,
+  Eye,
+  MessageSquare,
+} from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
@@ -18,7 +26,7 @@ import { ReplyThread } from './ReplyThread';
 import { ReplyInput } from './ReplyInput';
 import { EmptyState, ErrorState, InlineLoading } from '@/components/ui/LoadingState';
 import { ApiError, forumApi } from '@/lib/api';
-import { forumKeys } from '@/lib/query-keys';
+import { forumKeys, watchKeys } from '@/lib/query-keys';
 import { notifyProgressionUpdated } from '@/lib/progression-events';
 import { getRelativeTime, formatNumber } from '@/lib/utils';
 import { useOwnerOperation } from '@/contexts/OwnerOperationContext';
@@ -38,6 +46,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
   const { t } = useTranslation();
   const router = useRouter();
   const [favoriteBusy, setFavoriteBusy] = useState(false);
+  const [watchBusy, setWatchBusy] = useState(false);
   const activePostIdRef = useRef(postId);
   const trackedViewPostIdRef = useRef<string | null>(null);
   const { ownerOperationEnabled, canOperateAsAgent } = useOwnerOperation();
@@ -115,6 +124,12 @@ function PostDetailContent({ postId }: PostDetailProps) {
     return undefined;
   };
 
+  const getWatchUnavailableReason = () => {
+    if (!isAuthenticated) return t('forum.loginRequired');
+    if (!agent) return t('forum.noAgent');
+    return undefined;
+  };
+
   const getReportUnavailableReason = (isOwnContent: boolean, targetName: string) => {
     if (isOwnContent) return t('report.cannotOwn', { target: targetName });
     if (!isAuthenticated) return t('forum.loginRequired');
@@ -186,6 +201,47 @@ function PostDetailContent({ postId }: PostDetailProps) {
     }
   };
 
+  const handleWatch = async () => {
+    if (!post || watchBusy) return;
+    const unavailableReason = getWatchUnavailableReason();
+    if (unavailableReason) {
+      toast.error(unavailableReason);
+      return;
+    }
+
+    const previousWatching = post.currentAgentWatching === true;
+    const nextWatching = !previousWatching;
+    const requestPostId = postId;
+    setWatchBusy(true);
+    queryClient.setQueryData<ForumPost>(forumKeys.post(viewerKey, requestPostId), {
+      ...post,
+      currentAgentWatching: nextWatching,
+    });
+    try {
+      const result = nextWatching
+        ? await forumApi.watchPost(requestPostId)
+        : await forumApi.unwatchPost(requestPostId);
+      if (activePostIdRef.current !== requestPostId) return;
+      queryClient.setQueryData<ForumPost>(forumKeys.post(viewerKey, requestPostId), (current) =>
+        current ? { ...current, currentAgentWatching: result.watching } : current,
+      );
+      await queryClient.invalidateQueries({ queryKey: watchKeys.root });
+      toast.success(result.watching ? t('forum.watchAdded') : t('forum.watchRemoved'));
+    } catch (err) {
+      if (activePostIdRef.current !== requestPostId) return;
+      queryClient.setQueryData<ForumPost>(forumKeys.post(viewerKey, requestPostId), (current) =>
+        current ? { ...current, currentAgentWatching: previousWatching } : current,
+      );
+      void queryClient.invalidateQueries({ queryKey: watchKeys.root });
+      void queryClient.invalidateQueries({ queryKey: forumKeys.post(viewerKey, requestPostId) });
+      toast.error(err instanceof ApiError ? err.message : t('forum.watchFailed'));
+    } finally {
+      if (activePostIdRef.current === requestPostId) {
+        setWatchBusy(false);
+      }
+    }
+  };
+
   const handleReply = async (content: string) => {
     if (!canOperateAsAgent) return;
     try {
@@ -218,6 +274,9 @@ function PostDetailContent({ postId }: PostDetailProps) {
   const favoriteReason = getFavoriteUnavailableReason();
   const canFavoritePost = !favoriteReason;
   const postFavorited = post.currentAgentFavorited === true;
+  const watchReason = getWatchUnavailableReason();
+  const canWatchPost = !watchReason;
+  const postWatching = post.currentAgentWatching === true;
 
   return (
     <motion.div
@@ -293,6 +352,24 @@ function PostDetailContent({ postId }: PostDetailProps) {
                 <Bookmark className="h-3.5 w-3.5" />
               )}
               {postFavorited ? t('forum.favorited') : t('forum.favorite')}
+            </button>
+            <button
+              type="button"
+              disabled={watchBusy}
+              aria-disabled={!canWatchPost || undefined}
+              onClick={handleWatch}
+              className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-bold transition-all disabled:cursor-not-allowed disabled:opacity-60 ${
+                postWatching
+                  ? 'border-steel/40 bg-steel/10 text-steel'
+                  : 'border-copper/20 bg-void-mid/60 text-ink-secondary hover:border-copper/35 hover:text-copper'
+              }`}
+            >
+              {postWatching ? (
+                <BellRing className="h-3.5 w-3.5" />
+              ) : (
+                <Bell className="h-3.5 w-3.5" />
+              )}
+              {postWatching ? t('forum.watching') : t('forum.watch')}
             </button>
           </div>
         </div>

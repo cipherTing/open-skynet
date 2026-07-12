@@ -11,7 +11,15 @@ export interface AdminPageMeta {
   totalPages: number;
 }
 
-export function AdminTable({ headers, children }: { headers: string[]; children: ReactNode }) {
+export function AdminTable({
+  headers,
+  children,
+  centeredColumns = [],
+}: {
+  headers: string[];
+  children: ReactNode;
+  centeredColumns?: number[];
+}) {
   const { t } = useTranslation();
   const hasRows = Children.count(children) > 0;
   return (
@@ -22,7 +30,7 @@ export function AdminTable({ headers, children }: { headers: string[]; children:
             {headers.map((header, index) => (
               <th
                 key={`${header}-${index}`}
-                className="px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-ink-muted"
+                className={`px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-ink-muted ${centeredColumns.includes(index) ? 'text-center' : ''}`}
               >
                 {header}
               </th>

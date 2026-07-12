@@ -10,6 +10,10 @@ import {
 import { Agent, AgentSchema } from '@/database/schemas/agent.schema';
 import { Post, PostSchema } from '@/database/schemas/post.schema';
 import { Reply, ReplySchema } from '@/database/schemas/reply.schema';
+import {
+  PostWatchRegistry,
+  PostWatchRegistrySchema,
+} from '@/database/schemas/post-watch-registry.schema';
 import { DatabaseService } from '@/database/database.service';
 import { InboxService } from './inbox.service';
 
@@ -31,6 +35,7 @@ describe('InboxService integration', () => {
           { name: Agent.name, schema: AgentSchema },
           { name: Post.name, schema: PostSchema },
           { name: Reply.name, schema: ReplySchema },
+          { name: PostWatchRegistry.name, schema: PostWatchRegistrySchema },
         ]),
       ],
       providers: [DatabaseService, InboxService],
@@ -46,6 +51,7 @@ describe('InboxService integration', () => {
       connection.model(Reply.name).deleteMany({}),
       connection.model(Post.name).deleteMany({}),
       connection.model(Agent.name).deleteMany({}),
+      connection.model(PostWatchRegistry.name).deleteMany({}),
     ]);
   });
 
@@ -101,6 +107,7 @@ describe('InboxService integration', () => {
           actorAgentId: actor.id,
           postAuthorId: recipient.id,
           parentReplyAuthorId: recipient.id,
+          postId: post.id,
           replyId: replyId.toString(),
           mentionedAgentIds: [recipient.id, mentioned.id, actor.id],
         },
@@ -120,6 +127,74 @@ describe('InboxService integration', () => {
       notifications.find((item) => item.recipientAgentId === mentioned.id)?.reasons,
     ).toEqual(['MENTION']);
     expect(notifications.some((item) => item.recipientAgentId === actor.id)).toBe(false);
+  });
+
+  it('merges watched-post reasons and ignores the actor or deleted watchers', async () => {
+    const [actor, recipient, watcher, deletedWatcher] = await Promise.all([
+      createAgent('watch-reason-actor'),
+      createAgent('watch-reason-recipient'),
+      createAgent('watch-reason-watcher'),
+      createAgent('watch-reason-deleted'),
+    ]);
+    const post = await createPost(recipient.id, 'watch-reason-thread');
+    await connection.model(PostWatchRegistry.name).create({
+      postId: post.id,
+      watcherAgentIds: [recipient.id, watcher.id, deletedWatcher.id, actor.id],
+    });
+    await connection
+      .model(Agent.name)
+      .findByIdAndUpdate(deletedWatcher.id, { deletedAt: new Date() });
+
+    await inboxService.createForReply({
+      actorAgentId: actor.id,
+      postAuthorId: recipient.id,
+      parentReplyAuthorId: null,
+      postId: post.id,
+      replyId: new Types.ObjectId().toString(),
+      mentionedAgentIds: [recipient.id],
+    });
+
+    const notifications = await connection.model(AgentNotification.name).find();
+    expect(notifications).toHaveLength(2);
+    expect(
+      notifications.find((item) => item.recipientAgentId === recipient.id)?.reasons,
+    ).toEqual(['POST_REPLY', 'MENTION', 'WATCHED_POST_REPLY']);
+    expect(
+      notifications.find((item) => item.recipientAgentId === watcher.id)?.reasons,
+    ).toEqual(['WATCHED_POST_REPLY']);
+    expect(notifications.some((item) => item.recipientAgentId === actor.id)).toBe(false);
+    expect(
+      notifications.some((item) => item.recipientAgentId === deletedWatcher.id),
+    ).toBe(false);
+  });
+
+  it('rejects an oversized post watch registry instead of truncating recipients', async () => {
+    const [actor, recipient] = await Promise.all([
+      createAgent('oversized-watch-actor'),
+      createAgent('oversized-watch-recipient'),
+    ]);
+    const post = await createPost(recipient.id, 'oversized-watch-thread');
+    await connection.collection('post_watch_registries').insertOne({
+      postId: post.id,
+      watcherAgentIds: Array.from(
+        { length: 101 },
+        () => new Types.ObjectId().toString(),
+      ),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    await expect(
+      inboxService.createForReply({
+        actorAgentId: actor.id,
+        postAuthorId: recipient.id,
+        parentReplyAuthorId: null,
+        postId: post.id,
+        replyId: new Types.ObjectId().toString(),
+        mentionedAgentIds: [],
+      }),
+    ).rejects.toThrow('Post watch registry invariant violated');
+    expect(await connection.model(AgentNotification.name).countDocuments()).toBe(0);
   });
 
   it('rolls back the reply when notification creation fails', async () => {
@@ -150,6 +225,7 @@ describe('InboxService integration', () => {
             actorAgentId: actor.id,
             postAuthorId: recipient.id,
             parentReplyAuthorId: null,
+            postId: post.id,
             replyId: replyId.toString(),
             mentionedAgentIds: [new Types.ObjectId().toString()],
           },
@@ -177,6 +253,7 @@ describe('InboxService integration', () => {
         actorAgentId: actor.id,
         postAuthorId: recipient.id,
         parentReplyAuthorId: null,
+        postId: new Types.ObjectId().toString(),
         replyId: new Types.ObjectId().toString(),
         mentionedAgentIds: [deletedAgent.id],
       }),
@@ -203,6 +280,7 @@ describe('InboxService integration', () => {
         actorAgentId: actor.id,
         postAuthorId: recipient.id,
         parentReplyAuthorId: null,
+        postId: post.id,
         replyId: replyId.toString(),
         mentionedAgentIds: [],
       });
@@ -248,6 +326,7 @@ describe('InboxService integration', () => {
       actorAgentId: actor.id,
       postAuthorId: firstRecipient.id,
       parentReplyAuthorId: null,
+      postId: new Types.ObjectId().toString(),
       replyId,
       mentionedAgentIds: [secondRecipient.id],
     });

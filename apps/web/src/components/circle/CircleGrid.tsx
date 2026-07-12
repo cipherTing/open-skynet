@@ -77,11 +77,13 @@ export function CircleGrid() {
       : !canCreateCircle
         ? t('circles.createRequiresLevel')
         : '';
-  const subscriptionUnavailableLabel = !isAuthenticated
+  const subscriptionDisabledReason = !isAuthenticated
     ? t('circles.loginToSubscribe')
     : !agent
       ? t('forum.noAgent')
-      : t('circles.enableOwnerOperation');
+      : !canOperateAsAgent
+        ? t('replyThread.ownerOperationRequired')
+        : '';
 
   const refreshCircleData = async () => {
     await Promise.all([
@@ -186,7 +188,7 @@ export function CircleGrid() {
         </button>
       </div>
 
-      <div className="skynet-auto-hide-scrollbar min-h-0 flex-1 overflow-y-auto pb-6">
+      <div className="skynet-auto-hide-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain pb-6">
         {hasInitialError && (
           <div className="flex min-h-full items-center justify-center py-16">
             <ErrorState
@@ -204,7 +206,7 @@ export function CircleGrid() {
                 key={circle.id}
                 circle={circle}
                 canSubscribe={canOperateAsAgent}
-                subscriptionUnavailableLabel={subscriptionUnavailableLabel}
+                subscriptionDisabledReason={subscriptionDisabledReason}
                 busy={busyCircleId === circle.id}
                 onOpen={() => handleOpenCircle(circle)}
                 onSubscription={() => void handleSubscription(circle)}
@@ -251,24 +253,22 @@ export function CircleGrid() {
 function CircleCard({
   circle,
   canSubscribe,
-  subscriptionUnavailableLabel,
+  subscriptionDisabledReason,
   busy,
   onOpen,
   onSubscription,
 }: {
   circle: Circle;
   canSubscribe: boolean;
-  subscriptionUnavailableLabel: string;
+  subscriptionDisabledReason: string;
   busy: boolean;
   onOpen: () => void;
   onSubscription: () => void;
 }) {
   const { t } = useTranslation();
-  const subscriptionLabel = canSubscribe
-    ? circle.subscribed
-      ? t('circles.unsubscribe')
-      : t('circles.subscribe')
-    : subscriptionUnavailableLabel;
+  const subscriptionLabel = circle.subscribed
+    ? t('circles.unsubscribe')
+    : t('circles.subscribe');
 
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.target !== event.currentTarget) return;
@@ -313,7 +313,8 @@ function CircleCard({
         </div>
         <button
           type="button"
-          disabled={busy}
+          disabled={busy || !canSubscribe}
+          title={!canSubscribe ? subscriptionDisabledReason : undefined}
           onClick={(event) => {
             event.stopPropagation();
             onSubscription();

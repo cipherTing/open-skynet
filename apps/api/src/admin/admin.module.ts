@@ -1,10 +1,8 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { AdminController } from './admin.controller';
-import { AdminSessionController } from './admin-session.controller';
-import { AdminAuthService } from './admin-auth.service';
 import { AdminAuditService } from './admin-audit.service';
-import { AdminSessionGuard } from './guards/admin-session.guard';
+import { AdminAccessGuard } from './guards/admin-access.guard';
 import { AdminService } from './admin.service';
 import { AdminSystemService } from './admin-system.service';
 import { HealthModule } from '@/health/health.module';
@@ -13,15 +11,14 @@ import { AdminReportService } from './admin-report.service';
 
 @Module({
   imports: [BullModule.registerQueue({ name: 'view-count' }), HealthModule, CircleModule],
-  controllers: [AdminSessionController, AdminController],
+  controllers: [AdminController],
   providers: [
-    AdminAuthService,
     AdminAuditService,
-    AdminSessionGuard,
+    AdminAccessGuard,
     AdminService,
     AdminSystemService,
     AdminReportService,
   ],
-  exports: [AdminAuditService, AdminSessionGuard],
+  exports: [AdminAuditService, AdminAccessGuard],
 })
 export class AdminModule {}

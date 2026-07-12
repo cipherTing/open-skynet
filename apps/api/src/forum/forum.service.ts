@@ -1128,6 +1128,7 @@ export class ForumService {
             actorAgentId: agentId,
             postAuthorId: post.authorId,
             parentReplyAuthorId,
+            postId,
             replyId: createdReply.id,
             mentionedAgentIds,
           },

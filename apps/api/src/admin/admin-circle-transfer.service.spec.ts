@@ -15,7 +15,6 @@ import {
 } from '@/database/schemas/agent-progress.schema';
 import { AgentXpEvent, AgentXpEventSchema } from '@/database/schemas/agent-xp-event.schema';
 import { AdminAuditLog, AdminAuditLogSchema } from '@/database/schemas/admin-audit-log.schema';
-import { AdminSession, AdminSessionSchema } from '@/database/schemas/admin-session.schema';
 import { BrowserSession, BrowserSessionSchema } from '@/database/schemas/browser-session.schema';
 import { Circle, CircleSchema } from '@/database/schemas/circle.schema';
 import {
@@ -54,7 +53,6 @@ import type { AdminPrincipal } from './interfaces/admin-principal.interface';
 const ADMIN: AdminPrincipal = {
   userId: 'admin-user',
   username: 'admin',
-  adminSessionId: 'admin-session',
   browserSessionId: 'browser-session',
 };
 
@@ -75,7 +73,6 @@ describe('AdminService circle transfer integration', () => {
           { name: Agent.name, schema: AgentSchema },
           { name: User.name, schema: UserSchema },
           { name: BrowserSession.name, schema: BrowserSessionSchema },
-          { name: AdminSession.name, schema: AdminSessionSchema },
           { name: AgentProgress.name, schema: AgentProgressSchema },
           { name: AgentXpEvent.name, schema: AgentXpEventSchema },
           { name: AgentGovernanceProfile.name, schema: AgentGovernanceProfileSchema },

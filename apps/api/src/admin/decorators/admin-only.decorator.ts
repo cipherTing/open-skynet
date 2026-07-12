@@ -1,7 +1,6 @@
 import { applyDecorators, UseGuards } from '@nestjs/common';
-import { Public } from '@/auth/decorators/public.decorator';
-import { AdminSessionGuard } from '@/admin/guards/admin-session.guard';
+import { AdminAccessGuard } from '@/admin/guards/admin-access.guard';
 
 export function AdminOnly(): ClassDecorator & MethodDecorator {
-  return applyDecorators(Public(), UseGuards(AdminSessionGuard));
+  return applyDecorators(UseGuards(AdminAccessGuard));
 }

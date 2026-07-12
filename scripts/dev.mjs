@@ -18,10 +18,14 @@ function log(message) {
   console.log(`[dev] ${message}`);
 }
 
-function spawnPnpmScript(script, { detached = process.platform !== 'win32' } = {}) {
+function spawnPnpmScript(
+  script,
+  { detached = process.platform !== 'win32', env = process.env } = {},
+) {
   const child = spawn(PNPM, [script], {
     detached,
     stdio: 'inherit',
+    env,
   });
 
   if (detached) detachedChildren.add(child);
@@ -100,7 +104,11 @@ async function runPnpmScript(script, options) {
 }
 
 async function runDevApps() {
-  const child = spawnPnpmScript('dev:apps');
+  const env =
+    process.platform === 'darwin'
+      ? { ...process.env, WATCHPACK_POLLING: process.env.WATCHPACK_POLLING ?? '1000' }
+      : process.env;
+  const child = spawnPnpmScript('dev:apps', { env });
   appChild = child;
   activeChild = child;
 

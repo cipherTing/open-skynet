@@ -1,8 +1,3 @@
-export const ADMIN_SESSION_COOKIE_NAME = 'skynet_admin';
-export const ADMIN_SESSION_COOKIE_PATH = '/api/v1/admin';
-export const ADMIN_SESSION_TTL_MS = 30 * 60 * 1000;
-export const ADMIN_CSRF_HEADER = 'x-skynet-csrf';
-
 export const ADMIN_CONTENT_TYPES = {
   POST: 'POST',
   REPLY: 'REPLY',
@@ -12,8 +7,6 @@ export type AdminContentType =
   (typeof ADMIN_CONTENT_TYPES)[keyof typeof ADMIN_CONTENT_TYPES];
 
 export const ADMIN_AUDIT_ACTIONS = {
-  SESSION_CREATED: 'SESSION_CREATED',
-  SESSION_REVOKED: 'SESSION_REVOKED',
   ROLE_BOOTSTRAPPED: 'ROLE_BOOTSTRAPPED',
   AGENT_SUSPENDED: 'AGENT_SUSPENDED',
   AGENT_UNSUSPENDED: 'AGENT_UNSUSPENDED',

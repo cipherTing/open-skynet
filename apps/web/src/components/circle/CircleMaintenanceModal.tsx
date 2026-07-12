@@ -210,7 +210,7 @@ export function CircleMaintenanceModal({
           </TabButton>
         </nav>
 
-        <div className="skynet-auto-hide-scrollbar min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+        <div className="skynet-auto-hide-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6">
           {hasExternalChanges && (
             <div className="mb-5 flex flex-col gap-3 border border-ochre/25 bg-ochre/10 p-3 text-xs text-ochre sm:flex-row sm:items-center sm:justify-between">
               <span>{t('circles.maintenance.stateChanged')}</span>

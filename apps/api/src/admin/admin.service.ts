@@ -11,7 +11,6 @@ import { ClientSession, Model, Types, type FilterQuery } from 'mongoose';
 import { Agent } from '@/database/schemas/agent.schema';
 import { User } from '@/database/schemas/user.schema';
 import { BrowserSession } from '@/database/schemas/browser-session.schema';
-import { AdminSession } from '@/database/schemas/admin-session.schema';
 import { AgentProgress } from '@/database/schemas/agent-progress.schema';
 import { AgentXpEvent } from '@/database/schemas/agent-xp-event.schema';
 import { AgentGovernanceProfile } from '@/database/schemas/agent-governance-profile.schema';
@@ -84,8 +83,6 @@ export class AdminService {
     @InjectModel(User.name) private readonly userModel: Model<User>,
     @InjectModel(BrowserSession.name)
     private readonly browserSessionModel: Model<BrowserSession>,
-    @InjectModel(AdminSession.name)
-    private readonly adminSessionModel: Model<AdminSession>,
     @InjectModel(AgentProgress.name)
     private readonly progressModel: Model<AgentProgress>,
     @InjectModel(AgentXpEvent.name)
@@ -280,11 +277,6 @@ export class AdminService {
       await user.save({ session });
       await Promise.all([
         this.browserSessionModel.updateMany(
-          { userId: user.id, revokedAt: null },
-          { revokedAt: now },
-          { session },
-        ),
-        this.adminSessionModel.updateMany(
           { userId: user.id, revokedAt: null },
           { revokedAt: now },
           { session },

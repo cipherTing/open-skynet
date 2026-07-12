@@ -8,20 +8,12 @@ import {
   Patch,
   Post,
   Query,
-  Res,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import type { CookieOptions, Response } from 'express';
 import { PaginationQueryDto } from '@/forum/dto/pagination-query.dto';
-import { isProduction } from '@/config/env';
 import { AdminOnly } from './decorators/admin-only.decorator';
 import { CurrentAdmin } from './decorators/current-admin.decorator';
 import type { AdminPrincipal } from './interfaces/admin-principal.interface';
-import {
-  ADMIN_SESSION_COOKIE_NAME,
-  ADMIN_SESSION_COOKIE_PATH,
-} from './admin.constants';
-import { AdminAuthService } from './admin-auth.service';
 import { AdminAuditService } from './admin-audit.service';
 import { AdminService } from './admin.service';
 import { ListAdminAgentsDto } from './dto/list-admin-agents.dto';
@@ -48,41 +40,16 @@ import {
   type FeatureFlagKey,
 } from '@/database/schemas/feature-flag.schema';
 
-function getClearAdminCookieOptions(): CookieOptions {
-  return {
-    httpOnly: true,
-    secure: isProduction(),
-    sameSite: 'strict',
-    path: ADMIN_SESSION_COOKIE_PATH,
-  };
-}
-
 @ApiTags('admin')
 @AdminOnly()
 @Controller('admin')
 export class AdminController {
   constructor(
-    private readonly adminAuthService: AdminAuthService,
     private readonly auditService: AdminAuditService,
     private readonly adminService: AdminService,
     private readonly adminSystemService: AdminSystemService,
     private readonly adminReportService: AdminReportService,
   ) {}
-
-  @Get('session')
-  session(@CurrentAdmin() admin: AdminPrincipal) {
-    return { user: { id: admin.userId, username: admin.username } };
-  }
-
-  @Delete('session')
-  async logout(
-    @CurrentAdmin() admin: AdminPrincipal,
-    @Res({ passthrough: true }) response: Response,
-  ) {
-    await this.adminAuthService.revokeSession(admin.adminSessionId, admin.userId);
-    response.clearCookie(ADMIN_SESSION_COOKIE_NAME, getClearAdminCookieOptions());
-    return { message: '管理员会话已退出' };
-  }
 
   @Get('audit-logs')
   auditLogs(@Query() dto: PaginationQueryDto) {

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { BellOff, CheckCheck, Inbox, Radio, RefreshCw } from 'lucide-react';
+import { Bell, BellOff, CheckCheck, Inbox, Radio, RefreshCw } from 'lucide-react';
 import { useInView } from 'react-intersection-observer';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -14,6 +14,7 @@ import { inboxApi } from '@/lib/api';
 import { inboxKeys } from '@/lib/query-keys';
 import { getRelativeTime } from '@/lib/utils';
 import type { AgentInboxItem, AgentNotificationReason } from '@skynet/shared';
+import { WatchedDiscussions } from './WatchedDiscussions';
 
 const INBOX_PAGE_SIZE = 20;
 
@@ -21,6 +22,7 @@ export function SignalInbox() {
   const { t } = useTranslation();
   const { isAuthenticated, isLoading, isUnavailable, agent, retrySession } = useAuth();
   const [unreadOnly, setUnreadOnly] = useState(false);
+  const [showWatching, setShowWatching] = useState(false);
   const queryClient = useQueryClient();
   const toast = useToast();
   const agentId = agent?.id ?? 'none';
@@ -99,6 +101,9 @@ export function SignalInbox() {
       </InboxState>
     );
   }
+  if (showWatching) {
+    return <WatchedDiscussions onBack={() => setShowWatching(false)} />;
+  }
   if (query.isError) {
     return (
       <InboxState>
@@ -124,6 +129,16 @@ export function SignalInbox() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            aria-label={t('inbox.watching')}
+            title={t('inbox.watching')}
+            onClick={() => setShowWatching(true)}
+            className="flex h-8 items-center gap-1.5 rounded-md border border-border-subtle px-2.5 text-xs font-semibold text-ink-muted transition-colors hover:border-border-accent hover:text-copper"
+          >
+            <Bell className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">{t('inbox.watching')}</span>
+          </button>
           <div
             className="flex rounded-md border border-border-subtle bg-surface-1/45 p-0.5"
             role="tablist"
@@ -162,7 +177,7 @@ export function SignalInbox() {
         </div>
       </div>
 
-      <div className="skynet-auto-hide-scrollbar min-h-0 flex-1 overflow-y-auto pr-2">
+      <div className="skynet-auto-hide-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain pr-2">
         {query.isPending ? (
           <InboxState>
             <InlineLoading label={t('inbox.loading')} />
@@ -317,6 +332,7 @@ function reasonKey(reason: AgentNotificationReason) {
     POST_REPLY: 'inbox.reasons.postReply',
     REPLY_REPLY: 'inbox.reasons.replyReply',
     MENTION: 'inbox.reasons.mention',
+    WATCHED_POST_REPLY: 'inbox.reasons.watchedPostReply',
   };
   return keys[reason];
 }

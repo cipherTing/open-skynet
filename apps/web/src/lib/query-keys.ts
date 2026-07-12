@@ -59,6 +59,7 @@ export const userKeys = {
 };
 
 export const authKeys = {
+  initialization: () => ['auth', 'initialization'] as const,
   session: () => ['auth', 'session'] as const,
 };
 
@@ -67,4 +68,9 @@ export const inboxKeys = {
   summary: (agentId: string) => [...inboxKeys.root, 'summary', agentId] as const,
   list: (agentId: string, unreadOnly: boolean) =>
     [...inboxKeys.root, 'list', agentId, { unreadOnly }] as const,
+};
+
+export const watchKeys = {
+  root: ['watched-posts'] as const,
+  list: (agentId: string) => [...watchKeys.root, agentId] as const,
 };

@@ -2,6 +2,68 @@
 @tailwind components;
 @tailwind utilities;
 
+@keyframes skynet-floating-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes skynet-floating-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(-3px) scale(0.98); }
+}
+
+@keyframes skynet-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes skynet-overlay-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes skynet-dialog-in {
+  from { opacity: 0; transform: translate(-50%, -48%) scale(0.98); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+@keyframes skynet-dialog-out {
+  from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  to { opacity: 0; transform: translate(-50%, -48%) scale(0.98); }
+}
+
+.skynet-floating-content[data-state='open'] {
+  animation: skynet-floating-in 140ms ease-out;
+}
+
+.skynet-floating-content[data-state='closed'] {
+  animation: skynet-floating-out 100ms ease-in;
+}
+
+.skynet-dialog-overlay[data-state='open'] {
+  animation: skynet-overlay-in 150ms ease-out;
+}
+
+.skynet-dialog-overlay[data-state='closed'] {
+  animation: skynet-overlay-out 110ms ease-in;
+}
+
+.skynet-dialog-content[data-state='open'] {
+  animation: skynet-dialog-in 160ms ease-out;
+}
+
+.skynet-dialog-content[data-state='closed'] {
+  animation: skynet-dialog-out 110ms ease-in;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skynet-floating-content,
+  .skynet-dialog-overlay,
+  .skynet-dialog-content {
+    animation: none !important;
+  }
+}
+
 @layer base {
   /* ============================================================
      DARK THEME - Modern developer graphite with restrained Skynet copper
@@ -1481,10 +1543,10 @@
   }
 
   .initial-page-veil-mark {
-    width: 156px;
-    height: 54px;
+    width: 56px;
+    height: 56px;
     border: 1px solid var(--border-strong);
-    border-radius: 14px;
+    border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1498,6 +1560,13 @@
     letter-spacing: 0;
     text-shadow: 0 1px 18px rgba(249, 115, 53, 0.20);
     text-shadow: 0 1px 18px color-mix(in srgb, var(--accent-primary) 20%, transparent);
+  }
+
+  .initial-page-veil-label {
+    color: var(--text-tertiary);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0;
   }
 
   .initial-page-veil-line {

@@ -38,58 +38,64 @@ import {
   CircleMaintenanceLogSchema,
 } from './schemas/circle-maintenance-log.schema';
 import { Report, ReportSchema } from './schemas/report.schema';
-import {
-  ReportTargetState,
-  ReportTargetStateSchema,
-} from './schemas/report-target-state.schema';
-import { AdminSession, AdminSessionSchema } from './schemas/admin-session.schema';
+import { ReportTargetState, ReportTargetStateSchema } from './schemas/report-target-state.schema';
 import { AdminAuditLog, AdminAuditLogSchema } from './schemas/admin-audit-log.schema';
 import { Announcement, AnnouncementSchema } from './schemas/announcement.schema';
 import { FeatureFlag, FeatureFlagSchema } from './schemas/feature-flag.schema';
 import { SecurityEvent, SecurityEventSchema } from './schemas/security-event.schema';
+import { AgentNotification, AgentNotificationSchema } from './schemas/agent-notification.schema';
 import {
-  AgentNotification,
-  AgentNotificationSchema,
-} from './schemas/agent-notification.schema';
+  AgentWatchRegistry,
+  AgentWatchRegistrySchema,
+} from './schemas/agent-watch-registry.schema';
+import { PostWatchRegistry, PostWatchRegistrySchema } from './schemas/post-watch-registry.schema';
+import {
+  PlatformInitialization,
+  PlatformInitializationSchema,
+} from './schemas/platform-initialization.schema';
 import { softDeletePlugin } from './plugins/soft-delete.plugin';
 
 // Register soft-delete plugin globally for all schemas
 mongoose.plugin(softDeletePlugin);
 
+export const DATABASE_MODEL_DEFINITIONS = [
+  { name: User.name, schema: UserSchema },
+  { name: Agent.name, schema: AgentSchema },
+  { name: Post.name, schema: PostSchema },
+  { name: Reply.name, schema: ReplySchema },
+  { name: Feedback.name, schema: FeedbackSchema },
+  { name: PostFavorite.name, schema: PostFavoriteSchema },
+  { name: ViewHistory.name, schema: ViewHistorySchema },
+  { name: InteractionHistory.name, schema: InteractionHistorySchema },
+  { name: AgentProgress.name, schema: AgentProgressSchema },
+  { name: AgentXpEvent.name, schema: AgentXpEventSchema },
+  { name: BrowserSession.name, schema: BrowserSessionSchema },
+  { name: GovernanceCase.name, schema: GovernanceCaseSchema },
+  { name: GovernanceAssignment.name, schema: GovernanceAssignmentSchema },
+  { name: GovernanceDailyQuota.name, schema: GovernanceDailyQuotaSchema },
+  { name: GovernanceVote.name, schema: GovernanceVoteSchema },
+  { name: AgentGovernanceProfile.name, schema: AgentGovernanceProfileSchema },
+  { name: Circle.name, schema: CircleSchema },
+  { name: CircleSubscription.name, schema: CircleSubscriptionSchema },
+  { name: CircleRuleRevision.name, schema: CircleRuleRevisionSchema },
+  { name: CircleMaintenanceLog.name, schema: CircleMaintenanceLogSchema },
+  { name: Report.name, schema: ReportSchema },
+  { name: ReportTargetState.name, schema: ReportTargetStateSchema },
+  { name: AdminAuditLog.name, schema: AdminAuditLogSchema },
+  { name: Announcement.name, schema: AnnouncementSchema },
+  { name: FeatureFlag.name, schema: FeatureFlagSchema },
+  { name: SecurityEvent.name, schema: SecurityEventSchema },
+  { name: AgentNotification.name, schema: AgentNotificationSchema },
+  { name: AgentWatchRegistry.name, schema: AgentWatchRegistrySchema },
+  { name: PostWatchRegistry.name, schema: PostWatchRegistrySchema },
+  { name: PlatformInitialization.name, schema: PlatformInitializationSchema },
+];
+
 @Global()
 @Module({
   imports: [
     MongooseModule.forRoot(process.env.MONGODB_URI!),
-    MongooseModule.forFeature([
-      { name: User.name, schema: UserSchema },
-      { name: Agent.name, schema: AgentSchema },
-      { name: Post.name, schema: PostSchema },
-      { name: Reply.name, schema: ReplySchema },
-      { name: Feedback.name, schema: FeedbackSchema },
-      { name: PostFavorite.name, schema: PostFavoriteSchema },
-      { name: ViewHistory.name, schema: ViewHistorySchema },
-      { name: InteractionHistory.name, schema: InteractionHistorySchema },
-      { name: AgentProgress.name, schema: AgentProgressSchema },
-      { name: AgentXpEvent.name, schema: AgentXpEventSchema },
-      { name: BrowserSession.name, schema: BrowserSessionSchema },
-      { name: GovernanceCase.name, schema: GovernanceCaseSchema },
-      { name: GovernanceAssignment.name, schema: GovernanceAssignmentSchema },
-      { name: GovernanceDailyQuota.name, schema: GovernanceDailyQuotaSchema },
-      { name: GovernanceVote.name, schema: GovernanceVoteSchema },
-      { name: AgentGovernanceProfile.name, schema: AgentGovernanceProfileSchema },
-      { name: Circle.name, schema: CircleSchema },
-      { name: CircleSubscription.name, schema: CircleSubscriptionSchema },
-      { name: CircleRuleRevision.name, schema: CircleRuleRevisionSchema },
-      { name: CircleMaintenanceLog.name, schema: CircleMaintenanceLogSchema },
-      { name: Report.name, schema: ReportSchema },
-      { name: ReportTargetState.name, schema: ReportTargetStateSchema },
-      { name: AdminSession.name, schema: AdminSessionSchema },
-      { name: AdminAuditLog.name, schema: AdminAuditLogSchema },
-      { name: Announcement.name, schema: AnnouncementSchema },
-      { name: FeatureFlag.name, schema: FeatureFlagSchema },
-      { name: SecurityEvent.name, schema: SecurityEventSchema },
-      { name: AgentNotification.name, schema: AgentNotificationSchema },
-    ]),
+    MongooseModule.forFeature(DATABASE_MODEL_DEFINITIONS),
   ],
   providers: [DatabaseService],
   exports: [MongooseModule, DatabaseService],

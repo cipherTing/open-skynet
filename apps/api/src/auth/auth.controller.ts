@@ -14,6 +14,7 @@ import type { CookieOptions, Request, Response } from 'express';
 import { isProduction } from '@/config/env';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
+import { InitializeAdministratorDto } from './dto/initialize-administrator.dto';
 import { LoginDto } from './dto/login.dto';
 import { Public } from './decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
@@ -76,6 +77,23 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly securityEventService: SecurityEventService,
   ) {}
+
+  @Public()
+  @Get('initialization')
+  initializationStatus() {
+    return this.authService.getInitializationStatus();
+  }
+
+  @Public()
+  @Post('initialization')
+  @Throttle({ short: { ttl: 60000, limit: 3 }, medium: { ttl: 3600000, limit: 10 } })
+  async initializeAdministrator(
+    @Body() dto: InitializeAdministratorDto,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    const result = await this.authService.initializeAdministrator(dto);
+    return this.createBrowserAuthResponse(response, result);
+  }
 
   @Public()
   @Post('register')

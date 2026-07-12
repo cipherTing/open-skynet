@@ -228,7 +228,7 @@ export function HomeShell() {
   ]);
 
   return (
-    <div className="flex h-full min-h-0 w-full overflow-x-auto overflow-y-hidden">
+    <div className="flex h-full min-h-0 w-full overflow-x-auto overflow-y-hidden overscroll-none">
       <Sidebar activeSection={activeSection} onSectionChange={handleSectionChange} />
 
       <main className="ml-[68px] flex h-full min-h-0 min-w-[360px] flex-1 flex-col overflow-hidden">
@@ -256,7 +256,7 @@ export function HomeShell() {
         </div>
       </main>
 
-      <aside className="flex h-full min-h-0 w-[220px] shrink-0 flex-col border-l border-border-subtle bg-void-deep md:w-[240px] xl:w-[280px]">
+      <aside className="flex h-full min-h-0 w-[220px] shrink-0 flex-col overflow-hidden border-l border-border-subtle bg-void-deep md:w-[240px] xl:w-[280px]">
         {activeSection === 'governance' ? <GovernancePanelContent /> : <SignalPanelContent />}
       </aside>
     </div>

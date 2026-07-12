@@ -1,13 +1,5 @@
-import axios, { AxiosHeaders, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios';
-import { apiRequest, ApiError } from '@/lib/api';
-import { appEvents } from '@/lib/events';
+import { apiRequest } from '@/lib/api';
 import type { ReportReason, ReportTargetStatus, ReportTargetType } from '@skynet/shared';
-
-const ADMIN_CSRF_STORAGE_KEY = 'skynet-admin-csrf';
-const API_BASE =
-  typeof window === 'undefined'
-    ? process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081/api/v1'
-    : process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081/api/v1';
 
 export type AdminSection =
   | 'overview'
@@ -198,63 +190,11 @@ export interface AdminPage<T> {
   meta: { total: number; page: number; pageSize: number; totalPages: number };
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-function unwrap<T>(response: AxiosResponse<unknown>): T {
-  if (!isRecord(response.data) || !Object.prototype.hasOwnProperty.call(response.data, 'data')) {
-    throw new ApiError('Unexpected server response', 'PARSE_ERROR', response.status);
-  }
-  return response.data.data as T;
-}
-
-const adminClient = axios.create({ baseURL: API_BASE, withCredentials: true });
-
-adminClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  const headers = AxiosHeaders.from(config.headers);
-  headers.delete('Authorization');
-  if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
-  if (typeof window !== 'undefined' && !['get', 'head', 'options'].includes(config.method ?? 'get')) {
-    const csrfToken = window.sessionStorage.getItem(ADMIN_CSRF_STORAGE_KEY);
-    if (csrfToken) headers.set('X-Skynet-Csrf', csrfToken);
-  }
-  config.headers = headers;
-  return config;
-});
-
-adminClient.interceptors.response.use(
-  (response) => response,
-  (error: unknown) => {
-    if (axios.isAxiosError<unknown>(error)) {
-      const payload = error.response?.data;
-      const csrfRejected =
-        isRecord(payload) &&
-        isRecord(payload.error) &&
-        payload.error.code === 'ADMIN_CSRF_REJECTED';
-      if (
-        (error.response?.status === 401 || csrfRejected) &&
-        typeof window !== 'undefined'
-      ) {
-        window.sessionStorage.removeItem(ADMIN_CSRF_STORAGE_KEY);
-        appEvents.emit('admin:expired');
-      }
-      if (isRecord(payload) && isRecord(payload.error)) {
-        const body = payload.error;
-        throw new ApiError(
-          typeof body.message === 'string' ? body.message : 'Request failed',
-          typeof body.code === 'string' ? body.code : 'UNKNOWN',
-          typeof body.statusCode === 'number' ? body.statusCode : error.response?.status ?? 0,
-        );
-      }
-      throw new ApiError(error.message, 'UNKNOWN', error.response?.status ?? 0);
-    }
-    throw error;
-  },
-);
-
 function adminRequest<T>(method: string, endpoint: string, data?: unknown): Promise<T> {
-  return adminClient.request<unknown>({ method, url: endpoint, data }).then(unwrap<T>);
+  return apiRequest<T>(endpoint, {
+    method,
+    body: data === undefined ? undefined : JSON.stringify(data),
+  });
 }
 
 function params(values: Record<string, string | number | undefined>): string {
@@ -267,21 +207,6 @@ function params(values: Record<string, string | number | undefined>): string {
 }
 
 export const adminApi = {
-  createSession: async (password: string) => {
-    const result = await apiRequest<{ csrfToken: string; expiresAt: string; user: { id: string; username: string } }>(
-      '/admin/session',
-      { method: 'POST', body: JSON.stringify({ password }) },
-    );
-    window.sessionStorage.setItem(ADMIN_CSRF_STORAGE_KEY, result.csrfToken);
-    return result;
-  },
-  session: () => adminRequest<{ user: { id: string; username: string } }>('GET', '/admin/session'),
-  logout: async () => {
-    const result = await adminRequest<void>('DELETE', '/admin/session');
-    window.sessionStorage.removeItem(ADMIN_CSRF_STORAGE_KEY);
-    return result;
-  },
-  hasCsrfToken: () => typeof window !== 'undefined' && Boolean(window.sessionStorage.getItem(ADMIN_CSRF_STORAGE_KEY)),
   overview: () => adminRequest<AdminOverview>('GET', '/admin/overview'),
   agents: (query: { page?: number; pageSize?: number; search?: string; status?: string }) =>
     adminRequest<AdminPage<AdminAgentItem>>('GET', `/admin/agents${params(query)}`),

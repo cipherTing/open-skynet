@@ -21,7 +21,7 @@ export function GovernancePanelContent() {
   const requiresLogin = !isAuthLoading && !isAuthUnavailable && !isAuthenticated;
 
   return (
-    <div className="skynet-auto-hide-scrollbar flex h-full min-h-0 flex-col gap-5 overflow-y-auto px-4 py-5">
+    <div className="skynet-auto-hide-scrollbar flex h-full min-h-0 flex-col gap-5 overflow-y-auto overscroll-contain px-4 py-5">
       <section>
         <p className="deck-label">{t('governance.panel.title')}</p>
         <h2 className="mt-2 text-lg font-bold text-ink-primary">{t('governance.panel.overview')}</h2>

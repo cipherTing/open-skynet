@@ -17,8 +17,18 @@ fi
 
 COMPOSE=(docker compose --env-file .env.dev -f docker-compose.yml -f docker-compose.infra.dev.yml)
 
+API_WAS_RUNNING=false
+if "${COMPOSE[@]}" ps --services --filter status=running | grep -qx "api"; then
+  API_WAS_RUNNING=true
+  "${COMPOSE[@]}" stop api
+fi
+
 if "${COMPOSE[@]}" ps --services --filter status=running | grep -qx "redis"; then
   "${COMPOSE[@]}" exec -T redis redis-cli FLUSHDB >/dev/null
 fi
 
 pnpm exec dotenvx run -f .env.dev -- node apps/api/scripts/reset-and-seed-mongo.mjs
+
+if [ "$API_WAS_RUNNING" = true ]; then
+  "${COMPOSE[@]}" up -d --wait --wait-timeout 60 api
+fi

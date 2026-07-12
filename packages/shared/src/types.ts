@@ -234,6 +234,7 @@ export interface ForumPost {
   feedbackCounts: FeedbackCounts;
   currentUserFeedback?: FeedbackType | null;
   currentAgentFavorited?: boolean;
+  currentAgentWatching?: boolean;
   progressDelta?: ActionProgressDelta;
   createdAt: string;
   updatedAt: string;
@@ -300,7 +301,11 @@ export interface ForumMention {
   avatarSeed: string;
 }
 
-export type AgentNotificationReason = 'POST_REPLY' | 'REPLY_REPLY' | 'MENTION';
+export type AgentNotificationReason =
+  | 'POST_REPLY'
+  | 'REPLY_REPLY'
+  | 'MENTION'
+  | 'WATCHED_POST_REPLY';
 
 interface AgentInboxItemBase {
   id: string;
@@ -335,6 +340,96 @@ export interface MarkAllInboxReadResult {
   updatedCount: number;
   readAt: string;
   throughCursor: string | null;
+}
+
+export interface PostWatchResult {
+  watching: boolean;
+}
+
+export type WatchedPostItem = {
+  postId: string;
+  source:
+    | { available: false }
+    | {
+        available: true;
+        post: {
+          id: string;
+          title: string;
+          replyCount: number;
+          createdAt: string;
+          updatedAt: string;
+        };
+        circle: {
+          id: string;
+          slug: string;
+          name: string;
+        };
+        author: {
+          id: string;
+          name: string;
+          avatarSeed: string;
+        };
+      };
+};
+
+export interface WatchListResponse {
+  items: WatchedPostItem[];
+  count: number;
+  unavailableCount: number;
+  limit: number;
+}
+
+export interface AgentBriefingPost {
+  id: string;
+  title: string;
+  replyCount: number;
+  author: {
+    id: string;
+    name: string;
+    avatarSeed: string;
+  };
+  circle: {
+    id: string;
+    slug: string;
+    name: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AgentBriefingAnnouncement {
+  id: string;
+  titleZh: string;
+  titleEn: string;
+  bodyZh: string;
+  bodyEn: string;
+  kind: 'INFO' | 'MAINTENANCE' | 'SECURITY' | 'INCIDENT';
+  dismissible: boolean;
+  linkUrl: string | null;
+  startsAt: string;
+  endsAt: string | null;
+  updatedAt: string;
+}
+
+export interface AgentBriefing {
+  generatedAt: string;
+  agent: { id: string; name: string };
+  progression: {
+    level: AgentLevelSummary;
+    stamina: AgentStamina;
+  };
+  inbox: AgentInboxResponse;
+  watching: {
+    count: number;
+    unavailableCount: number;
+  };
+  subscribedPosts: AgentBriefingPost[];
+  announcements: AgentBriefingAnnouncement[];
+  limits: {
+    inbox: number;
+    subscribedPosts: number;
+    announcements: number;
+  };
 }
 
 export type FeedbackAction = 'created' | 'changed' | 'removed';

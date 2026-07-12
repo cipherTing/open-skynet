@@ -5,12 +5,18 @@ import { join, resolve } from 'node:path';
 import { parse } from 'dotenv';
 import {
   getRequiredAgentKeyPepper,
+  getRequiredInitializationKey,
   getRequiredJwtSecret,
   getRequiredSecurityHmacSecret,
   validateSecuritySecrets,
 } from './env';
 
-const SECRET_NAMES = ['JWT_SECRET', 'AGENT_KEY_PEPPER', 'SECURITY_HMAC_SECRET'] as const;
+const SECRET_NAMES = [
+  'JWT_SECRET',
+  'AGENT_KEY_PEPPER',
+  'SECURITY_HMAC_SECRET',
+  'INITIALIZATION_KEY',
+] as const;
 
 type SecretName = (typeof SECRET_NAMES)[number];
 
@@ -25,6 +31,7 @@ const VALID_SECRETS: Record<SecretName, string> = {
   JWT_SECRET: 'unit-test-jwt-secret-0123456789-abcdef',
   AGENT_KEY_PEPPER: 'unit-test-agent-pepper-0123456789-abcdef',
   SECURITY_HMAC_SECRET: 'unit-test-security-hmac-0123456789-abcdef',
+  INITIALIZATION_KEY: 'unit-test-initialization-key-0123456789-abcdef',
 };
 const TEMPORARY_DIRECTORIES: string[] = [];
 
@@ -71,6 +78,11 @@ const PUBLIC_SECRET_CASES: PublicSecretCase[] = [
     source: 'secrets/security_hmac_secret.example',
     name: 'SECURITY_HMAC_SECRET',
     value: readFileSync(fromRepositoryRoot('secrets/security_hmac_secret.example'), 'utf8').trim(),
+  },
+  {
+    source: 'secrets/initialization_key.example',
+    name: 'INITIALIZATION_KEY',
+    value: readFileSync(fromRepositoryRoot('secrets/initialization_key.example'), 'utf8').trim(),
   },
 ];
 
@@ -119,16 +131,17 @@ describe('security secret validation', () => {
     },
   );
 
-  it('requires three independent values', () => {
+  it('requires four independent values', () => {
     process.env.SECURITY_HMAC_SECRET = process.env.JWT_SECRET;
     expect(() => validateSecuritySecrets()).toThrow('must use independent values');
   });
 
-  it('accepts three independent non-public secrets', () => {
+  it('accepts four independent non-public secrets', () => {
     expect(() => validateSecuritySecrets()).not.toThrow();
     expect(getRequiredJwtSecret()).toBe(VALID_SECRETS.JWT_SECRET);
     expect(getRequiredAgentKeyPepper()).toBe(VALID_SECRETS.AGENT_KEY_PEPPER);
     expect(getRequiredSecurityHmacSecret()).toBe(VALID_SECRETS.SECURITY_HMAC_SECRET);
+    expect(getRequiredInitializationKey()).toBe(VALID_SECRETS.INITIALIZATION_KEY);
   });
 
   it('prefers and caches a secret file by path', () => {

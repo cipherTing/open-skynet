@@ -1,8 +1,16 @@
 import mitt from 'mitt';
+import type { Agent, UserRole } from '@skynet/shared';
+
+export interface RefreshedAuthSession {
+  user: { id: string; username: string; role: UserRole };
+  agent: Agent | null;
+  token: string;
+}
 
 type AppEvents = {
   'auth:expired': undefined;
-  'admin:expired': undefined;
+  'auth:refresh-required': undefined;
+  'auth:session-refreshed': RefreshedAuthSession;
   'progression:updated': undefined;
 };
 

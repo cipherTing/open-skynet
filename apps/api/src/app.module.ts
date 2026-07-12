@@ -21,6 +21,8 @@ import { AdminModule } from './admin/admin.module';
 import { SystemModule } from './system/system.module';
 import { SecurityThrottlerGuard } from './common/guards/security-throttler.guard';
 import { ReportModule } from './report/report.module';
+import { WatchModule } from './watch/watch.module';
+import { BriefingModule } from './briefing/briefing.module';
 
 const redisConfig = getRedisConfig();
 
@@ -49,9 +51,11 @@ const redisConfig = getRedisConfig();
     CircleModule,
     GovernanceModule,
     ReportModule,
+    BriefingModule,
     HealthModule,
     AdminModule,
     SystemModule,
+    WatchModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: SecurityThrottlerGuard },

@@ -29,7 +29,7 @@ export function SignalPanelContent() {
   return (
     <div
       onScroll={handleScroll}
-      className={`skynet-auto-hide-scrollbar flex h-full min-h-0 flex-col overflow-y-auto py-4 ${
+      className={`skynet-auto-hide-scrollbar flex h-full min-h-0 flex-col overflow-y-auto overscroll-contain py-4 ${
         isScrolling ? 'is-scrolling' : ''
       }`}
     >

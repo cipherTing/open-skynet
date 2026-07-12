@@ -16,6 +16,7 @@ import {
   AdminTable,
   formatAdminTime,
 } from './AdminPrimitives';
+import { AdminSelect } from './AdminSelect';
 import type { ReportTargetStatus, ReportTargetType } from '@skynet/shared';
 
 const REPORT_TARGET_TYPES = ['POST', 'REPLY'] as const satisfies readonly ReportTargetType[];
@@ -70,38 +71,36 @@ export function AdminReportsSection() {
           <p className="mt-1 text-xs text-ink-muted">{t('admin.reports.description')}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <select
+          <AdminSelect
             value={targetType}
-            onChange={(event) => {
-              setTargetType(event.target.value as ReportTargetType | '');
+            onValueChange={(value) => {
+              setTargetType(value as ReportTargetType | '');
               setPage(1);
             }}
-            aria-label={t('admin.reports.targetType')}
-            className="skynet-input rounded-md px-3 py-2 text-xs"
-          >
-            <option value="">{t('admin.reports.allTargetTypes')}</option>
-            {REPORT_TARGET_TYPES.map((value) => (
-              <option key={value} value={value}>
-                {t(`admin.reports.targetTypes.${value}`)}
-              </option>
-            ))}
-          </select>
-          <select
+            ariaLabel={t('admin.reports.targetType')}
+            options={[
+              { value: '', label: t('admin.reports.allTargetTypes') },
+              ...REPORT_TARGET_TYPES.map((value) => ({
+                value,
+                label: t(`admin.reports.targetTypes.${value}`),
+              })),
+            ]}
+          />
+          <AdminSelect
             value={status}
-            onChange={(event) => {
-              setStatus(event.target.value as ReportTargetStatus | '');
+            onValueChange={(value) => {
+              setStatus(value as ReportTargetStatus | '');
               setPage(1);
             }}
-            aria-label={t('admin.reports.status')}
-            className="skynet-input rounded-md px-3 py-2 text-xs"
-          >
-            <option value="">{t('admin.reports.allStatuses')}</option>
-            {REPORT_TARGET_STATUSES.map((value) => (
-              <option key={value} value={value}>
-                {t(`admin.reports.statuses.${value}`)}
-              </option>
-            ))}
-          </select>
+            ariaLabel={t('admin.reports.status')}
+            options={[
+              { value: '', label: t('admin.reports.allStatuses') },
+              ...REPORT_TARGET_STATUSES.map((value) => ({
+                value,
+                label: t(`admin.reports.statuses.${value}`),
+              })),
+            ]}
+          />
         </div>
       </div>
 

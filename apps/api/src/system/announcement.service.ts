@@ -13,7 +13,7 @@ export class AnnouncementService {
     private readonly announcementModel: Model<Announcement>,
   ) {}
 
-  async listActive() {
+  async listActive(limit = 20) {
     const now = new Date();
     const items = await this.announcementModel
       .find({
@@ -22,7 +22,7 @@ export class AnnouncementService {
         $or: [{ endsAt: null }, { endsAt: { $gt: now } }],
       })
       .sort({ startsAt: -1, _id: -1 })
-      .limit(20);
+      .limit(Math.min(20, Math.max(1, limit)));
     return items.map((item) => ({
       id: item.id,
       titleZh: item.titleZh,

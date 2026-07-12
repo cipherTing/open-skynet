@@ -39,6 +39,9 @@ import type {
   AgentInboxResponse,
   MarkAllInboxReadResult,
   MarkInboxReadResult,
+  AgentBriefing,
+  PostWatchResult,
+  WatchListResponse,
 } from '@skynet/shared';
 
 export type GovernanceDecision = 'VIOLATION' | 'NOT_VIOLATION';
@@ -150,7 +153,7 @@ type ApiErrorResponse = {
   error: ApiErrorBody;
 };
 
-type BrowserAuthPayload = {
+export type BrowserAuthPayload = {
   user: User;
   agent: Agent | null;
   token: string;
@@ -296,6 +299,7 @@ async function refreshAccessToken(): Promise<string | null> {
       .then((response) => {
         const payload = unwrapApiResponse<BrowserAuthPayload>(response);
         setAccessToken(payload.token);
+        appEvents.emit('auth:session-refreshed', payload);
         return payload.token;
       })
       .catch((error: unknown) => {
@@ -324,6 +328,9 @@ apiClient.interceptors.response.use(
     }
 
     const originalConfig = error.config as SkynetAxiosRequestConfig | undefined;
+    if (error.response?.status === 403 && originalConfig?.url?.startsWith('/admin/')) {
+      appEvents.emit('auth:refresh-required');
+    }
     const shouldRefresh =
       error.response?.status === 401 &&
       originalConfig &&
@@ -379,6 +386,20 @@ export const systemApi = {
 
 // Auth
 export const authApi = {
+  initializationStatus: () =>
+    apiRequest<{ initialized: boolean }>('/auth/initialization', {}, { skipAuthRefresh: true }),
+  initializeAdministrator: (data: {
+    initializationKey: string;
+    username: string;
+    password: string;
+    agentName: string;
+    agentDescription?: string;
+  }) =>
+    apiRequest<BrowserAuthPayload>(
+      '/auth/initialization',
+      { method: 'POST', body: JSON.stringify(data) },
+      { skipAuthRefresh: true },
+    ),
   register: (data: {
     username: string;
     password: string;
@@ -409,6 +430,7 @@ export const authApi = {
 
 // Forum
 export const forumApi = {
+  getBriefing: () => apiRequest<AgentBriefing>('/forum/briefing'),
   getPostPanelSummary: () => apiRequest<PostPanelSummary>('/forum/post-panel'),
   getWelcomeSummary: () => apiRequest<WelcomeSummary>('/forum/welcome-summary'),
   listPosts: (
@@ -461,6 +483,11 @@ export const forumApi = {
     apiRequest<FavoriteResult>(`/forum/posts/${postId}/favorite`, {
       method: 'DELETE',
     }),
+  listWatchedPosts: () => apiRequest<WatchListResponse>('/forum/watches'),
+  watchPost: (postId: string) =>
+    apiRequest<PostWatchResult>(`/forum/posts/${postId}/watch`, { method: 'PUT' }),
+  unwatchPost: (postId: string) =>
+    apiRequest<PostWatchResult>(`/forum/posts/${postId}/watch`, { method: 'DELETE' }),
   getAgent: (agentId: string) => apiRequest<Agent>(`/forum/agents/${agentId}`),
   listAgentPosts: (agentId: string, params?: { page?: number; pageSize?: number }) => {
     const searchParams = new URLSearchParams();

@@ -224,11 +224,11 @@ function SettingsPageContent({
   };
 
   return (
-    <div className="mx-auto flex min-h-full max-w-[1440px]">
+    <div className="relative mx-auto flex h-full min-h-0 w-full max-w-[1440px] overflow-hidden">
       <Sidebar />
-      <main className="flex-1 min-w-0 ml-[68px]">
-        <TopBar />
-        <div className="px-8 py-8">
+      <main className="ml-[68px] flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <TopBar disableScrollFade position="static" />
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-8 py-8">
           {/* 内容容器 — 左对齐，占满空间 */}
           <div className="max-w-[720px]">
             {/* 返回 */}

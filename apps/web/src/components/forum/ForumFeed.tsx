@@ -18,7 +18,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useAutoHideScrollbar } from '@/hooks/useAutoHideScrollbar';
 import { useToast } from '@/components/ui/SignalToast';
 import { SORT_OPTIONS, type Circle, type ForumPost, type PaginationMeta, type SortOption } from '@skynet/shared';
-import { getForumFeedSortMode, useForumFeedStore } from '@/stores/forum-feed-store';
+import {
+  getForumFeedSortMode,
+  getForumFeedToolbarVisible,
+  useForumFeedStore,
+} from '@/stores/forum-feed-store';
 import { useHomeNavigationStore } from '@/stores/home-navigation-store';
 
 type ForumPostListPage = {
@@ -52,12 +56,14 @@ export function ForumFeed({
   const [scrollRoot, setScrollRoot] = useState<HTMLDivElement | null>(null);
   const scrollRootRef = useRef<HTMLDivElement | null>(null);
   const lastRestoredKeyRef = useRef('');
+  const scrollReadyFeedKeyRef = useRef<string | null>(null);
+  const currentFeedKeyRef = useRef('');
   const submittedSearch = useHomeNavigationStore((state) => state.postSearch);
   const searchRevision = useHomeNavigationStore((state) => state.postSearchRevision);
   const search = circle ? '' : submittedSearch;
   const [refreshingFeed, setRefreshingFeed] = useState(false);
-  const [toolbarVisible, setToolbarVisible] = useState(true);
-  const [feedScope, setFeedScope] = useState<'all' | 'subscribed'>('all');
+  const feedScope = useForumFeedStore((state) => state.globalFeedScope);
+  const setFeedScope = useForumFeedStore((state) => state.setGlobalFeedScope);
   const { ownerOperationEnabled, canOperateAsAgent } = useOwnerOperation();
   const { isAuthenticated, isLoading: authLoading, user, agent } = useAuth();
   const viewerKey = user?.id ?? 'anonymous';
@@ -65,18 +71,6 @@ export function ForumFeed({
   const queryClient = useQueryClient();
   const { isScrolling, handleScroll } = useAutoHideScrollbar();
   const { scrollY } = useScroll({ container: scrollRootRef });
-  useMotionValueEvent(scrollY, 'change', (latest) => {
-    const previous = scrollY.getPrevious() ?? 0;
-    const delta = latest - previous;
-
-    if (latest <= OVERLAY_BAR_SCROLL_THRESHOLD) {
-      setToolbarVisible(true);
-      return;
-    }
-
-    if (Math.abs(delta) < OVERLAY_BAR_SCROLL_THRESHOLD) return;
-    setToolbarVisible(delta < 0);
-  });
   const effectiveScope = circle || !isAuthenticated ? 'all' : feedScope;
   const scopeKey = circle
     ? `${viewerKey}:circle:${circle.id}`
@@ -85,9 +79,25 @@ export function ForumFeed({
   const sortMode = getForumFeedSortMode(sortModeByScope, scopeKey);
   const feedKey = `${scopeKey}:${sortMode}:${FORUM_FEED_PAGE_SIZE}:search:${encodeURIComponent(search)}:${searchRevision}`;
   const setSortMode = useForumFeedStore((state) => state.setSortMode);
-  const savedScrollTop = useForumFeedStore((state) => state.scrollTopByFeedKey[feedKey] ?? 0);
   const setScrollTop = useForumFeedStore((state) => state.setScrollTop);
   const resetScrollTop = useForumFeedStore((state) => state.resetScrollTop);
+  const toolbarVisibleByFeedKey = useForumFeedStore((state) => state.toolbarVisibleByFeedKey);
+  const toolbarVisible = getForumFeedToolbarVisible(toolbarVisibleByFeedKey, feedKey);
+  const setToolbarVisible = useForumFeedStore((state) => state.setToolbarVisible);
+  useMotionValueEvent(scrollY, 'change', (latest) => {
+    if (scrollReadyFeedKeyRef.current !== feedKey) return;
+
+    const previous = scrollY.getPrevious() ?? 0;
+    const delta = latest - previous;
+
+    if (latest <= OVERLAY_BAR_SCROLL_THRESHOLD) {
+      setToolbarVisible(feedKey, true);
+      return;
+    }
+
+    if (Math.abs(delta) < OVERLAY_BAR_SCROLL_THRESHOLD) return;
+    setToolbarVisible(feedKey, delta < 0);
+  });
   const queryKey = forumKeys.posts(viewerKey, {
     pageSize: FORUM_FEED_PAGE_SIZE,
     sortBy: sortMode,
@@ -117,6 +127,7 @@ export function ForumFeed({
     fetchNextPage,
     hasNextPage,
     isError,
+    isFetchNextPageError,
     isFetching,
     isFetchingNextPage,
     isPending,
@@ -142,6 +153,7 @@ export function ForumFeed({
   const bindScrollRoot = useCallback((node: HTMLDivElement | null) => {
     scrollRootRef.current = node;
     lastRestoredKeyRef.current = '';
+    scrollReadyFeedKeyRef.current = null;
     setScrollRoot(node);
   }, []);
 
@@ -152,17 +164,62 @@ export function ForumFeed({
   }, [fetchNextPage, hasMore, inView, isFetchingNextPage, posts.length]);
 
   useEffect(() => {
+    currentFeedKeyRef.current = feedKey;
     const node = scrollRootRef.current;
-    if (!node || posts.length === 0) return;
+    if (!node) return;
+    if (posts.length === 0) {
+      if (!isPending) {
+        setToolbarVisible(feedKey, true);
+        scrollReadyFeedKeyRef.current = feedKey;
+      }
+      return;
+    }
 
     const restoreKey = `${feedKey}:${firstPostId}`;
-    if (lastRestoredKeyRef.current === restoreKey) return;
-    lastRestoredKeyRef.current = restoreKey;
+    if (lastRestoredKeyRef.current === restoreKey) {
+      scrollReadyFeedKeyRef.current = feedKey;
+      return;
+    }
 
-    window.requestAnimationFrame(() => {
-      node.scrollTo({ top: savedScrollTop, behavior: 'auto' });
+    scrollReadyFeedKeyRef.current = null;
+    let cancelled = false;
+    let releaseFrame: number | null = null;
+    const targetScrollTop = useForumFeedStore.getState().scrollTopByFeedKey[feedKey] ?? 0;
+    const restoreFrame = window.requestAnimationFrame(() => {
+      if (cancelled || scrollRootRef.current !== node || currentFeedKeyRef.current !== feedKey) return;
+      node.scrollTo({ top: targetScrollTop, behavior: 'auto' });
+      releaseFrame = window.requestAnimationFrame(() => {
+        if (cancelled || scrollRootRef.current !== node || currentFeedKeyRef.current !== feedKey) return;
+        const maximumScrollTop = Math.max(0, node.scrollHeight - node.clientHeight);
+        if (targetScrollTop > maximumScrollTop && hasMore && !isFetchNextPageError) return;
+
+        const restoredScrollTop = node.scrollTop;
+        lastRestoredKeyRef.current = restoreKey;
+        if (restoredScrollTop <= OVERLAY_BAR_SCROLL_THRESHOLD) {
+          setToolbarVisible(feedKey, true);
+        }
+        if (restoredScrollTop !== targetScrollTop) {
+          setScrollTop(feedKey, restoredScrollTop);
+        }
+        scrollReadyFeedKeyRef.current = feedKey;
+      });
     });
-  }, [feedKey, firstPostId, posts.length, savedScrollTop]);
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(restoreFrame);
+      if (releaseFrame !== null) window.cancelAnimationFrame(releaseFrame);
+    };
+  }, [
+    feedKey,
+    firstPostId,
+    hasMore,
+    isFetchNextPageError,
+    isPending,
+    posts.length,
+    setScrollTop,
+    setToolbarVisible,
+  ]);
 
   const handleSortChange = (mode: SortOption) => {
     if (mode === sortMode) return;
@@ -173,6 +230,7 @@ export function ForumFeed({
   const handleFeedScroll = useCallback(
     (event: UIEvent<HTMLDivElement>) => {
       handleScroll();
+      if (scrollReadyFeedKeyRef.current !== feedKey) return;
       setScrollTop(feedKey, event.currentTarget.scrollTop);
     },
     [feedKey, handleScroll, setScrollTop],
@@ -227,6 +285,7 @@ export function ForumFeed({
         {/* 排序标签 + 创建按钮 */}
         <motion.div
           className="home-feed-toolbar"
+          initial={false}
           animate={
             prefersReducedMotion || toolbarVisible
               ? { opacity: 1, y: 0, pointerEvents: 'auto' }

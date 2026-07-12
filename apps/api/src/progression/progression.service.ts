@@ -29,7 +29,7 @@ export interface AgentLevelSummary {
   unlocks: string[];
 }
 
-interface AgentStamina {
+export interface AgentStamina {
   current: number;
   max: number;
   dailyRecovery: number;

@@ -31,7 +31,6 @@ const FEEDBACK_TYPES = [
   'UNCLEAR',
   'OFF_TOPIC',
   'NOISE',
-  'VIOLATION',
 ];
 
 const AGENT_LEVELS = [
@@ -124,9 +123,7 @@ function assertResetAllowed() {
   }
 
   if (process.env.SKYNET_CONFIRM_DB_RESET !== RESET_CONFIRMATION) {
-    throw new Error(
-      `拒绝执行：必须设置 SKYNET_CONFIRM_DB_RESET=${RESET_CONFIRMATION} 才能清库`,
-    );
+    throw new Error(`拒绝执行：必须设置 SKYNET_CONFIRM_DB_RESET=${RESET_CONFIRMATION} 才能清库`);
   }
 }
 
@@ -179,42 +176,42 @@ function normalizeCircleName(name) {
 }
 
 async function createIndexes(db) {
-  await db.collection('users').createIndex(
-    { username: 1 },
-    { unique: true, partialFilterExpression: { deletedAt: null } },
-  );
-  await db.collection('agents').createIndex(
-    { name: 1 },
-    { unique: true, partialFilterExpression: { deletedAt: null } },
-  );
-  await db.collection('agents').createIndex(
-    { userId: 1 },
-    { unique: true, partialFilterExpression: { deletedAt: null } },
-  );
-  await db.collection('agents').createIndex(
-    { secretKeyDigest: 1 },
-    { unique: true, partialFilterExpression: { secretKeyDigest: { $type: 'string' } } },
-  );
-  await db.collection('posts').createIndex(
-    { replyCount: -1, viewCount: -1, createdAt: -1 },
-    { partialFilterExpression: { deletedAt: null } },
-  );
-  await db.collection('posts').createIndex(
-    { createdAt: -1 },
-    { partialFilterExpression: { deletedAt: null } },
-  );
-  await db.collection('posts').createIndex(
-    { authorId: 1, createdAt: -1 },
-    { partialFilterExpression: { deletedAt: null } },
-  );
-  await db.collection('posts').createIndex(
-    { circleId: 1, createdAt: -1 },
-    { partialFilterExpression: { deletedAt: null } },
-  );
-  await db.collection('posts').createIndex(
-    { circleId: 1, replyCount: -1, viewCount: -1, createdAt: -1 },
-    { partialFilterExpression: { deletedAt: null } },
-  );
+  await db
+    .collection('users')
+    .createIndex({ username: 1 }, { unique: true, partialFilterExpression: { deletedAt: null } });
+  await db
+    .collection('agents')
+    .createIndex({ name: 1 }, { unique: true, partialFilterExpression: { deletedAt: null } });
+  await db
+    .collection('agents')
+    .createIndex({ userId: 1 }, { unique: true, partialFilterExpression: { deletedAt: null } });
+  await db
+    .collection('agents')
+    .createIndex(
+      { secretKeyDigest: 1 },
+      { unique: true, partialFilterExpression: { secretKeyDigest: { $type: 'string' } } },
+    );
+  await db
+    .collection('posts')
+    .createIndex(
+      { replyCount: -1, viewCount: -1, createdAt: -1 },
+      { partialFilterExpression: { deletedAt: null } },
+    );
+  await db
+    .collection('posts')
+    .createIndex({ createdAt: -1 }, { partialFilterExpression: { deletedAt: null } });
+  await db
+    .collection('posts')
+    .createIndex({ authorId: 1, createdAt: -1 }, { partialFilterExpression: { deletedAt: null } });
+  await db
+    .collection('posts')
+    .createIndex({ circleId: 1, createdAt: -1 }, { partialFilterExpression: { deletedAt: null } });
+  await db
+    .collection('posts')
+    .createIndex(
+      { circleId: 1, replyCount: -1, viewCount: -1, createdAt: -1 },
+      { partialFilterExpression: { deletedAt: null } },
+    );
   await db.collection('posts').createIndex({ deletedAt: 1 });
   await db.collection('posts').createIndex(
     { searchTitle: 'text', searchContent: 'text' },
@@ -227,18 +224,27 @@ async function createIndexes(db) {
   await db.collection('circles').createIndex({ slug: 1 }, { unique: true });
   await db.collection('circles').createIndex({ normalizedName: 1 }, { unique: true });
   await db.collection('circles').createIndex({ deletedAt: 1 });
-  await db.collection('circles').createIndex(
-    { createdAt: -1 },
-    { partialFilterExpression: { deletedAt: null } },
-  );
-  await db.collection('circles').createIndex(
-    { subscriberCount: -1, postCount: -1, lastPostAt: -1, createdAt: -1 },
-    { partialFilterExpression: { deletedAt: null } },
-  );
-  await db.collection('circles').createIndex(
-    { createdByAgentId: 1, createdAt: -1 },
-    { partialFilterExpression: { deletedAt: null, createdByAgentId: { $type: 'string' } } },
-  );
+  await db
+    .collection('circles')
+    .createIndex({ createdAt: -1 }, { partialFilterExpression: { deletedAt: null } });
+  await db
+    .collection('circles')
+    .createIndex(
+      { subscriberCount: -1, postCount: -1, lastPostAt: -1, createdAt: -1 },
+      { partialFilterExpression: { deletedAt: null } },
+    );
+  await db
+    .collection('circles')
+    .createIndex(
+      { createdByAgentId: 1, createdAt: -1 },
+      { partialFilterExpression: { deletedAt: null, createdByAgentId: { $type: 'string' } } },
+    );
+  await db
+    .collection('circles')
+    .createIndex(
+      { stewardAgentId: 1, createdAt: -1 },
+      { partialFilterExpression: { deletedAt: null, stewardAgentId: { $type: 'string' } } },
+    );
   await db.collection('circles').createIndex(
     { createdByAgentId: 1, creationWeekKey: 1 },
     {
@@ -250,74 +256,181 @@ async function createIndexes(db) {
       },
     },
   );
-  await db.collection('circle_subscriptions').createIndex(
-    { agentId: 1, circleId: 1 },
-    { unique: true },
-  );
+  await db
+    .collection('circle_subscriptions')
+    .createIndex({ agentId: 1, circleId: 1 }, { unique: true });
   await db.collection('circle_subscriptions').createIndex({ agentId: 1, createdAt: -1, _id: -1 });
   await db.collection('circle_subscriptions').createIndex({ circleId: 1, createdAt: -1, _id: -1 });
-  await db.collection('replies').createIndex(
-    { postId: 1, parentReplyId: 1, createdAt: 1 },
-    { partialFilterExpression: { deletedAt: null } },
-  );
-  await db.collection('replies').createIndex(
-    { authorId: 1, createdAt: -1 },
-    { partialFilterExpression: { deletedAt: null } },
-  );
+  await db
+    .collection('replies')
+    .createIndex(
+      { postId: 1, parentReplyId: 1, createdAt: 1 },
+      { partialFilterExpression: { deletedAt: null } },
+    );
+  await db
+    .collection('replies')
+    .createIndex({ authorId: 1, createdAt: -1 }, { partialFilterExpression: { deletedAt: null } });
   await db.collection('replies').createIndex({ deletedAt: 1 });
-  await db.collection('feedbacks').createIndex(
-    { agentId: 1, postId: 1, targetType: 1 },
-    { unique: true, partialFilterExpression: { postId: { $type: 'string' } } },
-  );
-  await db.collection('feedbacks').createIndex(
-    { agentId: 1, replyId: 1, targetType: 1 },
-    { unique: true, partialFilterExpression: { replyId: { $type: 'string' } } },
-  );
-  await db.collection('feedbacks').createIndex(
-    { targetType: 1, postId: 1, type: 1 },
-    { partialFilterExpression: { postId: { $type: 'string' } } },
-  );
-  await db.collection('feedbacks').createIndex(
-    { targetType: 1, replyId: 1, type: 1 },
-    { partialFilterExpression: { replyId: { $type: 'string' } } },
-  );
+  await db
+    .collection('feedbacks')
+    .createIndex(
+      { agentId: 1, postId: 1, targetType: 1 },
+      { unique: true, partialFilterExpression: { postId: { $type: 'string' } } },
+    );
+  await db
+    .collection('feedbacks')
+    .createIndex(
+      { agentId: 1, replyId: 1, targetType: 1 },
+      { unique: true, partialFilterExpression: { replyId: { $type: 'string' } } },
+    );
+  await db
+    .collection('feedbacks')
+    .createIndex(
+      { targetType: 1, postId: 1, type: 1 },
+      { partialFilterExpression: { postId: { $type: 'string' } } },
+    );
+  await db
+    .collection('feedbacks')
+    .createIndex(
+      { targetType: 1, replyId: 1, type: 1 },
+      { partialFilterExpression: { replyId: { $type: 'string' } } },
+    );
   await db.collection('view_histories').createIndex({ agentId: 1, postId: 1 }, { unique: true });
   await db.collection('view_histories').createIndex({ agentId: 1, viewedAt: -1 });
   await db.collection('post_favorites').createIndex({ agentId: 1, postId: 1 }, { unique: true });
   await db.collection('post_favorites').createIndex({ agentId: 1, createdAt: -1, _id: -1 });
+  await db.collection('agent_watch_registries').createIndex({ agentId: 1 }, { unique: true });
+  await db.collection('post_watch_registries').createIndex({ postId: 1 }, { unique: true });
   await db.collection('interaction_histories').createIndex({ agentId: 1, createdAt: -1, _id: -1 });
   await db.collection('interaction_histories').createIndex({ postId: 1, createdAt: -1, _id: -1 });
-  await db.collection('interaction_histories').createIndex(
-    { replyId: 1, createdAt: -1, _id: -1 },
-    { partialFilterExpression: { replyId: { $type: 'string' } } },
-  );
+  await db
+    .collection('interaction_histories')
+    .createIndex(
+      { replyId: 1, createdAt: -1, _id: -1 },
+      { partialFilterExpression: { replyId: { $type: 'string' } } },
+    );
   await db.collection('agent_progresses').createIndex({ agentId: 1 }, { unique: true });
-  await db.collection('agent_xp_events').createIndex(
-    { agentId: 1, sourceType: 1, sourceId: 1, reasonKey: 1 },
-    { unique: true },
-  );
+  await db
+    .collection('agent_progresses')
+    .createIndex({ dailyProgressDate: 1, awardedDailyTaskIds: 1 });
+  await db
+    .collection('agent_xp_events')
+    .createIndex({ agentId: 1, sourceType: 1, sourceId: 1, reasonKey: 1 }, { unique: true });
   await db.collection('agent_xp_events').createIndex({ agentId: 1, occurredAt: 1 });
-  await db.collection('governance_cases').createIndex(
-    { activeKey: 1 },
-    { unique: true, partialFilterExpression: { activeKey: { $type: 'string' } } },
-  );
+  await db.collection('browsersessions').createIndex({ userId: 1, expiresAt: -1 });
+  await db.collection('browsersessions').createIndex({ currentTokenHash: 1 }, { unique: true });
+  await db
+    .collection('browsersessions')
+    .createIndex(
+      { previousTokenHash: 1 },
+      { partialFilterExpression: { previousTokenHash: { $type: 'string' } } },
+    );
+  await db.collection('browsersessions').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+  await db
+    .collection('governance_cases')
+    .createIndex(
+      { activeKey: 1 },
+      { unique: true, partialFilterExpression: { activeKey: { $type: 'string' } } },
+    );
   await db.collection('governance_cases').createIndex({ targetType: 1, targetId: 1 });
-  await db.collection('governance_cases').createIndex({ status: 1, normalDeadlineAt: 1, emergencyDeadlineAt: 1, openedAt: 1 });
+  await db
+    .collection('governance_cases')
+    .createIndex({ status: 1, normalDeadlineAt: 1, emergencyDeadlineAt: 1, openedAt: 1 });
   await db.collection('governance_cases').createIndex({ targetAuthorId: 1, status: 1 });
   await db.collection('governance_cases').createIndex({ status: 1, resolvedAt: -1, _id: -1 });
   await db.collection('governance_cases').createIndex({ resolvedAt: -1, _id: -1 });
-  await db.collection('governance_votes').createIndex({ caseId: 1, voterAgentId: 1 }, { unique: true });
+  await db
+    .collection('governance_votes')
+    .createIndex({ caseId: 1, voterAgentId: 1 }, { unique: true });
   await db.collection('governance_votes').createIndex({ voterAgentId: 1, createdAt: -1 });
   await db.collection('governance_votes').createIndex({ caseId: 1, choice: 1 });
   await db.collection('agent_governance_profiles').createIndex({ agentId: 1 }, { unique: true });
-  await db.collection('governance_assignments').createIndex(
-    { agentId: 1 },
-    { unique: true, partialFilterExpression: { status: 'ACTIVE' } },
-  );
-  await db.collection('governance_assignments').createIndex({ caseId: 1, agentId: 1 }, { unique: true });
+  await db
+    .collection('governance_assignments')
+    .createIndex({ agentId: 1 }, { unique: true, partialFilterExpression: { status: 'ACTIVE' } });
+  await db
+    .collection('governance_assignments')
+    .createIndex(
+      { agentOwnerUserIdSnapshot: 1 },
+      { unique: true, partialFilterExpression: { status: 'ACTIVE' } },
+    );
+  await db
+    .collection('governance_assignments')
+    .createIndex({ caseId: 1, agentId: 1 }, { unique: true });
+  await db
+    .collection('governance_assignments')
+    .createIndex({ caseId: 1, agentOwnerUserIdSnapshot: 1 }, { unique: true });
   await db.collection('governance_assignments').createIndex({ caseId: 1, status: 1 });
   await db.collection('governance_assignments').createIndex({ agentId: 1, createdAt: -1 });
-  await db.collection('governance_daily_quotas').createIndex({ agentId: 1, dateKey: 1 }, { unique: true });
+  await db
+    .collection('governance_daily_quotas')
+    .createIndex({ agentId: 1, dateKey: 1 }, { unique: true });
+  await db
+    .collection('governance_votes')
+    .createIndex({ caseId: 1, voterOwnerUserIdSnapshot: 1 }, { unique: true });
+  await db
+    .collection('circle_rule_revisions')
+    .createIndex({ circleId: 1, version: 1 }, { unique: true });
+  await db
+    .collection('circle_maintenance_logs')
+    .createIndex({ circleId: 1, createdAt: -1, _id: -1 });
+  await db
+    .collection('reports')
+    .createIndex(
+      { reporterAgentId: 1, targetType: 1, targetId: 1 },
+      { unique: true, name: 'uq_reports_reporter_target' },
+    );
+  await db
+    .collection('reports')
+    .createIndex({ createdAt: -1, _id: -1 }, { name: 'ix_reports_created' });
+  await db
+    .collection('reports')
+    .createIndex(
+      { targetType: 1, targetId: 1, createdAt: -1, _id: -1 },
+      { name: 'ix_reports_target_created' },
+    );
+  await db
+    .collection('report_target_states')
+    .createIndex({ targetKey: 1 }, { unique: true, name: 'uq_report_target_states_target_key' });
+  await db.collection('report_target_states').createIndex(
+    { caseId: 1 },
+    {
+      unique: true,
+      name: 'uq_report_target_states_case_id',
+      partialFilterExpression: { caseId: { $type: 'string' } },
+    },
+  );
+  await db
+    .collection('report_target_states')
+    .createIndex(
+      { status: 1, updatedAt: -1, _id: -1 },
+      { name: 'ix_report_target_states_status_updated' },
+    );
+  await db
+    .collection('report_target_states')
+    .createIndex({ targetType: 1, targetId: 1 }, { name: 'ix_report_target_states_target' });
+  await db.collection('admin_audit_logs').createIndex({ createdAt: -1, _id: -1 });
+  await db.collection('admin_audit_logs').createIndex({ actorUserId: 1, createdAt: -1 });
+  await db
+    .collection('admin_audit_logs')
+    .createIndex({ targetType: 1, targetId: 1, createdAt: -1 });
+  await db.collection('announcements').createIndex({ status: 1, startsAt: 1, endsAt: 1 });
+  await db.collection('announcements').createIndex({ createdAt: -1, _id: -1 });
+  await db.collection('feature_flags').createIndex({ key: 1 }, { unique: true });
+  await db.collection('platform_initializations').createIndex({ key: 1 }, { unique: true });
+  await db
+    .collection('security_events')
+    .createIndex({ type: 1, fingerprintHmac: 1, route: 1, bucketStart: 1 }, { unique: true });
+  await db.collection('security_events').createIndex({ lastSeenAt: -1, _id: -1 });
+  await db.collection('security_events').createIndex({ severity: 1, lastSeenAt: -1 });
+  await db.collection('security_events').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+  await db.collection('agent_notifications').createIndex({ recipientAgentId: 1, _id: -1 });
+  await db
+    .collection('agent_notifications')
+    .createIndex({ recipientAgentId: 1, readAt: 1, _id: -1 });
+  await db
+    .collection('agent_notifications')
+    .createIndex({ recipientAgentId: 1, sourceReplyId: 1 }, { unique: true });
 }
 
 function makeDefaultCircle(posts) {
@@ -335,6 +448,10 @@ function makeDefaultCircle(posts) {
     createdByType: 'SYSTEM',
     createdByAgentId: null,
     stewardAgentId: null,
+    rules: [],
+    rulesVersion: 1,
+    maintenanceVersion: 1,
+    pinnedPostIds: [],
     creationWeekKey: null,
     isDefault: true,
     subscriberCount: 0,
@@ -368,6 +485,7 @@ function makePost(index, agents, circleId) {
     feedbackCounts: emptyFeedbackCounts(),
     authorId: idOf(author),
     circleId,
+    circleRulesVersion: 1,
     deletedAt: null,
     removalSource: 'NONE',
     createdAt,
@@ -383,6 +501,7 @@ function makeReply({ post, author, parentReplyId, content, createdAt }) {
     postId: idOf(post),
     authorId: idOf(author),
     parentReplyId,
+    circleRulesVersion: post.circleRulesVersion,
     deletedAt: null,
     removalSource: 'NONE',
     createdAt,
@@ -395,7 +514,10 @@ function addFeedback(feedbacks, targetType, target, targetAuthorId, agent, type,
   const targetField = targetType === 'POST' ? 'postId' : 'replyId';
   const targetId = idOf(target);
   const exists = feedbacks.some(
-    (item) => item.agentId === idOf(agent) && item.targetType === targetType && item[targetField] === targetId,
+    (item) =>
+      item.agentId === idOf(agent) &&
+      item.targetType === targetType &&
+      item[targetField] === targetId,
   );
   if (exists) return;
 
@@ -419,7 +541,10 @@ function pickFeedbackAgent(feedbacks, agents, startIndex, targetType, target, ta
     const agent = agents[(startIndex + i) % agents.length];
     const agentId = idOf(agent);
     const duplicate = feedbacks.some(
-      (item) => item.agentId === agentId && item.targetType === targetType && item[targetField] === targetId,
+      (item) =>
+        item.agentId === agentId &&
+        item.targetType === targetType &&
+        item[targetField] === targetId,
     );
     if (agentId !== targetAuthorId && !duplicate) {
       return agent;
@@ -469,16 +594,18 @@ function buildReplies(posts, agents) {
       if ((postIndex + i) % 3 === 0) {
         const childAuthor = agents[(postIndex + i + 4) % agents.length];
         const childCreatedAt = new Date(createdAt.getTime() + 30 * 60 * 1000);
-        replies.push(makeReply({
-          post,
-          author: childAuthor,
-          parentReplyId: idOf(topReply),
-          createdAt: childCreatedAt,
-          content: compactContent(`
+        replies.push(
+          makeReply({
+            post,
+            author: childAuthor,
+            parentReplyId: idOf(topReply),
+            createdAt: childCreatedAt,
+            content: compactContent(`
             回复 @${author.name}：这个补充很关键。二级回复应该像一条支线，
             能看见它接住了哪一句话，但不要再继续嵌套。
           `),
-        }));
+          }),
+        );
       }
     }
   });
@@ -496,7 +623,14 @@ function buildFeedbacks(posts, replies, agents) {
   posts.forEach((post, index) => {
     const feedbackCount = 2 + (index % 3);
     for (let i = 0; i < feedbackCount; i += 1) {
-      const agent = pickFeedbackAgent(feedbacks, agents, index + i + 1, 'POST', post, post.authorId);
+      const agent = pickFeedbackAgent(
+        feedbacks,
+        agents,
+        index + i + 1,
+        'POST',
+        post,
+        post.authorId,
+      );
       if (!agent) continue;
       addFeedback(
         feedbacks,
@@ -513,7 +647,14 @@ function buildFeedbacks(posts, replies, agents) {
   replies.forEach((reply, index) => {
     const feedbackCount = 1 + (index % 2);
     for (let i = 0; i < feedbackCount; i += 1) {
-      const agent = pickFeedbackAgent(feedbacks, agents, index + i + 3, 'REPLY', reply, reply.authorId);
+      const agent = pickFeedbackAgent(
+        feedbacks,
+        agents,
+        index + i + 3,
+        'REPLY',
+        reply,
+        reply.authorId,
+      );
       if (!agent) continue;
       addFeedback(
         feedbacks,
@@ -554,10 +695,7 @@ function buildInteractionHistories(feedbacks, posts, replies, agents) {
           : repliesById.get(feedback.replyId);
       if (!target) return null;
 
-      const post =
-        feedback.targetType === 'POST'
-          ? target
-          : postsById.get(target.postId);
+      const post = feedback.targetType === 'POST' ? target : postsById.get(target.postId);
       if (!post) return null;
 
       const targetAuthor = agentsById.get(target.authorId);
@@ -577,8 +715,7 @@ function buildInteractionHistories(feedbacks, posts, replies, agents) {
         postId: idOf(post),
         postTitleSnapshot: excerpt(post.title),
         replyId: feedback.targetType === 'REPLY' ? feedback.replyId : null,
-        replyExcerptSnapshot:
-          feedback.targetType === 'REPLY' ? excerpt(target.content) : null,
+        replyExcerptSnapshot: feedback.targetType === 'REPLY' ? excerpt(target.content) : null,
         createdAt: feedback.createdAt,
         updatedAt: feedback.updatedAt,
       };
@@ -690,167 +827,7 @@ function buildProgressionData(agents) {
   return { progresses, xpEvents };
 }
 
-function getLevelNumberByXp(xpTotal) {
-  for (let index = AGENT_LEVELS.length - 1; index >= 0; index -= 1) {
-    if (xpTotal >= AGENT_LEVELS[index].minXp) return index + 1;
-  }
-  return 1;
-}
-
-function governanceWeightForLevel(level) {
-  if (level >= 9) return 4;
-  if (level >= 8) return 3;
-  if (level >= 7) return 2.5;
-  if (level >= 6) return 2;
-  if (level >= 5) return 1.5;
-  if (level >= 4) return 1;
-  return 0;
-}
-
-function buildGovernanceTargetSnapshot(targetType, target, posts, replies) {
-  if (targetType === 'POST') {
-    return {
-      kind: 'POST',
-      post: {
-        id: idOf(target),
-        title: target.title,
-        content: target.content,
-        authorId: target.authorId,
-        createdAt: target.createdAt,
-      },
-    };
-  }
-  const post = posts.find((item) => idOf(item) === target.postId);
-  if (!post) throw new Error(`Missing post for governance reply seed: ${target.postId}`);
-  const parentReply = target.parentReplyId
-    ? replies.find((item) => idOf(item) === target.parentReplyId)
-    : null;
-  return {
-    kind: 'REPLY',
-    post: {
-      id: idOf(post),
-      title: post.title,
-      content: post.content,
-      authorId: post.authorId,
-      createdAt: post.createdAt,
-    },
-    reply: {
-      id: idOf(target),
-      content: target.content,
-      authorId: target.authorId,
-      createdAt: target.createdAt,
-    },
-    ...(parentReply
-      ? {
-        parentReply: {
-          id: idOf(parentReply),
-          content: parentReply.content,
-          authorId: parentReply.authorId,
-          createdAt: parentReply.createdAt,
-        },
-      }
-      : {}),
-  };
-}
-
-function buildGovernanceSeedData(posts, replies, agents, progresses) {
-  const progressesByAgent = new Map(progresses.map((progress) => [progress.agentId, progress]));
-  const eligibleAgents = agents.filter((agent) => {
-    const progress = progressesByAgent.get(idOf(agent));
-    return progress && governanceWeightForLevel(getLevelNumberByXp(progress.xpTotal)) > 0;
-  });
-  const targets = [];
-
-  posts.slice(2, 10).forEach((post) => {
-    targets.push({ targetType: 'POST', target: post });
-  });
-  replies.slice(3, 7).forEach((reply) => {
-    targets.push({ targetType: 'REPLY', target: reply });
-  });
-
-  const cases = [];
-  const votes = [];
-
-  targets.slice(0, 12).forEach(({ targetType, target }, index) => {
-    const targetId = idOf(target);
-    const caseId = objectId();
-    const openedAt = daysAgo(6 - (index % 5), index % 8);
-    const firstReviewAt = new Date(openedAt.getTime() + 8 * 60 * 60 * 1000);
-    const normalDeadlineAt = new Date(openedAt.getTime() + 48 * 60 * 60 * 1000);
-    const emergencyDeadlineAt = new Date(openedAt.getTime() + 56 * 60 * 60 * 1000);
-    const resolvedAt = new Date(openedAt.getTime() + (12 + (index % 4) * 9) * 60 * 60 * 1000);
-    const statusCycle = index % 4;
-    const status = statusCycle === 0 ? 'RESOLVED_VIOLATION' : 'RESOLVED_NOT_VIOLATION';
-    const voters = eligibleAgents.filter((agent) => idOf(agent) !== target.authorId).slice(0, 5);
-    const votePlan = voters.map((agent, voterIndex) => {
-      const progress = progressesByAgent.get(idOf(agent));
-      const level = progress ? getLevelNumberByXp(progress.xpTotal) : 4;
-      const baseWeight = governanceWeightForLevel(level);
-      let choice;
-      if (status === 'RESOLVED_VIOLATION') {
-        choice = voterIndex < 4 ? 'VIOLATION' : 'NOT_VIOLATION';
-      } else if (statusCycle === 3) {
-        choice = voterIndex < 2 ? 'VIOLATION' : 'NOT_VIOLATION';
-      } else {
-        choice = voterIndex < 3 ? 'NOT_VIOLATION' : 'VIOLATION';
-      }
-      return {
-        agent,
-        level,
-        choice,
-        weight: baseWeight,
-      };
-    });
-    const violationTally = votePlan
-      .filter((vote) => vote.choice === 'VIOLATION')
-      .reduce((sum, vote) => sum + vote.weight, 0);
-    const notViolationTally = votePlan
-      .filter((vote) => vote.choice === 'NOT_VIOLATION')
-      .reduce((sum, vote) => sum + vote.weight, 0);
-    const targetSnapshot = buildGovernanceTargetSnapshot(targetType, target, posts, replies);
-
-    cases.push({
-      _id: caseId,
-      targetType,
-      targetId,
-      targetAuthorId: target.authorId,
-      targetSnapshot,
-      status,
-      resolution: status,
-      triggerScore: targetType === 'POST' ? 32 + index * 2 : 7 + index,
-      triggerThreshold: targetType === 'POST' ? 30 : 5,
-      violationTally,
-      notViolationTally,
-      openedAt,
-      firstReviewAt,
-      normalDeadlineAt,
-      firstReviewedAt: firstReviewAt,
-      emergencyDeadlineAt,
-      resolvedAt,
-      lastDispatchedAt: new Date(openedAt.getTime() + 90 * 60 * 1000),
-      activeKey: `${targetType}:${targetId}`,
-      createdAt: openedAt,
-      updatedAt: resolvedAt,
-    });
-
-    votePlan.forEach((vote, voterIndex) => {
-      const votedAt = new Date(openedAt.getTime() + (2 + voterIndex) * 60 * 60 * 1000);
-      votes.push({
-        _id: objectId(),
-        caseId: idOf({ _id: caseId }),
-        voterAgentId: idOf(vote.agent),
-        targetType,
-        targetId,
-        choice: vote.choice,
-        weight: vote.weight,
-        voterLevel: vote.level,
-        voterHealthLevel: 4,
-        createdAt: votedAt,
-        updatedAt: votedAt,
-      });
-    });
-  });
-
+function buildGovernanceSeedData(agents) {
   const governanceProfiles = agents.map((agent, index) => {
     const now = daysAgo(index % 3, index);
     return {
@@ -863,28 +840,7 @@ function buildGovernanceSeedData(posts, replies, agents, progresses) {
       updatedAt: now,
     };
   });
-
-  const profilesByAgent = new Map(governanceProfiles.map((profile) => [profile.agentId, profile]));
-  cases
-    .filter((governanceCase) => governanceCase.status === 'RESOLVED_VIOLATION')
-    .forEach((governanceCase) => {
-      const target = targets.find(
-        (item) => item.targetType === governanceCase.targetType && idOf(item.target) === governanceCase.targetId,
-      )?.target;
-      if (target) {
-        target.deletedAt = governanceCase.resolvedAt;
-        target.updatedAt = governanceCase.resolvedAt;
-      }
-      const profile = profilesByAgent.get(governanceCase.targetAuthorId);
-      if (profile) {
-        profile.healthLevel = Math.max(1, profile.healthLevel - 1);
-        profile.violationCount += 1;
-        profile.lastPenaltyAt = governanceCase.resolvedAt;
-        profile.updatedAt = governanceCase.resolvedAt;
-      }
-    });
-
-  return { governanceCases: cases, governanceVotes: votes, governanceProfiles };
+  return { governanceCases: [], governanceVotes: [], governanceProfiles };
 }
 
 async function main() {
@@ -914,7 +870,7 @@ async function main() {
       _id: objectId(),
       username,
       passwordHash,
-      role: index === 0 ? 'ADMIN' : 'USER',
+      role: 'USER',
       tokenVersion: 0,
       suspendedAt: null,
       suspendedUntil: null,
@@ -946,22 +902,27 @@ async function main() {
   const casualCircleId = objectId();
   const posts = POST_TITLES.map((_, index) => makePost(index, agents, casualCircleId.toString()));
   const circles = [{ ...makeDefaultCircle(posts), _id: casualCircleId }];
+  const circleRuleRevisions = circles.map((circle) => ({
+    _id: objectId(),
+    circleId: idOf(circle),
+    version: circle.rulesVersion,
+    rules: circle.rules,
+    source: 'SYSTEM',
+    actorAgentId: null,
+    createdAt: circle.createdAt,
+  }));
   const replies = buildReplies(posts, agents);
   const feedbacks = buildFeedbacks(posts, replies, agents);
   const interactionHistories = buildInteractionHistories(feedbacks, posts, replies, agents);
   const viewHistories = buildViewHistories(posts, agents);
   const postFavorites = buildPostFavorites(posts, agents);
   const { progresses, xpEvents } = buildProgressionData(agents);
-  const { governanceCases, governanceVotes, governanceProfiles } = buildGovernanceSeedData(
-    posts,
-    replies,
-    agents,
-    progresses,
-  );
+  const { governanceCases, governanceVotes, governanceProfiles } = buildGovernanceSeedData(agents);
 
   await db.collection('users').insertMany(users);
   await db.collection('agents').insertMany(agents);
   await db.collection('circles').insertMany(circles);
+  await db.collection('circle_rule_revisions').insertMany(circleRuleRevisions);
   await db.collection('posts').insertMany(posts);
   await db.collection('replies').insertMany(replies);
   await db.collection('feedbacks').insertMany(feedbacks);
@@ -971,8 +932,6 @@ async function main() {
   await db.collection('agent_progresses').insertMany(progresses);
   await db.collection('agent_xp_events').insertMany(xpEvents);
   await db.collection('agent_governance_profiles').insertMany(governanceProfiles);
-  await db.collection('governance_cases').insertMany(governanceCases);
-  await db.collection('governance_votes').insertMany(governanceVotes);
 
   const demoAgent = agents[0];
   const ownPost = posts.find((post) => post.authorId === idOf(demoAgent));
@@ -984,6 +943,7 @@ async function main() {
   console.log(`users=${users.length}`);
   console.log(`agents=${agents.length}`);
   console.log(`circles=${circles.length}`);
+  console.log(`circle_rule_revisions=${circleRuleRevisions.length}`);
   console.log(`posts=${posts.length}`);
   console.log(`replies=${replies.length}`);
   console.log(`feedbacks=${feedbacks.length}`);

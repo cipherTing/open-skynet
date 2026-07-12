@@ -28,7 +28,7 @@ const tabItems: Array<{ icon: typeof Radio; labelKey: string; section: SidebarSe
 ];
 
 const navButtonClass = (isActive: boolean) =>
-  `relative flex w-full flex-col items-center justify-center gap-1 rounded-lg py-2.5 transition-all duration-200 ${
+  `relative flex w-full shrink-0 flex-col items-center justify-center gap-1 rounded-lg py-2.5 transition-all duration-200 ${
     isActive ? 'bg-copper/10 text-copper' : 'text-ink-muted hover:bg-copper/5 hover:text-copper'
   }`;
 
@@ -60,14 +60,14 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
 
   return (
     <>
-      <aside className="absolute inset-y-0 left-0 z-40 flex w-[68px] flex-col items-center overflow-x-hidden overflow-y-auto py-4">
+      <aside className="absolute inset-y-0 left-0 z-40 flex w-[68px] flex-col items-center overflow-hidden py-4">
         <div className="absolute inset-0 border-r border-border-subtle bg-void-deep" />
 
-        <div className="relative flex h-full w-full flex-col items-center px-0">
+        <div className="relative flex h-full min-h-0 w-full flex-col items-center px-0">
           {onSectionChange ? (
             <button
               type="button"
-              className="group mb-4"
+              className="group mb-4 flex-none"
               aria-label={t('sidebar.feed')}
               onClick={() => onSectionChange('feed')}
             >
@@ -78,7 +78,7 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
           ) : (
             <Link
               href="/workspace"
-              className="group mb-4"
+              className="group mb-4 flex-none"
               aria-label={t('sidebar.feed')}
               onClick={() => setHomeActiveSection('feed')}
             >
@@ -88,9 +88,12 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
             </Link>
           )}
 
-          <div className="deck-divider mb-3 w-10" />
+          <div className="deck-divider mb-3 w-10 flex-none" />
 
-          <nav className="flex w-full flex-1 flex-col items-center gap-1" aria-label={t('sidebar.navigation')}>
+          <nav
+            className="skynet-auto-hide-scrollbar flex min-h-0 w-full flex-1 flex-col items-center gap-1 overflow-x-hidden overflow-y-auto overscroll-contain"
+            aria-label={t('sidebar.navigation')}
+          >
             {tabItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeSection === item.section;
@@ -145,9 +148,9 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
             })}
           </nav>
 
-          <div className="deck-divider mb-3 w-10" />
+          <div className="deck-divider mb-3 w-10 flex-none" />
 
-          <div className="flex w-full flex-col items-center gap-2 pb-2">
+          <div className="flex w-full flex-none flex-col items-center gap-2 pb-2">
             {isAuthenticated && agent ? (
               <UserDropdown agent={agent} onLogout={() => setShowLogoutConfirm(true)} />
             ) : (
@@ -166,9 +169,6 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
             )}
           </div>
 
-          <div className="mb-1 mt-auto">
-            <div className="h-2 w-2 rounded-full bg-moss/60 shadow-[0_0_4px_rgba(74,222,128,0.4)]" />
-          </div>
         </div>
       </aside>
 

@@ -2,7 +2,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import net from 'node:net';
-import { createInterface } from 'node:readline/promises';
 import process from 'node:process';
 
 const ENV_PATH = '.env.dev';
@@ -19,7 +18,10 @@ function parseEnvFile(path) {
     if (equalIndex === -1) continue;
     const key = line.slice(0, equalIndex).trim();
     let value = line.slice(equalIndex + 1).trim();
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
       value = value.slice(1, -1);
     }
     env[key] = value;
@@ -74,7 +76,12 @@ function assertLocalHttpUrl(value, expectedPort, expectedPath, name) {
   }
 
   const expectedPathname = expectedPath || '/';
-  if (url.protocol !== 'http:' || !LOCAL_HOSTS.has(url.hostname) || url.port !== String(expectedPort) || url.pathname !== expectedPathname) {
+  if (
+    url.protocol !== 'http:' ||
+    !LOCAL_HOSTS.has(url.hostname) ||
+    url.port !== String(expectedPort) ||
+    url.pathname !== expectedPathname
+  ) {
     throw new Error(`${name} 必须指向本机 ${expectedPort}${expectedPath}`);
   }
 }
@@ -87,7 +94,11 @@ function assertLocalMongoUri(value, expectedPort) {
     throw new Error('MONGODB_URI 必须是合法 MongoDB URI');
   }
 
-  if (url.protocol !== 'mongodb:' || !LOCAL_HOSTS.has(url.hostname) || url.port !== String(expectedPort)) {
+  if (
+    url.protocol !== 'mongodb:' ||
+    !LOCAL_HOSTS.has(url.hostname) ||
+    url.port !== String(expectedPort)
+  ) {
     throw new Error(`MONGODB_URI 必须指向本机 MongoDB ${expectedPort}`);
   }
 }
@@ -114,6 +125,22 @@ function isComposeServiceRunning(serviceName) {
     return output.split(/\r?\n/).includes(serviceName);
   } catch {
     return false;
+  }
+}
+
+function assertComposeWaitSupport() {
+  let help;
+  try {
+    help = execFileSync('docker', ['compose', 'up', '--help'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+  } catch {
+    throw new Error('Docker Compose 不可用，请先安装或启动 Docker');
+  }
+
+  if (!help.includes('--wait') || !help.includes('--wait-timeout')) {
+    throw new Error('Docker Compose 版本过旧，请升级到支持 --wait 和 --wait-timeout 的版本');
   }
 }
 
@@ -145,11 +172,6 @@ function getComposePublishedPort(serviceName, containerPort) {
 function fail(message) {
   console.error(`[dev:check] ${message}`);
   process.exit(1);
-}
-
-function canPrompt() {
-  const ci = String(process.env.CI ?? '').toLowerCase();
-  return Boolean(process.stdin.isTTY && process.stdout.isTTY && ci !== 'true' && ci !== '1');
 }
 
 function queryPortListeners(port) {
@@ -186,109 +208,18 @@ function queryPortListeners(port) {
   return Array.from(unique.values());
 }
 
-function getParentPid(pid) {
-  try {
-    const output = execFileSync('ps', ['-o', 'ppid=', '-p', String(pid)], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim();
-    const parentPid = Number(output);
-    return Number.isInteger(parentPid) ? parentPid : null;
-  } catch {
-    return null;
-  }
-}
-
-function getCurrentAncestorPids() {
-  const ancestors = new Set([process.pid]);
-  let current = process.ppid;
-  for (let depth = 0; current && depth < 12; depth += 1) {
-    ancestors.add(current);
-    current = getParentPid(current);
-  }
-  return ancestors;
-}
-
-const DANGEROUS_COMMAND_PREFIXES = ['docker', 'com.docker', 'containerd', 'launchd', 'kernel_task'];
-
-function isUnsafeListener(listener, currentAncestorPids) {
-  if (!listener.command) return true;
-  if (listener.pid <= 1) return true;
-  if (currentAncestorPids.has(listener.pid)) return true;
-  const command = listener.command.toLowerCase();
-  return DANGEROUS_COMMAND_PREFIXES.some((prefix) => command === prefix || command.startsWith(`${prefix}.`) || command.startsWith(`${prefix}-`));
-}
-
 function formatListeners(listeners) {
   return listeners.map(({ pid, command }) => `${pid} (${command})`).join(', ');
 }
 
-function oldPortConflictMessage(name, port) {
-  return `${name}=${port} 已被占用，请停止占用进程或修改 ${ENV_PATH}`;
-}
-
-async function askYesNo(question) {
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-  try {
-    const answer = (await rl.question(question)).trim().toLowerCase();
-    return answer === 'y' || answer === 'yes';
-  } finally {
-    rl.close();
-  }
-}
-
-async function waitForPortRelease(port, timeoutMs = 3000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (!(await isPortOpen(port))) return true;
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-  return !(await isPortOpen(port));
-}
-
-async function maybeTerminatePortListeners(name, port) {
+async function assertPortAvailable(name, port) {
   if (!(await isPortOpen(port))) return;
 
-  const failMessage = oldPortConflictMessage(name, port);
-  if (!canPrompt()) {
-    throw new Error(failMessage);
-  }
-
-  const initialListeners = queryPortListeners(port);
-  const currentAncestorPids = getCurrentAncestorPids();
-  if (initialListeners.length === 0 || initialListeners.some((listener) => isUnsafeListener(listener, currentAncestorPids))) {
-    throw new Error(failMessage);
-  }
-
-  console.error(`[dev:check] ${name}=${port} 已被占用：${formatListeners(initialListeners)}`);
-  const confirmed = await askYesNo(`[dev:check] 是否终止这些进程并继续？ [y/N] `);
-  if (!confirmed) {
-    throw new Error(failMessage);
-  }
-
   const listeners = queryPortListeners(port);
-  if (listeners.length === 0) return;
-  if (listeners.some((listener) => isUnsafeListener(listener, currentAncestorPids))) {
-    throw new Error(`${failMessage}。端口占用进程已变化，请手动检查`);
-  }
-
-  for (const listener of listeners) {
-    try {
-      process.kill(listener.pid, 'SIGTERM');
-    } catch (error) {
-      if (error && typeof error === 'object' && 'code' in error && error.code === 'ESRCH') continue;
-      if (error && typeof error === 'object' && 'code' in error && error.code === 'EPERM') {
-        throw new Error(`${failMessage}。没有权限终止 ${listener.pid} (${listener.command})`);
-      }
-      throw error;
-    }
-  }
-
-  if (!(await waitForPortRelease(port))) {
-    throw new Error(`${failMessage}。已发送 SIGTERM，但端口仍未释放，请手动处理：${formatListeners(queryPortListeners(port))}`);
-  }
-
-  console.error(`[dev:check] ${name}=${port} 已释放`);
+  const listenerSummary = listeners.length > 0 ? `：${formatListeners(listeners)}` : '';
+  throw new Error(
+    `${name}=${port} 已被占用${listenerSummary}。如果开发服务已经运行，请先在原终端按 Ctrl+C，再重新启动`,
+  );
 }
 
 if (!existsSync(ENV_PATH)) {
@@ -296,6 +227,7 @@ if (!existsSync(ENV_PATH)) {
 }
 
 try {
+  assertComposeWaitSupport();
   const env = parseEnvFile(ENV_PATH);
   const ports = {
     API_PORT: readPort(env, 'API_PORT'),
@@ -319,7 +251,7 @@ try {
   assertLocalHttpUrl(env.CORS_ORIGIN, ports.WEB_PORT, '', 'CORS_ORIGIN');
   assertLocalHttpUrl(env.NEXT_PUBLIC_API_URL, ports.API_PORT, '/api/v1', 'NEXT_PUBLIC_API_URL');
 
-  await maybeTerminatePortListeners('WEB_PORT', ports.WEB_PORT);
+  await assertPortAvailable('WEB_PORT', ports.WEB_PORT);
 
   const composePorts = [
     ['API_PORT', 'api', 8081],

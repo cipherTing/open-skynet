@@ -1,31 +1,41 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Activity,
+  ArrowLeft,
+  Ban,
   Bot,
   CircleDot,
+  Ellipsis,
   FileText,
   Flag,
   History,
-  LogOut,
+  HeartPulse,
+  KeyRound,
   Megaphone,
   RefreshCw,
+  RotateCcw,
   Scale,
   Search,
   ShieldAlert,
   ShieldCheck,
   ToggleLeft,
+  TrendingUp,
+  type LucideIcon,
   X,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/contexts/AuthContext';
 import { ErrorState, LoadingScreen } from '@/components/ui/LoadingState';
 import { useToast } from '@/components/ui/SignalToast';
+import { PortalTooltip } from '@/components/ui/FloatingPortal';
 import {
   adminApi,
   type AdminAgentItem,
@@ -33,7 +43,6 @@ import {
   type AdminContentItem,
   type AdminSection,
 } from '@/lib/admin-api';
-import { appEvents } from '@/lib/events';
 import {
   ActionButton,
   AdminError,
@@ -43,6 +52,7 @@ import {
   StatusText,
   formatAdminTime,
 } from './AdminPrimitives';
+import { AdminSelect } from './AdminSelect';
 
 const AnnouncementsSection = dynamic(
   () => import('./AdminSystemSections').then((module) => module.AnnouncementsSection),
@@ -81,12 +91,12 @@ const SECTION_GROUPS: Array<{
     items: [
       { id: 'announcements', icon: Megaphone },
       { id: 'featureFlags', icon: ToggleLeft },
-      { id: 'security', icon: ShieldAlert },
       { id: 'audit', icon: History },
     ],
   },
 ];
-const SECTION_ITEMS = SECTION_GROUPS.flatMap((group) => group.items);
+const NAV_SECTION_ITEMS = SECTION_GROUPS.flatMap((group) => group.items);
+const SECTION_ITEMS = [...NAV_SECTION_ITEMS, { id: 'security' as const, icon: ShieldAlert }];
 
 type AdminAction =
   | { kind: 'suspend'; target: AdminAgentItem }
@@ -110,26 +120,9 @@ export function AdminConsole() {
   const { t } = useTranslation();
   const { user, isLoading, isUnavailable, isAuthenticated, retrySession } = useAuth();
   const router = useRouter();
-  const queryClient = useQueryClient();
-  const [adminSessionExpired, setAdminSessionExpired] = useState(false);
   const searchParams = useSearchParams();
   const sectionParam = searchParams.get('section');
   const section: AdminSection = isAdminSection(sectionParam) ? sectionParam : 'overview';
-  const adminSessionQuery = useQuery({
-    queryKey: ['admin', 'session'],
-    queryFn: adminApi.session,
-    enabled: Boolean(user?.role === 'ADMIN'),
-    retry: false,
-  });
-
-  useEffect(() => {
-    const handleExpired = () => {
-      setAdminSessionExpired(true);
-      queryClient.removeQueries({ queryKey: ['admin'] });
-    };
-    appEvents.on('admin:expired', handleExpired);
-    return () => appEvents.off('admin:expired', handleExpired);
-  }, [queryClient]);
 
   useEffect(() => {
     if (!isLoading && !isUnavailable && !isAuthenticated) {
@@ -151,24 +144,6 @@ export function AdminConsole() {
   if (user?.role !== 'ADMIN') {
     return <AdminAccessDenied />;
   }
-  if (adminSessionExpired) {
-    return (
-      <AdminSessionGate
-        onReady={() => {
-          setAdminSessionExpired(false);
-          void adminSessionQuery.refetch();
-        }}
-      />
-    );
-  }
-  if (adminSessionQuery.isPending || (adminSessionQuery.isSuccess && !adminApi.hasCsrfToken())) {
-    if (adminSessionQuery.isPending) return <LoadingScreen />;
-    return <AdminSessionGate onReady={() => void adminSessionQuery.refetch()} />;
-  }
-  if (adminSessionQuery.isError) {
-    return <AdminSessionGate onReady={() => void adminSessionQuery.refetch()} />;
-  }
-
   return <AdminWorkspace section={section} />;
 }
 
@@ -184,62 +159,11 @@ function AdminAccessDenied() {
   );
 }
 
-function AdminSessionGate({ onReady }: { onReady: () => void }) {
-  const { t } = useTranslation();
-  const [password, setPassword] = useState('');
-  const mutation = useMutation({
-    mutationFn: () => adminApi.createSession(password),
-    onSuccess: onReady,
-  });
-  return (
-    <div className="flex min-h-screen items-center justify-center px-5">
-      <form
-        className="w-full max-w-md border-y border-border-subtle py-8"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (password) mutation.mutate();
-        }}
-      >
-        <div className="mb-6 flex items-center gap-3">
-          <ShieldCheck className="h-6 w-6 text-copper" />
-          <div>
-            <h1 className="text-lg font-bold text-ink-primary">{t('admin.sessionTitle')}</h1>
-            <p className="mt-1 text-xs text-ink-muted">{t('admin.sessionHint')}</p>
-          </div>
-        </div>
-        <input
-          type="password"
-          autoComplete="current-password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          placeholder={t('admin.password')}
-          className="skynet-input w-full rounded-md px-3 py-2.5 text-sm"
-        />
-        {mutation.isError && <p className="mt-3 text-xs text-ochre">{t('admin.sessionFailed')}</p>}
-        <button
-          type="submit"
-          disabled={!password || mutation.isPending}
-          className="mt-5 inline-flex h-10 items-center justify-center rounded-md bg-copper px-5 text-sm font-bold text-void transition-colors hover:bg-copper-dim disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {mutation.isPending ? t('admin.verifying') : t('admin.enter')}
-        </button>
-      </form>
-    </div>
-  );
-}
-
 function AdminWorkspace({ section }: { section: AdminSection }) {
   const { t } = useTranslation();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [action, setAction] = useState<AdminAction | null>(null);
-  const logoutMutation = useMutation({
-    mutationFn: adminApi.logout,
-    onSuccess: () => {
-      queryClient.removeQueries({ queryKey: ['admin'] });
-      router.replace('/workspace');
-    },
-  });
 
   return (
     <div className="flex min-h-dvh bg-void">
@@ -274,14 +198,13 @@ function AdminWorkspace({ section }: { section: AdminSection }) {
             </div>
           ))}
         </nav>
-        <button
-          type="button"
-          onClick={() => logoutMutation.mutate()}
+        <Link
+          href="/workspace"
           className="m-3 flex items-center gap-3 rounded-md border border-border-subtle px-3 py-2 text-sm text-ink-muted hover:border-ochre/30 hover:text-ochre"
         >
-          <LogOut className="h-4 w-4" />
-          {t('admin.logout')}
-        </button>
+          <ArrowLeft className="h-4 w-4" />
+          {t('admin.backHome')}
+        </Link>
       </aside>
 
       <main className="min-w-0 flex-1 lg:ml-56">
@@ -301,7 +224,7 @@ function AdminWorkspace({ section }: { section: AdminSection }) {
             </button>
           </div>
           <nav className="mt-3 flex gap-1 overflow-x-auto lg:hidden">
-            {SECTION_ITEMS.map(({ id }) => (
+            {NAV_SECTION_ITEMS.map(({ id }) => (
               <button
                 key={id}
                 type="button"
@@ -387,6 +310,7 @@ function AgentsSection({ onAction }: { onAction: (action: AdminAction) => void }
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
+  const actionFromMenuRef = useRef(false);
   const query = useQuery({
     queryKey: ['admin', 'agents', page, search, status],
     queryFn: () => adminApi.agents({ page, pageSize: 20, search, status }),
@@ -394,15 +318,20 @@ function AgentsSection({ onAction }: { onAction: (action: AdminAction) => void }
   return (
     <section>
       <SectionToolbar title={t('admin.agents.title')} search={search} onSearch={(value) => { setSearch(value); setPage(1); }}>
-        <select value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }} className="skynet-input rounded-md px-3 py-2 text-xs">
-          <option value="">{t('admin.agents.all')}</option>
-          <option value="active">{t('admin.agents.active')}</option>
-          <option value="suspended">{t('admin.agents.suspended')}</option>
-        </select>
+        <AdminSelect
+          value={status}
+          ariaLabel={t('admin.agents.statusFilter')}
+          options={[
+            { value: '', label: t('admin.agents.all') },
+            { value: 'active', label: t('admin.agents.active') },
+            { value: 'suspended', label: t('admin.agents.suspended') },
+          ]}
+          onValueChange={(value) => { setStatus(value); setPage(1); }}
+        />
       </SectionToolbar>
       {query.isPending ? <AdminLoading /> : query.isError ? <AdminError retry={() => void query.refetch()} /> : (
         <>
-          <AdminTable headers={['Agent', t('admin.agents.owner'), t('admin.agents.level'), t('admin.agents.health'), t('admin.agents.key'), t('admin.agents.actions')] }>
+          <AdminTable headers={['Agent', t('admin.agents.owner'), t('admin.agents.level'), t('admin.agents.health'), t('admin.agents.key'), t('admin.agents.actions')] } centeredColumns={[5]}>
             {query.data.items.map((agent) => (
               <tr key={agent.id} className="border-b border-border-subtle align-top hover:bg-surface-1/40">
                 <td className="px-3 py-3"><div className="font-medium text-ink-primary">{agent.name}</div><div className="mt-1 max-w-xs truncate text-xs text-ink-muted">{agent.description}</div></td>
@@ -410,12 +339,67 @@ function AgentsSection({ onAction }: { onAction: (action: AdminAction) => void }
                 <td className="px-3 py-3 font-mono text-sm text-ink-secondary">Lv{agent.level} / {agent.xpTotal}</td>
                 <td className="px-3 py-3"><StatusText warning={Boolean(agent.suspendedAt)}>{agent.suspendedAt ? t('admin.agents.suspended') : `${agent.healthLevel}/4`}</StatusText></td>
                 <td className="px-3 py-3 font-mono text-xs text-ink-muted">{agent.keyPrefix ? `${agent.keyPrefix}...${agent.keyLastFour}` : t('admin.agents.noKey')}</td>
-                <td className="px-3 py-3"><div className="flex flex-wrap gap-1.5">
-                  <ActionButton onClick={() => onAction({ kind: agent.suspendedAt ? 'unsuspend' : 'suspend', target: agent })}>{agent.suspendedAt ? t('admin.agents.unsuspend') : t('admin.agents.suspend')}</ActionButton>
-                  {agent.keyPrefix && <ActionButton onClick={() => onAction({ kind: 'revokeKey', target: agent })}>{t('admin.agents.revokeKey')}</ActionButton>}
-                  <ActionButton onClick={() => onAction({ kind: 'adjustXp', target: agent })}>{t('admin.agents.adjustXp')}</ActionButton>
-                  <ActionButton onClick={() => onAction({ kind: 'adjustHealth', target: agent })}>{t('admin.agents.adjustHealth')}</ActionButton>
-                </div></td>
+                <td className="px-3 py-3">
+                  <div className="flex items-center justify-center gap-1.5">
+                    <AgentActionIcon
+                      label={agent.suspendedAt ? t('admin.agents.unsuspend') : t('admin.agents.suspend')}
+                      icon={agent.suspendedAt ? RotateCcw : Ban}
+                      warning={!agent.suspendedAt}
+                      onClick={() => onAction({ kind: agent.suspendedAt ? 'unsuspend' : 'suspend', target: agent })}
+                    />
+                    <AgentActionIcon
+                      label={t('admin.agents.adjustHealth')}
+                      icon={HeartPulse}
+                      onClick={() => onAction({ kind: 'adjustHealth', target: agent })}
+                    />
+                    <DropdownMenu.Root>
+                      <PortalTooltip content={t('admin.agents.moreActions')} placement="top">
+                        <DropdownMenu.Trigger asChild>
+                          <button
+                            type="button"
+                            aria-label={t('admin.agents.moreActions')}
+                            className="flex h-8 w-8 items-center justify-center rounded-md border border-border-subtle text-ink-muted transition-colors hover:border-border-accent hover:bg-copper/10 hover:text-copper"
+                          >
+                            <Ellipsis className="h-4 w-4" />
+                          </button>
+                        </DropdownMenu.Trigger>
+                      </PortalTooltip>
+                      <DropdownMenu.Portal>
+                        <DropdownMenu.Content
+                          align="end"
+                          sideOffset={6}
+                          collisionPadding={12}
+                          onCloseAutoFocus={(event) => {
+                            if (!actionFromMenuRef.current) return;
+                            actionFromMenuRef.current = false;
+                            event.preventDefault();
+                          }}
+                          className="skynet-floating-content z-[220] min-w-44 rounded-md border border-border-default bg-void-deep p-1 shadow-[var(--shadow-popover)]"
+                        >
+                          <AgentMenuItem
+                            icon={TrendingUp}
+                            label={t('admin.agents.adjustXp')}
+                            onSelect={() => {
+                              actionFromMenuRef.current = true;
+                              onAction({ kind: 'adjustXp', target: agent });
+                            }}
+                          />
+                          {agent.keyPrefix && (
+                            <AgentMenuItem
+                              icon={KeyRound}
+                              label={t('admin.agents.revokeKey')}
+                              warning
+                              onSelect={() => {
+                                actionFromMenuRef.current = true;
+                                onAction({ kind: 'revokeKey', target: agent });
+                              }}
+                            />
+                          )}
+                        </DropdownMenu.Content>
+                      </DropdownMenu.Portal>
+                    </DropdownMenu.Root>
+                  </div>
+                </td>
               </tr>
             ))}
           </AdminTable>
@@ -423,6 +407,61 @@ function AgentsSection({ onAction }: { onAction: (action: AdminAction) => void }
         </>
       )}
     </section>
+  );
+}
+
+function AgentActionIcon({
+  label,
+  icon: Icon,
+  warning = false,
+  onClick,
+}: {
+  label: string;
+  icon: LucideIcon;
+  warning?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <PortalTooltip content={label} placement="top">
+      <button
+        type="button"
+        aria-label={label}
+        onClick={onClick}
+        className={`flex h-8 w-8 items-center justify-center rounded-md border transition-colors ${
+          warning
+            ? 'border-ochre/20 text-ochre hover:border-ochre/40 hover:bg-ochre/10'
+            : 'border-border-subtle text-ink-muted hover:border-border-accent hover:bg-copper/10 hover:text-copper'
+        }`}
+      >
+        <Icon className="h-4 w-4" />
+      </button>
+    </PortalTooltip>
+  );
+}
+
+function AgentMenuItem({
+  label,
+  icon: Icon,
+  warning = false,
+  onSelect,
+}: {
+  label: string;
+  icon: LucideIcon;
+  warning?: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <DropdownMenu.Item
+      onSelect={onSelect}
+      className={`flex h-9 cursor-default select-none items-center gap-2.5 rounded px-2.5 text-xs outline-none data-[highlighted]:bg-copper/10 ${
+        warning
+          ? 'text-ochre data-[highlighted]:text-ochre'
+          : 'text-ink-secondary data-[highlighted]:text-copper'
+      }`}
+    >
+      <Icon className="h-3.5 w-3.5" />
+      {label}
+    </DropdownMenu.Item>
   );
 }
 
@@ -436,8 +475,8 @@ function ContentSection({ onAction }: { onAction: (action: AdminAction) => void 
   return (
     <section>
       <SectionToolbar title={t('admin.content.title')} search={search} onSearch={(value) => { setSearch(value); setPage(1); }}>
-        <select value={type} onChange={(event) => { setType(event.target.value === 'REPLY' ? 'REPLY' : 'POST'); setPage(1); }} className="skynet-input rounded-md px-3 py-2 text-xs"><option value="POST">{t('admin.content.posts')}</option><option value="REPLY">{t('admin.content.replies')}</option></select>
-        <select value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }} className="skynet-input rounded-md px-3 py-2 text-xs"><option value="">{t('admin.content.all')}</option><option value="visible">{t('admin.content.visible')}</option><option value="removed">{t('admin.content.removed')}</option></select>
+        <AdminSelect value={type} ariaLabel={t('admin.content.typeFilter')} options={[{ value: 'POST', label: t('admin.content.posts') }, { value: 'REPLY', label: t('admin.content.replies') }]} onValueChange={(value) => { setType(value === 'REPLY' ? 'REPLY' : 'POST'); setPage(1); }} />
+        <AdminSelect value={status} ariaLabel={t('admin.content.statusFilter')} options={[{ value: '', label: t('admin.content.all') }, { value: 'visible', label: t('admin.content.visible') }, { value: 'removed', label: t('admin.content.removed') }]} onValueChange={(value) => { setStatus(value); setPage(1); }} />
       </SectionToolbar>
       {query.isPending ? <AdminLoading /> : query.isError ? <AdminError retry={() => void query.refetch()} /> : (
         <><AdminTable headers={[type, t('admin.governance.target'), t('admin.governance.status'), t('admin.agents.actions')] }>
@@ -515,13 +554,12 @@ function GovernanceSection() {
     <section>
       <div className="mb-5 flex items-center justify-between gap-3">
         <h2 className="text-sm font-bold text-ink-primary">{t('admin.governance.title')}</h2>
-        <select value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }} className="skynet-input rounded-md px-3 py-2 text-xs">
-          <option value="">{t('admin.governance.all')}</option>
-          <option value="OPEN">OPEN</option>
-          <option value="EMERGENCY">EMERGENCY</option>
-          <option value="RESOLVED_VIOLATION">RESOLVED_VIOLATION</option>
-          <option value="RESOLVED_NOT_VIOLATION">RESOLVED_NOT_VIOLATION</option>
-        </select>
+        <AdminSelect
+          value={status}
+          ariaLabel={t('admin.governance.statusFilter')}
+          options={['', 'OPEN', 'EMERGENCY', 'RESOLVED_VIOLATION', 'RESOLVED_NOT_VIOLATION'].map((value) => ({ value, label: value || t('admin.governance.all') }))}
+          onValueChange={(value) => { setStatus(value); setPage(1); }}
+        />
       </div>
       {query.isPending ? (
         <AdminLoading />
@@ -556,7 +594,16 @@ function AuditSection() {
   });
   return (
     <section>
-      <h2 className="mb-5 text-sm font-bold text-ink-primary">{t('admin.audit.title')}</h2>
+      <div className="mb-5 flex items-center justify-between gap-3">
+        <h2 className="text-sm font-bold text-ink-primary">{t('admin.audit.title')}</h2>
+        <Link
+          href="/admin?section=security"
+          className="inline-flex items-center gap-2 rounded-md border border-border-subtle px-3 py-2 text-xs text-ink-muted transition-colors hover:border-border-accent hover:text-copper"
+        >
+          <ShieldAlert className="h-3.5 w-3.5" />
+          {t('admin.audit.securityEvents')}
+        </Link>
+      </div>
       {query.isPending ? (
         <AdminLoading />
       ) : query.isError ? (
@@ -588,12 +635,20 @@ function AdminActionDialog({ action, onClose }: { action: AdminAction; onClose: 
   const [reason, setReason] = useState('');
   const [extra, setExtra] = useState('');
   const [publicReason, setPublicReason] = useState('');
+  const xpRequestRef = useRef<{ signature: string; idempotencyKey: string } | null>(null);
   const mutation = useMutation({
     mutationFn: async () => {
       if (action.kind === 'suspend') return adminApi.suspendAgent(action.target.id, { reason, ...(extra ? { suspendedUntil: new Date(extra).toISOString() } : {}) });
       if (action.kind === 'unsuspend') return adminApi.unsuspendAgent(action.target.id, reason);
       if (action.kind === 'revokeKey') return adminApi.revokeAgentKey(action.target.id, reason);
-      if (action.kind === 'adjustXp') return adminApi.adjustAgentXp(action.target.id, { reason, delta: Number(extra), idempotencyKey: crypto.randomUUID() });
+      if (action.kind === 'adjustXp') {
+        const delta = Number(extra);
+        const signature = JSON.stringify([action.target.id, reason, delta]);
+        if (xpRequestRef.current?.signature !== signature) {
+          xpRequestRef.current = { signature, idempotencyKey: crypto.randomUUID() };
+        }
+        return adminApi.adjustAgentXp(action.target.id, { reason, delta, idempotencyKey: xpRequestRef.current.idempotencyKey });
+      }
       if (action.kind === 'adjustHealth') return adminApi.adjustAgentHealth(action.target.id, { reason, healthLevel: Number(extra) });
       if (action.kind === 'removeContent') return adminApi.removeContent(action.contentType, recordId(action.target), reason);
       if (action.kind === 'restoreContent') return adminApi.restoreContent(action.contentType, recordId(action.target), reason);
@@ -624,8 +679,8 @@ function AdminActionDialog({ action, onClose }: { action: AdminAction; onClose: 
       }}
     >
       <AlertDialog.Portal>
-        <AlertDialog.Overlay className="fixed inset-0 z-[190] bg-void/75 backdrop-blur-sm" />
-        <AlertDialog.Content className="fixed left-1/2 top-1/2 z-[200] w-[min(calc(100vw-32px),440px)] -translate-x-1/2 -translate-y-1/2 rounded-md border border-border-subtle bg-void-deep p-5 shadow-2xl">
+        <AlertDialog.Overlay className="skynet-dialog-overlay fixed inset-0 z-[190] bg-void/75 backdrop-blur-sm" />
+        <AlertDialog.Content className="skynet-dialog-content fixed left-1/2 top-1/2 z-[200] max-h-[calc(100dvh-32px)] w-[min(calc(100vw-32px),440px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-md border border-border-subtle bg-void-deep p-5 shadow-2xl">
           <div className="mb-5 flex items-start justify-between gap-4">
             <div>
               <div className="text-xs font-bold uppercase tracking-deck-normal text-ochre">
