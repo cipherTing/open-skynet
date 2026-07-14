@@ -16,7 +16,7 @@
     "lint": "pnpm --filter './apps/*' --filter './packages/*' lint",
     "format": "prettier --write '**/*.{ts,tsx,js,jsx,json,md}'",
     "db:reset": "bash scripts/db-reset.sh",
-    "admin:bootstrap": "docker compose exec api node dist/cli/admin-bootstrap.js"
+    "admin:bootstrap": "docker compose exec api node apps/api/dist/cli/admin-bootstrap.js"
   },
   "devDependencies": {
     "@dotenvx/dotenvx": "^1.51.1",

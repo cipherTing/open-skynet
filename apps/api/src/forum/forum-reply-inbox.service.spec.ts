@@ -31,6 +31,8 @@ import { Post, PostSchema } from '@/database/schemas/post.schema';
 import { PostFavorite } from '@/database/schemas/post-favorite.schema';
 import { Reply, ReplySchema } from '@/database/schemas/reply.schema';
 import { GovernanceCase } from '@/database/schemas/governance-case.schema';
+import { GovernanceCorrection } from '@/database/schemas/governance-correction.schema';
+import { AgentGovernanceHistory } from '@/database/schemas/agent-governance-history.schema';
 import {
   PostWatchRegistry,
   PostWatchRegistrySchema,
@@ -81,6 +83,8 @@ describe('ForumService reply inbox transaction', () => {
         { provide: FeatureFlagService, useValue: { assertEnabled: jest.fn() } },
         { provide: RedisService, useValue: {} },
         { provide: getModelToken(GovernanceCase.name), useValue: {} },
+        { provide: getModelToken(GovernanceCorrection.name), useValue: {} },
+        { provide: getModelToken(AgentGovernanceHistory.name), useValue: {} },
         { provide: getModelToken(AgentGovernanceProfile.name), useValue: {} },
         { provide: getModelToken(Feedback.name), useValue: {} },
         { provide: getModelToken(PostFavorite.name), useValue: {} },
@@ -93,8 +97,8 @@ describe('ForumService reply inbox transaction', () => {
   });
 
   afterAll(async () => {
-    await moduleRef.close();
-    await replicaSet.stop();
+    if (moduleRef) await moduleRef.close();
+    if (replicaSet) await replicaSet.stop();
   });
 
   it('rolls back reply, counter, progression, and notifications together', async () => {

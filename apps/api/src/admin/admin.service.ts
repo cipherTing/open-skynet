@@ -10,7 +10,6 @@ import { Queue } from 'bullmq';
 import { ClientSession, Model, Types, type FilterQuery } from 'mongoose';
 import { Agent } from '@/database/schemas/agent.schema';
 import { User } from '@/database/schemas/user.schema';
-import { BrowserSession } from '@/database/schemas/browser-session.schema';
 import { AgentProgress } from '@/database/schemas/agent-progress.schema';
 import { AgentXpEvent } from '@/database/schemas/agent-xp-event.schema';
 import { AgentGovernanceProfile } from '@/database/schemas/agent-governance-profile.schema';
@@ -26,12 +25,10 @@ import { AGENT_LEVELS } from '@/progression/progression.constants';
 import type { AdminPrincipal } from './interfaces/admin-principal.interface';
 import { AdminAuditService } from './admin-audit.service';
 import { ADMIN_AUDIT_ACTIONS } from './admin.constants';
-import { isUserSuspended } from '@/auth/auth-security';
 import { HealthService } from '@/health/health.service';
 import type { ListAdminAgentsDto } from './dto/list-admin-agents.dto';
 import type { SuspendAgentDto } from './dto/suspend-agent.dto';
 import type { AdjustAgentXpDto } from './dto/adjust-agent-xp.dto';
-import type { AdjustAgentHealthDto } from './dto/adjust-agent-health.dto';
 import type { ListAdminContentDto } from './dto/list-admin-content.dto';
 import type { ListAdminCirclesDto } from './dto/list-admin-circles.dto';
 import type { ListAdminGovernanceDto } from './dto/list-admin-governance.dto';
@@ -57,6 +54,14 @@ import type {
 } from './dto/admin-circle.dto';
 import type { AdminGovernanceDecisionDto } from './dto/admin-governance-decision.dto';
 import { GovernanceService } from '@/governance/governance.service';
+import {
+  AGENT_GOVERNANCE_HISTORY_SOURCES,
+  AgentGovernanceHistory,
+} from '@/database/schemas/agent-governance-history.schema';
+import { GovernanceVote } from '@/database/schemas/governance-vote.schema';
+import { Report } from '@/database/schemas/report.schema';
+import { GovernanceCorrection } from '@/database/schemas/governance-correction.schema';
+import { normalizeCircleVisibleText } from '@/circle/circle-normalization';
 
 const EMPTY_DAILY_COUNTERS = { posts: 0, replies: 0, childReplies: 0, feedbacks: 0 };
 const ADMIN_HEALTH_TIMEOUT_MS = 2_000;
@@ -95,19 +100,25 @@ export class AdminService {
   constructor(
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
     @InjectModel(User.name) private readonly userModel: Model<User>,
-    @InjectModel(BrowserSession.name)
-    private readonly browserSessionModel: Model<BrowserSession>,
     @InjectModel(AgentProgress.name)
     private readonly progressModel: Model<AgentProgress>,
     @InjectModel(AgentXpEvent.name)
     private readonly xpEventModel: Model<AgentXpEvent>,
     @InjectModel(AgentGovernanceProfile.name)
     private readonly governanceProfileModel: Model<AgentGovernanceProfile>,
+    @InjectModel(AgentGovernanceHistory.name)
+    private readonly agentGovernanceHistoryModel: Model<AgentGovernanceHistory>,
     @InjectModel(Post.name) private readonly postModel: Model<Post>,
     @InjectModel(Reply.name) private readonly replyModel: Model<Reply>,
     @InjectModel(Circle.name) private readonly circleModel: Model<Circle>,
     @InjectModel(GovernanceCase.name)
     private readonly governanceCaseModel: Model<GovernanceCase>,
+    @InjectModel(GovernanceVote.name)
+    private readonly governanceVoteModel: Model<GovernanceVote>,
+    @InjectModel(Report.name)
+    private readonly reportModel: Model<Report>,
+    @InjectModel(GovernanceCorrection.name)
+    private readonly governanceCorrectionModel: Model<GovernanceCorrection>,
     @InjectModel(ReportTargetState.name)
     private readonly reportTargetStateModel: Model<ReportTargetState>,
     @InjectModel(ContentReviewRequest.name)
@@ -127,10 +138,7 @@ export class AdminService {
     const now = new Date();
     const [agents, suspendedUsers, posts, replies, circles, openCases] = await Promise.all([
       this.agentModel.countDocuments(),
-      this.userModel.countDocuments({
-        suspendedAt: { $ne: null },
-        $or: [{ suspendedUntil: null }, { suspendedUntil: { $gt: now } }],
-      }),
+      this.governanceProfileModel.countDocuments({ activeAdminBanRecordId: { $ne: null } }),
       this.postModel.countDocuments(),
       this.replyModel.countDocuments(),
       this.circleModel.countDocuments(),
@@ -210,20 +218,19 @@ export class AdminService {
     const page = dto.page ?? 1;
     const pageSize = dto.pageSize ?? 20;
     const userWhere: FilterQuery<User> = { deletedAt: null };
-    const now = new Date();
-    if (dto.status === 'suspended') {
-      userWhere.suspendedAt = { $ne: null };
-      userWhere.$or = [{ suspendedUntil: null }, { suspendedUntil: { $gt: now } }];
-    } else if (dto.status === 'active') {
-      userWhere.$or = [
-        { suspendedAt: null },
-        { suspendedUntil: { $lte: now } },
-      ];
-    }
-    const users = await this.userModel.find(userWhere).select('username role suspendedAt suspendedUntil suspensionReason');
+    const users = await this.userModel.find(userWhere).select('username');
     const userIds = users.map((user) => user.id);
     const userById = new Map(users.map((user) => [user.id, user]));
     const agentWhere: FilterQuery<Agent> = { userId: { $in: userIds }, deletedAt: null };
+    if (dto.status === 'suspended' || dto.status === 'active') {
+      const bannedProfiles = await this.governanceProfileModel
+        .find({ activeAdminBanRecordId: { $ne: null } })
+        .select('agentId');
+      const bannedAgentIds = bannedProfiles.map((profile) => profile.agentId);
+      agentWhere._id = dto.status === 'suspended'
+        ? { $in: bannedAgentIds }
+        : { $nin: bannedAgentIds };
+    }
     if (dto.search?.trim()) {
       const pattern = new RegExp(escapeRegex(dto.search.trim()), 'i');
       const matchingUserIds = users
@@ -253,15 +260,13 @@ export class AdminService {
         const progress = progressByAgent.get(agent.id);
         const profile = profileByAgent.get(agent.id);
         const xpTotal = progress?.xpTotal ?? 0;
-        const suspended = owner ? isUserSuspended(owner) : false;
+        const adminBanned = Boolean(profile?.activeAdminBanRecordId);
         return {
           id: agent.id,
           name: agent.name,
           description: agent.description,
           ownerUsername: owner?.username ?? '',
-          suspendedAt: suspended ? owner?.suspendedAt?.toISOString() ?? null : null,
-          suspendedUntil: suspended ? owner?.suspendedUntil?.toISOString() ?? null : null,
-          suspensionReason: suspended ? owner?.suspensionReason ?? null : null,
+          adminBanned,
           keyPrefix: agent.secretKeyPrefix,
           keyLastFour: agent.secretKeyLastFour,
           keyCreatedAt: agent.secretKeyCreatedAt?.toISOString() ?? null,
@@ -279,79 +284,114 @@ export class AdminService {
 
   async suspendAgent(admin: AdminPrincipal, agentId: string, dto: SuspendAgentDto) {
     ensureObjectId(agentId, 'Agent 不存在');
-    const suspendedUntil = dto.suspendedUntil ? new Date(dto.suspendedUntil) : null;
-    if (suspendedUntil && suspendedUntil.getTime() <= Date.now()) {
-      throw new BadRequestException('封禁截止时间必须晚于当前时间');
-    }
-
     return this.databaseService.$transaction(async (session) => {
       const agent = await this.agentModel.findById(agentId, null, { session });
       if (!agent) throw new NotFoundException('Agent 不存在');
-      const user = await this.userModel.findById(agent.userId, null, { session });
-      if (!user) throw new NotFoundException('关联用户不存在');
       const now = new Date();
-      user.suspendedAt = now;
-      user.suspendedUntil = suspendedUntil;
-      user.suspensionReason = dto.reason;
-      user.tokenVersion += 1;
-      await user.save({ session });
-      await Promise.all([
-        this.browserSessionModel.updateMany(
-          { userId: user.id, revokedAt: null },
-          { revokedAt: now },
-          { session },
-        ),
-        this.agentModel.updateOne(
-          { _id: agent.id },
-          {
-            secretKeyDigest: null,
-            secretKeyPrefix: null,
-            secretKeyLastFour: null,
-            secretKeyCreatedAt: null,
-          },
-          { session },
-        ),
-        this.governanceProfileModel.findOneAndUpdate(
-          { agentId: agent.id },
-          { $set: { healthLevel: GOVERNANCE_HEALTH_LEVEL.BANNED, lastPenaltyAt: now } },
-          { upsert: true, session },
-        ),
-      ]);
+      const profile = await this.governanceProfileModel.findOne({ agentId }, null, { session })
+        ?? new this.governanceProfileModel({
+          agentId,
+          healthLevel: GOVERNANCE_HEALTH_LEVEL.GOOD,
+          violationCount: 0,
+        });
+      if (profile.activeAdminBanRecordId) throw new ConflictException('该 Agent 已被管理员封禁');
+      const previousHealthLevel = profile.healthLevel;
+      const [history] = await this.agentGovernanceHistoryModel.create(
+        [{
+          agentId,
+          source: AGENT_GOVERNANCE_HISTORY_SOURCES.ADMIN_BAN,
+          previousHealthLevel,
+          nextHealthLevel: GOVERNANCE_HEALTH_LEVEL.BANNED,
+          publicReason: dto.reason,
+          governanceCaseId: null,
+          adminUserId: admin.userId,
+          relatedRecordId: null,
+        }],
+        { session },
+      );
+      profile.healthLevel = GOVERNANCE_HEALTH_LEVEL.BANNED;
+      profile.activeAdminBanRecordId = history.id;
+      profile.adminBanRestoreHealthLevel = previousHealthLevel;
+      profile.lastPenaltyAt = now;
+      await profile.save({ session });
+      await this.inboxService.createForAgentGovernance(
+        { historyId: history.id, recipientAgentId: agentId, reason: 'AGENT_BANNED' },
+        session,
+      );
       await this.auditService.record({
         actorUserId: admin.userId,
         action: ADMIN_AUDIT_ACTIONS.AGENT_SUSPENDED,
         targetType: 'AGENT',
         targetId: agent.id,
         reason: dto.reason,
-        changes: { suspendedAt: now.toISOString(), suspendedUntil: suspendedUntil?.toISOString() ?? null },
+        changes: {
+          previousHealthLevel,
+          nextHealthLevel: GOVERNANCE_HEALTH_LEVEL.BANNED,
+          governanceHistoryId: history.id,
+          credentialsRevoked: false,
+        },
         session,
       });
-      return { suspended: true, suspendedAt: now.toISOString(), suspendedUntil: suspendedUntil?.toISOString() ?? null };
+      return {
+        suspended: true,
+        healthLevel: GOVERNANCE_HEALTH_LEVEL.BANNED,
+        governanceHistoryId: history.id,
+      };
     });
   }
 
   async unsuspendAgent(admin: AdminPrincipal, agentId: string, reason: string) {
     ensureObjectId(agentId, 'Agent 不存在');
     return this.databaseService.$transaction(async (session) => {
-      const agent = await this.agentModel.findById(agentId, null, { session });
+      const agent = await this.agentModel.findById(agentId, null, { session }).select('_id');
       if (!agent) throw new NotFoundException('Agent 不存在');
-      const user = await this.userModel.findById(agent.userId, null, { session });
-      if (!user) throw new NotFoundException('关联用户不存在');
-      user.suspendedAt = null;
-      user.suspendedUntil = null;
-      user.suspensionReason = null;
-      user.tokenVersion += 1;
-      await user.save({ session });
+      const profile = await this.governanceProfileModel.findOne({ agentId }, null, { session });
+      if (!profile?.activeAdminBanRecordId || !profile.adminBanRestoreHealthLevel) {
+        throw new ConflictException('该 Agent 当前没有管理员封禁记录');
+      }
+      const banRecordId = profile.activeAdminBanRecordId;
+      const restoredHealthLevel = profile.adminBanRestoreHealthLevel;
+      const [history] = await this.agentGovernanceHistoryModel.create(
+        [{
+          agentId,
+          source: AGENT_GOVERNANCE_HISTORY_SOURCES.ADMIN_UNBAN,
+          previousHealthLevel: GOVERNANCE_HEALTH_LEVEL.BANNED,
+          nextHealthLevel: restoredHealthLevel,
+          publicReason: reason,
+          governanceCaseId: null,
+          adminUserId: admin.userId,
+          relatedRecordId: banRecordId,
+        }],
+        { session },
+      );
+      profile.healthLevel = restoredHealthLevel;
+      profile.activeAdminBanRecordId = null;
+      profile.adminBanRestoreHealthLevel = null;
+      await profile.save({ session });
+      await this.inboxService.createForAgentGovernance(
+        { historyId: history.id, recipientAgentId: agentId, reason: 'AGENT_UNBANNED' },
+        session,
+      );
       await this.auditService.record({
         actorUserId: admin.userId,
         action: ADMIN_AUDIT_ACTIONS.AGENT_UNSUSPENDED,
         targetType: 'AGENT',
         targetId: agent.id,
         reason,
-        changes: { suspended: false, credentialsRestored: false, healthRestored: false },
+        changes: {
+          previousHealthLevel: GOVERNANCE_HEALTH_LEVEL.BANNED,
+          nextHealthLevel: restoredHealthLevel,
+          banRecordId,
+          governanceHistoryId: history.id,
+          credentialsRestored: false,
+        },
         session,
       });
-      return { suspended: false, credentialsRestored: false, healthRestored: false };
+      return {
+        suspended: false,
+        healthLevel: restoredHealthLevel,
+        governanceHistoryId: history.id,
+      };
     });
   }
 
@@ -429,29 +469,6 @@ export class AdminService {
     });
   }
 
-  async adjustAgentHealth(admin: AdminPrincipal, agentId: string, dto: AdjustAgentHealthDto) {
-    ensureObjectId(agentId, 'Agent 不存在');
-    return this.databaseService.$transaction(async (session) => {
-      const agent = await this.agentModel.findById(agentId, null, { session }).select('_id');
-      if (!agent) throw new NotFoundException('Agent 不存在');
-      const existingProfile = await this.governanceProfileModel.findOne({ agentId }, null, { session });
-      const previousHealthLevel = existingProfile?.healthLevel ?? GOVERNANCE_HEALTH_LEVEL.GOOD;
-      const profile = existingProfile ?? new this.governanceProfileModel({ agentId, violationCount: 0 });
-      profile.healthLevel = dto.healthLevel;
-      await profile.save({ session });
-      await this.auditService.record({
-        actorUserId: admin.userId,
-        action: ADMIN_AUDIT_ACTIONS.AGENT_HEALTH_ADJUSTED,
-        targetType: 'AGENT',
-        targetId: agentId,
-        reason: dto.reason,
-        changes: { previousHealthLevel, nextHealthLevel: profile.healthLevel },
-        session,
-      });
-      return { healthLevel: profile.healthLevel };
-    });
-  }
-
   async listContent(dto: ListAdminContentDto) {
     const page = dto.page ?? 1;
     const pageSize = dto.pageSize ?? 20;
@@ -468,7 +485,17 @@ export class AdminService {
         this.postModel.find(where).sort({ createdAt: -1, _id: -1 }).skip((page - 1) * pageSize).limit(pageSize).lean(),
         this.postModel.countDocuments(where),
       ]);
-      return { items, meta: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) } };
+      const caseByTargetId = await this.getGovernanceCaseIdsForContent(
+        'POST',
+        items.map((item) => item._id.toString()),
+      );
+      return {
+        items: items.map((item) => ({
+          ...item,
+          governanceCaseId: caseByTargetId.get(item._id.toString()) ?? null,
+        })),
+        meta: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) },
+      };
     }
     const where: FilterQuery<Reply> = { deletedAt: removedFilter };
     if (pattern) where.content = pattern;
@@ -476,7 +503,43 @@ export class AdminService {
       this.replyModel.find(where).sort({ createdAt: -1, _id: -1 }).skip((page - 1) * pageSize).limit(pageSize).lean(),
       this.replyModel.countDocuments(where),
     ]);
-    return { items, meta: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) } };
+    const postIds = [...new Set(items.map((item) => item.postId))];
+    const [posts, caseByTargetId] = await Promise.all([
+      this.postModel.find({ _id: { $in: postIds }, deletedAt: { $exists: true } }).select('title'),
+      this.getGovernanceCaseIdsForContent(
+        'REPLY',
+        items.map((item) => item._id.toString()),
+      ),
+    ]);
+    const postTitleById = new Map(posts.map((post) => [post.id, post.title]));
+    return {
+      items: items.map((item) => ({
+        ...item,
+        postTitle: postTitleById.get(item.postId) ?? '已删除帖子',
+        governanceCaseId: caseByTargetId.get(item._id.toString()) ?? null,
+      })),
+      meta: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) },
+    };
+  }
+
+  private async getGovernanceCaseIdsForContent(
+    targetType: 'POST' | 'REPLY',
+    targetIds: string[],
+  ): Promise<Map<string, string>> {
+    if (targetIds.length === 0) return new Map();
+    const states = await this.reportTargetStateModel
+      .find({
+        targetType,
+        targetId: { $in: targetIds },
+        status: REPORT_TARGET_STATUSES.RESOLVED_VIOLATION,
+        caseId: { $ne: null },
+      })
+      .sort({ round: -1 });
+    const result = new Map<string, string>();
+    for (const state of states) {
+      if (state.caseId && !result.has(state.targetId)) result.set(state.targetId, state.caseId);
+    }
+    return result;
   }
 
   async setContentRemoved(
@@ -547,14 +610,17 @@ export class AdminService {
     removed: boolean,
     session?: ClientSession,
   ): Promise<void> {
-    const targetKey = getReportTargetKey(targetType, targetId);
-    const state = await this.reportTargetStateModel.findOne({ targetKey }, null, { session });
+    const state = await this.reportTargetStateModel
+      .findOne({ targetType, targetId }, null, { session })
+      .sort({ round: -1 });
     if (removed) {
       if (!state) {
+        const round = 1;
         await new this.reportTargetStateModel({
-          targetKey,
+          targetKey: getReportTargetKey(targetType, targetId, round),
           targetType,
           targetId,
+          round,
           targetAuthorId,
           qualifiedReporters: [],
           status: REPORT_TARGET_STATUSES.TARGET_REMOVED,
@@ -608,6 +674,10 @@ export class AdminService {
     });
   }
 
+  async getCircleDetail(circleId: string) {
+    return this.circleService.getCircleForAdmin(circleId);
+  }
+
   async updateCircle(
     admin: AdminPrincipal,
     circleId: string,
@@ -617,21 +687,38 @@ export class AdminService {
       throw new BadRequestException('至少需要修改简介或规则');
     }
     return this.databaseService.$requiredTransaction(async (session) => {
+      const before = await this.circleService.getCircleForAdmin(circleId, session);
+      const normalizedTopic = dto.topic === undefined
+        ? undefined
+        : normalizeCircleVisibleText(dto.topic.value);
+      const normalizedRules = dto.rules?.value.map((rule) => ({
+        id: rule.id.trim(),
+        text: rule.text.trim(),
+      }));
+      const topicChanged = normalizedTopic !== undefined && normalizedTopic !== before.topic;
+      const rulesChanged = normalizedRules !== undefined && (
+        normalizedRules.length !== before.rules.length || normalizedRules.some(
+          (rule, index) => rule.id !== before.rules[index]?.id || rule.text !== before.rules[index]?.text,
+        )
+      );
+      if (!topicChanged && !rulesChanged) {
+        throw new BadRequestException('没有检测到可保存的变化');
+      }
       const moderated = [];
-      if (dto.topic !== undefined) {
+      if (topicChanged) {
         const proposal = await this.circleProposalService.moderateActiveScopeForAdmin(
           circleId,
           'TOPIC',
-          dto.publicReason,
+          dto.reason,
           session,
         );
         if (proposal) moderated.push(proposal);
       }
-      if (dto.rules !== undefined) {
+      if (rulesChanged) {
         const proposal = await this.circleProposalService.moderateActiveScopeForAdmin(
           circleId,
           'RULES',
-          dto.publicReason,
+          dto.reason,
           session,
         );
         if (proposal) moderated.push(proposal);
@@ -639,21 +726,42 @@ export class AdminService {
       for (const proposal of moderated) {
         await this.circleService.recordProposalModerationForAdmin(
           proposal,
-          dto.publicReason,
+          dto.reason,
           session,
         );
       }
-      const circle = await this.circleService.updateCircleForAdmin(circleId, dto, session);
+      const circle = await this.circleService.updateCircleForAdmin(
+        circleId,
+        {
+          topic: topicChanged ? dto.topic : undefined,
+          rules: rulesChanged ? dto.rules : undefined,
+          reason: dto.reason,
+        },
+        session,
+      );
       await this.auditService.record({
         actorUserId: admin.userId,
         action: ADMIN_AUDIT_ACTIONS.CIRCLE_UPDATED,
         targetType: 'CIRCLE',
         targetId: circle.id,
-        reason: dto.publicReason,
+        reason: dto.reason,
         changes: {
-          topicChanged: dto.topic !== undefined,
-          rulesChanged: dto.rules !== undefined,
-          moderatedProposalCount: moderated.length,
+          topic: topicChanged
+            ? { previous: before.topic, next: circle.topic, previousVersion: before.topicVersion, nextVersion: circle.topicVersion }
+            : null,
+          rules: rulesChanged
+            ? {
+                previous: before.rules.map((rule) => ({ id: rule.id, text: rule.text })),
+                next: circle.rules.map((rule) => ({ id: rule.id, text: rule.text })),
+                previousVersion: before.rulesVersion,
+                nextVersion: circle.rulesVersion,
+              }
+            : null,
+          moderatedProposals: moderated.map((proposal) => ({
+            id: proposal.id,
+            scope: proposal.scope,
+            status: proposal.status,
+          })),
         },
         session,
       });
@@ -752,7 +860,10 @@ export class AdminService {
     const page = dto.page ?? 1;
     const pageSize = dto.pageSize ?? 20;
     const where: FilterQuery<GovernanceCase> = {};
-    if (dto.status) where.status = dto.status;
+    if (dto.status === 'PENDING') where.status = { $in: ['OPEN', 'EMERGENCY'] };
+    else if (dto.status === 'RESOLVED') {
+      where.status = { $in: ['RESOLVED_VIOLATION', 'RESOLVED_NOT_VIOLATION'] };
+    } else if (dto.status) where.status = dto.status;
     const [items, total] = await Promise.all([
       this.governanceCaseModel.find(where).sort({ openedAt: -1, _id: -1 }).skip((page - 1) * pageSize).limit(pageSize).lean(),
       this.governanceCaseModel.countDocuments(where),
@@ -761,8 +872,81 @@ export class AdminService {
       items: items.map((item) => ({
         ...item,
         targetSummary: this.getGovernanceTargetSummary(item),
+        deadlineAt: (
+          item.status === 'EMERGENCY'
+            ? item.emergencyDeadlineAt
+            : item.normalDeadlineAt
+        ).toISOString(),
       })),
       meta: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) },
+    };
+  }
+
+  async getGovernanceCaseDetail(caseId: string) {
+    ensureObjectId(caseId, '治理案件不存在');
+    const governanceCase = await this.governanceCaseModel.findById(caseId);
+    if (!governanceCase) throw new NotFoundException('治理案件不存在');
+    const [reports, votes, corrections] = await Promise.all([
+      this.reportModel
+        .find({
+          targetType: governanceCase.targetType,
+          targetId: governanceCase.targetId,
+          round: governanceCase.round,
+        })
+        .sort({ createdAt: 1, _id: 1 }),
+      this.governanceVoteModel
+        .find({ caseId: governanceCase.id })
+        .sort({ createdAt: 1, _id: 1 }),
+      this.governanceCorrectionModel
+        .find({ caseId: governanceCase.id })
+        .sort({ createdAt: 1, _id: 1 }),
+    ]);
+    return {
+      id: governanceCase.id,
+      targetType: governanceCase.targetType,
+      targetId: governanceCase.targetId,
+      round: governanceCase.round,
+      status: governanceCase.status,
+      targetSummary: this.getGovernanceTargetSummary(governanceCase),
+      targetSnapshot: governanceCase.targetSnapshot,
+      triggerScore: governanceCase.triggerScore,
+      triggerThreshold: governanceCase.triggerThreshold,
+      tally: {
+        violation: governanceCase.violationTally,
+        notViolation: governanceCase.notViolationTally,
+        participantCount: votes.length,
+      },
+      reports: reports.map((report) => ({
+        id: report.id,
+        reason: report.reason,
+        evidence: report.evidence,
+        createdAt: report.createdAt.toISOString(),
+      })),
+      votes: votes.map((vote) => ({
+        choice: vote.choice,
+        weight: vote.weight,
+        createdAt: vote.createdAt.toISOString(),
+      })),
+      openedAt: governanceCase.openedAt.toISOString(),
+      firstReviewAt: governanceCase.firstReviewAt.toISOString(),
+      normalDeadlineAt: governanceCase.normalDeadlineAt.toISOString(),
+      emergencyDeadlineAt: governanceCase.emergencyDeadlineAt.toISOString(),
+      deadlineAt: (
+        governanceCase.status === 'EMERGENCY'
+          ? governanceCase.emergencyDeadlineAt
+          : governanceCase.normalDeadlineAt
+      ).toISOString(),
+      resolvedAt: governanceCase.resolvedAt?.toISOString() ?? null,
+      resolutionSource: governanceCase.resolutionSource,
+      resolutionReason: governanceCase.resolutionReason,
+      corrections: corrections.map((correction) => ({
+        id: correction.id,
+        action: correction.action,
+        publicReason: correction.publicReason,
+        previousRound: correction.previousRound,
+        nextRound: correction.nextRound,
+        createdAt: correction.createdAt.toISOString(),
+      })),
     };
   }
 
@@ -795,6 +979,54 @@ export class AdminService {
         resolutionSource: governanceCase.resolutionSource,
         resolutionReason: governanceCase.resolutionReason,
         resolvedAt: governanceCase.resolvedAt?.toISOString() ?? null,
+      };
+    });
+  }
+
+  async correctGovernanceCase(
+    admin: AdminPrincipal,
+    caseId: string,
+    reason: string,
+  ) {
+    return this.databaseService.$requiredTransaction(async (session) => {
+      const correction = await this.governanceService.restoreGovernanceRemovedContentForAdmin(
+        caseId,
+        reason.trim(),
+        admin.userId,
+        session,
+      );
+      const governanceCase = await this.governanceCaseModel.findById(caseId, null, { session });
+      if (!governanceCase) throw new Error('治理纠正完成后案件记录缺失');
+      await this.inboxService.createForGovernanceCorrection(
+        {
+          correctionId: correction.id,
+          recipientAgentId: governanceCase.targetAuthorId,
+        },
+        session,
+      );
+      await this.auditService.record({
+        actorUserId: admin.userId,
+        action: ADMIN_AUDIT_ACTIONS.GOVERNANCE_CASE_CORRECTED,
+        targetType: 'GOVERNANCE_CASE',
+        targetId: caseId,
+        reason,
+        changes: {
+          correctionId: correction.id,
+          action: correction.action,
+          previousRound: correction.previousRound,
+          nextRound: correction.nextRound,
+          contentRestored: true,
+        },
+        session,
+      });
+      return {
+        id: correction.id,
+        caseId: correction.caseId,
+        action: correction.action,
+        publicReason: correction.publicReason,
+        previousRound: correction.previousRound,
+        nextRound: correction.nextRound,
+        createdAt: correction.createdAt.toISOString(),
       };
     });
   }
@@ -860,6 +1092,71 @@ export class AdminService {
         createdAt: request.createdAt.toISOString(),
       })),
       meta: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) },
+    };
+  }
+
+  async getContentReviewDetail(reviewId: string) {
+    ensureObjectId(reviewId, '审核申请不存在');
+    const request = await this.contentReviewModel.findById(reviewId);
+    if (!request) throw new NotFoundException('审核申请不存在');
+    const requester = await this.agentModel
+      .findById(request.requesterAgentId)
+      .select('name avatarSeed');
+    if (request.type === CONTENT_REVIEW_TYPES.POST && 'circleId' in request.payload) {
+      const circle = await this.circleModel
+        .findOne({ _id: request.payload.circleId, deletedAt: { $exists: true } })
+        .select('name slug status');
+      return {
+        id: request.id,
+        type: request.type,
+        status: request.status,
+        payload: request.payload,
+        requester: {
+          agentId: request.requesterAgentId,
+          name: requester?.name ?? '已离线 Agent',
+          avatarSeed: requester?.avatarSeed ?? `deleted-${request.requesterAgentId}`,
+        },
+        circle: circle
+          ? { id: circle.id, name: circle.name, slug: circle.slug, status: circle.status }
+          : null,
+        decisionReason: request.decisionReason,
+        decidedAt: request.decidedAt?.toISOString() ?? null,
+        publishedTargetId: request.publishedTargetId,
+        createdAt: request.createdAt.toISOString(),
+      };
+    }
+    const [duplicate, publishedCircle] = await Promise.all([
+      'normalizedName' in request.payload
+        ? this.circleModel
+            .findOne({ normalizedName: request.payload.normalizedName, deletedAt: null })
+            .select('name slug')
+        : Promise.resolve(null),
+      request.publishedTargetId
+        ? this.circleModel
+            .findOne({ _id: request.publishedTargetId, deletedAt: { $exists: true } })
+            .select('name slug')
+        : Promise.resolve(null),
+    ]);
+    return {
+      id: request.id,
+      type: request.type,
+      status: request.status,
+      payload: request.payload,
+      requester: {
+        agentId: request.requesterAgentId,
+        name: requester?.name ?? '已离线 Agent',
+        avatarSeed: requester?.avatarSeed ?? `deleted-${request.requesterAgentId}`,
+      },
+      duplicateCircle: duplicate
+        ? { id: duplicate.id, name: duplicate.name, slug: duplicate.slug }
+        : null,
+      publishedCircle: publishedCircle
+        ? { id: publishedCircle.id, name: publishedCircle.name, slug: publishedCircle.slug }
+        : null,
+      decisionReason: request.decisionReason,
+      decidedAt: request.decidedAt?.toISOString() ?? null,
+      publishedTargetId: request.publishedTargetId,
+      createdAt: request.createdAt.toISOString(),
     };
   }
 

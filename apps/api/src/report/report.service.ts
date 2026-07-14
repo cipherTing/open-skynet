@@ -74,7 +74,7 @@ function isExpectedReportRace(error: unknown): boolean {
   return (
     keys.includes('activeKey') ||
     keys.includes('targetKey') ||
-    (keys.includes('reporterAgentId') && keys.includes('targetType') && keys.includes('targetId'))
+    (keys.includes('reporterAgentId') && keys.includes('targetType') && keys.includes('targetId') && keys.includes('round'))
   );
 }
 
@@ -146,6 +146,7 @@ export class ReportService implements OnModuleInit {
           { reporterOwnerUserIds: { $exists: false } },
           { 'reporterOwnerUserIds.2': { $exists: false } },
           { targetAuthorOwnerUserId: { $exists: false } },
+          { round: { $exists: false } },
         ],
       }),
       this.governanceCaseModel.aggregate<{ _id: unknown }>([
@@ -157,8 +158,11 @@ export class ReportService implements OnModuleInit {
               caseTargetType: '$targetType',
               caseTargetId: '$targetId',
               caseTargetAuthorId: '$targetAuthorId',
+              caseRound: '$round',
               caseActiveKey: '$activeKey',
-              canonicalTargetKey: { $concat: ['$targetType', ':', '$targetId'] },
+              canonicalTargetKey: {
+                $concat: ['$targetType', ':', '$targetId', ':round:', { $toString: '$round' }],
+              },
               expectedStateStatus: {
                 $switch: {
                   branches: [
@@ -191,6 +195,7 @@ export class ReportService implements OnModuleInit {
                     { $eq: ['$targetType', '$$caseTargetType'] },
                     { $eq: ['$targetId', '$$caseTargetId'] },
                     { $eq: ['$targetAuthorId', '$$caseTargetAuthorId'] },
+                    { $eq: ['$round', '$$caseRound'] },
                     { $eq: ['$targetKey', '$$caseActiveKey'] },
                     { $eq: ['$targetKey', '$$canonicalTargetKey'] },
                     { $eq: ['$status', '$$expectedStateStatus'] },
@@ -204,13 +209,14 @@ export class ReportService implements OnModuleInit {
         {
           $lookup: {
             from: 'reports',
-            let: { caseTargetType: '$targetType', caseTargetId: '$targetId' },
+            let: { caseTargetType: '$targetType', caseTargetId: '$targetId', caseRound: '$round' },
             pipeline: [{
               $match: {
                 $expr: {
                   $and: [
                     { $eq: ['$targetType', '$$caseTargetType'] },
                     { $eq: ['$targetId', '$$caseTargetId'] },
+                    { $eq: ['$round', '$$caseRound'] },
                   ],
                 },
               },
@@ -491,6 +497,7 @@ export class ReportService implements OnModuleInit {
               stateTargetType: '$targetType',
               stateTargetId: '$targetId',
               stateTargetAuthorId: '$targetAuthorId',
+              stateRound: '$round',
               stateTargetKey: '$targetKey',
               expectedCaseStatuses: {
                 $switch: {
@@ -520,6 +527,7 @@ export class ReportService implements OnModuleInit {
                     { $eq: ['$targetType', '$$stateTargetType'] },
                     { $eq: ['$targetId', '$$stateTargetId'] },
                     { $eq: ['$targetAuthorId', '$$stateTargetAuthorId'] },
+                    { $eq: ['$round', '$$stateRound'] },
                     { $eq: ['$activeKey', '$$stateTargetKey'] },
                     { $in: ['$status', '$$expectedCaseStatuses'] },
                   ],
@@ -534,7 +542,12 @@ export class ReportService implements OnModuleInit {
             $expr: {
               $not: [{
                 $and: [
-                  { $eq: ['$targetKey', { $concat: ['$targetType', ':', '$targetId'] }] },
+                  {
+                    $eq: [
+                      '$targetKey',
+                      { $concat: ['$targetType', ':', '$targetId', ':round:', { $toString: '$round' }] },
+                    ],
+                  },
                   {
                     $or: [
                       {
@@ -580,13 +593,14 @@ export class ReportService implements OnModuleInit {
         {
           $lookup: {
             from: 'reports',
-            let: { stateTargetType: '$targetType', stateTargetId: '$targetId' },
+            let: { stateTargetType: '$targetType', stateTargetId: '$targetId', stateRound: '$round' },
             pipeline: [{
               $match: {
                 $expr: {
                   $and: [
                     { $eq: ['$targetType', '$$stateTargetType'] },
                     { $eq: ['$targetId', '$$stateTargetId'] },
+                    { $eq: ['$round', '$$stateRound'] },
                   ],
                 },
               },
@@ -804,19 +818,24 @@ export class ReportService implements OnModuleInit {
       this.reportModel.aggregate<{ _id: unknown }>([
         {
           $group: {
-            _id: { targetType: '$targetType', targetId: '$targetId' },
+            _id: { targetType: '$targetType', targetId: '$targetId', round: '$round' },
           },
         },
         {
           $lookup: {
             from: 'report_target_states',
-            let: { reportTargetType: '$_id.targetType', reportTargetId: '$_id.targetId' },
+            let: {
+              reportTargetType: '$_id.targetType',
+              reportTargetId: '$_id.targetId',
+              reportRound: '$_id.round',
+            },
             pipeline: [{
               $match: {
                 $expr: {
                   $and: [
                     { $eq: ['$targetType', '$$reportTargetType'] },
                     { $eq: ['$targetId', '$$reportTargetId'] },
+                    { $eq: ['$round', '$$reportRound'] },
                   ],
                 },
               },
@@ -881,24 +900,29 @@ export class ReportService implements OnModuleInit {
     dto: CreateReportDto,
     session?: ClientSession,
   ): Promise<CreateReportResult> {
-    const targetKey = getReportTargetKey(dto.targetType, dto.targetId);
+    const latestTargetState = await this.targetStateModel
+      .findOne({ targetType: dto.targetType, targetId: dto.targetId }, null, { session })
+      .sort({ round: -1 });
+    const round = latestTargetState?.round ?? 1;
+    const targetKey = getReportTargetKey(dto.targetType, dto.targetId, round);
     const existingReport = await this.reportModel.findOne(
       {
         reporterAgentId,
         targetType: dto.targetType,
         targetId: dto.targetId,
+        round,
       },
       null,
       { session },
     );
-    const targetState = await this.targetStateModel.findOne({ targetKey }, null, { session });
+    const targetState = latestTargetState;
     const existingCase = await this.governanceCaseModel.findOne(
       { activeKey: targetKey },
       'status',
       { session },
     );
     const reportFacts = await this.reportModel.find(
-      { targetType: dto.targetType, targetId: dto.targetId },
+      { targetType: dto.targetType, targetId: dto.targetId, round },
       'reporterAgentId reporterOwnerUserId',
       { session },
     );
@@ -949,6 +973,7 @@ export class ReportService implements OnModuleInit {
         reporterOwnerUserId,
         targetType: dto.targetType,
         targetId: dto.targetId,
+        round,
         reason: dto.reason,
         evidence: dto.evidence ?? null,
         reporterLevelSnapshot: qualification.level,
@@ -961,6 +986,7 @@ export class ReportService implements OnModuleInit {
       targetKey,
       targetType: dto.targetType,
       targetId: dto.targetId,
+      round,
       targetAuthorId,
       qualifiedReporters: [],
       status: REPORT_TARGET_STATUSES.COLLECTING,
@@ -977,6 +1003,7 @@ export class ReportService implements OnModuleInit {
       const governanceCase = await this.governanceService.openCaseFromReports({
         targetType: dto.targetType,
         targetId: dto.targetId,
+        round,
         reporters: state.qualifiedReporters.map((item) => ({
           agentId: item.agentId,
           ownerUserId: item.ownerUserId,

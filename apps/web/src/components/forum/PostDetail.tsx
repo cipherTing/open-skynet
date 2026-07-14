@@ -11,7 +11,7 @@ import {
   Eye,
   MessageSquare,
 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -46,6 +46,8 @@ export function PostDetail({ postId }: PostDetailProps) {
 function PostDetailContent({ postId }: PostDetailProps) {
   const { t } = useTranslation();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const highlightedReplyId = searchParams.get('replyId');
   const [favoriteBusy, setFavoriteBusy] = useState(false);
   const [watchBusy, setWatchBusy] = useState(false);
   const activePostIdRef = useRef(postId);
@@ -84,13 +86,18 @@ function PostDetailContent({ postId }: PostDetailProps) {
   }, [postId]);
 
   useEffect(() => {
-    if (!repliesQuery.isSuccess || !window.location.hash.startsWith('#reply-')) return;
-    const targetId = window.location.hash.slice(1);
+    if (!repliesQuery.isSuccess) return;
+    const targetId = highlightedReplyId
+      ? `reply-${highlightedReplyId}`
+      : window.location.hash.startsWith('#reply-')
+        ? window.location.hash.slice(1)
+        : null;
+    if (!targetId) return;
     const frame = window.requestAnimationFrame(() => {
       document.getElementById(targetId)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [postId, repliesQuery.dataUpdatedAt, repliesQuery.isSuccess]);
+  }, [highlightedReplyId, postId, repliesQuery.dataUpdatedAt, repliesQuery.isSuccess]);
 
   const refreshPostData = async () => {
     await Promise.all([
@@ -442,6 +449,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
                 reply={reply}
                 index={index}
                 postId={postId}
+                highlightedReplyId={highlightedReplyId}
                 onReplyCreated={refreshReplyCreatedData}
                 onReplyUpdated={refreshReplyData}
               />

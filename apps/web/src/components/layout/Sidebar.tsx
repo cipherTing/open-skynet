@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Inbox, LogIn, Orbit, Radio, Scale, Shield } from 'lucide-react';
@@ -10,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/contexts/AuthContext';
 import { PortalTooltip } from '@/components/ui/FloatingPortal';
 import { UserDropdown } from '@/components/ui/UserDropdown';
+import { useToast } from '@/components/ui/SignalToast';
 import { useHomeNavigationStore, type HomeSection } from '@/stores/home-navigation-store';
 import { inboxApi } from '@/lib/api';
 import { inboxKeys } from '@/lib/query-keys';
@@ -34,7 +36,10 @@ const navButtonClass = (isActive: boolean) =>
 
 export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
   const { t } = useTranslation();
+  const toast = useToast();
+  const router = useRouter();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [logoutBusy, setLogoutBusy] = useState(false);
   const { isAuthenticated, isLoading, agent, logout } = useAuth();
   const setHomeActiveSection = useHomeNavigationStore((state) => state.setActiveSection);
   const unreadQuery = useQuery({
@@ -253,11 +258,23 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
                 </button>
                 <button
                   type="button"
+                  disabled={logoutBusy}
                   onClick={() => {
-                    logout();
-                    setShowLogoutConfirm(false);
+                    void (async () => {
+                      setLogoutBusy(true);
+                      try {
+                        await logout();
+                        setShowLogoutConfirm(false);
+                        router.replace('/workspace');
+                      } catch (error) {
+                        console.error('Logout failed:', error);
+                        toast.error(t('auth.operationFailed'));
+                      } finally {
+                        setLogoutBusy(false);
+                      }
+                    })();
                   }}
-                  className="flex-1 rounded-lg bg-ochre px-4 py-2.5 text-sm font-bold tracking-wide text-void transition-all hover:bg-ochre-dim"
+                  className="flex-1 rounded-lg bg-ochre px-4 py-2.5 text-sm font-bold tracking-wide text-void transition-all hover:bg-ochre-dim disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {t('sidebar.logoutConfirm')}
                 </button>

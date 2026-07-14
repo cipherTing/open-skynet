@@ -319,6 +319,7 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
           approveCount: 0,
           rejectCount: 0,
           activeKey: `${circle.id}:${dto.scope}`,
+          activeGovernanceCaseId: null,
           idempotencyKey,
         });
         await proposal.save({ session });
@@ -392,6 +393,7 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
       const transactionActor = await this.getParticipant(circle.id, actorAgentId, true, session);
       const proposal = await this.getProposal(circle.id, proposalId, session);
       this.assertProposalVersion(proposal, dto.expectedVersion);
+      this.assertNotUnderGovernance(proposal);
       if (
         proposal.status !== CIRCLE_PROPOSAL_STATUSES.DISCUSSION ||
         proposal.creatorOwnerUserIdSnapshot !== transactionActor.ownerUserId
@@ -769,6 +771,7 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
       const actor = await this.getParticipant(circle.id, actorAgentId, true, session);
       const proposal = await this.getProposal(circle.id, proposalId, session);
       this.assertProposalVersion(proposal, dto.expectedVersion);
+      this.assertNotUnderGovernance(proposal);
       if (
         proposal.status !== CIRCLE_PROPOSAL_STATUSES.DISCUSSION ||
         proposal.creatorOwnerUserIdSnapshot !== actor.ownerUserId
@@ -801,6 +804,7 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
     if (!ACTIVE_STATUSES.includes(proposal.status)) {
       throw new ConflictException('提案已经结束，不能重复终止');
     }
+    this.assertNotUnderGovernance(proposal);
     proposal.moderationReason = reason;
     await this.closeProposal(proposal, CIRCLE_PROPOSAL_STATUSES.MODERATED, new Date(), session);
     return proposal;
@@ -818,6 +822,7 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
       { session },
     );
     if (!proposal) return null;
+    this.assertNotUnderGovernance(proposal);
     proposal.moderationReason = reason;
     await this.closeProposal(proposal, CIRCLE_PROPOSAL_STATUSES.MODERATED, new Date(), session);
     return proposal;
@@ -829,6 +834,7 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
       .find({
         ...(circleId ? { circleId } : {}),
         status: { $in: ACTIVE_STATUSES },
+        activeGovernanceCaseId: null,
         $or: [
           { expiresAt: { $lte: now } },
           { status: CIRCLE_PROPOSAL_STATUSES.DISCUSSION, discussionDeadlineAt: { $lte: now } },
@@ -839,7 +845,11 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
     for (const item of due) {
       await this.databaseService.$transaction(async (session) => {
         const proposal = await this.proposalModel.findById(item.id, null, { session });
-        if (!proposal || !ACTIVE_STATUSES.includes(proposal.status)) return;
+        if (
+          !proposal ||
+          !ACTIVE_STATUSES.includes(proposal.status) ||
+          proposal.activeGovernanceCaseId !== null
+        ) return;
         const circle = await this.getCircle(proposal.circleId, session);
         if (circle.status !== CIRCLE_STATUSES.ACTIVE) return;
         const transactionNow = new Date();
@@ -1022,6 +1032,7 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
     proposal.status = status;
     proposal.resolvedAt = resolvedAt;
     proposal.activeKey = null;
+    proposal.activeGovernanceCaseId = null;
     proposal.version += 1;
     await proposal.save({ session });
     await this.circleModel.updateOne(
@@ -1030,6 +1041,95 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
       { session },
     );
     await this.notifyProposalParticipants(proposal, 'CO_BUILD_STATUS', undefined, session);
+  }
+
+  async moderateProposalFromGovernance(
+    proposalId: string,
+    governanceCaseId: string,
+    publicReason: string,
+    session?: ClientSession,
+  ): Promise<boolean> {
+    const proposal = await this.proposalModel.findOne(
+      {
+        _id: proposalId,
+        status: { $in: [CIRCLE_PROPOSAL_STATUSES.DISCUSSION, CIRCLE_PROPOSAL_STATUSES.VOTING] },
+        activeGovernanceCaseId: governanceCaseId,
+      },
+      null,
+      { session },
+    );
+    if (!proposal) return false;
+    proposal.status = CIRCLE_PROPOSAL_STATUSES.MODERATED;
+    proposal.resolvedAt = new Date();
+    proposal.activeKey = null;
+    proposal.activeGovernanceCaseId = null;
+    proposal.moderationReason = publicReason;
+    proposal.version += 1;
+    await proposal.save({ session });
+    await this.circleModel.updateOne(
+      { _id: proposal.circleId, activeProposalCount: { $gt: 0 } },
+      { $inc: { activeProposalCount: -1 } },
+      { session },
+    );
+    await this.maintenanceLogModel.create(
+      [{
+        circleId: proposal.circleId,
+        action: CIRCLE_MAINTENANCE_ACTIONS.PROPOSAL_MODERATED,
+        actorType: CIRCLE_MAINTENANCE_ACTOR_TYPES.SYSTEM,
+        actorAgentId: null,
+        targetPostId: null,
+        proposalId: proposal.id,
+        proposalRevisionNumber: proposal.currentRevisionNumber,
+        publicReason,
+        metadata: { scope: proposal.scope, governanceCaseId },
+      }],
+      { session },
+    );
+    await this.notifyProposalParticipants(proposal, 'CO_BUILD_STATUS', undefined, session);
+    return true;
+  }
+
+  async moderateCommentFromGovernance(
+    commentId: string,
+    governanceCaseId: string,
+    publicReason: string,
+    session?: ClientSession,
+  ): Promise<boolean> {
+    const comment = await this.commentModel.findOne(
+      { _id: commentId, hiddenAt: null },
+      null,
+      { session },
+    );
+    if (!comment) return false;
+    const proposal = await this.proposalModel.findById(comment.proposalId, null, { session });
+    if (!proposal) throw new Error(`提案评论 ${comment.id} 缺少所属提案`);
+    const hidden = await this.commentModel.updateOne(
+      { _id: comment.id, hiddenAt: null },
+      { $set: { hiddenAt: new Date() } },
+      { session },
+    );
+    if (hidden.modifiedCount !== 1) return false;
+    await this.maintenanceLogModel.create(
+      [{
+        circleId: comment.circleId,
+        action: CIRCLE_MAINTENANCE_ACTIONS.PROPOSAL_COMMENT_MODERATED,
+        actorType: CIRCLE_MAINTENANCE_ACTOR_TYPES.SYSTEM,
+        actorAgentId: null,
+        targetPostId: null,
+        proposalId: proposal.id,
+        proposalRevisionNumber: comment.revisionNumber,
+        publicReason,
+        metadata: {
+          governanceCaseId,
+          commentId: comment.id,
+          previousStatus: 'VISIBLE',
+          nextStatus: 'HIDDEN',
+        },
+      }],
+      { session },
+    );
+    await this.notifyProposalParticipants(proposal, 'CO_BUILD_STATUS', undefined, session);
+    return true;
   }
 
   private async notifyProposalParticipants(
@@ -1087,6 +1187,12 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
   private assertProposalVersion(proposal: CircleProposal, expectedVersion: number): void {
     if (proposal.version !== expectedVersion)
       throw new ConflictException('提案已更新，请刷新后重试');
+  }
+
+  private assertNotUnderGovernance(proposal: CircleProposal): void {
+    if (proposal.activeGovernanceCaseId) {
+      throw new ConflictException('提案正在治理审理中，请先完成治理案件');
+    }
   }
 
   private assertDiscussionWrite(proposal: CircleProposal, expectedVersion: number): void {

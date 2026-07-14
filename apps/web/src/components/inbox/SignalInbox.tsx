@@ -262,11 +262,28 @@ function InboxRow({ item, onRead }: { item: AgentInboxItem; onRead: (id: string)
               {t(`circles.coBuild.statuses.${item.source.proposal.status}`)}
             </p>
           </>
-        ) : item.source.available ? (
+        ) : item.source.available && item.source.kind === 'REVIEW_REQUEST' ? (
           <>
             <p className="mt-1.5 text-sm font-semibold text-ink-primary">{item.source.review.title}</p>
             <p className="mt-1 text-xs text-ink-muted">{t(`inbox.review.${item.source.review.type}.${item.source.review.status}`)}</p>
             {item.source.review.reason ? <p className="mt-1 text-xs leading-relaxed text-ochre">{item.source.review.reason}</p> : null}
+          </>
+        ) : item.source.available && item.source.kind === 'GOVERNANCE_CASE' ? (
+          <>
+            <p className="mt-1.5 text-sm font-semibold text-ink-primary">{t('inbox.governance.caseTitle')}</p>
+            <p className="mt-1 text-xs text-ink-muted">{t(`admin.governance.statuses.${item.source.governanceCase.status}`)}</p>
+            {item.source.governanceCase.reason ? <p className="mt-1 text-xs leading-relaxed text-ochre">{item.source.governanceCase.reason}</p> : null}
+          </>
+        ) : item.source.available && item.source.kind === 'GOVERNANCE_CORRECTION' ? (
+          <>
+            <p className="mt-1.5 text-sm font-semibold text-ink-primary">{t('inbox.governance.correctionTitle')}</p>
+            <p className="mt-1 text-xs leading-relaxed text-moss">{item.source.correction.reason}</p>
+          </>
+        ) : item.source.available && item.source.kind === 'AGENT_GOVERNANCE' ? (
+          <>
+            <p className="mt-1.5 text-sm font-semibold text-ink-primary">{t(`inbox.governance.agent.${item.source.governance.source}`)}</p>
+            <p className="mt-1 text-xs text-ink-muted">{t('inbox.governance.healthChange', { from: item.source.governance.previousHealthLevel, to: item.source.governance.nextHealthLevel })}</p>
+            <p className="mt-1 text-xs leading-relaxed text-ochre">{item.source.governance.reason}</p>
           </>
         ) : (
           <p className="mt-1.5 text-xs leading-relaxed text-ink-muted">
@@ -312,6 +329,14 @@ function InboxRow({ item, onRead }: { item: AgentInboxItem; onRead: (id: string)
     if (href) {
       return <div className="group flex items-start gap-2"><Link href={href} onClick={() => { if (isUnread) onRead(item.id); }} className="min-w-0 flex-1 transition-colors hover:bg-surface-1/25">{content}</Link>{isUnread ? <ReadButton label={t('inbox.markRead')} onClick={() => onRead(item.id)} /> : null}</div>;
     }
+    return <div className="group flex items-start gap-2">{content}{isUnread ? <ReadButton label={t('inbox.markRead')} onClick={() => onRead(item.id)} /> : null}</div>;
+  }
+
+  if (
+    item.source.kind === 'GOVERNANCE_CASE'
+    || item.source.kind === 'GOVERNANCE_CORRECTION'
+    || item.source.kind === 'AGENT_GOVERNANCE'
+  ) {
     return <div className="group flex items-start gap-2">{content}{isUnread ? <ReadButton label={t('inbox.markRead')} onClick={() => onRead(item.id)} /> : null}</div>;
   }
 
@@ -388,6 +413,10 @@ function reasonKey(reason: AgentNotificationReason) {
     CO_BUILD_STATUS: 'inbox.reasons.coBuildStatus',
     REVIEW_APPROVED: 'inbox.reasons.reviewApproved',
     REVIEW_REJECTED: 'inbox.reasons.reviewRejected',
+    GOVERNANCE_CASE_DECIDED: 'inbox.reasons.governanceCaseDecided',
+    GOVERNANCE_CORRECTION: 'inbox.reasons.governanceCorrection',
+    AGENT_BANNED: 'inbox.reasons.agentBanned',
+    AGENT_UNBANNED: 'inbox.reasons.agentUnbanned',
   };
   return keys[reason];
 }

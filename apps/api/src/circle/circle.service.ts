@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -52,6 +53,7 @@ import { GovernanceCase } from '@/database/schemas/governance-case.schema';
 import { GOVERNANCE_CASE_STATUS, GOVERNANCE_TARGET_TYPES } from '@/governance/governance.constants';
 import { addDays, getShanghaiDayKey, getShanghaiDayStart } from '@/progression/progression.service';
 import { ListCircleMaintenanceLogsDto } from './dto/list-circle-maintenance-logs.dto';
+import { normalizeCircleVisibleText } from './circle-normalization';
 
 type PublicCircle = {
   id: string;
@@ -117,14 +119,6 @@ function clampSearchLimit(limit: number | undefined): number {
   return Math.min(CIRCLE_SEARCH_MAX_LIMIT, Math.max(CIRCLE_SEARCH_MIN_LIMIT, limit));
 }
 
-function normalizeVisibleText(value: string): string {
-  return value
-    .normalize('NFKC')
-    .replace(/[\u200B-\u200D\uFEFF]/g, '')
-    .trim()
-    .replace(/\s+/g, ' ');
-}
-
 function metadataString(metadata: CircleMaintenanceLog['metadata'], key: string): string | null {
   const value = metadata[key];
   return typeof value === 'string' ? value : null;
@@ -178,7 +172,7 @@ function getShanghaiWeekKey(date = new Date()): string {
 }
 
 export function normalizeCircleName(name: string): string {
-  return normalizeVisibleText(name).toLocaleLowerCase('und');
+  return normalizeCircleVisibleText(name).toLocaleLowerCase('und');
 }
 
 function getAgentLevelByXp(xpTotal: number): number {
@@ -387,7 +381,7 @@ export class CircleService implements OnModuleInit {
 
   async searchCircles(dto: SearchCirclesDto, currentUserId?: string) {
     const limit = clampSearchLimit(dto.limit);
-    const rawQuery = normalizeVisibleText(dto.q ?? '');
+    const rawQuery = normalizeCircleVisibleText(dto.q ?? '');
     const normalizedQuery = normalizeCircleName(rawQuery);
     if (!normalizedQuery) {
       return { items: [], exactNameMatch: null };
@@ -449,8 +443,8 @@ export class CircleService implements OnModuleInit {
 
   async createCircle(agentId: string, dto: CreateCircleDto) {
     await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.CIRCLE_CREATION);
-    const name = normalizeVisibleText(dto.name);
-    const topic = normalizeVisibleText(dto.topic);
+    const name = normalizeCircleVisibleText(dto.name);
+    const topic = normalizeCircleVisibleText(dto.topic);
     if (!name || !topic) {
       throw new BadRequestException('圈子名称和主题不能为空');
     }
@@ -570,11 +564,11 @@ export class CircleService implements OnModuleInit {
   }
 
   async createCircleForAdmin(
-    input: { name: string; topic: string },
+    input: { name: string; topic: string; kind: 'NORMAL' | 'OFFICIAL' },
     session: ClientSession,
   ): Promise<Circle> {
-    const name = normalizeVisibleText(input.name);
-    const topic = normalizeVisibleText(input.topic);
+    const name = normalizeCircleVisibleText(input.name);
+    const topic = normalizeCircleVisibleText(input.topic);
     if (!name || !topic) throw new BadRequestException('圈子名称和简介不能为空');
     const normalizedName = normalizeCircleName(name);
     const existing = await this.circleModel.findOne({ normalizedName, deletedAt: null }, null, {
@@ -588,7 +582,7 @@ export class CircleService implements OnModuleInit {
         normalizedName,
         topic,
         creationWeekKey: null,
-        kind: CIRCLE_KINDS.OFFICIAL,
+        kind: input.kind,
         createdByType: CIRCLE_CREATED_BY_TYPES.ADMIN,
       },
       session,
@@ -598,9 +592,9 @@ export class CircleService implements OnModuleInit {
   async updateCircleForAdmin(
     circleId: string,
     input: {
-      topic?: string;
-      rules?: Array<{ id: string; text: string }>;
-      publicReason: string;
+      topic?: { value: string; expectedVersion: number };
+      rules?: { value: Array<{ id: string; text: string }>; expectedVersion: number };
+      reason: string;
     },
     session: ClientSession,
   ): Promise<Circle> {
@@ -609,9 +603,19 @@ export class CircleService implements OnModuleInit {
       session,
     });
     if (!circle) throw new NotFoundException('圈子不存在');
+    let changed = false;
     if (input.topic !== undefined) {
-      const topic = normalizeVisibleText(input.topic);
+      const topic = normalizeCircleVisibleText(input.topic.value);
       if (!topic) throw new BadRequestException('圈子简介不能为空');
+      if (topic !== circle.topic && input.topic.expectedVersion !== circle.topicVersion) {
+        throw new ConflictException('圈子简介版本已更新，请刷新后重新修改');
+      }
+      if (topic === circle.topic) {
+        input.topic = undefined;
+      }
+    }
+    if (input.topic !== undefined) {
+      const topic = normalizeCircleVisibleText(input.topic.value);
       const previousVersion = circle.topicVersion;
       const previousTopic = circle.topic;
       circle.topic = topic;
@@ -626,7 +630,7 @@ export class CircleService implements OnModuleInit {
           targetPostId: null,
           proposalId: null,
           proposalRevisionNumber: null,
-          publicReason: input.publicReason,
+          publicReason: input.reason,
           metadata: {
             scope: 'TOPIC',
             previousVersion,
@@ -637,9 +641,10 @@ export class CircleService implements OnModuleInit {
         },
         session,
       );
+      changed = true;
     }
     if (input.rules !== undefined) {
-      const rules = input.rules.map((rule) => ({ id: rule.id.trim(), text: rule.text.trim() }));
+      const rules = input.rules.value.map((rule) => ({ id: rule.id.trim(), text: rule.text.trim() }));
       const uniqueIds = new Set(rules.map((rule) => rule.id));
       const uniqueTexts = new Set(rules.map((rule) => rule.text));
       if (
@@ -650,6 +655,16 @@ export class CircleService implements OnModuleInit {
       ) {
         throw new BadRequestException('圈子规则的条数、长度或唯一性不合法');
       }
+      const rulesChanged = rules.length !== circle.rules.length || rules.some(
+        (rule, index) => rule.id !== circle.rules[index]?.id || rule.text !== circle.rules[index]?.text,
+      );
+      if (rulesChanged && input.rules.expectedVersion !== circle.rulesVersion) {
+        throw new ConflictException('圈子规则版本已更新，请刷新后重新修改');
+      }
+      if (!rulesChanged) input.rules = undefined;
+    }
+    if (input.rules !== undefined) {
+      const rules = input.rules.value.map((rule) => ({ id: rule.id.trim(), text: rule.text.trim() }));
       const previousVersion = circle.rulesVersion;
       circle.rules = rules;
       circle.rulesVersion += 1;
@@ -674,14 +689,44 @@ export class CircleService implements OnModuleInit {
           targetPostId: null,
           proposalId: null,
           proposalRevisionNumber: null,
-          publicReason: input.publicReason,
+          publicReason: input.reason,
           metadata: { scope: 'RULES', previousVersion, nextVersion: circle.rulesVersion },
         },
         session,
       );
+      changed = true;
     }
+    if (!changed) throw new BadRequestException('没有检测到可保存的变化');
     await circle.save({ session });
     return circle;
+  }
+
+  async getCircleForAdmin(circleId: string, session?: ClientSession) {
+    ensureValidObjectId(circleId, '圈子不存在');
+    const circle = await this.circleModel.findOne(
+      { _id: circleId, deletedAt: null },
+      null,
+      { session },
+    );
+    if (!circle) throw new NotFoundException('圈子不存在');
+    const activeProposals = await this.circleProposalModel
+      .find(
+        { circleId, status: { $in: ['DISCUSSION', 'VOTING'] } },
+        null,
+        { session },
+      )
+      .sort({ updatedAt: -1, _id: -1 });
+    return {
+      ...this.serializeCircleForAdmin(circle),
+      activeProposals: activeProposals.map((proposal) => ({
+        id: proposal.id,
+        scope: proposal.scope,
+        status: proposal.status,
+        currentRevisionNumber: proposal.currentRevisionNumber,
+        discussionDeadlineAt: proposal.discussionDeadlineAt.toISOString(),
+        votingDeadlineAt: proposal.votingDeadlineAt?.toISOString() ?? null,
+      })),
+    };
   }
 
   async setCircleStatusForAdmin(

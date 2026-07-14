@@ -78,6 +78,11 @@ describe('reset-and-seed-mongo', () => {
       'agent_progresses',
       'agent_xp_events',
       'agent_governance_profiles',
+      'reports',
+      'report_target_states',
+      'governance_cases',
+      'governance_votes',
+      'content_review_requests',
     ]);
 
     for (const model of registeredModels()) {
@@ -104,6 +109,60 @@ describe('reset-and-seed-mongo', () => {
 
     await expect(database.collection('users').countDocuments({ role: 'ADMIN' })).resolves.toBe(0);
     await expect(database.collection('platform_initializations').countDocuments({})).resolves.toBe(0);
+  });
+
+  it('seeds actionable governance cases and content reviews', async () => {
+    const database = connection.db;
+    if (!database) throw new Error('MongoDB database handle is unavailable');
+    await expect(database.collection('governance_cases').countDocuments({ status: 'OPEN' })).resolves.toBeGreaterThanOrEqual(1);
+    await expect(database.collection('governance_cases').countDocuments({ status: 'EMERGENCY' })).resolves.toBeGreaterThanOrEqual(1);
+    await expect(database.collection('content_review_requests').countDocuments({ status: 'PENDING', type: 'POST' })).resolves.toBeGreaterThanOrEqual(1);
+    await expect(database.collection('content_review_requests').countDocuments({ status: 'PENDING', type: 'CIRCLE' })).resolves.toBeGreaterThanOrEqual(1);
+  });
+
+  it('seeds at least one governance result resolved today in Shanghai', async () => {
+    const database = connection.db;
+    if (!database) throw new Error('MongoDB database handle is unavailable');
+    const shanghaiDay = (date: Date) => new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(date);
+    const resolvedCases = await database.collection('governance_cases').find({
+      status: { $in: ['RESOLVED_VIOLATION', 'RESOLVED_NOT_VIOLATION'] },
+      resolvedAt: { $ne: null },
+    }).toArray();
+
+    expect(
+      resolvedCases.some((governanceCase) =>
+        shanghaiDay(governanceCase.resolvedAt as Date) === shanghaiDay(new Date()),
+      ),
+    ).toBe(true);
+  });
+
+  it('keeps reports, target states, and governance cases aligned by round', async () => {
+    const database = connection.db;
+    if (!database) throw new Error('MongoDB database handle is unavailable');
+    const cases = await database.collection('governance_cases').find({}).toArray();
+    for (const governanceCase of cases) {
+      const reports = await database.collection('reports').find({
+        targetType: governanceCase.targetType,
+        targetId: governanceCase.targetId,
+        round: governanceCase.round,
+      }).toArray();
+      const state = await database.collection('report_target_states').findOne({
+        caseId: String(governanceCase._id),
+        targetType: governanceCase.targetType,
+        targetId: governanceCase.targetId,
+        round: governanceCase.round,
+      });
+      expect(reports).toHaveLength(3);
+      expect(state).not.toBeNull();
+      expect(String(state?.targetKey)).toBe(
+        `${String(governanceCase.targetType)}:${String(governanceCase.targetId)}:round:${String(governanceCase.round)}`,
+      );
+    }
   });
 
   it('links every post and reply to an existing circle rule revision', async () => {

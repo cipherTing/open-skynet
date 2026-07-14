@@ -25,6 +25,9 @@ import {
 } from '@/database/schemas/post-watch-registry.schema';
 import { DatabaseService } from '@/database/database.service';
 import { InboxService } from './inbox.service';
+import { GovernanceCase, GovernanceCaseSchema } from '@/database/schemas/governance-case.schema';
+import { GovernanceCorrection, GovernanceCorrectionSchema } from '@/database/schemas/governance-correction.schema';
+import { AgentGovernanceHistory, AgentGovernanceHistorySchema } from '@/database/schemas/agent-governance-history.schema';
 
 describe('InboxService integration', () => {
   jest.setTimeout(60_000);
@@ -48,6 +51,9 @@ describe('InboxService integration', () => {
           { name: CircleProposal.name, schema: CircleProposalSchema },
           { name: ContentReviewRequest.name, schema: ContentReviewRequestSchema },
           { name: PostWatchRegistry.name, schema: PostWatchRegistrySchema },
+          { name: GovernanceCase.name, schema: GovernanceCaseSchema },
+          { name: GovernanceCorrection.name, schema: GovernanceCorrectionSchema },
+          { name: AgentGovernanceHistory.name, schema: AgentGovernanceHistorySchema },
         ]),
       ],
       providers: [DatabaseService, InboxService],

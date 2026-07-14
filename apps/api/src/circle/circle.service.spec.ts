@@ -106,7 +106,7 @@ describe('CircleService creation and subscriptions', () => {
   async function createOfficialCircle() {
     return databaseService.$requiredTransaction((session) =>
       service.createCircleForAdmin(
-        { name: '官方公告区', topic: '由管理员建立的官方圈子' },
+        { name: '官方公告区', topic: '由管理员建立的官方圈子', kind: 'OFFICIAL' },
         session,
       ),
     );
@@ -136,9 +136,9 @@ describe('CircleService creation and subscriptions', () => {
       service.updateCircleForAdmin(
         created.id,
         {
-          topic: '发布平台运行说明、公共变更和社区秩序信息。',
-          rules: nextRules,
-          publicReason: '补充官方圈子的用途和首条公开规则。',
+          topic: { value: '发布平台运行说明、公共变更和社区秩序信息。', expectedVersion: 1 },
+          rules: { value: nextRules, expectedVersion: 1 },
+          reason: '补充官方圈子的用途和首条公开规则。',
         },
         session,
       ),
@@ -160,6 +160,77 @@ describe('CircleService creation and subscriptions', () => {
     await expect(service.getMaintenanceLogDetail(created.id, rulesLog!.id)).resolves.toMatchObject({
       change: { kind: 'RULES', previousRules: [], nextRules },
     });
+  });
+
+  it('allows an administrator to create a normal circle', async () => {
+    const created = await databaseService.$requiredTransaction((session) =>
+      service.createCircleForAdmin(
+        { name: '普通讨论区', topic: '管理员建立但不授予官方身份', kind: 'NORMAL' },
+        session,
+      ),
+    );
+    expect(created.kind).toBe('NORMAL');
+  });
+
+  it('rejects no-op administrator updates without advancing versions', async () => {
+    const created = await createOfficialCircle();
+    await expect(databaseService.$requiredTransaction((session) =>
+      service.updateCircleForAdmin(
+        created.id,
+        {
+          topic: { value: created.topic, expectedVersion: created.topicVersion },
+          rules: { value: [], expectedVersion: created.rulesVersion },
+          reason: '尝试提交没有变化的内容。',
+        },
+        session,
+      ),
+    )).rejects.toThrow('没有检测到可保存的变化');
+    const unchanged = await connection.model(Circle.name).findById(created.id);
+    expect(unchanged).toMatchObject({ topicVersion: 1, rulesVersion: 1 });
+  });
+
+  it('rejects a stale administrator scope version', async () => {
+    const created = await createOfficialCircle();
+    await expect(databaseService.$requiredTransaction((session) =>
+      service.updateCircleForAdmin(
+        created.id,
+        {
+          topic: { value: '新的圈子简介', expectedVersion: 99 },
+          reason: '验证旧版本不能覆盖新内容。',
+        },
+        session,
+      ),
+    )).rejects.toThrow('圈子简介版本已更新');
+  });
+
+  it('advances only the administrator scope that actually changed', async () => {
+    const created = await createOfficialCircle();
+    const reason = '只修正圈子简介，不改动现有规则。';
+
+    await databaseService.$requiredTransaction((session) =>
+      service.updateCircleForAdmin(
+        created.id,
+        {
+          topic: { value: '仅更新后的官方圈子简介', expectedVersion: 1 },
+          reason,
+        },
+        session,
+      ),
+    );
+
+    const updated = await connection.model(Circle.name).findById(created.id);
+    const changeLogs = await connection.model(CircleMaintenanceLog.name).find({
+      circleId: created.id,
+      publicReason: reason,
+    });
+    expect(updated).toMatchObject({
+      topic: '仅更新后的官方圈子简介',
+      topicVersion: 2,
+      rulesVersion: 1,
+      rules: [],
+    });
+    expect(changeLogs).toHaveLength(1);
+    expect(changeLogs[0]?.action).toBe('CIRCLE_UPDATED');
   });
 
   it('records the actual previous and next status when an administrator bans a circle', async () => {

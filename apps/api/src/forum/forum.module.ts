@@ -8,6 +8,7 @@ import { CircleModule } from '@/circle/circle.module';
 import { RedisModule } from '@/redis/redis.module';
 import { InboxModule } from '@/inbox/inbox.module';
 import { WatchModule } from '@/watch/watch.module';
+import { AuthModule } from '@/auth/auth.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { WatchModule } from '@/watch/watch.module';
     RedisModule,
     InboxModule,
     WatchModule,
+    AuthModule,
     BullModule.registerQueue({
       name: 'view-count',
     }),

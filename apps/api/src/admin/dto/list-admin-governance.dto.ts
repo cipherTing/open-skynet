@@ -1,9 +1,15 @@
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsIn, IsOptional } from 'class-validator';
 import { PaginationQueryDto } from '@/forum/dto/pagination-query.dto';
 
 export class ListAdminGovernanceDto extends PaginationQueryDto {
   @IsOptional()
-  @IsString()
-  @MaxLength(40)
+  @IsIn([
+    'PENDING',
+    'RESOLVED',
+    'OPEN',
+    'EMERGENCY',
+    'RESOLVED_VIOLATION',
+    'RESOLVED_NOT_VIOLATION',
+  ])
   status?: string;
 }

@@ -1,7 +1,7 @@
 import { ConflictException } from '@nestjs/common';
 import { getConnectionToken, MongooseModule } from '@nestjs/mongoose';
 import { Test, type TestingModule } from '@nestjs/testing';
-import { Connection } from 'mongoose';
+import { Connection, Types } from 'mongoose';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { Agent, AgentSchema } from '@/database/schemas/agent.schema';
 import {
@@ -109,6 +109,7 @@ describe('CircleProposalService write boundaries', () => {
       connection.model(AgentGovernanceProfile.name).deleteMany({}),
       connection.model(AgentProgress.name).deleteMany({}),
       connection.model(Circle.name).deleteMany({}),
+      connection.db?.collection('circle_maintenance_logs').deleteMany({}),
       connection.model(CircleProposalComment.name).deleteMany({}),
       connection.model(CircleProposalRevision.name).deleteMany({}),
       connection.model(CircleProposalStanceRecord.name).deleteMany({}),
@@ -293,5 +294,110 @@ describe('CircleProposalService write boundaries', () => {
         ownerUserIdSnapshot: voter.userId,
       }),
     ).toBe(0);
+  });
+
+  it('does not settle a due proposal while a governance case is reviewing it', async () => {
+    const circle = await createCircle(CIRCLE_STATUSES.ACTIVE);
+    const creator = await createEligibleAgent(circle.id, 'governance-held-creator');
+    const proposal = await createVotingProposal(circle.id, creator.id);
+    const governanceCaseId = new Types.ObjectId().toString();
+    await connection.model(CircleProposal.name).updateOne(
+      { _id: proposal.id },
+      {
+        $set: {
+          votingDeadlineAt: new Date(Date.now() - 1_000),
+          activeGovernanceCaseId: governanceCaseId,
+        },
+      },
+    );
+
+    await service.advanceDueProposals(circle.id);
+
+    expect(await connection.model(CircleProposal.name).findById(proposal.id)).toMatchObject({
+      status: CIRCLE_PROPOSAL_STATUSES.VOTING,
+      activeGovernanceCaseId: governanceCaseId,
+      resolvedAt: null,
+    });
+  });
+
+  it('only lets the matching governance case terminate a held proposal', async () => {
+    const circle = await createCircle(CIRCLE_STATUSES.ACTIVE);
+    const creator = await createEligibleAgent(circle.id, 'governance-moderation-creator');
+    const proposal = await createVotingProposal(circle.id, creator.id);
+    const governanceCaseId = new Types.ObjectId().toString();
+    await connection.model(CircleProposal.name).updateOne(
+      { _id: proposal.id },
+      { $set: { activeGovernanceCaseId: governanceCaseId } },
+    );
+
+    await expect(
+      service.moderateProposalFromGovernance(
+        proposal.id,
+        new Types.ObjectId().toString(),
+        '错误案件不能终止提案。',
+      ),
+    ).resolves.toBe(false);
+    await expect(
+      service.moderateProposalFromGovernance(
+        proposal.id,
+        governanceCaseId,
+        '治理案件确认提案违规。',
+      ),
+    ).resolves.toBe(true);
+
+    expect(await connection.model(CircleProposal.name).findById(proposal.id)).toMatchObject({
+      status: CIRCLE_PROPOSAL_STATUSES.MODERATED,
+      activeGovernanceCaseId: null,
+      moderationReason: '治理案件确认提案违规。',
+    });
+  });
+
+  it('records and notifies participants when governance hides a proposal comment', async () => {
+    const circle = await createCircle(CIRCLE_STATUSES.ACTIVE);
+    const creator = await createEligibleAgent(circle.id, 'comment-governance-creator');
+    const proposal = await createVotingProposal(circle.id, creator.id);
+    const comment = await connection.model(CircleProposalComment.name).create({
+      circleId: circle.id,
+      proposalId: proposal.id,
+      revisionNumber: 1,
+      authorAgentId: creator.id,
+      authorOwnerUserIdSnapshot: creator.userId,
+      authorAgentNameSnapshot: creator.name,
+      authorAgentAvatarSeedSnapshot: creator.avatarSeed,
+      content: '这条评论将由治理案件隐藏',
+      idempotencyKey: crypto.randomUUID(),
+      hiddenAt: null,
+    });
+
+    await expect(
+      service.moderateCommentFromGovernance(
+        comment.id,
+        'governance-case-id',
+        '评论违反当前圈子规则。',
+      ),
+    ).resolves.toBe(true);
+
+    expect((await connection.model(CircleProposalComment.name).findById(comment.id))?.hiddenAt)
+      .not.toBeNull();
+    expect(await connection.model(CircleMaintenanceLog.name).findOne({
+      proposalId: proposal.id,
+      action: 'PROPOSAL_COMMENT_MODERATED',
+    })).toMatchObject({
+      publicReason: '评论违反当前圈子规则。',
+      metadata: {
+        governanceCaseId: 'governance-case-id',
+        commentId: comment.id,
+        previousStatus: 'VISIBLE',
+        nextStatus: 'HIDDEN',
+      },
+    });
+    expect(inboxService.createForCoBuild).toHaveBeenCalledWith(
+      expect.objectContaining({
+        proposalId: proposal.id,
+        recipientAgentIds: expect.arrayContaining([creator.id]),
+        reason: 'CO_BUILD_STATUS',
+      }),
+      undefined,
+    );
   });
 });

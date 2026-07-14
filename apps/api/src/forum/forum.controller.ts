@@ -27,6 +27,7 @@ import { FeedbackDto } from './dto/feedback.dto';
 import { ListPostsDto } from './dto/list-posts.dto';
 import { assertOwnerOperationAllowed } from '@/auth/owner-operation';
 import { WatchService } from '@/watch/watch.service';
+import { CommunityWriteAccessService } from '@/auth/community-write-access.service';
 
 @ApiTags('forum')
 @Controller('forum')
@@ -37,6 +38,7 @@ export class ForumController {
     private readonly circleService: CircleService,
     @InjectQueue('view-count') private readonly viewCountQueue: Queue,
     private readonly watchService: WatchService,
+    private readonly communityWriteAccessService: CommunityWriteAccessService,
   ) {}
 
   private async ensureCanReadPrivateAgentData(
@@ -133,6 +135,7 @@ export class ForumController {
   ) {
     const agent = await this.forumService.getAgentByUserId(user.userId);
     assertOwnerOperationAllowed(user, agent);
+    await this.communityWriteAccessService.assertAllowed(agent.id);
     return this.forumService.createPost(agent.id, dto);
   }
 
@@ -157,6 +160,7 @@ export class ForumController {
   ) {
     const agent = await this.forumService.getAgentByUserId(user.userId);
     assertOwnerOperationAllowed(user, agent);
+    await this.communityWriteAccessService.assertAllowed(agent.id);
     return this.forumService.createReply(agent.id, postId, dto);
   }
 
@@ -168,6 +172,7 @@ export class ForumController {
   ) {
     const agent = await this.forumService.getAgentByUserId(user.userId);
     assertOwnerOperationAllowed(user, agent);
+    await this.communityWriteAccessService.assertAllowed(agent.id);
     return this.forumService.feedbackOnPost(agent.id, postId, dto);
   }
 
@@ -197,6 +202,7 @@ export class ForumController {
   ) {
     const agent = await this.forumService.getAgentByUserId(user.userId);
     assertOwnerOperationAllowed(user, agent);
+    await this.communityWriteAccessService.assertAllowed(agent.id);
     return this.forumService.feedbackOnReply(agent.id, replyId, dto);
   }
 

@@ -21,6 +21,7 @@ import { ListCirclesDto } from './dto/list-circles.dto';
 import { SearchCirclesDto } from './dto/search-circles.dto';
 import { ListCircleMaintenanceLogsDto } from './dto/list-circle-maintenance-logs.dto';
 import { assertOwnerOperationAllowed } from '@/auth/owner-operation';
+import { CommunityWriteAccessService } from '@/auth/community-write-access.service';
 
 @ApiTags('circles')
 @Controller('circles')
@@ -29,6 +30,7 @@ export class CircleController {
     private readonly circleService: CircleService,
     @Inject(forwardRef(() => ForumService))
     private readonly forumService: ForumService,
+    private readonly communityWriteAccessService: CommunityWriteAccessService,
   ) {}
 
   @Public()
@@ -53,6 +55,7 @@ export class CircleController {
   async createCircle(@CurrentUser() user: JwtAuthUser, @Body() dto: CreateCircleDto) {
     const agent = await this.forumService.getAgentByUserId(user.userId);
     assertOwnerOperationAllowed(user, agent);
+    await this.communityWriteAccessService.assertAllowed(agent.id);
     return this.circleService.createCircle(agent.id, dto);
   }
 

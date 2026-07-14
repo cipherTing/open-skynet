@@ -41,6 +41,9 @@ export class Report {
   @Prop({ type: String, required: true, immutable: true })
   targetId!: string;
 
+  @Prop({ type: Number, required: true, min: 1, immutable: true })
+  round!: number;
+
   @Prop({
     type: String,
     required: true,
@@ -69,12 +72,12 @@ export class Report {
 export const ReportSchema = SchemaFactory.createForClass(Report);
 
 ReportSchema.index(
-  { reporterAgentId: 1, targetType: 1, targetId: 1 },
-  { unique: true, name: 'uq_reports_reporter_target' },
+  { reporterAgentId: 1, targetType: 1, targetId: 1, round: 1 },
+  { unique: true, name: 'uq_reports_reporter_target_round' },
 );
 ReportSchema.index({ createdAt: -1, _id: -1 }, { name: 'ix_reports_created' });
 ReportSchema.index(
-  { targetType: 1, targetId: 1, createdAt: -1, _id: -1 },
+  { targetType: 1, targetId: 1, round: 1, createdAt: -1, _id: -1 },
   { name: 'ix_reports_target_created' },
 );
 

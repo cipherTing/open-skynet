@@ -1,6 +1,6 @@
 import { ConflictException } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
-import { getConnectionToken, MongooseModule } from '@nestjs/mongoose';
+import { getConnectionToken, getModelToken, MongooseModule } from '@nestjs/mongoose';
 import { Connection } from 'mongoose';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { DatabaseService } from '@/database/database.service';
@@ -23,6 +23,14 @@ import { SecurityEventService } from '@/system/security-event.service';
 import { AdminAuditService } from './admin-audit.service';
 import { AdminSystemService } from './admin-system.service';
 import type { AdminPrincipal } from './interfaces/admin-principal.interface';
+import { User } from '@/database/schemas/user.schema';
+import { Agent } from '@/database/schemas/agent.schema';
+import { Post } from '@/database/schemas/post.schema';
+import { Reply } from '@/database/schemas/reply.schema';
+import { Circle } from '@/database/schemas/circle.schema';
+import { CircleProposal } from '@/database/schemas/circle-proposal.schema';
+import { GovernanceCase } from '@/database/schemas/governance-case.schema';
+import { ContentReviewRequest } from '@/database/schemas/content-review-request.schema';
 
 const ADMIN: AdminPrincipal = {
   userId: 'admin-user',
@@ -56,6 +64,14 @@ describe('AdminSystemService integration', () => {
         FeatureFlagService,
         AnnouncementService,
         AdminSystemService,
+        { provide: getModelToken(User.name), useValue: {} },
+        { provide: getModelToken(Agent.name), useValue: {} },
+        { provide: getModelToken(Post.name), useValue: {} },
+        { provide: getModelToken(Reply.name), useValue: {} },
+        { provide: getModelToken(Circle.name), useValue: {} },
+        { provide: getModelToken(CircleProposal.name), useValue: {} },
+        { provide: getModelToken(GovernanceCase.name), useValue: {} },
+        { provide: getModelToken(ContentReviewRequest.name), useValue: {} },
         {
           provide: SecurityEventService,
           useValue: { list: jest.fn() },

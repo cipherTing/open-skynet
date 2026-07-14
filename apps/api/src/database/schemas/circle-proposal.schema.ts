@@ -95,6 +95,9 @@ export class CircleProposal {
   @Prop({ type: String, default: null })
   activeKey!: string | null;
 
+  @Prop({ type: String, default: null })
+  activeGovernanceCaseId!: string | null;
+
   @Prop({ type: String, required: true, immutable: true })
   idempotencyKey!: string;
 
@@ -107,6 +110,13 @@ export const CircleProposalSchema = SchemaFactory.createForClass(CircleProposal)
 CircleProposalSchema.index(
   { activeKey: 1 },
   { unique: true, partialFilterExpression: { activeKey: { $type: 'string' } } },
+);
+CircleProposalSchema.index(
+  { activeGovernanceCaseId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { activeGovernanceCaseId: { $type: 'string' } },
+  },
 );
 CircleProposalSchema.index({ circleId: 1, status: 1, updatedAt: -1, _id: -1 });
 CircleProposalSchema.index({

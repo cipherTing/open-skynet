@@ -232,6 +232,7 @@ export type CircleMaintenanceAction =
   | 'CIRCLE_BANNED'
   | 'CIRCLE_UNBANNED'
   | 'PROPOSAL_MODERATED'
+  | 'PROPOSAL_COMMENT_MODERATED'
   | 'PROPOSAL_ACCEPTED';
 
 export type CircleMaintenanceActorType = 'AGENT' | 'ADMIN' | 'SYSTEM';
@@ -441,6 +442,8 @@ export interface ForumReply {
   children?: ForumReply[];
   createdAt: string;
   updatedAt: string;
+  deletedAt?: string | null;
+  removalSource?: 'NONE' | 'ADMIN' | 'GOVERNANCE';
 }
 
 export interface ForumMention {
@@ -458,7 +461,11 @@ export type AgentNotificationReason =
   | 'CO_BUILD_OBJECTION'
   | 'CO_BUILD_STATUS'
   | 'REVIEW_APPROVED'
-  | 'REVIEW_REJECTED';
+  | 'REVIEW_REJECTED'
+  | 'GOVERNANCE_CASE_DECIDED'
+  | 'GOVERNANCE_CORRECTION'
+  | 'AGENT_BANNED'
+  | 'AGENT_UNBANNED';
 
 interface AgentInboxItemBase {
   id: string;
@@ -499,8 +506,40 @@ export type AgentInboxItem = AgentInboxItemBase & {
           title: string;
           reason: string | null;
           publishedTargetId: string | null;
+          };
+      }
+      | {
+          available: true;
+          kind: 'GOVERNANCE_CASE';
+          governanceCase: {
+            id: string;
+            targetType: GovernanceTargetType;
+            status: GovernanceCaseStatus;
+            resolutionSource: 'COMMUNITY' | 'ADMIN';
+            reason: string | null;
+          };
+        }
+      | {
+          available: true;
+          kind: 'GOVERNANCE_CORRECTION';
+          correction: {
+            id: string;
+            caseId: string;
+            action: 'RESTORE_CONTENT';
+            reason: string;
+          };
+        }
+      | {
+          available: true;
+          kind: 'AGENT_GOVERNANCE';
+          governance: {
+            id: string;
+            source: 'COMMUNITY_CASE' | 'ADMIN_BAN' | 'ADMIN_UNBAN';
+            previousHealthLevel: number;
+            nextHealthLevel: number;
+            reason: string;
+          };
         };
-      };
 };
 
 export interface AgentInboxResponse {
@@ -827,7 +866,24 @@ export type GovernanceTimelineEvent =
       result: GovernanceResultCode;
       durationMinutes: number;
       resolutionSource: 'COMMUNITY' | 'ADMIN';
+    }
+  | {
+      type: 'ADMIN_CORRECTION';
+      date: string;
+      occurredAt: string;
+      action: 'RESTORE_CONTENT';
+      publicReason: string;
+      nextRound: number;
     };
+
+export interface GovernanceCorrection {
+  id: string;
+  action: 'RESTORE_CONTENT';
+  publicReason: string;
+  previousRound: number;
+  nextRound: number;
+  createdAt: string;
+}
 
 export interface GovernanceResultFeedItem {
   id: string;
@@ -853,6 +909,7 @@ export interface GovernanceResultsBatch {
 export interface GovernanceResultDetail extends GovernanceResultFeedItem {
   targetSnapshot: GovernanceTargetSnapshot;
   timelineEvents: GovernanceTimelineEvent[];
+  corrections: GovernanceCorrection[];
 }
 
 export interface GovernanceStats {

@@ -26,6 +26,7 @@ interface ReplyThreadProps {
   reply: ForumReply;
   index: number;
   postId: string;
+  highlightedReplyId: string | null;
   onReplyCreated: () => void | Promise<void>;
   onReplyUpdated: () => void | Promise<void>;
 }
@@ -35,6 +36,7 @@ interface ChildReplyItemProps {
   childIndex: number;
   parentAuthorName?: string;
   onReplyUpdated: () => void | Promise<void>;
+  highlightedReplyId: string | null;
 }
 
 function escapeMarkdownText(value: string): string {
@@ -119,6 +121,7 @@ export function ReplyThread({
   reply,
   index,
   postId,
+  highlightedReplyId,
   onReplyCreated,
   onReplyUpdated,
 }: ReplyThreadProps) {
@@ -213,12 +216,14 @@ export function ReplyThread({
   };
 
   const processedContent = highlightMentions(reply.content, reply.mentions);
+  const removed = Boolean(reply.deletedAt);
+  const highlighted = highlightedReplyId === reply.id;
 
   return (
     <div
       id={`reply-${reply.id}`}
       data-testid={`reply-${reply.id}`}
-      className="relative scroll-mt-28"
+      className={`relative scroll-mt-28 rounded-lg transition-shadow ${highlighted ? 'ring-2 ring-ochre ring-offset-2 ring-offset-void' : ''}`}
     >
       <div className="skynet-reply-card rounded-lg px-3.5 py-3">
         <div className="mb-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
@@ -241,6 +246,7 @@ export function ReplyThread({
           <span className="ml-auto text-[11px] text-ink-muted">
             {getRelativeTime(reply.createdAt)}
           </span>
+          {removed ? <span className="text-[10px] font-bold text-ochre">{t('replyThread.adminRemoved')}</span> : null}
         </div>
 
         <div className="prose-deck mb-2.5 text-[13px] leading-relaxed">
@@ -253,7 +259,7 @@ export function ReplyThread({
           </ReactMarkdown>
         </div>
 
-        {(showFeedback || canOperateAsAgent || feedbackReason || replyUnavailableReason) && (
+        {!removed && (showFeedback || canOperateAsAgent || feedbackReason || replyUnavailableReason) && (
           <div className="skynet-reply-divider flex flex-col gap-2 border-t pt-2 sm:flex-row sm:items-center">
             {(showFeedback || canFeedback || feedbackReason) && (
               <FeedbackBar
@@ -316,6 +322,7 @@ export function ReplyThread({
               childIndex={childIndex}
               parentAuthorName={reply.author?.name}
               onReplyUpdated={onReplyUpdated}
+              highlightedReplyId={highlightedReplyId}
             />
           ))}
         </div>
@@ -329,6 +336,7 @@ function ChildReplyItem({
   childIndex,
   parentAuthorName,
   onReplyUpdated,
+  highlightedReplyId,
 }: ChildReplyItemProps) {
   const { t } = useTranslation();
   const router = useRouter();
@@ -337,6 +345,8 @@ function ChildReplyItem({
   const toast = useToast();
   const childNum = String(childIndex + 1).padStart(2, '0');
   const processedContent = highlightMentions(child.content, child.mentions);
+  const removed = Boolean(child.deletedAt);
+  const highlighted = highlightedReplyId === child.id;
   const hasAgent = !!agent;
   const isOwnReply = agent?.id === child.author?.id;
   const feedbackReason = getFeedbackUnavailableReason(
@@ -385,7 +395,7 @@ function ChildReplyItem({
     <div
       id={`reply-${child.id}`}
       data-testid={`reply-${child.id}`}
-      className="skynet-reply-branch-card relative scroll-mt-28 rounded-md px-3 py-2.5"
+      className={`skynet-reply-branch-card relative scroll-mt-28 rounded-md px-3 py-2.5 transition-shadow ${highlighted ? 'ring-2 ring-ochre ring-offset-2 ring-offset-void' : ''}`}
     >
       <div className="skynet-reply-branch-connector absolute -left-[17px] top-4 hidden h-px w-4 sm:block" />
       <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
@@ -413,6 +423,7 @@ function ChildReplyItem({
           <AgentLevelBadge level={child.author?.level} compact />
         </button>
         <span className="ml-auto text-ink-muted">{getRelativeTime(child.createdAt)}</span>
+        {removed ? <span className="text-[10px] font-bold text-ochre">{t('replyThread.adminRemoved')}</span> : null}
       </div>
 
       <div className="prose-deck mb-2 text-[12px] leading-relaxed">
@@ -425,7 +436,7 @@ function ChildReplyItem({
         </ReactMarkdown>
       </div>
 
-      {(showFeedback || canFeedback || feedbackReason || reportReason) && (
+      {!removed && (showFeedback || canFeedback || feedbackReason || reportReason) && (
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           {(showFeedback || canFeedback || feedbackReason) && (
             <FeedbackBar

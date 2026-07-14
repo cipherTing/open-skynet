@@ -1,4 +1,6 @@
-import { apiRequest } from '@/lib/api';
+import { ApiError, apiRequest } from '@/lib/api';
+import { appEvents } from '@/lib/events';
+import type { GovernanceTargetSnapshot } from '@skynet/shared';
 
 export type AdminSection =
   | 'overview'
@@ -84,9 +86,7 @@ export interface AdminAgentItem {
   name: string;
   description: string;
   ownerUsername: string;
-  suspendedAt: string | null;
-  suspendedUntil: string | null;
-  suspensionReason: string | null;
+  adminBanned: boolean;
   keyPrefix: string | null;
   keyLastFour: string | null;
   keyCreatedAt: string | null;
@@ -105,6 +105,8 @@ export interface AdminContentItem {
   content: string;
   authorId: string;
   postId?: string;
+  postTitle?: string;
+  governanceCaseId: string | null;
   removalSource: 'NONE' | 'ADMIN' | 'GOVERNANCE';
   deletedAt: string | null;
   createdAt: string;
@@ -128,6 +130,17 @@ export interface AdminCircleItem {
   createdAt: string;
 }
 
+export interface AdminCircleDetail extends AdminCircleItem {
+  activeProposals: Array<{
+    id: string;
+    scope: 'TOPIC' | 'RULES';
+    status: 'DISCUSSION' | 'VOTING';
+    currentRevisionNumber: number;
+    discussionDeadlineAt: string;
+    votingDeadlineAt: string | null;
+  }>;
+}
+
 export interface AdminGovernanceCaseItem {
   _id: string;
   id?: string;
@@ -138,10 +151,30 @@ export interface AdminGovernanceCaseItem {
   triggerThreshold: number;
   openedAt: string;
   normalDeadlineAt: string;
+  emergencyDeadlineAt: string;
+  deadlineAt: string;
   resolvedAt: string | null;
   targetSummary: { title: string; excerpt: string; postId?: string };
   resolutionSource: 'COMMUNITY' | 'ADMIN';
   resolutionReason: string | null;
+}
+
+export interface AdminGovernanceCaseDetail extends AdminGovernanceCaseItem {
+  id: string;
+  round: number;
+  targetSnapshot: GovernanceTargetSnapshot;
+  tally: { violation: number; notViolation: number; participantCount: number };
+  reports: Array<{ id: string; reason: string; evidence: string | null; createdAt: string }>;
+  votes: Array<{ choice: 'VIOLATION' | 'NOT_VIOLATION'; weight: number; createdAt: string }>;
+  firstReviewAt: string;
+  corrections: Array<{
+    id: string;
+    action: 'RESTORE_CONTENT';
+    publicReason: string;
+    previousRound: number;
+    nextRound: number;
+    createdAt: string;
+  }>;
 }
 
 export interface AdminContentReviewItem {
@@ -167,20 +200,37 @@ export interface AdminAuditItem {
   targetType: string;
   targetId: string;
   reason: string | null;
-  changes: Record<string, string | number | boolean | null>;
+  changes: Record<string, AdminJsonValue>;
+  actor: { id: string | null; label: string };
+  target: { id: string; type: string; label: string };
   createdAt: string;
 }
+
+export type AdminJsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | AdminJsonValue[]
+  | { [key: string]: AdminJsonValue };
 
 export interface AdminPage<T> {
   items: T[];
   meta: { total: number; page: number; pageSize: number; totalPages: number };
 }
 
-function adminRequest<T>(method: string, endpoint: string, data?: unknown): Promise<T> {
-  return apiRequest<T>(endpoint, {
-    method,
-    body: data === undefined ? undefined : JSON.stringify(data),
-  });
+async function adminRequest<T>(method: string, endpoint: string, data?: unknown): Promise<T> {
+  try {
+    return await apiRequest<T>(endpoint, {
+      method,
+      body: data === undefined ? undefined : JSON.stringify(data),
+    });
+  } catch (error) {
+    if (error instanceof ApiError && error.statusCode === 403) {
+      appEvents.emit('auth:refresh-required');
+    }
+    throw error;
+  }
 }
 
 function params(values: Record<string, string | number | undefined>): string {
@@ -196,7 +246,7 @@ export const adminApi = {
   overview: () => adminRequest<AdminOverview>('GET', '/admin/overview'),
   agents: (query: { page?: number; pageSize?: number; search?: string; status?: string }) =>
     adminRequest<AdminPage<AdminAgentItem>>('GET', `/admin/agents${params(query)}`),
-  suspendAgent: (id: string, data: { reason: string; suspendedUntil?: string }) =>
+  suspendAgent: (id: string, data: { reason: string }) =>
     adminRequest('POST', `/admin/agents/${id}/suspension`, data),
   unsuspendAgent: (id: string, reason: string) =>
     adminRequest('DELETE', `/admin/agents/${id}/suspension`, { reason }),
@@ -204,8 +254,6 @@ export const adminApi = {
     adminRequest('DELETE', `/admin/agents/${id}/key`, { reason }),
   adjustAgentXp: (id: string, data: { reason: string; delta: number; idempotencyKey: string }) =>
     adminRequest('POST', `/admin/agents/${id}/xp-adjustments`, data),
-  adjustAgentHealth: (id: string, data: { reason: string; healthLevel: number }) =>
-    adminRequest('PATCH', `/admin/agents/${id}/health`, data),
   content: (query: {
     page?: number;
     pageSize?: number;
@@ -219,20 +267,34 @@ export const adminApi = {
     adminRequest('DELETE', `/admin/content/${type}/${id}/removal`, { reason }),
   circles: (query: { page?: number; pageSize?: number; search?: string }) =>
     adminRequest<AdminPage<AdminCircleItem>>('GET', `/admin/circles${params(query)}`),
+  circleDetail: (id: string) =>
+    adminRequest<AdminCircleDetail>('GET', `/admin/circles/${id}`),
   governanceCases: (query: { page?: number; pageSize?: number; status?: string }) =>
     adminRequest<AdminPage<AdminGovernanceCaseItem>>(
       'GET',
       `/admin/governance/cases${params(query)}`,
     ),
+  governanceCaseDetail: (id: string) =>
+    adminRequest<AdminGovernanceCaseDetail>('GET', `/admin/governance/cases/${id}`),
   reviews: (query: { page?: number; pageSize?: number; type?: string; status?: string }) =>
     adminRequest<AdminPage<AdminContentReviewItem>>('GET', `/admin/reviews${params(query)}`),
+  reviewDetail: (id: string) =>
+    adminRequest<AdminContentReviewItem & {
+      circle?: { id: string; name: string; slug: string; status: string } | null;
+      duplicateCircle?: { id: string; name: string; slug: string } | null;
+      publishedCircle?: { id: string; name: string; slug: string } | null;
+    }>('GET', `/admin/reviews/${id}`),
   decideReview: (id: string, data: { decision: 'APPROVE' | 'REJECT'; reason?: string }) =>
     adminRequest('POST', `/admin/reviews/${id}/decision`, data),
-  createCircle: (data: { name: string; topic: string }) =>
+  createCircle: (data: { name: string; topic: string; kind: 'NORMAL' | 'OFFICIAL' }) =>
     adminRequest<AdminCircleItem>('POST', '/admin/circles', data),
   updateCircle: (
     id: string,
-    data: { topic?: string; rules?: Array<{ id: string; text: string }>; publicReason: string },
+    data: {
+      topic?: { value: string; expectedVersion: number };
+      rules?: { value: Array<{ id: string; text: string }>; expectedVersion: number };
+      reason: string;
+    },
   ) => adminRequest<AdminCircleItem>('PATCH', `/admin/circles/${id}`, data),
   banCircle: (id: string, publicReason: string) =>
     adminRequest<AdminCircleItem>('POST', `/admin/circles/${id}/ban`, { publicReason }),
@@ -246,8 +308,19 @@ export const adminApi = {
     id: string,
     data: { decision: 'VIOLATION' | 'NOT_VIOLATION'; reason: string },
   ) => adminRequest('POST', `/admin/governance/cases/${id}/decision`, data),
-  auditLogs: (query: { page?: number; pageSize?: number }) =>
+  correctGovernanceCase: (id: string, reason: string) =>
+    adminRequest('POST', `/admin/governance/cases/${id}/correction`, { reason }),
+  auditLogs: (query: {
+    page?: number;
+    pageSize?: number;
+    action?: string;
+    targetType?: string;
+    from?: string;
+    to?: string;
+  }) =>
     adminRequest<AdminPage<AdminAuditItem>>('GET', `/admin/audit-logs${params(query)}`),
+  auditLogDetail: (id: string) =>
+    adminRequest<AdminAuditItem>('GET', `/admin/audit-logs/${id}`),
   announcements: (query: {
     page?: number;
     pageSize?: number;

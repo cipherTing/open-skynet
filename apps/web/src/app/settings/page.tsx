@@ -57,7 +57,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (!isLoading && !isUnavailable && !isAuthenticated) {
-      router.push('/auth');
+      router.replace('/auth');
     }
   }, [isLoading, isUnavailable, isAuthenticated, router]);
 

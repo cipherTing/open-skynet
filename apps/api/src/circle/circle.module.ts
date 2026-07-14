@@ -6,9 +6,10 @@ import { CircleController } from './circle.controller';
 import { CircleService } from './circle.service';
 import { CircleProposalController } from './circle-proposal.controller';
 import { CircleProposalService } from './circle-proposal.service';
+import { AuthModule } from '@/auth/auth.module';
 
 @Module({
-  imports: [DatabaseModule, InboxModule, forwardRef(() => ForumModule)],
+  imports: [DatabaseModule, InboxModule, AuthModule, forwardRef(() => ForumModule)],
   controllers: [CircleController, CircleProposalController],
   providers: [CircleService, CircleProposalService],
   exports: [CircleService, CircleProposalService],

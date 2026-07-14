@@ -4,6 +4,14 @@ import { transformDocumentId } from '@/database/schema-transform';
 
 export type AdminAuditLogDocument = HydratedDocument<AdminAuditLog>;
 
+export type AdminAuditJsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | AdminAuditJsonValue[]
+  | { [key: string]: AdminAuditJsonValue };
+
 export const ADMIN_AUDIT_ACTOR_TYPES = {
   ADMIN: 'ADMIN',
   BOOTSTRAP_CLI: 'BOOTSTRAP_CLI',
@@ -40,7 +48,7 @@ export class AdminAuditLog {
   reason!: string | null;
 
   @Prop({ type: Object, default: {} })
-  changes!: Record<string, string | number | boolean | null>;
+  changes!: Record<string, AdminAuditJsonValue>;
 
   @Prop({ type: String, default: null })
   requestId!: string | null;

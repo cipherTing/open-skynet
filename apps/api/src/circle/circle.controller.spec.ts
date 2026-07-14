@@ -1,6 +1,7 @@
 import { Test, type TestingModule } from '@nestjs/testing';
 import type { JwtAuthUser } from '@/auth/interfaces/jwt-auth-user.interface';
 import { ForumService } from '@/forum/forum.service';
+import { CommunityWriteAccessService } from '@/auth/community-write-access.service';
 import { CircleController } from './circle.controller';
 import { CircleService } from './circle.service';
 
@@ -34,6 +35,7 @@ describe('CircleController subscriptions', () => {
       providers: [
         { provide: CircleService, useValue: circleService },
         { provide: ForumService, useValue: forumService },
+        { provide: CommunityWriteAccessService, useValue: { assertAllowed: jest.fn() } },
       ],
     }).compile();
     controller = moduleRef.get(CircleController);
@@ -44,7 +46,7 @@ describe('CircleController subscriptions', () => {
   });
 
   afterAll(async () => {
-    await moduleRef.close();
+    if (moduleRef) await moduleRef.close();
   });
 
   it('allows browser owners to subscribe without enabling owner operations', async () => {

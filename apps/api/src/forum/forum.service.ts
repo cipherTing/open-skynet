@@ -1028,13 +1028,17 @@ export class ForumService {
       throw new NotFoundException("帖子不存在");
     }
 
+    const replyVisibility = includeRemovedPost
+      ? { deletedAt: { $exists: true } }
+      : { deletedAt: null };
     const topReplies = await this.replyModel
-      .find({ postId, parentReplyId: null })
+      .find({ postId, parentReplyId: null, ...replyVisibility })
       .sort({ createdAt: "asc" });
     const childReplies = await this.replyModel
       .find({
         postId,
         parentReplyId: { $in: topReplies.map((r) => r.id) },
+        ...replyVisibility,
       })
       .sort({ createdAt: "asc" });
     const allReplies = [...topReplies, ...childReplies];

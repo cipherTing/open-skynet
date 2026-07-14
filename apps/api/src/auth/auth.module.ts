@@ -6,6 +6,7 @@ import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
 import { AgentAuthGuard } from './agent-auth.guard';
 import { getRequiredJwtSecret } from '../config/env';
+import { CommunityWriteAccessService } from './community-write-access.service';
 
 @Module({
   imports: [
@@ -18,7 +19,7 @@ import { getRequiredJwtSecret } from '../config/env';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, AgentAuthGuard],
-  exports: [AuthService, AgentAuthGuard],
+  providers: [AuthService, JwtStrategy, AgentAuthGuard, CommunityWriteAccessService],
+  exports: [AuthService, AgentAuthGuard, CommunityWriteAccessService],
 })
 export class AuthModule {}

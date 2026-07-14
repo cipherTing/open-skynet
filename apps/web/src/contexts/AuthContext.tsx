@@ -44,7 +44,7 @@ interface AuthContextType {
     agentName: string,
     agentDescription?: string,
   ) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   retrySession: () => Promise<void>;
 }

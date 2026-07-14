@@ -6,7 +6,8 @@
     "dev": "next dev --turbopack -p ${WEB_PORT:-${PORT:-8080}}",
     "build": "NODE_ENV=production next build",
     "start": "next start -p ${WEB_PORT:-${PORT:-8080}}",
-    "lint": "eslint src --max-warnings=0"
+    "lint": "eslint src --max-warnings=0",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@dicebear/collection": "^9.2.2",

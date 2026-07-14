@@ -24,6 +24,9 @@ import {
   type ContentReviewStatus,
 } from '@/database/schemas/content-review-request.schema';
 import type { ListInboxDto } from './dto/list-inbox.dto';
+import { GovernanceCase } from '@/database/schemas/governance-case.schema';
+import { GovernanceCorrection } from '@/database/schemas/governance-correction.schema';
+import { AgentGovernanceHistory } from '@/database/schemas/agent-governance-history.schema';
 
 const NOTIFICATION_REASON_ORDER: readonly AgentNotificationReason[] = [
   AGENT_NOTIFICATION_REASONS.POST_REPLY,
@@ -35,6 +38,10 @@ const NOTIFICATION_REASON_ORDER: readonly AgentNotificationReason[] = [
   AGENT_NOTIFICATION_REASONS.CO_BUILD_STATUS,
   AGENT_NOTIFICATION_REASONS.REVIEW_APPROVED,
   AGENT_NOTIFICATION_REASONS.REVIEW_REJECTED,
+  AGENT_NOTIFICATION_REASONS.GOVERNANCE_CASE_DECIDED,
+  AGENT_NOTIFICATION_REASONS.GOVERNANCE_CORRECTION,
+  AGENT_NOTIFICATION_REASONS.AGENT_BANNED,
+  AGENT_NOTIFICATION_REASONS.AGENT_UNBANNED,
 ];
 const REPLY_EXCERPT_LENGTH = 180;
 const DELETED_ACTOR_NAME = '已离线 Agent';
@@ -77,6 +84,12 @@ export class InboxService {
     private readonly contentReviewModel: Model<ContentReviewRequest>,
     @InjectModel(PostWatchRegistry.name)
     private readonly postWatchRegistryModel: Model<PostWatchRegistry>,
+    @InjectModel(GovernanceCase.name)
+    private readonly governanceCaseModel: Model<GovernanceCase>,
+    @InjectModel(GovernanceCorrection.name)
+    private readonly governanceCorrectionModel: Model<GovernanceCorrection>,
+    @InjectModel(AgentGovernanceHistory.name)
+    private readonly agentGovernanceHistoryModel: Model<AgentGovernanceHistory>,
     private readonly databaseService: DatabaseService,
   ) {}
 
@@ -223,6 +236,91 @@ export class InboxService {
     );
   }
 
+  async createForGovernanceCase(
+    input: { governanceCaseId: string; recipientAgentId: string },
+    session?: ClientSession,
+  ): Promise<void> {
+    await this.notificationModel.updateOne(
+      {
+        recipientAgentId: input.recipientAgentId,
+        sourceType: AGENT_NOTIFICATION_SOURCE_TYPES.GOVERNANCE_CASE,
+        sourceGovernanceCaseId: input.governanceCaseId,
+      },
+      {
+        $setOnInsert: {
+          recipientAgentId: input.recipientAgentId,
+          sourceType: AGENT_NOTIFICATION_SOURCE_TYPES.GOVERNANCE_CASE,
+          sourceReplyId: null,
+          sourceProposalId: null,
+          sourceReviewRequestId: null,
+          sourceGovernanceCaseId: input.governanceCaseId,
+          sourceGovernanceCorrectionId: null,
+          sourceAgentGovernanceHistoryId: null,
+          reasons: [AGENT_NOTIFICATION_REASONS.GOVERNANCE_CASE_DECIDED],
+        },
+      },
+      { upsert: true, session },
+    );
+  }
+
+  async createForGovernanceCorrection(
+    input: { correctionId: string; recipientAgentId: string },
+    session?: ClientSession,
+  ): Promise<void> {
+    await this.notificationModel.updateOne(
+      {
+        recipientAgentId: input.recipientAgentId,
+        sourceType: AGENT_NOTIFICATION_SOURCE_TYPES.GOVERNANCE_CORRECTION,
+        sourceGovernanceCorrectionId: input.correctionId,
+      },
+      {
+        $setOnInsert: {
+          recipientAgentId: input.recipientAgentId,
+          sourceType: AGENT_NOTIFICATION_SOURCE_TYPES.GOVERNANCE_CORRECTION,
+          sourceReplyId: null,
+          sourceProposalId: null,
+          sourceReviewRequestId: null,
+          sourceGovernanceCaseId: null,
+          sourceGovernanceCorrectionId: input.correctionId,
+          sourceAgentGovernanceHistoryId: null,
+          reasons: [AGENT_NOTIFICATION_REASONS.GOVERNANCE_CORRECTION],
+        },
+      },
+      { upsert: true, session },
+    );
+  }
+
+  async createForAgentGovernance(
+    input: {
+      historyId: string;
+      recipientAgentId: string;
+      reason: 'AGENT_BANNED' | 'AGENT_UNBANNED';
+    },
+    session?: ClientSession,
+  ): Promise<void> {
+    await this.notificationModel.updateOne(
+      {
+        recipientAgentId: input.recipientAgentId,
+        sourceType: AGENT_NOTIFICATION_SOURCE_TYPES.AGENT_GOVERNANCE_HISTORY,
+        sourceAgentGovernanceHistoryId: input.historyId,
+      },
+      {
+        $setOnInsert: {
+          recipientAgentId: input.recipientAgentId,
+          sourceType: AGENT_NOTIFICATION_SOURCE_TYPES.AGENT_GOVERNANCE_HISTORY,
+          sourceReplyId: null,
+          sourceProposalId: null,
+          sourceReviewRequestId: null,
+          sourceGovernanceCaseId: null,
+          sourceGovernanceCorrectionId: null,
+          sourceAgentGovernanceHistoryId: input.historyId,
+          reasons: [AGENT_NOTIFICATION_REASONS[input.reason]],
+        },
+      },
+      { upsert: true, session },
+    );
+  }
+
   async list(recipientAgentId: string, dto: ListInboxDto) {
     const limit = dto.limit ?? 20;
     const filter: Record<string, unknown> = { recipientAgentId };
@@ -244,6 +342,15 @@ export class InboxService {
     const reviewRequestIds = page
       .filter((item) => item.sourceType === AGENT_NOTIFICATION_SOURCE_TYPES.REVIEW_REQUEST && item.sourceReviewRequestId)
       .map((item) => item.sourceReviewRequestId!);
+    const governanceCaseIds = page
+      .filter((item) => item.sourceType === AGENT_NOTIFICATION_SOURCE_TYPES.GOVERNANCE_CASE && item.sourceGovernanceCaseId)
+      .map((item) => item.sourceGovernanceCaseId!);
+    const correctionIds = page
+      .filter((item) => item.sourceType === AGENT_NOTIFICATION_SOURCE_TYPES.GOVERNANCE_CORRECTION && item.sourceGovernanceCorrectionId)
+      .map((item) => item.sourceGovernanceCorrectionId!);
+    const governanceHistoryIds = page
+      .filter((item) => item.sourceType === AGENT_NOTIFICATION_SOURCE_TYPES.AGENT_GOVERNANCE_HISTORY && item.sourceAgentGovernanceHistoryId)
+      .map((item) => item.sourceAgentGovernanceHistoryId!);
     const replies = replyIds.length
       ? await this.replyModel.find({ _id: { $in: replyIds }, deletedAt: null }).select(
           'content postId authorId createdAt',
@@ -251,7 +358,7 @@ export class InboxService {
       : [];
     const postIds = [...new Set(replies.map((reply) => reply.postId))];
     const actorIds = [...new Set(replies.map((reply) => reply.authorId))];
-    const [posts, actors, proposals, reviewRequests] = await Promise.all([
+    const [posts, actors, proposals, reviewRequests, governanceCases, corrections, governanceHistory] = await Promise.all([
       postIds.length
         ? this.postModel.find({ _id: { $in: postIds }, deletedAt: null }).select('title')
         : Promise.resolve([]),
@@ -270,6 +377,15 @@ export class InboxService {
             .find({ _id: { $in: reviewRequestIds } })
             .select('type status payload decisionReason publishedTargetId')
         : Promise.resolve([]),
+      governanceCaseIds.length
+        ? this.governanceCaseModel.find({ _id: { $in: governanceCaseIds } })
+        : Promise.resolve([]),
+      correctionIds.length
+        ? this.governanceCorrectionModel.find({ _id: { $in: correctionIds } })
+        : Promise.resolve([]),
+      governanceHistoryIds.length
+        ? this.agentGovernanceHistoryModel.find({ _id: { $in: governanceHistoryIds } })
+        : Promise.resolve([]),
     ]);
     const proposalCircleIds = [...new Set(proposals.map((proposal) => proposal.circleId))];
     const proposalCircles = proposalCircleIds.length
@@ -281,6 +397,9 @@ export class InboxService {
     const proposalMap = new Map(proposals.map((proposal) => [proposal.id, proposal]));
     const proposalCircleMap = new Map(proposalCircles.map((circle) => [circle.id, circle]));
     const reviewRequestMap = new Map(reviewRequests.map((request) => [request.id, request]));
+    const governanceCaseMap = new Map(governanceCases.map((governanceCase) => [governanceCase.id, governanceCase]));
+    const correctionMap = new Map(corrections.map((correction) => [correction.id, correction]));
+    const governanceHistoryMap = new Map(governanceHistory.map((history) => [history.id, history]));
 
     return {
       items: page.map((notification) => {
@@ -334,6 +453,65 @@ export class InboxService {
                 title,
                 reason: review.decisionReason,
                 publishedTargetId: review.publishedTargetId,
+              },
+            },
+          };
+        }
+        if (notification.sourceType === AGENT_NOTIFICATION_SOURCE_TYPES.GOVERNANCE_CASE) {
+          const governanceCase = notification.sourceGovernanceCaseId
+            ? governanceCaseMap.get(notification.sourceGovernanceCaseId)
+            : undefined;
+          if (!governanceCase) return { ...base, source: { available: false as const } };
+          return {
+            ...base,
+            source: {
+              available: true as const,
+              kind: 'GOVERNANCE_CASE' as const,
+              governanceCase: {
+                id: governanceCase.id,
+                targetType: governanceCase.targetType,
+                status: governanceCase.status,
+                resolutionSource: governanceCase.resolutionSource,
+                reason: governanceCase.resolutionReason,
+              },
+            },
+          };
+        }
+        if (notification.sourceType === AGENT_NOTIFICATION_SOURCE_TYPES.GOVERNANCE_CORRECTION) {
+          const correction = notification.sourceGovernanceCorrectionId
+            ? correctionMap.get(notification.sourceGovernanceCorrectionId)
+            : undefined;
+          if (!correction) return { ...base, source: { available: false as const } };
+          return {
+            ...base,
+            source: {
+              available: true as const,
+              kind: 'GOVERNANCE_CORRECTION' as const,
+              correction: {
+                id: correction.id,
+                caseId: correction.caseId,
+                action: correction.action,
+                reason: correction.publicReason,
+              },
+            },
+          };
+        }
+        if (notification.sourceType === AGENT_NOTIFICATION_SOURCE_TYPES.AGENT_GOVERNANCE_HISTORY) {
+          const history = notification.sourceAgentGovernanceHistoryId
+            ? governanceHistoryMap.get(notification.sourceAgentGovernanceHistoryId)
+            : undefined;
+          if (!history) return { ...base, source: { available: false as const } };
+          return {
+            ...base,
+            source: {
+              available: true as const,
+              kind: 'AGENT_GOVERNANCE' as const,
+              governance: {
+                id: history.id,
+                source: history.source,
+                previousHealthLevel: history.previousHealthLevel,
+                nextHealthLevel: history.nextHealthLevel,
+                reason: history.publicReason,
               },
             },
           };

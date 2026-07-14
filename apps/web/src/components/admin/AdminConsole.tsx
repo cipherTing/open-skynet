@@ -3,16 +3,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
-import * as Dialog from '@radix-ui/react-dialog';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Activity,
-  ArrowDown,
   ArrowLeft,
-  ArrowUp,
   Ban,
   Bot,
   CircleDot,
@@ -24,20 +21,17 @@ import {
   FileText,
   Gavel,
   History,
-  HeartPulse,
   KeyRound,
   Megaphone,
   RefreshCw,
   RotateCcw,
   Pencil,
-  Plus,
   Scale,
   Search,
   ShieldAlert,
   ShieldCheck,
   ToggleLeft,
   TrendingUp,
-  Trash2,
   type LucideIcon,
   X,
 } from 'lucide-react';
@@ -52,9 +46,12 @@ import {
   type AdminAgentItem,
   type AdminCircleItem,
   type AdminContentItem,
-  type AdminContentReviewItem,
   type AdminSection,
 } from '@/lib/admin-api';
+import { AdminCircleEditorDialog } from './AdminCircleEditorDialog';
+import { AdminGovernanceCaseDialog } from './AdminGovernanceCaseDialog';
+import { AdminReviewDetailDialog } from './AdminReviewDetailDialog';
+import { AdminAuditDetailDialog } from './AdminAuditDetailDialog';
 import {
   ActionButton,
   AdminError,
@@ -111,7 +108,6 @@ const ADMIN_AUDIT_ACTIONS = new Set([
   'AGENT_UNSUSPENDED',
   'AGENT_KEY_REVOKED',
   'AGENT_XP_ADJUSTED',
-  'AGENT_HEALTH_ADJUSTED',
   'CONTENT_REMOVED',
   'CONTENT_RESTORED',
   'ANNOUNCEMENT_CREATED',
@@ -128,6 +124,7 @@ const ADMIN_AUDIT_ACTIONS = new Set([
   'CIRCLE_UNBANNED',
   'CIRCLE_PROPOSAL_MODERATED',
   'GOVERNANCE_CASE_ADJUDICATED',
+  'GOVERNANCE_CASE_CORRECTED',
 ]);
 
 const ADMIN_AUDIT_TARGET_TYPES = new Set([
@@ -159,9 +156,9 @@ type AdminAction =
   | { kind: 'unsuspend'; target: AdminAgentItem }
   | { kind: 'revokeKey'; target: AdminAgentItem }
   | { kind: 'adjustXp'; target: AdminAgentItem }
-  | { kind: 'adjustHealth'; target: AdminAgentItem }
   | { kind: 'removeContent'; target: AdminContentItem; contentType: 'POST' | 'REPLY' }
-  | { kind: 'restoreContent'; target: AdminContentItem; contentType: 'POST' | 'REPLY' };
+  | { kind: 'restoreContent'; target: AdminContentItem; contentType: 'POST' | 'REPLY' }
+  | { kind: 'correctContent'; target: AdminContentItem; contentType: 'POST' | 'REPLY'; caseId: string };
 
 function isAdminSection(value: string | null): value is AdminSection {
   return SECTION_ITEMS.some((item) => item.id === value);
@@ -169,20 +166,6 @@ function isAdminSection(value: string | null): value is AdminSection {
 
 function recordId(item: { _id: string; id?: string }): string {
   return item.id ?? item._id;
-}
-
-function moveCircleRule(
-  rules: Array<{ id: string; text: string }>,
-  index: number,
-  direction: -1 | 1,
-): Array<{ id: string; text: string }> {
-  const targetIndex = index + direction;
-  if (targetIndex < 0 || targetIndex >= rules.length) return rules;
-  const next = [...rules];
-  const current = next[index];
-  next[index] = next[targetIndex];
-  next[targetIndex] = current;
-  return next;
 }
 
 export function AdminConsole() {
@@ -196,8 +179,12 @@ export function AdminConsole() {
   useEffect(() => {
     if (!isLoading && !isUnavailable && !isAuthenticated) {
       router.replace('/auth');
+      return;
     }
-  }, [isAuthenticated, isLoading, isUnavailable, router]);
+    if (!isLoading && !isUnavailable && isAuthenticated && user?.role !== 'ADMIN') {
+      router.replace('/workspace');
+    }
+  }, [isAuthenticated, isLoading, isUnavailable, router, user?.role]);
 
   if (isLoading) return <LoadingScreen />;
   if (isUnavailable) {
@@ -214,22 +201,8 @@ export function AdminConsole() {
   if (!isAuthenticated) {
     return null;
   }
-  if (user?.role !== 'ADMIN') {
-    return <AdminAccessDenied />;
-  }
+  if (user?.role !== 'ADMIN') return null;
   return <AdminWorkspace section={section} />;
-}
-
-function AdminAccessDenied() {
-  const { t } = useTranslation();
-  return (
-    <div className="flex min-h-screen items-center justify-center px-5">
-      <div className="max-w-md border-l-2 border-ochre px-5 py-2">
-        <ShieldCheck className="mb-4 h-6 w-6 text-ochre" />
-        <h1 className="text-lg font-bold text-ink-primary">{t('admin.accessDenied')}</h1>
-      </div>
-    </div>
-  );
 }
 
 function AdminWorkspace({ section }: { section: AdminSection }) {
@@ -458,8 +431,8 @@ function AgentsSection({ onAction }: { onAction: (action: AdminAction) => void }
                   Lv{agent.level} / {agent.xpTotal}
                 </td>
                 <td className="px-3 py-3">
-                  <StatusText warning={Boolean(agent.suspendedAt)}>
-                    {agent.suspendedAt ? t('admin.agents.suspended') : `${agent.healthLevel}/4`}
+                  <StatusText warning={agent.adminBanned}>
+                    {agent.adminBanned ? t('admin.agents.suspended') : `${agent.healthLevel}/4`}
                   </StatusText>
                 </td>
                 <td className="px-3 py-3 font-mono text-xs text-ink-muted">
@@ -471,21 +444,16 @@ function AgentsSection({ onAction }: { onAction: (action: AdminAction) => void }
                   <div className="flex items-center justify-center gap-1.5">
                     <AgentActionIcon
                       label={
-                        agent.suspendedAt ? t('admin.agents.unsuspend') : t('admin.agents.suspend')
+                        agent.adminBanned ? t('admin.agents.unsuspend') : t('admin.agents.suspend')
                       }
-                      icon={agent.suspendedAt ? RotateCcw : Ban}
-                      warning={!agent.suspendedAt}
+                      icon={agent.adminBanned ? RotateCcw : Ban}
+                      warning={!agent.adminBanned}
                       onClick={() =>
                         onAction({
-                          kind: agent.suspendedAt ? 'unsuspend' : 'suspend',
+                          kind: agent.adminBanned ? 'unsuspend' : 'suspend',
                           target: agent,
                         })
                       }
-                    />
-                    <AgentActionIcon
-                      label={t('admin.agents.adjustHealth')}
-                      icon={HeartPulse}
-                      onClick={() => onAction({ kind: 'adjustHealth', target: agent })}
                     />
                     <DropdownMenu.Root>
                       <PortalTooltip content={t('admin.agents.moreActions')} placement="top">
@@ -671,10 +639,10 @@ function ContentSection({ onAction }: { onAction: (action: AdminAction) => void 
                 >
                   <td className="px-3 py-3">
                     <Link
-                      href={`${type === 'POST' ? `/post/${id}` : `/post/${item.postId ?? ''}`}?adminView=1`}
+                      href={`${type === 'POST' ? `/post/${id}` : `/post/${item.postId ?? ''}`}?adminView=1${type === 'REPLY' ? `&replyId=${id}` : ''}`}
                       className="max-w-xl font-medium text-ink-primary hover:text-copper hover:underline"
                     >
-                      {item.title ?? item.content.slice(0, 100)}
+                      {item.title ?? item.postTitle ?? item.content.slice(0, 100)}
                     </Link>
                     <div className="mt-1 line-clamp-2 max-w-xl text-xs text-ink-muted">
                       {item.content}
@@ -697,14 +665,25 @@ function ContentSection({ onAction }: { onAction: (action: AdminAction) => void 
                         icon={Eye}
                         onClick={() =>
                           router.push(
-                            `${type === 'POST' ? `/post/${id}` : `/post/${item.postId ?? ''}`}?adminView=1`,
+                            `${type === 'POST' ? `/post/${id}` : `/post/${item.postId ?? ''}`}?adminView=1${type === 'REPLY' ? `&replyId=${id}` : ''}`,
                           )
                         }
                       />
-                      {item.removalSource === 'GOVERNANCE' ? (
-                        <span className="text-xs text-ink-muted">
-                          {t('admin.content.governanceLocked')}
-                        </span>
+                      {item.removalSource === 'GOVERNANCE' && item.governanceCaseId ? (
+                        <AgentActionIcon
+                          label={t('admin.content.correctAndRestore')}
+                          icon={RotateCcw}
+                          onClick={() =>
+                            onAction({
+                              kind: 'correctContent',
+                              target: item,
+                              contentType: type,
+                              caseId: item.governanceCaseId!,
+                            })
+                          }
+                        />
+                      ) : item.removalSource === 'GOVERNANCE' ? (
+                        <span className="text-xs text-ochre">{t('admin.content.missingGovernanceCase')}</span>
                       ) : (
                         <AgentActionIcon
                           label={removed ? t('admin.content.restore') : t('admin.content.remove')}
@@ -762,8 +741,9 @@ function ReviewsSection() {
   const [page, setPage] = useState(1);
   const [type, setType] = useState('');
   const [status, setStatus] = useState('PENDING');
+  const [selectedReviewId, setSelectedReviewId] = useState<string | null>(null);
   const [decision, setDecision] = useState<{
-    item: AdminContentReviewItem;
+    id: string;
     value: 'APPROVE' | 'REJECT';
   } | null>(null);
   const query = useQuery({
@@ -773,7 +753,7 @@ function ReviewsSection() {
   const mutation = useMutation({
     mutationFn: ({ reason }: { reason: string }) => {
       if (!decision) throw new Error('Review decision is missing');
-      return adminApi.decideReview(decision.item.id, {
+      return adminApi.decideReview(decision.id, {
         decision: decision.value,
         ...(reason ? { reason } : {}),
       });
@@ -864,21 +844,28 @@ function ReviewsSection() {
                     ) : null}
                   </td>
                   <td className="px-3 py-3">
-                    {item.status === 'PENDING' ? (
-                      <div className="flex justify-end gap-2">
+                    <div className="flex justify-end gap-2">
+                      <AgentActionIcon
+                        label={t('admin.reviews.viewDetail')}
+                        icon={Eye}
+                        onClick={() => setSelectedReviewId(item.id)}
+                      />
+                      {item.status === 'PENDING' ? (
+                        <>
                         <AgentActionIcon
                           label={t('admin.reviews.approve')}
                           icon={Check}
-                          onClick={() => setDecision({ item, value: 'APPROVE' })}
+                          onClick={() => setDecision({ id: item.id, value: 'APPROVE' })}
                         />
                         <AgentActionIcon
                           label={t('admin.reviews.reject')}
                           icon={X}
                           warning
-                          onClick={() => setDecision({ item, value: 'REJECT' })}
+                          onClick={() => setDecision({ id: item.id, value: 'REJECT' })}
                         />
-                      </div>
-                    ) : null}
+                        </>
+                      ) : null}
+                    </div>
                   </td>
                 </tr>
               );
@@ -888,7 +875,7 @@ function ReviewsSection() {
         </>
       )}
       <DecisionDialog
-        key={decision ? `${decision.item.id}-${decision.value}` : 'review-decision'}
+        key={decision ? `${decision.id}-${decision.value}` : 'review-decision'}
         open={Boolean(decision)}
         title={
           decision
@@ -907,6 +894,15 @@ function ReviewsSection() {
           if (!open && !mutation.isPending) setDecision(null);
         }}
         onConfirm={(reason) => mutation.mutate({ reason })}
+      />
+      <AdminReviewDetailDialog
+        reviewId={selectedReviewId}
+        onClose={() => setSelectedReviewId(null)}
+        onDecision={(value) => {
+          if (!selectedReviewId) return;
+          setDecision({ id: selectedReviewId, value });
+          setSelectedReviewId(null);
+        }}
       />
     </section>
   );
@@ -1104,192 +1100,14 @@ function CirclesSection() {
   );
 }
 
-function AdminCircleEditorDialog({
-  state,
-  onClose,
-  onSaved,
-}: {
-  state: { mode: 'create' | 'edit'; circle?: AdminCircleItem } | null;
-  onClose: () => void;
-  onSaved: () => Promise<void>;
-}) {
-  const { t } = useTranslation();
-  const [name, setName] = useState(state?.circle?.name ?? '');
-  const [topic, setTopic] = useState(state?.circle?.topic ?? '');
-  const [reason, setReason] = useState('');
-  const [rules, setRules] = useState<Array<{ id: string; text: string }>>(
-    state?.circle?.rules.map((rule) => ({ ...rule })) ?? [],
-  );
-  const mutation = useMutation({
-    mutationFn: () => {
-      if (!state) throw new Error('Circle editor is closed');
-      if (state.mode === 'create')
-        return adminApi.createCircle({ name: name.trim(), topic: topic.trim() });
-      if (!state.circle) throw new Error('Circle is missing');
-      return adminApi.updateCircle(recordId(state.circle), {
-        topic: topic.trim(),
-        rules: rules.map((rule) => ({ id: rule.id, text: rule.text.trim() })),
-        publicReason: reason.trim(),
-      });
-    },
-    onSuccess: onSaved,
-  });
-  const isEdit = state?.mode === 'edit';
-  const valid =
-    Boolean(name.trim() || isEdit) &&
-    Boolean(topic.trim()) &&
-    (!isEdit || reason.trim().length >= 4) &&
-    rules.every((rule) => rule.text.trim());
-  return (
-    <Dialog.Root
-      open={Boolean(state)}
-      onOpenChange={(open) => {
-        if (!open && !mutation.isPending) onClose();
-      }}
-    >
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-[190] bg-void/45 backdrop-blur-[2px]" />
-        <Dialog.Content className="skynet-dialog-content fixed left-1/2 top-1/2 z-[200] max-h-[calc(100dvh-32px)] w-[min(calc(100vw-32px),680px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-md border border-border-default bg-void-deep p-5 shadow-2xl">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <Dialog.Title className="text-base font-bold text-ink-primary">
-                {t(isEdit ? 'admin.circles.editTitle' : 'admin.circles.createTitle')}
-              </Dialog.Title>
-              <Dialog.Description className="mt-1 text-xs text-ink-muted">
-                {t(isEdit ? 'admin.circles.editDescription' : 'admin.circles.createDescription')}
-              </Dialog.Description>
-            </div>
-            <Dialog.Close asChild>
-              <button
-                type="button"
-                aria-label={t('app.close')}
-                className="flex h-8 w-8 items-center justify-center rounded-md text-ink-muted hover:bg-surface-2"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </Dialog.Close>
-          </div>
-          <div className="mt-5 space-y-4">
-            {!isEdit ? (
-              <label className="block text-xs text-ink-secondary">
-                {t('admin.circles.name')}
-                <input
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  className="skynet-input mt-2 w-full rounded-md px-3 py-2 text-sm"
-                />
-              </label>
-            ) : null}
-            <label className="block text-xs text-ink-secondary">
-              {t('admin.circles.topic')}
-              <textarea
-                value={topic}
-                onChange={(event) => setTopic(event.target.value)}
-                rows={3}
-                className="skynet-input mt-2 w-full resize-none rounded-md px-3 py-2 text-sm"
-              />
-            </label>
-            {isEdit ? (
-              <div>
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <span className="text-xs text-ink-secondary">{t('admin.circles.rules')}</span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setRules((items) => [...items, { id: crypto.randomUUID(), text: '' }])
-                    }
-                    className="inline-flex h-8 items-center gap-1 rounded-md border border-border-subtle px-2 text-xs text-copper"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    {t('admin.circles.addRule')}
-                  </button>
-                </div>
-                <div className="space-y-2">
-                  {rules.map((rule, index) => (
-                    <div key={rule.id} className="flex items-center gap-2">
-                      <input
-                        value={rule.text}
-                        onChange={(event) =>
-                          setRules((items) =>
-                            items.map((item) =>
-                              item.id === rule.id ? { ...item, text: event.target.value } : item,
-                            ),
-                          )
-                        }
-                        className="skynet-input min-w-0 flex-1 rounded-md px-3 py-2 text-sm"
-                      />
-                      <AgentActionIcon
-                        label={t('admin.circles.moveUp')}
-                        icon={ArrowUp}
-                        onClick={() => setRules((items) => moveCircleRule(items, index, -1))}
-                      />
-                      <AgentActionIcon
-                        label={t('admin.circles.moveDown')}
-                        icon={ArrowDown}
-                        onClick={() => setRules((items) => moveCircleRule(items, index, 1))}
-                      />
-                      <AgentActionIcon
-                        label={t('admin.circles.removeRule')}
-                        icon={Trash2}
-                        warning
-                        onClick={() =>
-                          setRules((items) => items.filter((item) => item.id !== rule.id))
-                        }
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-            {isEdit ? (
-              <label className="block text-xs text-ink-secondary">
-                {t('admin.circles.publicReason')}
-                <textarea
-                  value={reason}
-                  onChange={(event) => setReason(event.target.value)}
-                  rows={3}
-                  className="skynet-input mt-2 w-full resize-none rounded-md px-3 py-2 text-sm"
-                />
-              </label>
-            ) : null}
-            {mutation.error ? (
-              <p className="text-xs text-ochre">
-                {mutation.error instanceof Error
-                  ? mutation.error.message
-                  : t('admin.action.failed')}
-              </p>
-            ) : null}
-          </div>
-          <div className="mt-6 flex justify-end gap-3">
-            <Dialog.Close asChild>
-              <button
-                type="button"
-                className="rounded-md border border-border-subtle px-4 py-2 text-sm text-ink-secondary"
-              >
-                {t('app.cancel')}
-              </button>
-            </Dialog.Close>
-            <button
-              type="button"
-              disabled={!valid || mutation.isPending}
-              onClick={() => mutation.mutate()}
-              className="rounded-md bg-copper px-4 py-2 text-sm font-bold text-void disabled:opacity-50"
-            >
-              {mutation.isPending ? t('admin.action.running') : t('admin.action.confirm')}
-            </button>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
-  );
-}
-
 function GovernanceSection() {
   const { t } = useTranslation();
   const toast = useToast();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
-  const [status, setStatus] = useState('');
+  const [status, setStatus] = useState('PENDING');
+  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
+  const [correctionCaseId, setCorrectionCaseId] = useState<string | null>(null);
   const [decision, setDecision] = useState<{
     id: string;
     value: 'VIOLATION' | 'NOT_VIOLATION';
@@ -1309,6 +1127,18 @@ function GovernanceSection() {
       setDecision(null);
     },
   });
+  const correctionMutation = useMutation({
+    mutationFn: ({ reason }: { reason: string }) => {
+      if (!correctionCaseId) throw new Error(t('admin.governance.missingCase'));
+      return adminApi.correctGovernanceCase(correctionCaseId, reason);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'governance'] });
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'content'] });
+      toast.success(t('admin.governance.correctionSuccess'));
+      setCorrectionCaseId(null);
+    },
+  });
   return (
     <section>
       <div className="mb-5 flex items-center justify-between gap-3">
@@ -1316,9 +1146,11 @@ function GovernanceSection() {
         <AdminSelect
           value={status}
           ariaLabel={t('admin.governance.statusFilter')}
-          options={['', 'OPEN', 'EMERGENCY', 'RESOLVED_VIOLATION', 'RESOLVED_NOT_VIOLATION'].map(
-            (value) => ({ value, label: value || t('admin.governance.all') }),
-          )}
+          options={[
+            { value: 'PENDING', label: t('admin.governance.pending') },
+            { value: 'RESOLVED', label: t('admin.governance.resolved') },
+            { value: '', label: t('admin.governance.all') },
+          ]}
           onValueChange={(value) => {
             setStatus(value);
             setPage(1);
@@ -1380,11 +1212,17 @@ function GovernanceSection() {
                   {formatAdminTime(item.openedAt)}
                 </td>
                 <td className="px-3 py-3 text-xs text-ink-muted">
-                  {formatAdminTime(item.normalDeadlineAt)}
+                  {formatAdminTime(item.deadlineAt)}
                 </td>
                 <td className="px-3 py-3">
-                  {item.status === 'OPEN' || item.status === 'EMERGENCY' ? (
-                    <div className="flex justify-end gap-2">
+                  <div className="flex justify-end gap-2">
+                    <AgentActionIcon
+                      label={t('admin.governance.viewDetail')}
+                      icon={Eye}
+                      onClick={() => setSelectedCaseId(recordId(item))}
+                    />
+                    {item.status === 'OPEN' || item.status === 'EMERGENCY' ? (
+                      <>
                       <AgentActionIcon
                         label={t('admin.governance.ruleViolation')}
                         icon={Gavel}
@@ -1396,8 +1234,9 @@ function GovernanceSection() {
                         icon={ShieldCheck}
                         onClick={() => setDecision({ id: recordId(item), value: 'NOT_VIOLATION' })}
                       />
-                    </div>
-                  ) : null}
+                      </>
+                    ) : null}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -1425,6 +1264,32 @@ function GovernanceSection() {
           if (!open && !mutation.isPending) setDecision(null);
         }}
         onConfirm={(reason) => mutation.mutate({ reason })}
+      />
+      <AdminGovernanceCaseDialog
+        caseId={selectedCaseId}
+        onClose={() => setSelectedCaseId(null)}
+        onDecide={(value) => {
+          if (!selectedCaseId) return;
+          setDecision({ id: selectedCaseId, value });
+          setSelectedCaseId(null);
+        }}
+        onCorrect={() => {
+          setCorrectionCaseId(selectedCaseId);
+          setSelectedCaseId(null);
+        }}
+      />
+      <DecisionDialog
+        key={correctionCaseId ? `governance-correction-${correctionCaseId}` : 'governance-correction'}
+        open={Boolean(correctionCaseId)}
+        title={t('admin.governance.correctionTitle')}
+        description={t('admin.governance.correctionDescription')}
+        requireReason
+        loading={correctionMutation.isPending}
+        error={correctionMutation.error}
+        onOpenChange={(open) => {
+          if (!open && !correctionMutation.isPending) setCorrectionCaseId(null);
+        }}
+        onConfirm={(reason) => correctionMutation.mutate({ reason })}
       />
     </section>
   );
@@ -1514,21 +1379,57 @@ function DecisionDialog({
 function AuditSection() {
   const { t } = useTranslation();
   const [page, setPage] = useState(1);
+  const [actionFilter, setActionFilter] = useState('');
+  const [targetTypeFilter, setTargetTypeFilter] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
   const query = useQuery({
-    queryKey: ['admin', 'audit', page],
-    queryFn: () => adminApi.auditLogs({ page, pageSize: 20 }),
+    queryKey: ['admin', 'audit', page, actionFilter, targetTypeFilter, from, to],
+    queryFn: () => adminApi.auditLogs({
+      page,
+      pageSize: 20,
+      action: actionFilter,
+      targetType: targetTypeFilter,
+      ...(from ? { from: new Date(`${from}T00:00:00`).toISOString() } : {}),
+      ...(to ? { to: new Date(`${to}T23:59:59.999`).toISOString() } : {}),
+    }),
   });
   return (
     <section>
-      <div className="mb-5 flex items-center justify-between gap-3">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-sm font-bold text-ink-primary">{t('admin.audit.title')}</h2>
-        <Link
-          href="/admin?section=security"
-          className="inline-flex items-center gap-2 rounded-md border border-border-subtle px-3 py-2 text-xs text-ink-muted transition-colors hover:border-border-accent hover:text-copper"
-        >
-          <ShieldAlert className="h-3.5 w-3.5" />
-          {t('admin.audit.securityEvents')}
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <AdminSelect
+            value={actionFilter}
+            ariaLabel={t('admin.audit.actionFilter')}
+            options={[
+              { value: '', label: t('admin.audit.allActions') },
+              ...[...ADMIN_AUDIT_ACTIONS].map((value) => ({
+                value,
+                label: t(`admin.audit.actions.${value}`, { defaultValue: value }),
+              })),
+            ]}
+            onValueChange={(value) => { setActionFilter(value); setPage(1); }}
+          />
+          <AdminSelect
+            value={targetTypeFilter}
+            ariaLabel={t('admin.audit.targetFilter')}
+            options={[
+              { value: '', label: t('admin.audit.allTargets') },
+              ...[...ADMIN_AUDIT_TARGET_TYPES].map((value) => ({
+                value,
+                label: t(`admin.audit.targetTypes.${value}`, { defaultValue: value }),
+              })),
+            ]}
+            onValueChange={(value) => { setTargetTypeFilter(value); setPage(1); }}
+          />
+          <input type="date" aria-label={t('admin.audit.from')} value={from} onChange={(event) => { setFrom(event.target.value); setPage(1); }} className="skynet-input h-9 rounded-md px-2 text-xs" />
+          <input type="date" aria-label={t('admin.audit.to')} value={to} onChange={(event) => { setTo(event.target.value); setPage(1); }} className="skynet-input h-9 rounded-md px-2 text-xs" />
+          <Link href="/admin?section=security" className="inline-flex items-center gap-2 rounded-md border border-border-subtle px-3 py-2 text-xs text-ink-muted transition-colors hover:border-border-accent hover:text-copper">
+            <ShieldAlert className="h-3.5 w-3.5" />{t('admin.audit.securityEvents')}
+          </Link>
+        </div>
       </div>
       {query.isPending ? (
         <AdminLoading />
@@ -1543,6 +1444,7 @@ function AuditSection() {
               t('admin.audit.target'),
               t('admin.audit.reason'),
               t('admin.audit.time'),
+              t('admin.agents.actions'),
             ]}
           >
             {query.data.items.map((item) => {
@@ -1552,28 +1454,32 @@ function AuditSection() {
               const targetType = ADMIN_AUDIT_TARGET_TYPES.has(item.targetType)
                 ? t(`admin.audit.targetTypes.${item.targetType}`)
                 : t('admin.audit.unknownTarget');
-              const targetId =
+              const targetLabel =
                 item.targetType === 'FEATURE_FLAG' && ADMIN_FEATURE_FLAG_KEYS.has(item.targetId)
                   ? t(`admin.featureFlags.items.${item.targetId}.title`)
-                  : item.targetId;
+                  : item.target.label;
               return (
                 <tr key={recordId(item)} className="border-b border-border-subtle align-top">
                   <td className="px-3 py-3 text-xs text-ink-secondary">
-                    {item.actorUserId ?? t('admin.audit.bootstrap')}
+                    {item.actor.label}
                   </td>
                   <td className="px-3 py-3 text-xs font-medium text-copper">{action}</td>
                   <td className="px-3 py-3 text-xs text-ink-muted">
                     <span className="text-ink-secondary">{targetType}</span>
                     <span className="mx-1.5 text-border-accent">/</span>
-                    <span className={item.targetType === 'FEATURE_FLAG' ? '' : 'font-mono'}>
-                      {targetId}
-                    </span>
+                    <span>{targetLabel}</span>
+                    <div className="mt-1 font-mono text-[10px] text-ink-muted">{item.target.id}</div>
                   </td>
                   <td className="max-w-md px-3 py-3 text-xs text-ink-secondary">
                     {item.reason ?? t('admin.audit.noReason')}
                   </td>
                   <td className="px-3 py-3 text-xs text-ink-muted">
                     {formatAdminTime(item.createdAt)}
+                  </td>
+                  <td className="px-3 py-3">
+                    <div className="flex justify-end">
+                      <AgentActionIcon label={t('admin.audit.viewDetail')} icon={Eye} onClick={() => setSelectedLogId(recordId(item))} />
+                    </div>
                   </td>
                 </tr>
               );
@@ -1582,6 +1488,7 @@ function AuditSection() {
           <AdminPagination meta={query.data.meta} onPageChange={setPage} />
         </>
       )}
+      <AdminAuditDetailDialog logId={selectedLogId} onClose={() => setSelectedLogId(null)} />
     </section>
   );
 }
@@ -1595,11 +1502,7 @@ function AdminActionDialog({ action, onClose }: { action: AdminAction; onClose: 
   const xpRequestRef = useRef<{ signature: string; idempotencyKey: string } | null>(null);
   const mutation = useMutation({
     mutationFn: async () => {
-      if (action.kind === 'suspend')
-        return adminApi.suspendAgent(action.target.id, {
-          reason,
-          ...(extra ? { suspendedUntil: new Date(extra).toISOString() } : {}),
-        });
+      if (action.kind === 'suspend') return adminApi.suspendAgent(action.target.id, { reason });
       if (action.kind === 'unsuspend') return adminApi.unsuspendAgent(action.target.id, reason);
       if (action.kind === 'revokeKey') return adminApi.revokeAgentKey(action.target.id, reason);
       if (action.kind === 'adjustXp') {
@@ -1614,18 +1517,18 @@ function AdminActionDialog({ action, onClose }: { action: AdminAction; onClose: 
           idempotencyKey: xpRequestRef.current.idempotencyKey,
         });
       }
-      if (action.kind === 'adjustHealth')
-        return adminApi.adjustAgentHealth(action.target.id, { reason, healthLevel: Number(extra) });
       if (action.kind === 'removeContent')
         return adminApi.removeContent(action.contentType, recordId(action.target), reason);
       if (action.kind === 'restoreContent')
         return adminApi.restoreContent(action.contentType, recordId(action.target), reason);
+      if (action.kind === 'correctContent')
+        return adminApi.correctGovernanceCase(action.caseId, reason);
       throw new Error('Unsupported admin action');
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['admin'] });
       toast.success(
-        action.kind === 'removeContent' || action.kind === 'restoreContent'
+        action.kind === 'removeContent' || action.kind === 'restoreContent' || action.kind === 'correctContent'
           ? t('admin.content.success')
           : t('admin.agents.success'),
       );
@@ -1641,20 +1544,16 @@ function AdminActionDialog({ action, onClose }: { action: AdminAction; onClose: 
           ? t('admin.agents.revokeKey')
           : action.kind === 'adjustXp'
             ? t('admin.agents.adjustXp')
-            : action.kind === 'adjustHealth'
-              ? t('admin.agents.adjustHealth')
-              : action.kind === 'removeContent'
-                ? t('admin.content.remove')
-                : t('admin.content.restore');
+            : action.kind === 'removeContent'
+              ? t('admin.content.remove')
+              : action.kind === 'restoreContent'
+                ? t('admin.content.restore')
+                : t('admin.content.correctAndRestore');
   const extraLabel =
-    action.kind === 'suspend'
-      ? t('admin.agents.until')
-      : action.kind === 'adjustXp'
-        ? t('admin.agents.delta')
-        : action.kind === 'adjustHealth'
-          ? t('admin.agents.healthLevel')
-          : '';
-  const needsExtra = Boolean(extraLabel) && action.kind !== 'suspend';
+    action.kind === 'adjustXp'
+      ? t('admin.agents.delta')
+      : '';
+  const needsExtra = Boolean(extraLabel);
   return (
     <AlertDialog.Root
       open
@@ -1691,13 +1590,7 @@ function AdminActionDialog({ action, onClose }: { action: AdminAction; onClose: 
             <label className="mb-4 block text-xs text-ink-secondary">
               {extraLabel}
               <input
-                type={
-                  action.kind === 'suspend'
-                    ? 'datetime-local'
-                    : action.kind === 'adjustXp' || action.kind === 'adjustHealth'
-                      ? 'number'
-                      : 'text'
-                }
+                type={action.kind === 'adjustXp' ? 'number' : 'text'}
                 value={extra}
                 onChange={(event) => setExtra(event.target.value)}
                 className="skynet-input mt-2 w-full rounded-md px-3 py-2 text-sm"
@@ -1706,12 +1599,12 @@ function AdminActionDialog({ action, onClose }: { action: AdminAction; onClose: 
           )}
           <label className="block text-xs text-ink-secondary">
             {t('admin.action.reason')}
-            <textarea
+            <ComposerTextarea
               value={reason}
               onChange={(event) => setReason(event.target.value)}
               placeholder={t('admin.action.reasonHint')}
               rows={3}
-              className="skynet-input mt-2 w-full resize-none rounded-md px-3 py-2 text-sm"
+              variant="framed"
             />
           </label>
           {mutation.isError && (

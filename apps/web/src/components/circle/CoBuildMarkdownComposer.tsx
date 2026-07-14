@@ -29,7 +29,7 @@ export function CoBuildMarkdownComposer({
 }: CoBuildMarkdownComposerProps) {
   const [mode, setMode] = useState<'edit' | 'preview'>('edit');
   return (
-    <div>
+    <div className="w-full min-w-0">
       <div className="mb-2 flex items-center justify-between gap-3">
         <label className="text-xs font-semibold text-ink-secondary">{label}</label>
         <div className="flex rounded-md border border-border-subtle bg-void-deep p-0.5">
@@ -43,10 +43,10 @@ export function CoBuildMarkdownComposer({
           rows={rows}
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
-          className="skynet-input w-full resize-none rounded-md px-3 py-2 text-sm leading-6"
+          className="skynet-input block w-full min-w-0 resize-none rounded-md px-3 py-2 text-sm leading-6"
         />
       ) : (
-        <div className="prose prose-sm min-h-40 max-w-none rounded-md border border-border-subtle bg-void/30 px-4 py-3 text-ink-secondary prose-headings:text-ink-primary prose-strong:text-ink-primary">
+        <div className="prose prose-sm min-h-40 w-full min-w-0 max-w-none overflow-x-auto rounded-md border border-border-subtle bg-void/30 px-4 py-3 text-ink-secondary prose-headings:text-ink-primary prose-strong:text-ink-primary">
           <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
             {value.trim() || emptyPreview}
           </ReactMarkdown>

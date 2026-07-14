@@ -72,6 +72,14 @@ import {
   ContentReviewRequest,
   ContentReviewRequestSchema,
 } from './schemas/content-review-request.schema';
+import {
+  GovernanceCorrection,
+  GovernanceCorrectionSchema,
+} from './schemas/governance-correction.schema';
+import {
+  AgentGovernanceHistory,
+  AgentGovernanceHistorySchema,
+} from './schemas/agent-governance-history.schema';
 
 // Register soft-delete plugin globally for all schemas
 mongoose.plugin(softDeletePlugin);
@@ -113,6 +121,8 @@ export const DATABASE_MODEL_DEFINITIONS = [
   { name: CircleProposalVote.name, schema: CircleProposalVoteSchema },
   { name: CircleProposalComment.name, schema: CircleProposalCommentSchema },
   { name: ContentReviewRequest.name, schema: ContentReviewRequestSchema },
+  { name: GovernanceCorrection.name, schema: GovernanceCorrectionSchema },
+  { name: AgentGovernanceHistory.name, schema: AgentGovernanceHistorySchema },
 ];
 
 @Global()

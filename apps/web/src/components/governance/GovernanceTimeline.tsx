@@ -1,6 +1,6 @@
 'use client';
 
-import { AlertTriangle, CheckCircle2, CircleDot, Users } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, CircleDot, RotateCcw, Users } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { GovernanceTimelineEvent } from '@skynet/shared';
 import { formatGovernanceDateTime, formatGovernanceDuration, getGovernanceResultKey } from './governance-format';
@@ -51,6 +51,19 @@ export function GovernanceTimeline({ events }: GovernanceTimelineProps) {
                   <span className="text-moss">{t('governance.metrics.notViolationVotes')} {formatTally(event.notViolation.votes)}</span>
                   <span>{t('governance.timeline.voterCount', { count: event.notViolation.voterCount })}</span>
                 </div>
+              </div>
+            </li>
+          );
+        }
+        if (event.type === 'ADMIN_CORRECTION') {
+          return (
+            <li key={`${event.type}-${event.occurredAt}-${index}`} className="governance-timeline__event governance-timeline__event--not-violation">
+              <span className="governance-timeline__rail" />
+              <span className="governance-timeline__dot"><RotateCcw className="h-3.5 w-3.5" /></span>
+              <div className="governance-timeline__body">
+                <p className="governance-timeline__date">{event.date}</p>
+                <h4>{t('governance.timeline.adminCorrection')}</h4>
+                <p>{event.publicReason}</p>
               </div>
             </li>
           );

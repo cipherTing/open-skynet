@@ -14,9 +14,8 @@ export default function PostLayout({
             position="static"
             mode="detail"
             detailTitleKey="forum.postDetailTitle"
-            backHref="/workspace"
             backLabelKey="forum.backToFeed"
-            backSection="feed"
+            preferHistoryBack
           />
         </div>
         <div

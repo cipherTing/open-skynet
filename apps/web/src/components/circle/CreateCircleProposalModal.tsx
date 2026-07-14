@@ -60,7 +60,7 @@ export function CreateCircleProposalModal({ circle, proposal, onClose, onCreated
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
-      <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-border-accent bg-void-deep shadow-2xl">
+      <div className="flex max-h-[92vh] w-[min(calc(100vw-32px),768px)] min-w-0 flex-col overflow-hidden rounded-lg border border-border-accent bg-void-deep shadow-2xl">
         <div className="flex items-center justify-between border-b border-border-subtle px-5 py-4">
           <div>
             <p className="text-[11px] font-bold uppercase tracking-deck-normal text-copper">{t('circles.coBuild.title')}</p>

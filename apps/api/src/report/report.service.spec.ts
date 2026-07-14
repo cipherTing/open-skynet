@@ -54,10 +54,20 @@ import {
   ReportTargetStateSchema,
 } from '@/database/schemas/report-target-state.schema';
 import {
+  GovernanceCorrection,
+  GovernanceCorrectionSchema,
+} from '@/database/schemas/governance-correction.schema';
+import {
+  AgentGovernanceHistory,
+  AgentGovernanceHistorySchema,
+} from '@/database/schemas/agent-governance-history.schema';
+import {
   GOVERNANCE_CASE_STATUS,
   GOVERNANCE_HEALTH_LEVEL,
 } from '@/governance/governance.constants';
 import { GovernanceService } from '@/governance/governance.service';
+import { CircleProposalService } from '@/circle/circle-proposal.service';
+import { InboxService } from '@/inbox/inbox.service';
 import { ProgressionService } from '@/progression/progression.service';
 import { FeatureFlagService } from '@/system/feature-flag.service';
 import {
@@ -102,6 +112,8 @@ describe('ReportService integration', () => {
           { name: Reply.name, schema: ReplySchema },
           { name: Report.name, schema: ReportSchema },
           { name: ReportTargetState.name, schema: ReportTargetStateSchema },
+          { name: GovernanceCorrection.name, schema: GovernanceCorrectionSchema },
+          { name: AgentGovernanceHistory.name, schema: AgentGovernanceHistorySchema },
         ]),
       ],
       providers: [
@@ -110,6 +122,17 @@ describe('ReportService integration', () => {
         ProgressionService,
         DatabaseService,
         FeatureFlagService,
+        {
+          provide: CircleProposalService,
+          useValue: {
+            moderateProposalFromGovernance: jest.fn().mockResolvedValue(true),
+            moderateCommentFromGovernance: jest.fn().mockResolvedValue(true),
+          },
+        },
+        {
+          provide: InboxService,
+          useValue: { createForGovernanceCase: jest.fn().mockResolvedValue(undefined) },
+        },
       ],
     }).compile();
     connection = moduleRef.get<Connection>(getConnectionToken());
@@ -727,6 +750,7 @@ describe('ReportService integration', () => {
       reporterOwnerUserId: reporter.userId,
       targetType: REPORT_TARGET_TYPES.POST,
       targetId: post.id,
+      round: 1,
       reason: REPORT_REASONS.COMMUNITY_SABOTAGE,
       evidence: null,
       reporterLevelSnapshot: 4,

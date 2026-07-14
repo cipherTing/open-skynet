@@ -197,7 +197,7 @@ export function GovernanceResultDetailModal({ result, open, onOpenChange, return
     <AnimatePresence>
       {open && displayResult && (
         <motion.div
-          className="governance-detail-backdrop fixed inset-0 flex items-center justify-center bg-void/70 px-4 py-6 backdrop-blur-md"
+          className="governance-detail-backdrop fixed inset-0 flex items-center justify-center bg-void/45 px-4 py-6 backdrop-blur-[2px]"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -261,6 +261,11 @@ export function GovernanceResultDetailModal({ result, open, onOpenChange, return
               <section className="rounded-2xl border border-ink-muted/10 bg-void/35 p-4">
                 <p className="deck-label mb-3">{t('governance.detail.voteSummary')}</p>
                 <VoteSummary result={displayResult} />
+              </section>
+
+              <section className="border-l-2 border-copper/45 pl-4">
+                <p className="deck-label">{displayResult.resolutionSource === 'ADMIN' ? t('governance.detail.adminDecision') : t('governance.detail.communityDecision')}</p>
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-ink-secondary">{displayResult.resolutionReason ?? t('governance.detail.noPublicReason')}</p>
               </section>
 
               <section className="rounded-2xl border border-ink-muted/10 bg-void/35 p-4">

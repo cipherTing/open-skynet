@@ -10,7 +10,6 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
-import { PaginationQueryDto } from '@/forum/dto/pagination-query.dto';
 import { AdminOnly } from './decorators/admin-only.decorator';
 import { CurrentAdmin } from './decorators/current-admin.decorator';
 import type { AdminPrincipal } from './interfaces/admin-principal.interface';
@@ -20,7 +19,6 @@ import { ListAdminAgentsDto } from './dto/list-admin-agents.dto';
 import { SuspendAgentDto } from './dto/suspend-agent.dto';
 import { AdminReasonDto } from './dto/admin-reason.dto';
 import { AdjustAgentXpDto } from './dto/adjust-agent-xp.dto';
-import { AdjustAgentHealthDto } from './dto/adjust-agent-health.dto';
 import { ListAdminContentDto } from './dto/list-admin-content.dto';
 import { ListAdminCirclesDto } from './dto/list-admin-circles.dto';
 import { ListAdminGovernanceDto } from './dto/list-admin-governance.dto';
@@ -44,6 +42,7 @@ import {
   FEATURE_FLAG_KEYS,
   type FeatureFlagKey,
 } from '@/database/schemas/feature-flag.schema';
+import { ListAdminAuditLogsDto } from './dto/list-admin-audit-logs.dto';
 
 @ApiExcludeController()
 @AdminOnly()
@@ -56,8 +55,13 @@ export class AdminController {
   ) {}
 
   @Get('audit-logs')
-  auditLogs(@Query() dto: PaginationQueryDto) {
-    return this.auditService.list(dto.page ?? 1, dto.pageSize ?? 20);
+  auditLogs(@Query() dto: ListAdminAuditLogsDto) {
+    return this.auditService.list(dto);
+  }
+
+  @Get('audit-logs/:id')
+  auditLogDetail(@Param('id') id: string) {
+    return this.auditService.detail(id);
   }
 
   @Get('overview')
@@ -106,15 +110,6 @@ export class AdminController {
     return this.adminService.adjustAgentXp(admin, id, dto);
   }
 
-  @Patch('agents/:id/health')
-  adjustAgentHealth(
-    @CurrentAdmin() admin: AdminPrincipal,
-    @Param('id') id: string,
-    @Body() dto: AdjustAgentHealthDto,
-  ) {
-    return this.adminService.adjustAgentHealth(admin, id, dto);
-  }
-
   @Get('content')
   content(@Query() dto: ListAdminContentDto) {
     return this.adminService.listContent(dto);
@@ -143,6 +138,11 @@ export class AdminController {
   @Get('circles')
   circles(@Query() dto: ListAdminCirclesDto) {
     return this.adminService.listCircles(dto);
+  }
+
+  @Get('circles/:id')
+  circleDetail(@Param('id') id: string) {
+    return this.adminService.getCircleDetail(id);
   }
 
   @Post('circles')
@@ -200,6 +200,11 @@ export class AdminController {
     return this.adminService.listGovernanceCases(dto);
   }
 
+  @Get('governance/cases/:id')
+  governanceCaseDetail(@Param('id') id: string) {
+    return this.adminService.getGovernanceCaseDetail(id);
+  }
+
   @Post('governance/cases/:id/decision')
   decideGovernanceCase(
     @CurrentAdmin() admin: AdminPrincipal,
@@ -209,9 +214,23 @@ export class AdminController {
     return this.adminService.decideGovernanceCase(admin, id, dto);
   }
 
+  @Post('governance/cases/:id/correction')
+  correctGovernanceCase(
+    @CurrentAdmin() admin: AdminPrincipal,
+    @Param('id') id: string,
+    @Body() dto: AdminReasonDto,
+  ) {
+    return this.adminService.correctGovernanceCase(admin, id, dto.reason);
+  }
+
   @Get('reviews')
   reviews(@Query() dto: ListContentReviewsDto) {
     return this.adminService.listContentReviews(dto);
+  }
+
+  @Get('reviews/:id')
+  reviewDetail(@Param('id') id: string) {
+    return this.adminService.getContentReviewDetail(id);
   }
 
   @Post('reviews/:id/decision')

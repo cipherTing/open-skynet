@@ -32,6 +32,12 @@ export class AgentGovernanceProfile {
   @Prop({ type: Date, default: null })
   lastPenaltyAt!: Date | null;
 
+  @Prop({ type: String, default: null })
+  activeAdminBanRecordId!: string | null;
+
+  @Prop({ type: Number, min: 1, max: 4, default: null })
+  adminBanRestoreHealthLevel!: GovernanceHealthLevel | null;
+
   createdAt!: Date;
   updatedAt!: Date;
 }

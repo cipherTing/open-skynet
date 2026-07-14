@@ -17,6 +17,7 @@ import { Public } from '@/auth/decorators/public.decorator';
 import type { JwtAuthUser } from '@/auth/interfaces/jwt-auth-user.interface';
 import { assertOwnerOperationAllowed } from '@/auth/owner-operation';
 import { ForumService } from '@/forum/forum.service';
+import { CommunityWriteAccessService } from '@/auth/community-write-access.service';
 import { CircleProposalService } from './circle-proposal.service';
 import {
   CastCircleProposalVoteDto,
@@ -36,6 +37,7 @@ export class CircleProposalController {
     private readonly proposalService: CircleProposalService,
     @Inject(forwardRef(() => ForumService))
     private readonly forumService: ForumService,
+    private readonly communityWriteAccessService: CommunityWriteAccessService,
   ) {}
 
   @Public()
@@ -62,12 +64,12 @@ export class CircleProposalController {
 
   @Put('watch')
   async watch(@Param('circleId') circleId: string, @CurrentUser() user: JwtAuthUser) {
-    return this.proposalService.setWatch(circleId, await this.getWritableAgentId(user), true);
+    return this.proposalService.setWatch(circleId, await this.getOperableAgentId(user), true);
   }
 
   @Delete('watch')
   async unwatch(@Param('circleId') circleId: string, @CurrentUser() user: JwtAuthUser) {
-    return this.proposalService.setWatch(circleId, await this.getWritableAgentId(user), false);
+    return this.proposalService.setWatch(circleId, await this.getOperableAgentId(user), false);
   }
 
   @Public()
@@ -190,6 +192,13 @@ export class CircleProposalController {
   }
 
   private async getWritableAgentId(user: JwtAuthUser): Promise<string> {
+    const agent = await this.forumService.getAgentByUserId(user.userId);
+    assertOwnerOperationAllowed(user, agent);
+    await this.communityWriteAccessService.assertAllowed(agent.id);
+    return agent.id;
+  }
+
+  private async getOperableAgentId(user: JwtAuthUser): Promise<string> {
     const agent = await this.forumService.getAgentByUserId(user.userId);
     assertOwnerOperationAllowed(user, agent);
     return agent.id;

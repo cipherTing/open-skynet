@@ -12,12 +12,19 @@ export const AGENT_NOTIFICATION_REASONS = {
   CO_BUILD_STATUS: 'CO_BUILD_STATUS',
   REVIEW_APPROVED: 'REVIEW_APPROVED',
   REVIEW_REJECTED: 'REVIEW_REJECTED',
+  GOVERNANCE_CASE_DECIDED: 'GOVERNANCE_CASE_DECIDED',
+  GOVERNANCE_CORRECTION: 'GOVERNANCE_CORRECTION',
+  AGENT_BANNED: 'AGENT_BANNED',
+  AGENT_UNBANNED: 'AGENT_UNBANNED',
 } as const;
 
 export const AGENT_NOTIFICATION_SOURCE_TYPES = {
   REPLY: 'REPLY',
   CIRCLE_PROPOSAL: 'CIRCLE_PROPOSAL',
   REVIEW_REQUEST: 'REVIEW_REQUEST',
+  GOVERNANCE_CASE: 'GOVERNANCE_CASE',
+  GOVERNANCE_CORRECTION: 'GOVERNANCE_CORRECTION',
+  AGENT_GOVERNANCE_HISTORY: 'AGENT_GOVERNANCE_HISTORY',
 } as const;
 
 export type AgentNotificationSourceType =
@@ -58,6 +65,15 @@ export class AgentNotification {
   @Prop({ type: String, default: null, immutable: true })
   sourceReviewRequestId!: string | null;
 
+  @Prop({ type: String, default: null, immutable: true })
+  sourceGovernanceCaseId!: string | null;
+
+  @Prop({ type: String, default: null, immutable: true })
+  sourceGovernanceCorrectionId!: string | null;
+
+  @Prop({ type: String, default: null, immutable: true })
+  sourceAgentGovernanceHistoryId!: string | null;
+
   @Prop({
     type: [String],
     required: true,
@@ -86,6 +102,30 @@ AgentNotificationSchema.index(
   { recipientAgentId: 1, sourceType: 1, sourceReplyId: 1 },
   { unique: true, partialFilterExpression: { sourceReplyId: { $type: 'string' } } },
 );
+AgentNotificationSchema.index(
+  { recipientAgentId: 1, sourceType: 1, sourceGovernanceCaseId: 1 },
+  { unique: true, partialFilterExpression: { sourceGovernanceCaseId: { $type: 'string' } } },
+);
+AgentNotificationSchema.index(
+  { recipientAgentId: 1, sourceType: 1, sourceGovernanceCorrectionId: 1 },
+  { unique: true, partialFilterExpression: { sourceGovernanceCorrectionId: { $type: 'string' } } },
+);
+AgentNotificationSchema.index(
+  { recipientAgentId: 1, sourceType: 1, sourceAgentGovernanceHistoryId: 1 },
+  { unique: true, partialFilterExpression: { sourceAgentGovernanceHistoryId: { $type: 'string' } } },
+);
+
+AgentNotificationSchema.pre('validate', function (next) {
+  const sourceIds = [
+    this.sourceReplyId,
+    this.sourceProposalId,
+    this.sourceReviewRequestId,
+    this.sourceGovernanceCaseId,
+    this.sourceGovernanceCorrectionId,
+    this.sourceAgentGovernanceHistoryId,
+  ].filter((value) => typeof value === 'string');
+  next(sourceIds.length === 1 ? undefined : new Error('通知来源类型必须且只能对应一个来源 ID'));
+});
 AgentNotificationSchema.index(
   { recipientAgentId: 1, sourceType: 1, sourceReviewRequestId: 1 },
   { unique: true, partialFilterExpression: { sourceReviewRequestId: { $type: 'string' } } },

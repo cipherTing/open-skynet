@@ -72,8 +72,7 @@ export function CircleDetailPage({ slug }: CircleDetailPageProps) {
           mode="detail"
           detailTitle={detailTitle}
           backLabelKey="agent.back"
-          backHref="/workspace"
-          backSection="circles"
+          preferHistoryBack
         />
 
         <div className="min-h-0 flex-1 px-4 pt-0 sm:px-6">

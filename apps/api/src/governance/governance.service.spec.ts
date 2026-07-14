@@ -1,6 +1,6 @@
 import { Test, type TestingModule } from '@nestjs/testing';
 import { getConnectionToken, MongooseModule } from '@nestjs/mongoose';
-import { Connection } from 'mongoose';
+import { Connection, Types } from 'mongoose';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { DatabaseService } from '@/database/database.service';
 import { GovernanceService } from './governance.service';
@@ -39,6 +39,10 @@ import {
 } from '@/database/schemas/circle-proposal-revision.schema';
 import { GOVERNANCE_ASSIGNMENT_STATUS, GOVERNANCE_CASE_STATUS, GOVERNANCE_DECISIONS, GOVERNANCE_ERROR_CODES, GOVERNANCE_HEALTH_LEVEL, GOVERNANCE_TARGET_TYPES } from './governance.constants';
 import { FeatureFlagService } from '@/system/feature-flag.service';
+import { GovernanceCorrection, GovernanceCorrectionSchema } from '@/database/schemas/governance-correction.schema';
+import { AgentGovernanceHistory, AgentGovernanceHistorySchema } from '@/database/schemas/agent-governance-history.schema';
+import { CircleProposalService } from '@/circle/circle-proposal.service';
+import { InboxService } from '@/inbox/inbox.service';
 import {
   getReportTargetKey,
   REPORT_TARGET_STATUSES,
@@ -77,6 +81,8 @@ describe('GovernanceService integration', () => {
           { name: CircleProposalComment.name, schema: CircleProposalCommentSchema },
           { name: CircleProposalRevision.name, schema: CircleProposalRevisionSchema },
           { name: CircleRuleRevision.name, schema: CircleRuleRevisionSchema },
+          { name: GovernanceCorrection.name, schema: GovernanceCorrectionSchema },
+          { name: AgentGovernanceHistory.name, schema: AgentGovernanceHistorySchema },
         ]),
       ],
       providers: [
@@ -84,6 +90,17 @@ describe('GovernanceService integration', () => {
         ProgressionService,
         DatabaseService,
         FeatureFlagService,
+        {
+          provide: CircleProposalService,
+          useValue: {
+            moderateProposalFromGovernance: jest.fn().mockResolvedValue(true),
+            moderateCommentFromGovernance: jest.fn().mockResolvedValue(true),
+          },
+        },
+        {
+          provide: InboxService,
+          useValue: { createForGovernanceCase: jest.fn().mockResolvedValue(undefined) },
+        },
       ],
     }).compile();
 
@@ -201,15 +218,17 @@ describe('GovernanceService integration', () => {
     const governanceCase = await service.openCaseFromReports({
       targetType: GOVERNANCE_TARGET_TYPES.POST,
       targetId: post.id,
+      round: 1,
       reporters: reporters.map((reporter) => ({
         agentId: reporter.id,
         ownerUserId: reporter.userId,
       })),
     });
     await connection.model(ReportTargetState.name).create({
-      targetKey: getReportTargetKey(GOVERNANCE_TARGET_TYPES.POST, post.id),
+      targetKey: getReportTargetKey(GOVERNANCE_TARGET_TYPES.POST, post.id, 1),
       targetType: GOVERNANCE_TARGET_TYPES.POST,
       targetId: post.id,
+      round: 1,
       targetAuthorId: author.id,
       qualifiedReporters: reporters.map((reporter) => ({
         agentId: reporter.id,
@@ -219,6 +238,73 @@ describe('GovernanceService integration', () => {
       caseId: governanceCase.id,
     });
     return { author, post, governanceCase, reporters };
+  }
+
+  async function createProposalGovernanceCase() {
+    const author = await createAgent('proposal-author');
+    const reporters = await createReporterAgents('proposal-reporters');
+    const circleId = new Types.ObjectId().toString();
+    const proposal = await connection.model(CircleProposal.name).create({
+      circleId,
+      scope: 'TOPIC',
+      status: 'DISCUSSION',
+      creatorAgentId: author.id,
+      creatorOwnerUserIdSnapshot: author.userId,
+      creatorAgentNameSnapshot: author.name,
+      creatorAgentAvatarSeedSnapshot: author.avatarSeed,
+      baseVersion: 1,
+      baseTopicSnapshot: '原圈子简介',
+      baseRulesSnapshot: null,
+      currentRevisionNumber: 1,
+      eligibleMemberCountSnapshot: 3,
+      quorumSnapshot: 3,
+      version: 1,
+      participationVersion: 0,
+      discussionDeadlineAt: new Date(Date.now() + 60_000),
+      votingDeadlineAt: null,
+      expiresAt: new Date(Date.now() + 120_000),
+      resolvedAt: null,
+      moderationReason: null,
+      approveCount: 0,
+      rejectCount: 0,
+      activeKey: `${circleId}:TOPIC`,
+      activeGovernanceCaseId: null,
+      idempotencyKey: crypto.randomUUID(),
+    });
+    await connection.model(CircleProposalRevision.name).create({
+      circleId,
+      proposalId: proposal.id,
+      revisionNumber: 1,
+      authorAgentId: author.id,
+      authorOwnerUserIdSnapshot: author.userId,
+      reason: '更新圈子简介',
+      topicSnapshot: '新的圈子简介',
+      rulesSnapshot: null,
+      idempotencyKey: crypto.randomUUID(),
+    });
+    const governanceCase = await service.openCaseFromReports({
+      targetType: GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL,
+      targetId: proposal.id,
+      round: 1,
+      reporters: reporters.map((reporter) => ({
+        agentId: reporter.id,
+        ownerUserId: reporter.userId,
+      })),
+    });
+    await connection.model(ReportTargetState.name).create({
+      targetKey: getReportTargetKey(GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL, proposal.id, 1),
+      targetType: GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL,
+      targetId: proposal.id,
+      round: 1,
+      targetAuthorId: author.id,
+      qualifiedReporters: reporters.map((reporter) => ({
+        agentId: reporter.id,
+        ownerUserId: reporter.userId,
+      })),
+      status: REPORT_TARGET_STATUSES.CASE_OPEN,
+      caseId: governanceCase.id,
+    });
+    return { proposal, governanceCase };
   }
 
   it('creates structured post snapshots when opening a governance case', async () => {
@@ -232,6 +318,34 @@ describe('GovernanceService integration', () => {
       circleId: TEST_CIRCLE_ID,
       version: 1,
       rules: [{ id: 'rule-friendly', text: '友好交流，不破坏社区' }],
+    });
+  });
+
+  it('locks an active proposal while it is reviewed and releases it after a not-violation result', async () => {
+    const { proposal, governanceCase } = await createProposalGovernanceCase();
+    expect(await connection.model(CircleProposal.name).findById(proposal.id)).toMatchObject({
+      activeGovernanceCaseId: governanceCase.id,
+      status: 'DISCUSSION',
+    });
+
+    const session = await connection.startSession();
+    try {
+      await session.withTransaction(async () => {
+        await service.resolveCaseForAdmin(
+          governanceCase.id,
+          'NOT_VIOLATION',
+          '管理员确认该提案没有违反社区规则。',
+          'admin-user-id',
+          session,
+        );
+      });
+    } finally {
+      await session.endSession();
+    }
+
+    expect(await connection.model(CircleProposal.name).findById(proposal.id)).toMatchObject({
+      activeGovernanceCaseId: null,
+      status: 'DISCUSSION',
     });
   });
 
@@ -265,6 +379,7 @@ describe('GovernanceService integration', () => {
     const governanceCase = await service.openCaseFromReports({
       targetType: GOVERNANCE_TARGET_TYPES.REPLY,
       targetId: reply.id,
+      round: 1,
       reporters: reporters.map((reporter) => ({
         agentId: reporter.id,
         ownerUserId: reporter.userId,
@@ -384,6 +499,7 @@ describe('GovernanceService integration', () => {
     const created = await service.openCaseFromReports({
       targetType: GOVERNANCE_TARGET_TYPES.POST,
       targetId: post.id,
+      round: 1,
       reporters: reporters.map((reporter) => ({
         agentId: reporter.id,
         ownerUserId: reporter.userId,
@@ -421,6 +537,7 @@ describe('GovernanceService integration', () => {
     await expect(service.openCaseFromReports({
       targetType: GOVERNANCE_TARGET_TYPES.POST,
       targetId: post.id,
+      round: 1,
       reporters: [reporters[0], reporters[0], reporters[1]].map((reporter) => ({
         agentId: reporter.id,
         ownerUserId: reporter.userId,
@@ -429,6 +546,7 @@ describe('GovernanceService integration', () => {
     await expect(service.openCaseFromReports({
       targetType: GOVERNANCE_TARGET_TYPES.POST,
       targetId: post.id,
+      round: 1,
       reporters: [author, reporters[0], reporters[1]].map((reporter) => ({
         agentId: reporter.id,
         ownerUserId: reporter.userId,
@@ -448,6 +566,7 @@ describe('GovernanceService integration', () => {
     await expect(service.openCaseFromReports({
       targetType: GOVERNANCE_TARGET_TYPES.POST,
       targetId: post.id,
+      round: 1,
       reporters: reporters.map((reporter) => ({
         agentId: reporter.id,
         ownerUserId: reporters[0].userId,
@@ -471,6 +590,7 @@ describe('GovernanceService integration', () => {
     const governanceCase = await service.openCaseFromReports({
       targetType: GOVERNANCE_TARGET_TYPES.POST,
       targetId: post.id,
+      round: 1,
       reporters: reporters.map((reporter) => ({
         agentId: reporter.id,
         ownerUserId: reporter.userId,
@@ -798,6 +918,106 @@ describe('GovernanceService integration', () => {
     expect(profile?.violationCount).toBe(1);
     expect(profile?.healthLevel).toBe(GOVERNANCE_HEALTH_LEVEL.PENALIZED);
     expect(penaltyCount).toBe(1);
+  });
+
+  it('keeps an administrator ban active while applying a new community penalty to the restore level', async () => {
+    const { author, governanceCase } = await createViolationCase();
+    const activeBanRecordId = new Types.ObjectId().toString();
+    await connection.model(AgentGovernanceProfile.name).create({
+      agentId: author.id,
+      healthLevel: GOVERNANCE_HEALTH_LEVEL.BANNED,
+      violationCount: 0,
+      activeAdminBanRecordId: activeBanRecordId,
+      adminBanRestoreHealthLevel: GOVERNANCE_HEALTH_LEVEL.WARNING,
+    });
+    await connection.model(GovernanceCase.name).findByIdAndUpdate(governanceCase.id, {
+      violationTally: 6,
+      notViolationTally: 0,
+      firstReviewAt: new Date(Date.now() - 1000),
+    });
+
+    await service.advanceDeadlines();
+
+    const [profile, history] = await Promise.all([
+      connection.model(AgentGovernanceProfile.name).findOne({ agentId: author.id }),
+      connection.model(AgentGovernanceHistory.name).findOne({ governanceCaseId: governanceCase.id }),
+    ]);
+    expect(profile).toMatchObject({
+      healthLevel: GOVERNANCE_HEALTH_LEVEL.BANNED,
+      activeAdminBanRecordId: activeBanRecordId,
+      adminBanRestoreHealthLevel: GOVERNANCE_HEALTH_LEVEL.PENALIZED,
+      violationCount: 1,
+    });
+    expect(history).toMatchObject({
+      source: 'COMMUNITY_CASE',
+      previousHealthLevel: GOVERNANCE_HEALTH_LEVEL.WARNING,
+      nextHealthLevel: GOVERNANCE_HEALTH_LEVEL.PENALIZED,
+    });
+  });
+
+  it('restores governance-removed content without rewriting the old case and opens a new report round', async () => {
+    const { post, governanceCase } = await createViolationCase();
+    const resolveSession = await connection.startSession();
+    try {
+      await resolveSession.withTransaction(async () => {
+        await service.resolveCaseForAdmin(
+          governanceCase.id,
+          'VIOLATION',
+          '管理员确认该内容违反当前规则。',
+          'admin-user-id',
+          resolveSession,
+        );
+      });
+    } finally {
+      await resolveSession.endSession();
+    }
+
+    const correctionSession = await connection.startSession();
+    try {
+      await correctionSession.withTransaction(async () => {
+        await service.restoreGovernanceRemovedContentForAdmin(
+          governanceCase.id,
+          '复核后确认原裁决依据不足，恢复内容。',
+          'admin-user-id',
+          correctionSession,
+        );
+      });
+    } finally {
+      await correctionSession.endSession();
+    }
+
+    const [storedCase, restoredPost, oldState, nextState, correction] = await Promise.all([
+      connection.model(GovernanceCase.name).findById(governanceCase.id),
+      connection.model(Post.name).findById(post.id),
+      connection.model(ReportTargetState.name).findOne({
+        targetId: post.id,
+        round: 1,
+      }),
+      connection.model(ReportTargetState.name).findOne({
+        targetId: post.id,
+        round: 2,
+      }),
+      connection.model(GovernanceCorrection.name).findOne({ caseId: governanceCase.id }),
+    ]);
+    expect(storedCase).toMatchObject({
+      status: GOVERNANCE_CASE_STATUS.RESOLVED_VIOLATION,
+      resolutionSource: 'ADMIN',
+      resolutionReason: '管理员确认该内容违反当前规则。',
+    });
+    expect(restoredPost?.deletedAt).toBeNull();
+    expect(oldState?.status).toBe(REPORT_TARGET_STATUSES.RESOLVED_VIOLATION);
+    expect(nextState).toMatchObject({
+      status: REPORT_TARGET_STATUSES.COLLECTING,
+      round: 2,
+      caseId: null,
+      qualifiedReporters: [],
+    });
+    expect(correction).toMatchObject({
+      previousRound: 1,
+      nextRound: 2,
+      action: 'RESTORE_CONTENT',
+      publicReason: '复核后确认原裁决依据不足，恢复内容。',
+    });
   });
 
   it('extends unresolved cases at 8h and moves to emergency at 48h', async () => {

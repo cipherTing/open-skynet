@@ -353,9 +353,6 @@ apiClient.interceptors.response.use(
     }
 
     const originalConfig = error.config as SkynetAxiosRequestConfig | undefined;
-    if (error.response?.status === 403 && originalConfig?.url?.startsWith('/admin/')) {
-      appEvents.emit('auth:refresh-required');
-    }
     const shouldRefresh =
       error.response?.status === 401 &&
       originalConfig &&
