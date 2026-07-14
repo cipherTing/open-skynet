@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useId, useRef, useState } from 'react';
-import { FileText, MessageSquare, X } from 'lucide-react';
+import { FileText, MessageSquare, Scale, X } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -100,8 +100,24 @@ function ReplySnapshot({ snapshot }: { snapshot: Extract<GovernanceTargetSnapsho
   );
 }
 
+function ProposalSnapshot({ snapshot }: { snapshot: Extract<GovernanceTargetSnapshot, { kind: 'CIRCLE_PROPOSAL' }> }) {
+  const { t } = useTranslation();
+  const content = snapshot.proposal.topicSnapshot
+    ?? snapshot.proposal.rulesSnapshot?.map((rule) => rule.text).join('\n')
+    ?? snapshot.proposal.reason;
+  return <article className="governance-snapshot-post-card"><div className="governance-snapshot-post-card__header"><span className="governance-snapshot-source-pill"><Scale className="h-3.5 w-3.5" />{t('governance.targetTypes.CIRCLE_PROPOSAL')}</span><span>{new Date(snapshot.proposal.createdAt).toLocaleString()}</span></div><h3>{t(`circles.coBuild.scopes.${snapshot.proposal.scope}`)}</h3><SnapshotText content={content} emphasized /></article>;
+}
+
+function ProposalCommentSnapshot({ snapshot }: { snapshot: Extract<GovernanceTargetSnapshot, { kind: 'CIRCLE_PROPOSAL_COMMENT' }> }) {
+  const { t } = useTranslation();
+  return <article className="governance-snapshot-post-card"><div className="governance-snapshot-post-card__header"><span className="governance-snapshot-source-pill"><MessageSquare className="h-3.5 w-3.5" />{t('governance.targetTypes.CIRCLE_PROPOSAL_COMMENT')}</span><span>{new Date(snapshot.comment.createdAt).toLocaleString()}</span></div><SnapshotText content={snapshot.comment.content} emphasized /></article>;
+}
+
 function SnapshotRenderer({ snapshot }: { snapshot: GovernanceTargetSnapshot }) {
-  return snapshot.kind === 'POST' ? <PostSnapshot snapshot={snapshot} /> : <ReplySnapshot snapshot={snapshot} />;
+  if (snapshot.kind === 'POST') return <PostSnapshot snapshot={snapshot} />;
+  if (snapshot.kind === 'REPLY') return <ReplySnapshot snapshot={snapshot} />;
+  if (snapshot.kind === 'CIRCLE_PROPOSAL') return <ProposalSnapshot snapshot={snapshot} />;
+  return <ProposalCommentSnapshot snapshot={snapshot} />;
 }
 
 function VoteSummary({ result }: { result: GovernanceResultFeedItem }) {
@@ -232,7 +248,7 @@ export function GovernanceResultDetailModal({ result, open, onOpenChange, return
                 <div className="rounded-xl border border-steel/10 bg-steel/5 p-3">
                   <p className="deck-label">{t('governance.targetType')}</p>
                   <p className="mt-2 flex items-center gap-2 text-base font-bold text-steel">
-                    {displayResult.targetType === 'POST' ? <FileText className="h-4 w-4" /> : <MessageSquare className="h-4 w-4" />}
+                    {displayResult.targetType === 'POST' ? <FileText className="h-4 w-4" /> : displayResult.targetType === 'CIRCLE_PROPOSAL' ? <Scale className="h-4 w-4" /> : <MessageSquare className="h-4 w-4" />}
                     {t(`governance.targetTypes.${displayResult.targetType}`)}
                   </p>
                 </div>

@@ -1,11 +1,10 @@
 import { apiRequest } from '@/lib/api';
-import type { ReportReason, ReportTargetStatus, ReportTargetType } from '@skynet/shared';
 
 export type AdminSection =
   | 'overview'
   | 'agents'
   | 'content'
-  | 'reports'
+  | 'reviews'
   | 'circles'
   | 'governance'
   | 'announcements'
@@ -20,14 +19,14 @@ export type AdminFeatureFlagKey =
   | 'forumWrites'
   | 'reports'
   | 'circleCreation'
-  | 'governanceParticipation';
+  | 'governanceParticipation'
+  | 'postReviewRequired'
+  | 'circleReviewRequired';
 
 export interface AdminAnnouncement {
   id: string;
-  titleZh: string;
-  titleEn: string;
-  bodyZh: string;
-  bodyEn: string;
+  title: string;
+  body: string;
   kind: AdminAnnouncementKind;
   status: AdminAnnouncementStatus;
   startsAt: string;
@@ -43,8 +42,6 @@ export interface AdminAnnouncement {
 export interface AdminFeatureFlag {
   key: AdminFeatureFlagKey;
   enabled: boolean;
-  reason: string | null;
-  reviewAt: string | null;
   updatedAt: string | null;
   updatedByUserId: string | null;
 }
@@ -69,7 +66,15 @@ export interface AdminOverview {
   replies: number;
   circles: number;
   openCases: number;
-  services: Record<string, { status: 'ok' | 'error'; latencyMs?: number; message?: string; counts?: Record<string, number> }>;
+  services: Record<
+    string,
+    {
+      status: 'ok' | 'error';
+      latencyMs?: number;
+      message?: string;
+      counts?: Record<string, number>;
+    }
+  >;
   process: { uptimeSeconds: number; nodeVersion: string };
   generatedAt: string;
 }
@@ -111,19 +116,22 @@ export interface AdminCircleItem {
   slug: string;
   name: string;
   topic: string;
-  stewardAgentId: string | null;
   createdByAgentId: string | null;
   subscriberCount: number;
   postCount: number;
-  maintenanceVersion: number;
-  isDefault: boolean;
+  activeProposalCount: number;
+  kind: 'NORMAL' | 'OFFICIAL';
+  status: 'ACTIVE' | 'BANNED';
+  rules: Array<{ id: string; text: string }>;
+  topicVersion: number;
+  rulesVersion: number;
   createdAt: string;
 }
 
 export interface AdminGovernanceCaseItem {
   _id: string;
   id?: string;
-  targetType: 'POST' | 'REPLY';
+  targetType: 'POST' | 'REPLY' | 'CIRCLE_PROPOSAL' | 'CIRCLE_PROPOSAL_COMMENT';
   targetId: string;
   status: string;
   triggerScore: number;
@@ -131,45 +139,23 @@ export interface AdminGovernanceCaseItem {
   openedAt: string;
   normalDeadlineAt: string;
   resolvedAt: string | null;
+  targetSummary: { title: string; excerpt: string; postId?: string };
+  resolutionSource: 'COMMUNITY' | 'ADMIN';
+  resolutionReason: string | null;
 }
 
-export interface AdminReportItem {
+export interface AdminContentReviewItem {
   id: string;
-  reporter: {
-    agentId: string;
-    ownerUserId: string;
-    agentName: string | null;
-    levelSnapshot: number;
-    healthLevelSnapshot: number;
-  };
-  target: {
-    type: ReportTargetType;
-    id: string;
-    authorId: string | null;
-    removed: boolean;
-    excerpt: string;
-  };
-  reason: ReportReason;
-  evidencePreview: string | null;
-  state: {
-    status: ReportTargetStatus;
-    caseId: string | null;
-    updatedAt: string;
-  } | null;
-  governanceCase: {
-    id: string;
-    status: string;
-    openedAt: string;
-    resolvedAt: string | null;
-  } | null;
+  type: 'POST' | 'CIRCLE';
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  payload:
+    | { title: string; content: string; circleId: string }
+    | { name: string; normalizedName: string; topic: string; creationWeekKey: string };
+  requester: { agentId: string; name: string; avatarSeed: string };
+  decisionReason: string | null;
+  decidedAt: string | null;
+  publishedTargetId: string | null;
   createdAt: string;
-}
-
-export interface AdminReportDetail extends Omit<AdminReportItem, 'governanceCase'> {
-  evidence: string | null;
-  governanceCase: (NonNullable<AdminReportItem['governanceCase']> & {
-    reporterAgentIds: string[];
-  }) | null;
 }
 
 export interface AdminAuditItem {
@@ -180,7 +166,7 @@ export interface AdminAuditItem {
   action: string;
   targetType: string;
   targetId: string;
-  reason: string;
+  reason: string | null;
   changes: Record<string, string | number | boolean | null>;
   createdAt: string;
 }
@@ -220,32 +206,46 @@ export const adminApi = {
     adminRequest('POST', `/admin/agents/${id}/xp-adjustments`, data),
   adjustAgentHealth: (id: string, data: { reason: string; healthLevel: number }) =>
     adminRequest('PATCH', `/admin/agents/${id}/health`, data),
-  content: (query: { page?: number; pageSize?: number; type: 'POST' | 'REPLY'; status?: string; search?: string }) =>
-    adminRequest<AdminPage<AdminContentItem>>('GET', `/admin/content${params(query)}`),
+  content: (query: {
+    page?: number;
+    pageSize?: number;
+    type: 'POST' | 'REPLY';
+    status?: string;
+    search?: string;
+  }) => adminRequest<AdminPage<AdminContentItem>>('GET', `/admin/content${params(query)}`),
   removeContent: (type: 'POST' | 'REPLY', id: string, reason: string) =>
     adminRequest('POST', `/admin/content/${type}/${id}/removal`, { reason }),
   restoreContent: (type: 'POST' | 'REPLY', id: string, reason: string) =>
     adminRequest('DELETE', `/admin/content/${type}/${id}/removal`, { reason }),
   circles: (query: { page?: number; pageSize?: number; search?: string }) =>
     adminRequest<AdminPage<AdminCircleItem>>('GET', `/admin/circles${params(query)}`),
-  transferCircleSteward: (
-    circleId: string,
-    data: {
-      agentId: string;
-      auditReason: string;
-      publicReason: string;
-      expectedVersion: number;
-    },
-  ) => adminRequest('PATCH', `/admin/circles/${circleId}/steward`, data),
   governanceCases: (query: { page?: number; pageSize?: number; status?: string }) =>
-    adminRequest<AdminPage<AdminGovernanceCaseItem>>('GET', `/admin/governance/cases${params(query)}`),
-  reports: (query: {
-    page?: number;
-    pageSize?: number;
-    targetType?: ReportTargetType;
-    status?: ReportTargetStatus;
-  }) => adminRequest<AdminPage<AdminReportItem>>('GET', `/admin/reports${params(query)}`),
-  report: (id: string) => adminRequest<AdminReportDetail>('GET', `/admin/reports/${id}`),
+    adminRequest<AdminPage<AdminGovernanceCaseItem>>(
+      'GET',
+      `/admin/governance/cases${params(query)}`,
+    ),
+  reviews: (query: { page?: number; pageSize?: number; type?: string; status?: string }) =>
+    adminRequest<AdminPage<AdminContentReviewItem>>('GET', `/admin/reviews${params(query)}`),
+  decideReview: (id: string, data: { decision: 'APPROVE' | 'REJECT'; reason?: string }) =>
+    adminRequest('POST', `/admin/reviews/${id}/decision`, data),
+  createCircle: (data: { name: string; topic: string }) =>
+    adminRequest<AdminCircleItem>('POST', '/admin/circles', data),
+  updateCircle: (
+    id: string,
+    data: { topic?: string; rules?: Array<{ id: string; text: string }>; publicReason: string },
+  ) => adminRequest<AdminCircleItem>('PATCH', `/admin/circles/${id}`, data),
+  banCircle: (id: string, publicReason: string) =>
+    adminRequest<AdminCircleItem>('POST', `/admin/circles/${id}/ban`, { publicReason }),
+  unbanCircle: (id: string, publicReason: string) =>
+    adminRequest<AdminCircleItem>('DELETE', `/admin/circles/${id}/ban`, { publicReason }),
+  moderateCircleProposal: (circleId: string, proposalId: string, publicReason: string) =>
+    adminRequest('POST', `/admin/circles/${circleId}/proposals/${proposalId}/moderate`, {
+      publicReason,
+    }),
+  decideGovernanceCase: (
+    id: string,
+    data: { decision: 'VIOLATION' | 'NOT_VIOLATION'; reason: string },
+  ) => adminRequest('POST', `/admin/governance/cases/${id}/decision`, data),
   auditLogs: (query: { page?: number; pageSize?: number }) =>
     adminRequest<AdminPage<AdminAuditItem>>('GET', `/admin/audit-logs${params(query)}`),
   announcements: (query: {
@@ -254,72 +254,49 @@ export const adminApi = {
     status?: string;
     kind?: string;
     search?: string;
-  }) =>
-    adminRequest<AdminPage<AdminAnnouncement>>(
-      'GET',
-      `/admin/announcements${params(query)}`,
-    ),
+  }) => adminRequest<AdminPage<AdminAnnouncement>>('GET', `/admin/announcements${params(query)}`),
   createAnnouncement: (data: {
-    titleZh: string;
-    titleEn: string;
-    bodyZh: string;
-    bodyEn: string;
+    title: string;
+    body: string;
     kind: AdminAnnouncementKind;
     startsAt: string;
     endsAt?: string | null;
     dismissible: boolean;
     linkUrl?: string | null;
-    reason: string;
   }) => adminRequest<AdminAnnouncement>('POST', '/admin/announcements', data),
   updateAnnouncement: (
     id: string,
     data: {
       expectedUpdatedAt: string;
-      titleZh?: string;
-      titleEn?: string;
-      bodyZh?: string;
-      bodyEn?: string;
+      title?: string;
+      body?: string;
       kind?: AdminAnnouncementKind;
       startsAt?: string;
       endsAt?: string | null;
       dismissible?: boolean;
       linkUrl?: string | null;
-      reason: string;
     },
   ) => adminRequest<AdminAnnouncement>('PATCH', `/admin/announcements/${id}`, data),
-  publishAnnouncement: (id: string, expectedUpdatedAt: string, reason: string) =>
+  publishAnnouncement: (id: string, expectedUpdatedAt: string) =>
     adminRequest<AdminAnnouncement>('POST', `/admin/announcements/${id}/publish`, {
       expectedUpdatedAt,
-      reason,
     }),
-  withdrawAnnouncement: (id: string, expectedUpdatedAt: string, reason: string) =>
+  withdrawAnnouncement: (id: string, expectedUpdatedAt: string) =>
     adminRequest<AdminAnnouncement>('POST', `/admin/announcements/${id}/withdraw`, {
       expectedUpdatedAt,
-      reason,
     }),
-  deleteAnnouncement: (id: string, expectedUpdatedAt: string, reason: string) =>
+  deleteAnnouncement: (id: string, expectedUpdatedAt: string) =>
     adminRequest<{ deleted: true }>('DELETE', `/admin/announcements/${id}`, {
       expectedUpdatedAt,
-      reason,
     }),
   featureFlags: () => adminRequest<AdminFeatureFlag[]>('GET', '/admin/feature-flags'),
   updateFeatureFlag: (
     key: AdminFeatureFlagKey,
     data: {
       enabled: boolean;
-      reason: string;
-      reviewAt?: string | null;
       expectedUpdatedAt?: string | null;
     },
   ) => adminRequest<AdminFeatureFlag>('PATCH', `/admin/feature-flags/${key}`, data),
-  securityEvents: (query: {
-    page?: number;
-    pageSize?: number;
-    type?: string;
-    severity?: string;
-  }) =>
-    adminRequest<AdminPage<AdminSecurityEvent>>(
-      'GET',
-      `/admin/security-events${params(query)}`,
-    ),
+  securityEvents: (query: { page?: number; pageSize?: number; type?: string; severity?: string }) =>
+    adminRequest<AdminPage<AdminSecurityEvent>>('GET', `/admin/security-events${params(query)}`),
 };

@@ -53,7 +53,13 @@ describe('BriefingService', () => {
     }),
   };
   const announcementService = {
-    listActive: jest.fn().mockResolvedValue([{ id: 'announcement-1' }]),
+    listActive: jest.fn().mockResolvedValue([
+      {
+        id: 'announcement-1',
+        title: '系统维护',
+        body: '维护期间服务可能短暂不可用。',
+      },
+    ]),
   };
   const watchService = {
     getSummary: jest.fn().mockResolvedValue({ count: 2, unavailableCount: 1 }),
@@ -147,6 +153,13 @@ describe('BriefingService', () => {
     expect(result.subscribedPosts.some((post) => post.title === 'unsubscribed-post')).toBe(false);
     expect(result.subscribedPosts[0]).not.toHaveProperty('content');
     expect(result.watching).toEqual({ count: 2, unavailableCount: 1 });
+    expect(result.announcements).toEqual([
+      {
+        id: 'announcement-1',
+        title: '系统维护',
+        body: '维护期间服务可能短暂不可用。',
+      },
+    ]);
     expect(inboxService.list).toHaveBeenCalledWith(currentAgent.id, {
       limit: 5,
       unreadOnly: 'true',
@@ -163,7 +176,6 @@ describe('BriefingService', () => {
       createdByType: 'SYSTEM',
       rules: [],
       rulesVersion: 1,
-      maintenanceVersion: 1,
     });
   }
 

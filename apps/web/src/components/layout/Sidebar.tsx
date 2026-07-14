@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -22,7 +23,6 @@ interface SidebarProps {
 
 const tabItems: Array<{ icon: typeof Radio; labelKey: string; section: SidebarSection }> = [
   { icon: Radio, labelKey: 'sidebar.feed', section: 'feed' },
-  { icon: Inbox, labelKey: 'sidebar.inbox', section: 'inbox' },
   { icon: Orbit, labelKey: 'sidebar.circles', section: 'circles' },
   { icon: Scale, labelKey: 'sidebar.governance', section: 'governance' },
 ];
@@ -48,6 +48,28 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
     retry: 1,
   });
   const unreadCount = isAuthenticated ? (unreadQuery.data?.unreadCount ?? 0) : 0;
+  const isInboxActive = activeSection === 'inbox';
+  const inboxLabel = t('sidebar.inbox');
+  const inboxContent = (
+    <>
+      {isInboxActive && (
+        <motion.div
+          layoutId="sidebar-active"
+          className="absolute left-0 top-1/2 h-6 w-[2px] -translate-y-1/2 rounded-r-full bg-copper/70 shadow-[0_0_4px_rgba(232,111,53,0.16)]"
+          transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+        />
+      )}
+      <span className="relative">
+        <Inbox className="h-6 w-6" />
+        {unreadCount > 0 ? (
+          <span className="absolute -right-3 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-copper px-1 font-mono text-[9px] font-bold leading-none text-void-deep">
+            {unreadCount > 99 ? '99+' : unreadCount}
+          </span>
+        ) : null}
+      </span>
+      <span className="text-[11px] font-medium tracking-wide">{inboxLabel}</span>
+    </>
+  );
 
   useEffect(() => {
     if (!showLogoutConfirm) return;
@@ -71,8 +93,8 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
               aria-label={t('sidebar.feed')}
               onClick={() => onSectionChange('feed')}
             >
-              <div className="flex h-[46px] w-[46px] items-center justify-center rounded-lg border border-border-subtle bg-surface-1/60">
-                <span className="font-display text-base font-black tracking-deck-wide text-copper">S</span>
+              <div className="brand-logo-tile flex h-[46px] w-[46px] items-center justify-center rounded-lg border p-1">
+                <Image src="/logo.png" alt="" width={42} height={42} loading="eager" className="h-full w-full rounded-md object-contain" />
               </div>
             </button>
           ) : (
@@ -82,8 +104,8 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
               aria-label={t('sidebar.feed')}
               onClick={() => setHomeActiveSection('feed')}
             >
-              <div className="flex h-[46px] w-[46px] items-center justify-center rounded-lg border border-border-subtle bg-surface-1/60">
-                <span className="font-display text-base font-black tracking-deck-wide text-copper">S</span>
+              <div className="brand-logo-tile flex h-[46px] w-[46px] items-center justify-center rounded-lg border p-1">
+                <Image src="/logo.png" alt="" width={42} height={42} loading="eager" className="h-full w-full rounded-md object-contain" />
               </div>
             </Link>
           )}
@@ -151,6 +173,28 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
           <div className="deck-divider mb-3 w-10 flex-none" />
 
           <div className="flex w-full flex-none flex-col items-center gap-2 pb-2">
+            {onSectionChange ? (
+              <button
+                type="button"
+                aria-pressed={isInboxActive}
+                className={navButtonClass(isInboxActive)}
+                onClick={() => onSectionChange('inbox')}
+              >
+                {inboxContent}
+              </button>
+            ) : (
+              <Link
+                href="/workspace"
+                aria-current={isInboxActive ? 'page' : undefined}
+                className={navButtonClass(isInboxActive)}
+                onClick={() => {
+                  setHomeActiveSection('inbox');
+                }}
+              >
+                {inboxContent}
+              </Link>
+            )}
+
             {isAuthenticated && agent ? (
               <UserDropdown agent={agent} onLogout={() => setShowLogoutConfirm(true)} />
             ) : (

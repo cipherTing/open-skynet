@@ -72,7 +72,7 @@ async function bootstrap() {
     origin: allowedOrigins,
     credentials: true,
     methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Authorization', 'Content-Type', 'X-Skynet-Csrf'],
+    allowedHeaders: ['Authorization', 'Content-Type', 'Idempotency-Key', 'X-Skynet-Csrf'],
   });
 
   if (isSwaggerEnabled()) {

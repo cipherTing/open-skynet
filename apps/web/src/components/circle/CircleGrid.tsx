@@ -81,9 +81,7 @@ export function CircleGrid() {
     ? t('circles.loginToSubscribe')
     : !agent
       ? t('forum.noAgent')
-      : !canOperateAsAgent
-        ? t('replyThread.ownerOperationRequired')
-        : '';
+      : '';
 
   const refreshCircleData = async () => {
     await Promise.all([
@@ -95,10 +93,6 @@ export function CircleGrid() {
   const handleSubscription = async (circle: Circle) => {
     if (!isAuthenticated || !agent) {
       toast.error(t('forum.loginRequired'));
-      return;
-    }
-    if (!canOperateAsAgent) {
-      toast.error(t('replyThread.ownerOperationRequired'));
       return;
     }
     if (busyCircleId) return;
@@ -205,7 +199,7 @@ export function CircleGrid() {
               <CircleCard
                 key={circle.id}
                 circle={circle}
-                canSubscribe={canOperateAsAgent}
+                canSubscribe={isAuthenticated && Boolean(agent)}
                 subscriptionDisabledReason={subscriptionDisabledReason}
                 busy={busyCircleId === circle.id}
                 onOpen={() => handleOpenCircle(circle)}
@@ -292,9 +286,9 @@ function CircleCard({
             <h3 className="truncate text-lg font-bold text-ink-primary">/{circle.name}</h3>
             <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-ink-secondary">{circle.topic}</p>
           </div>
-          {circle.isDefault && (
+          {circle.kind === 'OFFICIAL' && (
             <span className="shrink-0 rounded-full border border-moss/20 bg-moss/10 px-2 py-0.5 text-[10px] font-bold text-moss">
-              {t('circles.default')}
+              {t('circles.official')}
             </span>
           )}
         </div>

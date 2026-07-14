@@ -46,10 +46,19 @@ export const circleKeys = {
   ) => [...circleKeys.lists(viewerKey), params] as const,
   search: (viewerKey: string, q: string, limit: number) =>
     [...circleKeys.root, 'viewer', viewerKey, 'search', { q, limit }] as const,
-  defaultCircle: (viewerKey: string) =>
-    [...circleKeys.root, 'viewer', viewerKey, 'default'] as const,
   maintenanceLogs: (circleId: string) =>
     [...circleKeys.root, 'detail', circleId, 'maintenance-log'] as const,
+  maintenanceLogPage: (
+    circleId: string,
+    params: { page: number; pageSize: number; from?: string; to?: string },
+  ) => [...circleKeys.maintenanceLogs(circleId), params] as const,
+  proposals: (circleId: string) => [...circleKeys.root, 'detail', circleId, 'proposals'] as const,
+  proposalList: (circleId: string, status: string) =>
+    [...circleKeys.proposals(circleId), 'list', status] as const,
+  proposal: (circleId: string, proposalId: string) =>
+    [...circleKeys.proposals(circleId), 'detail', proposalId] as const,
+  proposalComments: (circleId: string, proposalId: string, page: number) =>
+    [...circleKeys.proposal(circleId, proposalId), 'comments', page] as const,
 };
 
 export const userKeys = {

@@ -6,7 +6,6 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import { getConnectionToken, MongooseModule } from '@nestjs/mongoose';
 import { Connection, Types } from 'mongoose';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
-import { CircleService } from '@/circle/circle.service';
 import { DatabaseService } from '@/database/database.service';
 import { Agent, AgentSchema } from '@/database/schemas/agent.schema';
 import {
@@ -22,6 +21,19 @@ import {
   CircleRuleRevision,
   CircleRuleRevisionSchema,
 } from '@/database/schemas/circle-rule-revision.schema';
+import { Circle, CircleSchema } from '@/database/schemas/circle.schema';
+import {
+  CircleProposal,
+  CircleProposalSchema,
+} from '@/database/schemas/circle-proposal.schema';
+import {
+  CircleProposalComment,
+  CircleProposalCommentSchema,
+} from '@/database/schemas/circle-proposal-comment.schema';
+import {
+  CircleProposalRevision,
+  CircleProposalRevisionSchema,
+} from '@/database/schemas/circle-proposal-revision.schema';
 import { FeatureFlag, FeatureFlagSchema } from '@/database/schemas/feature-flag.schema';
 import { Feedback, FeedbackSchema } from '@/database/schemas/feedback.schema';
 import {
@@ -75,6 +87,10 @@ describe('ReportService integration', () => {
           { name: AgentGovernanceProfile.name, schema: AgentGovernanceProfileSchema },
           { name: AgentProgress.name, schema: AgentProgressSchema },
           { name: AgentXpEvent.name, schema: AgentXpEventSchema },
+          { name: Circle.name, schema: CircleSchema },
+          { name: CircleProposal.name, schema: CircleProposalSchema },
+          { name: CircleProposalComment.name, schema: CircleProposalCommentSchema },
+          { name: CircleProposalRevision.name, schema: CircleProposalRevisionSchema },
           { name: CircleRuleRevision.name, schema: CircleRuleRevisionSchema },
           { name: FeatureFlag.name, schema: FeatureFlagSchema },
           { name: Feedback.name, schema: FeedbackSchema },
@@ -94,10 +110,6 @@ describe('ReportService integration', () => {
         ProgressionService,
         DatabaseService,
         FeatureFlagService,
-        {
-          provide: CircleService,
-          useValue: { unpinRemovedPost: jest.fn().mockResolvedValue(undefined) },
-        },
       ],
     }).compile();
     connection = moduleRef.get<Connection>(getConnectionToken());
@@ -111,7 +123,12 @@ describe('ReportService integration', () => {
     await connection.model(CircleRuleRevision.name).create({
       circleId: TEST_CIRCLE_ID,
       version: 1,
-      rules: ['只能用于友好交流，不得以破坏社区为目的'],
+      rules: [
+        {
+          id: 'rule-community-safety',
+          text: '只能用于友好交流，不得以破坏社区为目的',
+        },
+      ],
       source: 'SYSTEM',
       actorAgentId: null,
     });

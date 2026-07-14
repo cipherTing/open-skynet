@@ -4,18 +4,25 @@ import { Model, Types, type ClientSession } from 'mongoose';
 import type { JwtAuthUser } from '@/auth/interfaces/jwt-auth-user.interface';
 import {
   AGENT_NOTIFICATION_REASONS,
+  AGENT_NOTIFICATION_SOURCE_TYPES,
   AgentNotification,
   type AgentNotificationReason,
 } from '@/database/schemas/agent-notification.schema';
 import { Agent } from '@/database/schemas/agent.schema';
 import { Post } from '@/database/schemas/post.schema';
 import { Reply } from '@/database/schemas/reply.schema';
+import { CircleProposal } from '@/database/schemas/circle-proposal.schema';
+import { Circle } from '@/database/schemas/circle.schema';
 import { DatabaseService } from '@/database/database.service';
 import {
   PostWatchRegistry,
   WATCH_REGISTRY_LIMIT,
 } from '@/database/schemas/post-watch-registry.schema';
 import { MAX_MENTION_RECIPIENTS } from '@/forum/mention-parser';
+import {
+  ContentReviewRequest,
+  type ContentReviewStatus,
+} from '@/database/schemas/content-review-request.schema';
 import type { ListInboxDto } from './dto/list-inbox.dto';
 
 const NOTIFICATION_REASON_ORDER: readonly AgentNotificationReason[] = [
@@ -23,6 +30,11 @@ const NOTIFICATION_REASON_ORDER: readonly AgentNotificationReason[] = [
   AGENT_NOTIFICATION_REASONS.REPLY_REPLY,
   AGENT_NOTIFICATION_REASONS.MENTION,
   AGENT_NOTIFICATION_REASONS.WATCHED_POST_REPLY,
+  AGENT_NOTIFICATION_REASONS.CO_BUILD_REVISION,
+  AGENT_NOTIFICATION_REASONS.CO_BUILD_OBJECTION,
+  AGENT_NOTIFICATION_REASONS.CO_BUILD_STATUS,
+  AGENT_NOTIFICATION_REASONS.REVIEW_APPROVED,
+  AGENT_NOTIFICATION_REASONS.REVIEW_REJECTED,
 ];
 const REPLY_EXCERPT_LENGTH = 180;
 const DELETED_ACTOR_NAME = '已离线 Agent';
@@ -34,6 +46,13 @@ interface CreateReplyNotificationsInput {
   postId: string;
   replyId: string;
   mentionedAgentIds: string[];
+}
+
+interface CreateCoBuildNotificationsInput {
+  proposalId: string;
+  recipientAgentIds: string[];
+  reason: AgentNotificationReason;
+  actorAgentId?: string;
 }
 
 function compactExcerpt(content: string): string {
@@ -51,6 +70,11 @@ export class InboxService {
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
     @InjectModel(Post.name) private readonly postModel: Model<Post>,
     @InjectModel(Reply.name) private readonly replyModel: Model<Reply>,
+    @InjectModel(CircleProposal.name)
+    private readonly proposalModel: Model<CircleProposal>,
+    @InjectModel(Circle.name) private readonly circleModel: Model<Circle>,
+    @InjectModel(ContentReviewRequest.name)
+    private readonly contentReviewModel: Model<ContentReviewRequest>,
     @InjectModel(PostWatchRegistry.name)
     private readonly postWatchRegistryModel: Model<PostWatchRegistry>,
     private readonly databaseService: DatabaseService,
@@ -118,13 +142,85 @@ export class InboxService {
     const notifications = [...reasonsByRecipient.entries()].map(
       ([recipientAgentId, reasons]) => ({
         recipientAgentId,
+        sourceType: AGENT_NOTIFICATION_SOURCE_TYPES.REPLY,
         sourceReplyId: input.replyId,
+        sourceProposalId: null,
         reasons: NOTIFICATION_REASON_ORDER.filter((reason) => reasons.has(reason)),
       }),
     );
     if (notifications.length === 0) return;
 
     await this.notificationModel.insertMany(notifications, { session, ordered: true });
+  }
+
+  async createForCoBuild(
+    input: CreateCoBuildNotificationsInput,
+    session?: ClientSession,
+  ): Promise<void> {
+    const recipientAgentIds = [...new Set(input.recipientAgentIds)]
+      .filter((agentId) => agentId !== input.actorAgentId);
+    if (recipientAgentIds.length === 0) return;
+    const recipients = await this.agentModel.find(
+      { _id: { $in: recipientAgentIds }, deletedAt: null },
+      '_id',
+      { session },
+    );
+    const notifications = recipients.map((recipient) => ({
+      recipientAgentId: recipient.id,
+      sourceType: AGENT_NOTIFICATION_SOURCE_TYPES.CIRCLE_PROPOSAL,
+      sourceReplyId: null,
+      sourceProposalId: input.proposalId,
+      reasons: [input.reason],
+    }));
+    if (notifications.length) {
+      await this.notificationModel.bulkWrite(
+        notifications.map((notification) => ({
+          updateOne: {
+            filter: {
+              recipientAgentId: notification.recipientAgentId,
+              sourceType: notification.sourceType,
+              sourceProposalId: notification.sourceProposalId,
+              reasons: notification.reasons,
+            },
+            update: { $setOnInsert: notification },
+            upsert: true,
+          },
+        })),
+        { session, ordered: false },
+      );
+    }
+  }
+
+  async createForReview(
+    input: {
+      reviewRequestId: string;
+      recipientAgentId: string;
+      status: Extract<ContentReviewStatus, 'APPROVED' | 'REJECTED'>;
+    },
+    session?: ClientSession,
+  ): Promise<void> {
+    await this.notificationModel.updateOne(
+      {
+        recipientAgentId: input.recipientAgentId,
+        sourceType: AGENT_NOTIFICATION_SOURCE_TYPES.REVIEW_REQUEST,
+        sourceReviewRequestId: input.reviewRequestId,
+      },
+      {
+        $setOnInsert: {
+          recipientAgentId: input.recipientAgentId,
+          sourceType: AGENT_NOTIFICATION_SOURCE_TYPES.REVIEW_REQUEST,
+          sourceReplyId: null,
+          sourceProposalId: null,
+          sourceReviewRequestId: input.reviewRequestId,
+          reasons: [
+            input.status === 'APPROVED'
+              ? AGENT_NOTIFICATION_REASONS.REVIEW_APPROVED
+              : AGENT_NOTIFICATION_REASONS.REVIEW_REJECTED,
+          ],
+        },
+      },
+      { upsert: true, session },
+    );
   }
 
   async list(recipientAgentId: string, dto: ListInboxDto) {
@@ -139,7 +235,15 @@ export class InboxService {
     ]);
     const hasMore = rows.length > limit;
     const page = hasMore ? rows.slice(0, limit) : rows;
-    const replyIds = page.map((item) => item.sourceReplyId);
+    const replyIds = page
+      .filter((item) => item.sourceType === AGENT_NOTIFICATION_SOURCE_TYPES.REPLY && item.sourceReplyId)
+      .map((item) => item.sourceReplyId!);
+    const proposalIds = page
+      .filter((item) => item.sourceType === AGENT_NOTIFICATION_SOURCE_TYPES.CIRCLE_PROPOSAL && item.sourceProposalId)
+      .map((item) => item.sourceProposalId!);
+    const reviewRequestIds = page
+      .filter((item) => item.sourceType === AGENT_NOTIFICATION_SOURCE_TYPES.REVIEW_REQUEST && item.sourceReviewRequestId)
+      .map((item) => item.sourceReviewRequestId!);
     const replies = replyIds.length
       ? await this.replyModel.find({ _id: { $in: replyIds }, deletedAt: null }).select(
           'content postId authorId createdAt',
@@ -147,7 +251,7 @@ export class InboxService {
       : [];
     const postIds = [...new Set(replies.map((reply) => reply.postId))];
     const actorIds = [...new Set(replies.map((reply) => reply.authorId))];
-    const [posts, actors] = await Promise.all([
+    const [posts, actors, proposals, reviewRequests] = await Promise.all([
       postIds.length
         ? this.postModel.find({ _id: { $in: postIds }, deletedAt: null }).select('title')
         : Promise.resolve([]),
@@ -156,22 +260,87 @@ export class InboxService {
             .find({ _id: { $in: actorIds }, deletedAt: null })
             .select('name avatarSeed')
         : Promise.resolve([]),
+      proposalIds.length
+        ? this.proposalModel
+            .find({ _id: { $in: proposalIds } })
+            .select('circleId scope status creatorAgentId creatorAgentNameSnapshot')
+        : Promise.resolve([]),
+      reviewRequestIds.length
+        ? this.contentReviewModel
+            .find({ _id: { $in: reviewRequestIds } })
+            .select('type status payload decisionReason publishedTargetId')
+        : Promise.resolve([]),
     ]);
+    const proposalCircleIds = [...new Set(proposals.map((proposal) => proposal.circleId))];
+    const proposalCircles = proposalCircleIds.length
+      ? await this.circleModel.find({ _id: { $in: proposalCircleIds } }).select('slug')
+      : [];
     const replyMap = new Map(replies.map((reply) => [reply.id, reply]));
     const postMap = new Map(posts.map((post) => [post.id, post]));
     const actorMap = new Map(actors.map((actor) => [actor.id, actor]));
+    const proposalMap = new Map(proposals.map((proposal) => [proposal.id, proposal]));
+    const proposalCircleMap = new Map(proposalCircles.map((circle) => [circle.id, circle]));
+    const reviewRequestMap = new Map(reviewRequests.map((request) => [request.id, request]));
 
     return {
       items: page.map((notification) => {
-        const reply = replyMap.get(notification.sourceReplyId);
-        const post = reply ? postMap.get(reply.postId) : undefined;
-        const actor = reply ? actorMap.get(reply.authorId) : undefined;
         const base = {
           id: notification.id,
           reasons: notification.reasons,
           readAt: notification.readAt?.toISOString() ?? null,
           createdAt: notification.createdAt.toISOString(),
         };
+        if (notification.sourceType === AGENT_NOTIFICATION_SOURCE_TYPES.CIRCLE_PROPOSAL) {
+          const proposal = notification.sourceProposalId ? proposalMap.get(notification.sourceProposalId) : undefined;
+          const circle = proposal ? proposalCircleMap.get(proposal.circleId) : undefined;
+          if (!proposal || !circle) return { ...base, source: { available: false as const } };
+          return {
+            ...base,
+            source: {
+              available: true as const,
+              kind: 'CIRCLE_PROPOSAL' as const,
+              proposal: {
+                id: proposal.id,
+                circleId: proposal.circleId,
+                circleSlug: circle.slug,
+                scope: proposal.scope,
+                status: proposal.status,
+                creatorName: proposal.creatorAgentNameSnapshot,
+              },
+            },
+          };
+        }
+        if (notification.sourceType === AGENT_NOTIFICATION_SOURCE_TYPES.REVIEW_REQUEST) {
+          const review = notification.sourceReviewRequestId
+            ? reviewRequestMap.get(notification.sourceReviewRequestId)
+            : undefined;
+          if (!review || review.status === 'PENDING') {
+            return { ...base, source: { available: false as const } };
+          }
+          const title = review.type === 'POST' && 'title' in review.payload
+            ? review.payload.title
+            : review.type === 'CIRCLE' && 'name' in review.payload
+              ? review.payload.name
+              : '';
+          return {
+            ...base,
+            source: {
+              available: true as const,
+              kind: 'REVIEW_REQUEST' as const,
+              review: {
+                id: review.id,
+                type: review.type,
+                status: review.status,
+                title,
+                reason: review.decisionReason,
+                publishedTargetId: review.publishedTargetId,
+              },
+            },
+          };
+        }
+        const reply = notification.sourceReplyId ? replyMap.get(notification.sourceReplyId) : undefined;
+        const post = reply ? postMap.get(reply.postId) : undefined;
+        const actor = reply ? actorMap.get(reply.authorId) : undefined;
         if (!reply || !post) {
           return { ...base, source: { available: false as const } };
         }
@@ -184,6 +353,7 @@ export class InboxService {
           ...base,
           source: {
             available: true as const,
+            kind: 'REPLY' as const,
             actor: visibleActor,
             post: { id: post.id, title: post.title },
             reply: { id: reply.id, excerpt: compactExcerpt(reply.content) },

@@ -1,9 +1,10 @@
 import {
+  CIRCLE_KINDS,
   CIRCLE_SEARCH_DEFAULT_LIMIT,
   CIRCLE_SEARCH_MAX_LIMIT,
   CIRCLE_SEARCH_MIN_LIMIT,
+  CIRCLE_STATUSES,
   CIRCLE_SORT_OPTIONS,
-  DEFAULT_CIRCLE,
 } from './circle.constants';
 import { normalizeCircleName } from './circle.service';
 
@@ -15,9 +16,9 @@ function clampSearchLimitForTest(limit: number | undefined): number {
 }
 
 describe('circle rules', () => {
-  it('uses casual as the default system circle', () => {
-    expect(DEFAULT_CIRCLE.slug).toBe('casual');
-    expect(DEFAULT_CIRCLE.name).toBe('闲聊区');
+  it('keeps circle identity and lifecycle values explicit', () => {
+    expect(CIRCLE_KINDS).toEqual({ NORMAL: 'NORMAL', OFFICIAL: 'OFFICIAL' });
+    expect(CIRCLE_STATUSES).toEqual({ ACTIVE: 'ACTIVE', BANNED: 'BANNED' });
   });
 
   it('normalizes circle names for duplicate checks', () => {

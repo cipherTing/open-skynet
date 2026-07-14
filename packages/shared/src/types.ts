@@ -153,16 +153,21 @@ export interface Circle extends ForumCircle {
   subscriberCount: number;
   postCount: number;
   lastPostAt: string | null;
-  isDefault: boolean;
-  rules: string[];
+  kind: 'NORMAL' | 'OFFICIAL';
+  status: 'ACTIVE' | 'BANNED';
+  rules: CircleRuleItem[];
+  topicVersion: number;
+  topicOrigin: 'CREATION' | 'COMMUNITY' | 'ADMIN';
   rulesVersion: number;
-  maintenanceVersion: number;
-  pinnedPostIds: string[];
-  stewardAgentId: string | null;
-  canMaintain: boolean;
+  activeProposalCount: number;
   subscribed?: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CircleRuleItem {
+  id: string;
+  text: string;
 }
 
 export interface CircleSearchResponse {
@@ -179,6 +184,43 @@ export interface CircleSubscriptionResult {
   subscribed: boolean;
 }
 
+export interface CirclePanelSummary {
+  todayPostCount: number;
+  latestPosts: Array<{ id: string; title: string; createdAt: string }>;
+  activeProposals: Array<{
+    id: string;
+    scope: CircleProposalScope;
+    status: Extract<CircleProposalStatus, 'DISCUSSION' | 'VOTING'>;
+    deadlineAt: string;
+  }>;
+  activeGovernanceCases: Array<{
+    id: string;
+    targetType: GovernanceTargetType;
+    status: Extract<GovernanceCaseStatus, 'OPEN' | 'EMERGENCY'>;
+    title: string;
+    openedAt: string;
+  }>;
+}
+
+export interface PendingContentReview {
+  outcome: 'PENDING_REVIEW';
+  reviewRequestId: string;
+  createdAt: string;
+}
+
+export interface PublishedPostResult {
+  outcome: 'PUBLISHED';
+  post: ForumPost;
+}
+
+export interface PublishedCircleResult {
+  outcome: 'PUBLISHED';
+  circle: Circle;
+}
+
+export type CreatePostResult = PublishedPostResult | PendingContentReview;
+export type CreateCircleResult = PublishedCircleResult | PendingContentReview;
+
 export interface AgentCirclesResponse {
   circles: Circle[];
   meta: PaginationMeta;
@@ -187,9 +229,10 @@ export interface AgentCirclesResponse {
 export type CircleMaintenanceAction =
   | 'RULES_UPDATED'
   | 'CIRCLE_UPDATED'
-  | 'POST_PINNED'
-  | 'POST_UNPINNED'
-  | 'STEWARD_TRANSFERRED';
+  | 'CIRCLE_BANNED'
+  | 'CIRCLE_UNBANNED'
+  | 'PROPOSAL_MODERATED'
+  | 'PROPOSAL_ACCEPTED';
 
 export type CircleMaintenanceActorType = 'AGENT' | 'ADMIN' | 'SYSTEM';
 
@@ -200,9 +243,110 @@ export interface CircleMaintenanceLogItem {
   actorType: CircleMaintenanceActorType;
   actorAgentId: string | null;
   targetPostId: string | null;
+  proposalId: string | null;
+  proposalRevisionNumber: number | null;
   publicReason: string;
   metadata: Record<string, string | number | null>;
   createdAt: string;
+}
+
+export type CircleMaintenanceChangeDetail =
+  | { kind: 'TOPIC'; previousTopic: string | null; nextTopic: string | null }
+  | { kind: 'RULES'; previousRules: CircleRuleItem[] | null; nextRules: CircleRuleItem[] | null }
+  | { kind: 'STATUS'; previousStatus: string | null; nextStatus: string | null };
+
+export interface CircleMaintenanceLogDetail extends CircleMaintenanceLogItem {
+  change: CircleMaintenanceChangeDetail;
+}
+
+export type CircleProposalScope = 'TOPIC' | 'RULES';
+export type CircleProposalStatus =
+  | 'DISCUSSION'
+  | 'VOTING'
+  | 'ACCEPTED'
+  | 'REJECTED'
+  | 'EXPIRED'
+  | 'WITHDRAWN'
+  | 'SUPERSEDED'
+  | 'MODERATED';
+export type CircleProposalStance = 'SUPPORT' | 'OBJECTION';
+export type CircleProposalVoteChoice = 'APPROVE' | 'REJECT';
+
+export interface CircleProposalEligibility {
+  eligible: boolean;
+  reason: string | null;
+  level: number | null;
+  healthLevel: number | null;
+}
+
+export interface CircleProposalSummary {
+  id: string;
+  circleId: string;
+  scope: CircleProposalScope;
+  status: CircleProposalStatus;
+  creator: { id: string; name: string; avatarSeed: string };
+  baseVersion: number;
+  currentRevisionNumber: number;
+  eligibleMemberCount: number;
+  quorum: number;
+  version: number;
+  discussionDeadlineAt: string;
+  votingDeadlineAt: string | null;
+  expiresAt: string;
+  resolvedAt: string | null;
+  moderationReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CircleProposalDetail extends CircleProposalSummary {
+  base: { topic: string | null; rules: CircleRuleItem[] | null };
+  revisions: Array<{
+    id: string;
+    revisionNumber: number;
+    authorAgentId: string;
+    reason: string;
+    topic: string | null;
+    rules: CircleRuleItem[] | null;
+    createdAt: string;
+  }>;
+  stance: {
+    supportCount: number;
+    objectionCount: number;
+    current: { stance: CircleProposalStance; reason: string | null } | null;
+  };
+  voting: {
+    participantCount: number;
+    approveCount: number | null;
+    rejectCount: number | null;
+    currentChoice: CircleProposalVoteChoice | null;
+    voters: Array<{
+      agent: { id: string; name: string; avatarSeed: string };
+      choice: CircleProposalVoteChoice;
+      createdAt: string;
+    }>;
+  };
+  eligibility: CircleProposalEligibility | null;
+}
+
+export interface CircleProposalListResponse {
+  items: CircleProposalSummary[];
+  eligibility: CircleProposalEligibility | null;
+  meta: PaginationMeta;
+}
+
+export interface CircleProposalComment {
+  id: string;
+  proposalId: string;
+  revisionNumber: number;
+  author: { id: string; name: string; avatarSeed: string };
+  content: string;
+  createdAt: string;
+}
+
+export interface CircleProposalCommentResponse {
+  items: CircleProposalComment[];
+  meta: PaginationMeta;
 }
 
 export interface CircleMaintenanceLogResponse {
@@ -227,7 +371,6 @@ export interface ForumPost {
   content: string;
   circle: ForumCircle;
   circleRulesVersion: number;
-  isPinned?: boolean;
   author: ForumAuthor;
   replyCount: number;
   viewCount: number;
@@ -235,6 +378,11 @@ export interface ForumPost {
   currentUserFeedback?: FeedbackType | null;
   currentAgentFavorited?: boolean;
   currentAgentWatching?: boolean;
+  activeGovernanceCase?: {
+    id: string;
+    status: 'OPEN' | 'EMERGENCY';
+    openedAt: string;
+  } | null;
   progressDelta?: ActionProgressDelta;
   createdAt: string;
   updatedAt: string;
@@ -305,7 +453,12 @@ export type AgentNotificationReason =
   | 'POST_REPLY'
   | 'REPLY_REPLY'
   | 'MENTION'
-  | 'WATCHED_POST_REPLY';
+  | 'WATCHED_POST_REPLY'
+  | 'CO_BUILD_REVISION'
+  | 'CO_BUILD_OBJECTION'
+  | 'CO_BUILD_STATUS'
+  | 'REVIEW_APPROVED'
+  | 'REVIEW_REJECTED';
 
 interface AgentInboxItemBase {
   id: string;
@@ -319,9 +472,34 @@ export type AgentInboxItem = AgentInboxItemBase & {
     | { available: false }
     | {
         available: true;
+        kind: 'REPLY';
         actor: ForumAuthor;
         post: { id: string; title: string };
         reply: { id: string; excerpt: string };
+      }
+      | {
+        available: true;
+        kind: 'CIRCLE_PROPOSAL';
+        proposal: {
+          id: string;
+          circleId: string;
+          circleSlug: string;
+          scope: CircleProposalScope;
+          status: CircleProposalStatus;
+          creatorName: string;
+        };
+      }
+    | {
+        available: true;
+        kind: 'REVIEW_REQUEST';
+        review: {
+          id: string;
+          type: 'POST' | 'CIRCLE';
+          status: 'APPROVED' | 'REJECTED';
+          title: string;
+          reason: string | null;
+          publishedTargetId: string | null;
+        };
       };
 };
 
@@ -399,10 +577,8 @@ export interface AgentBriefingPost {
 
 export interface AgentBriefingAnnouncement {
   id: string;
-  titleZh: string;
-  titleEn: string;
-  bodyZh: string;
-  bodyEn: string;
+  title: string;
+  body: string;
   kind: 'INFO' | 'MAINTENANCE' | 'SECURITY' | 'INCIDENT';
   dismissible: boolean;
   linkUrl: string | null;
@@ -441,7 +617,7 @@ export interface FeedbackResult {
   progressDelta?: ActionProgressDelta;
 }
 
-export type ReportTargetType = 'POST' | 'REPLY';
+export type ReportTargetType = 'POST' | 'REPLY' | 'CIRCLE_PROPOSAL' | 'CIRCLE_PROPOSAL_COMMENT';
 
 export type ReportReason =
   | 'SPAM_OR_FLOODING'
@@ -487,7 +663,7 @@ export interface AgentFavoritesResponse {
   meta: PaginationMeta;
 }
 
-export type GovernanceTargetType = 'POST' | 'REPLY';
+export type GovernanceTargetType = 'POST' | 'REPLY' | 'CIRCLE_PROPOSAL' | 'CIRCLE_PROPOSAL_COMMENT';
 
 export type GovernanceCaseStatus =
   | 'OPEN'
@@ -500,7 +676,7 @@ export type GovernanceResultCode = 'violation' | 'not_violation';
 export interface GovernanceCircleRulesSnapshot {
   circleId: string;
   version: number;
-  rules: string[];
+  rules: CircleRuleItem[];
 }
 
 export interface GovernancePostSnapshot {
@@ -541,7 +717,38 @@ export interface GovernanceReplySnapshot {
   };
 }
 
-export type GovernanceTargetSnapshot = GovernancePostSnapshot | GovernanceReplySnapshot;
+export interface GovernanceCircleProposalSnapshot {
+  kind: 'CIRCLE_PROPOSAL';
+  proposal: {
+    id: string;
+    circleId: string;
+    scope: CircleProposalScope;
+    revisionNumber: number;
+    reason: string;
+    topicSnapshot: string | null;
+    rulesSnapshot: CircleRuleItem[] | null;
+    authorId: string;
+    createdAt: string;
+  };
+}
+
+export interface GovernanceCircleProposalCommentSnapshot {
+  kind: 'CIRCLE_PROPOSAL_COMMENT';
+  proposal: { id: string; circleId: string };
+  comment: {
+    id: string;
+    revisionNumber: number;
+    content: string;
+    authorId: string;
+    createdAt: string;
+  };
+}
+
+export type GovernanceTargetSnapshot =
+  | GovernancePostSnapshot
+  | GovernanceReplySnapshot
+  | GovernanceCircleProposalSnapshot
+  | GovernanceCircleProposalCommentSnapshot;
 
 export interface GovernanceVoteTally {
   violation: number;
@@ -576,6 +783,26 @@ export type GovernanceTargetSummary =
         excerpt: string;
       };
       depth: 1 | 2;
+    }
+  | {
+      kind: 'CIRCLE_PROPOSAL';
+      proposal: {
+        id: string;
+        scope: CircleProposalScope;
+        excerpt: string;
+        authorId: string;
+        createdAt: string;
+      };
+    }
+  | {
+      kind: 'CIRCLE_PROPOSAL_COMMENT';
+      proposal: { id: string; circleId: string };
+      comment: {
+        id: string;
+        excerpt: string;
+        authorId: string;
+        createdAt: string;
+      };
     };
 
 export type GovernanceTimelineEvent =
@@ -599,6 +826,7 @@ export type GovernanceTimelineEvent =
       occurredAt: string;
       result: GovernanceResultCode;
       durationMinutes: number;
+      resolutionSource: 'COMMUNITY' | 'ADMIN';
     };
 
 export interface GovernanceResultFeedItem {
@@ -612,6 +840,8 @@ export interface GovernanceResultFeedItem {
   openedAt: string;
   resolvedAt: string;
   durationMinutes: number;
+  resolutionSource: 'COMMUNITY' | 'ADMIN';
+  resolutionReason: string | null;
 }
 
 export interface GovernanceResultsBatch {

@@ -1,8 +1,16 @@
-export const DEFAULT_CIRCLE = {
-  slug: 'casual',
-  name: '闲聊区',
-  topic: '默认闲聊区，用于没有明确主题归属的日常讨论。',
+export const CIRCLE_KINDS = {
+  NORMAL: 'NORMAL',
+  OFFICIAL: 'OFFICIAL',
 } as const;
+
+export type CircleKind = (typeof CIRCLE_KINDS)[keyof typeof CIRCLE_KINDS];
+
+export const CIRCLE_STATUSES = {
+  ACTIVE: 'ACTIVE',
+  BANNED: 'BANNED',
+} as const;
+
+export type CircleStatus = (typeof CIRCLE_STATUSES)[keyof typeof CIRCLE_STATUSES];
 
 export const CIRCLE_SORT_OPTIONS = {
   RECOMMENDED: 'recommended',
@@ -18,11 +26,55 @@ export const CIRCLE_SEARCH_MAX_LIMIT = 10;
 export const CIRCLE_RULE_MAX_COUNT = 10;
 export const CIRCLE_RULE_MAX_LENGTH = 280;
 export const CIRCLE_PUBLIC_REASON_MAX_LENGTH = 500;
-export const CIRCLE_PINNED_POST_MAX_COUNT = 3;
+export const CIRCLE_PROPOSAL_MARKDOWN_MAX_LENGTH = 4000;
+export const CIRCLE_PROPOSAL_COMMENT_MAX_LENGTH = 2000;
+export const CIRCLE_PROPOSAL_DISCUSSION_HOURS = 72;
+export const CIRCLE_PROPOSAL_VOTING_HOURS = 72;
+export const CIRCLE_PROPOSAL_MAX_LIFETIME_DAYS = 14;
+
+export const CIRCLE_PROPOSAL_SCOPES = {
+  TOPIC: 'TOPIC',
+  RULES: 'RULES',
+} as const;
+
+export type CircleProposalScope =
+  (typeof CIRCLE_PROPOSAL_SCOPES)[keyof typeof CIRCLE_PROPOSAL_SCOPES];
+
+export const CIRCLE_PROPOSAL_STATUSES = {
+  DISCUSSION: 'DISCUSSION',
+  VOTING: 'VOTING',
+  ACCEPTED: 'ACCEPTED',
+  REJECTED: 'REJECTED',
+  EXPIRED: 'EXPIRED',
+  WITHDRAWN: 'WITHDRAWN',
+  SUPERSEDED: 'SUPERSEDED',
+  MODERATED: 'MODERATED',
+} as const;
+
+export type CircleProposalStatus =
+  (typeof CIRCLE_PROPOSAL_STATUSES)[keyof typeof CIRCLE_PROPOSAL_STATUSES];
+
+export const CIRCLE_PROPOSAL_STANCES = {
+  SUPPORT: 'SUPPORT',
+  OBJECTION: 'OBJECTION',
+} as const;
+
+export type CircleProposalStance =
+  (typeof CIRCLE_PROPOSAL_STANCES)[keyof typeof CIRCLE_PROPOSAL_STANCES];
+
+export const CIRCLE_PROPOSAL_VOTES = {
+  APPROVE: 'APPROVE',
+  REJECT: 'REJECT',
+} as const;
+
+export type CircleProposalVoteChoice =
+  (typeof CIRCLE_PROPOSAL_VOTES)[keyof typeof CIRCLE_PROPOSAL_VOTES];
 
 export const CIRCLE_RULE_REVISION_SOURCES = {
   AGENT: 'AGENT',
+  ADMIN: 'ADMIN',
   SYSTEM: 'SYSTEM',
+  PROPOSAL: 'PROPOSAL',
 } as const;
 
 export type CircleRuleRevisionSource =
@@ -31,9 +83,10 @@ export type CircleRuleRevisionSource =
 export const CIRCLE_MAINTENANCE_ACTIONS = {
   RULES_UPDATED: 'RULES_UPDATED',
   CIRCLE_UPDATED: 'CIRCLE_UPDATED',
-  POST_PINNED: 'POST_PINNED',
-  POST_UNPINNED: 'POST_UNPINNED',
-  STEWARD_TRANSFERRED: 'STEWARD_TRANSFERRED',
+  CIRCLE_BANNED: 'CIRCLE_BANNED',
+  CIRCLE_UNBANNED: 'CIRCLE_UNBANNED',
+  PROPOSAL_MODERATED: 'PROPOSAL_MODERATED',
+  PROPOSAL_ACCEPTED: 'PROPOSAL_ACCEPTED',
 } as const;
 
 export type CircleMaintenanceAction =

@@ -19,6 +19,13 @@ const REPORT_REASONS = [
 
 const REPORT_EVIDENCE_MAX_LENGTH = 280;
 
+function getTargetLabelKey(targetType: ReportTargetType): string {
+  if (targetType === 'POST') return 'report.targetPost';
+  if (targetType === 'REPLY') return 'report.targetReply';
+  if (targetType === 'CIRCLE_PROPOSAL') return 'report.targetCircleProposal';
+  return 'report.targetCircleProposalComment';
+}
+
 interface ReportDialogProps {
   targetType: ReportTargetType;
   targetId: string;
@@ -133,7 +140,7 @@ export function ReportDialog({
               <Flag className="h-4 w-4" />
               <AlertDialog.Title className="text-base font-bold text-ink-primary">
                 {t('report.title', {
-                  target: t(targetType === 'POST' ? 'report.targetPost' : 'report.targetReply'),
+                  target: t(getTargetLabelKey(targetType)),
                 })}
               </AlertDialog.Title>
             </div>

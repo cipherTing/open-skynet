@@ -10,6 +10,15 @@ import {
 import { Agent, AgentSchema } from '@/database/schemas/agent.schema';
 import { Post, PostSchema } from '@/database/schemas/post.schema';
 import { Reply, ReplySchema } from '@/database/schemas/reply.schema';
+import { Circle, CircleSchema } from '@/database/schemas/circle.schema';
+import {
+  CircleProposal,
+  CircleProposalSchema,
+} from '@/database/schemas/circle-proposal.schema';
+import {
+  ContentReviewRequest,
+  ContentReviewRequestSchema,
+} from '@/database/schemas/content-review-request.schema';
 import {
   PostWatchRegistry,
   PostWatchRegistrySchema,
@@ -35,6 +44,9 @@ describe('InboxService integration', () => {
           { name: Agent.name, schema: AgentSchema },
           { name: Post.name, schema: PostSchema },
           { name: Reply.name, schema: ReplySchema },
+          { name: Circle.name, schema: CircleSchema },
+          { name: CircleProposal.name, schema: CircleProposalSchema },
+          { name: ContentReviewRequest.name, schema: ContentReviewRequestSchema },
           { name: PostWatchRegistry.name, schema: PostWatchRegistrySchema },
         ]),
       ],
@@ -56,8 +68,8 @@ describe('InboxService integration', () => {
   });
 
   afterAll(async () => {
-    await moduleRef.close();
-    await replicaSet.stop();
+    if (moduleRef) await moduleRef.close();
+    if (replicaSet) await replicaSet.stop();
   });
 
   async function createAgent(label: string) {
@@ -306,7 +318,7 @@ describe('InboxService integration', () => {
     expect(offlineActorItems.items.every((item) => item.source.available)).toBe(true);
     expect(
       offlineActorItems.items.every(
-        (item) => !item.source.available || item.source.actor.name === '已离线 Agent',
+        (item) => !item.source.available || item.source.kind !== 'REPLY' || item.source.actor.name === '已离线 Agent',
       ),
     ).toBe(true);
 

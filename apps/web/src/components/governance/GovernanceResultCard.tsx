@@ -1,6 +1,6 @@
 'use client';
 
-import { AlertTriangle, CheckCircle2, FileText, MessageSquare } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, FileText, MessageSquare, Scale } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { GovernanceResultFeedItem, GovernanceTargetSummary } from '@skynet/shared';
 import { formatGovernanceDuration, getGovernanceResultKey } from './governance-format';
@@ -32,6 +32,24 @@ function getSummaryCopy(summary: GovernanceTargetSummary, t: ReturnType<typeof u
       source: t('governance.card.sourcePost'),
       title: summary.post.title,
       content: summary.post.excerpt,
+      context: null,
+    };
+  }
+  if (summary.kind === 'CIRCLE_PROPOSAL') {
+    return {
+      icon: Scale,
+      source: t('governance.targetTypes.CIRCLE_PROPOSAL'),
+      title: t(`circles.coBuild.scopes.${summary.proposal.scope}`),
+      content: summary.proposal.excerpt,
+      context: null,
+    };
+  }
+  if (summary.kind === 'CIRCLE_PROPOSAL_COMMENT') {
+    return {
+      icon: MessageSquare,
+      source: t('governance.targetTypes.CIRCLE_PROPOSAL_COMMENT'),
+      title: t('governance.targetTypes.CIRCLE_PROPOSAL_COMMENT'),
+      content: summary.comment.excerpt,
       context: null,
     };
   }

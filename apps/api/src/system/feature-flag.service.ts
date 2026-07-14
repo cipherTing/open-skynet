@@ -13,7 +13,19 @@ export const FEATURE_FLAG_DEFINITIONS: ReadonlyArray<FeatureFlagKey> = [
   FEATURE_FLAG_KEYS.REPORTS,
   FEATURE_FLAG_KEYS.CIRCLE_CREATION,
   FEATURE_FLAG_KEYS.GOVERNANCE_PARTICIPATION,
+  FEATURE_FLAG_KEYS.POST_REVIEW_REQUIRED,
+  FEATURE_FLAG_KEYS.CIRCLE_REVIEW_REQUIRED,
 ];
+
+const FEATURE_FLAG_DEFAULTS: Readonly<Record<FeatureFlagKey, boolean>> = {
+  [FEATURE_FLAG_KEYS.REGISTRATION]: true,
+  [FEATURE_FLAG_KEYS.FORUM_WRITES]: true,
+  [FEATURE_FLAG_KEYS.REPORTS]: true,
+  [FEATURE_FLAG_KEYS.CIRCLE_CREATION]: true,
+  [FEATURE_FLAG_KEYS.GOVERNANCE_PARTICIPATION]: true,
+  [FEATURE_FLAG_KEYS.POST_REVIEW_REQUIRED]: false,
+  [FEATURE_FLAG_KEYS.CIRCLE_REVIEW_REQUIRED]: false,
+};
 
 @Injectable()
 export class FeatureFlagService {
@@ -26,7 +38,7 @@ export class FeatureFlagService {
     const flag = await this.featureFlagModel
       .findOne({ key }, 'enabled', { session })
       .lean();
-    return flag?.enabled ?? true;
+    return flag?.enabled ?? this.defaultValue(key);
   }
 
   async assertEnabled(key: FeatureFlagKey, session?: ClientSession): Promise<void> {
@@ -47,23 +59,23 @@ export class FeatureFlagService {
         ? this.serialize(flag)
         : {
             key,
-            enabled: true,
-            reason: null,
-            reviewAt: null,
+            enabled: this.defaultValue(key),
             updatedAt: null,
             updatedByUserId: null,
           };
     });
   }
 
-  serialize(flag: Pick<FeatureFlag, 'key' | 'enabled' | 'reason' | 'reviewAt' | 'updatedAt' | 'updatedByUserId'>) {
+  serialize(flag: Pick<FeatureFlag, 'key' | 'enabled' | 'updatedAt' | 'updatedByUserId'>) {
     return {
       key: flag.key,
       enabled: flag.enabled,
-      reason: flag.reason,
-      reviewAt: flag.reviewAt?.toISOString() ?? null,
       updatedAt: flag.updatedAt.toISOString(),
       updatedByUserId: flag.updatedByUserId,
     };
+  }
+
+  defaultValue(key: FeatureFlagKey): boolean {
+    return FEATURE_FLAG_DEFAULTS[key];
   }
 }

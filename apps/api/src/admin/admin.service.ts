@@ -28,21 +28,35 @@ import { AdminAuditService } from './admin-audit.service';
 import { ADMIN_AUDIT_ACTIONS } from './admin.constants';
 import { isUserSuspended } from '@/auth/auth-security';
 import { HealthService } from '@/health/health.service';
-import { CircleService } from '@/circle/circle.service';
-import { CIRCLE_MAINTENANCE_ACTOR_TYPES } from '@/circle/circle.constants';
 import type { ListAdminAgentsDto } from './dto/list-admin-agents.dto';
 import type { SuspendAgentDto } from './dto/suspend-agent.dto';
 import type { AdjustAgentXpDto } from './dto/adjust-agent-xp.dto';
 import type { AdjustAgentHealthDto } from './dto/adjust-agent-health.dto';
 import type { ListAdminContentDto } from './dto/list-admin-content.dto';
 import type { ListAdminCirclesDto } from './dto/list-admin-circles.dto';
-import type { TransferCircleStewardDto } from './dto/transfer-circle-steward.dto';
 import type { ListAdminGovernanceDto } from './dto/list-admin-governance.dto';
+import type { ListContentReviewsDto } from './dto/list-content-reviews.dto';
+import type { DecideContentReviewDto } from './dto/decide-content-review.dto';
 import {
   REPORT_TARGET_STATUSES,
   getReportTargetKey,
   type ReportTargetType,
 } from '@/report/report.constants';
+import {
+  CONTENT_REVIEW_STATUSES,
+  CONTENT_REVIEW_TYPES,
+  ContentReviewRequest,
+} from '@/database/schemas/content-review-request.schema';
+import { ForumService } from '@/forum/forum.service';
+import { CircleService } from '@/circle/circle.service';
+import { InboxService } from '@/inbox/inbox.service';
+import { CircleProposalService } from '@/circle/circle-proposal.service';
+import type {
+  CreateAdminCircleDto,
+  UpdateAdminCircleDto,
+} from './dto/admin-circle.dto';
+import type { AdminGovernanceDecisionDto } from './dto/admin-governance-decision.dto';
+import { GovernanceService } from '@/governance/governance.service';
 
 const EMPTY_DAILY_COUNTERS = { posts: 0, replies: 0, childReplies: 0, feedbacks: 0 };
 const ADMIN_HEALTH_TIMEOUT_MS = 2_000;
@@ -96,11 +110,17 @@ export class AdminService {
     private readonly governanceCaseModel: Model<GovernanceCase>,
     @InjectModel(ReportTargetState.name)
     private readonly reportTargetStateModel: Model<ReportTargetState>,
+    @InjectModel(ContentReviewRequest.name)
+    private readonly contentReviewModel: Model<ContentReviewRequest>,
     @InjectQueue('view-count') private readonly viewCountQueue: Queue,
     private readonly healthService: HealthService,
-    private readonly circleService: CircleService,
     private readonly databaseService: DatabaseService,
     private readonly auditService: AdminAuditService,
+    private readonly forumService: ForumService,
+    private readonly circleService: CircleService,
+    private readonly circleProposalService: CircleProposalService,
+    private readonly inboxService: InboxService,
+    private readonly governanceService: GovernanceService,
   ) {}
 
   async overview() {
@@ -507,14 +527,6 @@ export class AdminService {
           removed ? '内容不存在或已被其他流程移除' : '只有管理员移除的内容可以直接恢复',
         );
       }
-      if (type === 'POST' && removed) {
-        await this.circleService.unpinRemovedPost(
-          id,
-          '帖子已由管理员移除，系统同步取消置顶',
-          CIRCLE_MAINTENANCE_ACTOR_TYPES.ADMIN,
-          session,
-        );
-      }
       await this.auditService.record({
         actorUserId: admin.userId,
         action: removed ? ADMIN_AUDIT_ACTIONS.CONTENT_REMOVED : ADMIN_AUDIT_ACTIONS.CONTENT_RESTORED,
@@ -580,65 +592,159 @@ export class AdminService {
     return { items, meta: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) } };
   }
 
-  async transferCircleSteward(
+  async createCircle(admin: AdminPrincipal, dto: CreateAdminCircleDto) {
+    return this.databaseService.$requiredTransaction(async (session) => {
+      const circle = await this.circleService.createCircleForAdmin(dto, session);
+      await this.auditService.record({
+        actorUserId: admin.userId,
+        action: ADMIN_AUDIT_ACTIONS.CIRCLE_CREATED,
+        targetType: 'CIRCLE',
+        targetId: circle.id,
+        reason: null,
+        changes: { kind: circle.kind },
+        session,
+      });
+      return this.circleService.serializeCircleForAdmin(circle);
+    });
+  }
+
+  async updateCircle(
     admin: AdminPrincipal,
     circleId: string,
-    dto: TransferCircleStewardDto,
+    dto: UpdateAdminCircleDto,
   ) {
-    ensureObjectId(circleId, '圈子不存在');
-    ensureObjectId(dto.agentId, 'Agent 不存在');
-    return this.databaseService.$transaction(async (session) => {
-      const agent = await this.agentModel.findOne(
-        { _id: dto.agentId, deletedAt: null },
-        null,
-        { session },
-      ).select('_id userId secretKeyDigest ownerOperationEnabled');
-      if (!agent) throw new NotFoundException('Agent 不存在');
-      const owner = await this.userModel.findOne(
-        { _id: agent.userId, deletedAt: null },
-        null,
-        { session },
-      ).select('suspendedAt suspendedUntil');
-      const governanceProfile = await this.governanceProfileModel.findOne(
-        { agentId: agent.id },
-        null,
-        { session },
-      ).select('healthLevel');
-      if (!owner || isUserSuspended(owner)) {
-        throw new BadRequestException('目标 Agent 当前不能履行圈子维护职责');
+    if (dto.topic === undefined && dto.rules === undefined) {
+      throw new BadRequestException('至少需要修改简介或规则');
+    }
+    return this.databaseService.$requiredTransaction(async (session) => {
+      const moderated = [];
+      if (dto.topic !== undefined) {
+        const proposal = await this.circleProposalService.moderateActiveScopeForAdmin(
+          circleId,
+          'TOPIC',
+          dto.publicReason,
+          session,
+        );
+        if (proposal) moderated.push(proposal);
       }
-      if (!agent.secretKeyDigest && agent.ownerOperationEnabled !== true) {
-        throw new BadRequestException('目标 Agent 当前没有可用的操作凭证');
+      if (dto.rules !== undefined) {
+        const proposal = await this.circleProposalService.moderateActiveScopeForAdmin(
+          circleId,
+          'RULES',
+          dto.publicReason,
+          session,
+        );
+        if (proposal) moderated.push(proposal);
       }
-      const healthLevel =
-        governanceProfile?.healthLevel ?? GOVERNANCE_HEALTH_LEVEL.GOOD;
-      if (healthLevel < GOVERNANCE_HEALTH_LEVEL.WARNING) {
-        throw new BadRequestException('目标 Agent 的治理健康等级不足以维护圈子');
+      for (const proposal of moderated) {
+        await this.circleService.recordProposalModerationForAdmin(
+          proposal,
+          dto.publicReason,
+          session,
+        );
       }
-      const transfer = await this.circleService.transferStewardByAdmin(
+      const circle = await this.circleService.updateCircleForAdmin(circleId, dto, session);
+      await this.auditService.record({
+        actorUserId: admin.userId,
+        action: ADMIN_AUDIT_ACTIONS.CIRCLE_UPDATED,
+        targetType: 'CIRCLE',
+        targetId: circle.id,
+        reason: dto.publicReason,
+        changes: {
+          topicChanged: dto.topic !== undefined,
+          rulesChanged: dto.rules !== undefined,
+          moderatedProposalCount: moderated.length,
+        },
+        session,
+      });
+      return this.circleService.serializeCircleForAdmin(circle);
+    });
+  }
+
+  async setCircleBanned(
+    admin: AdminPrincipal,
+    circleId: string,
+    banned: boolean,
+    publicReason: string,
+  ) {
+    return this.databaseService.$requiredTransaction(async (session) => {
+      const moderated = [];
+      if (banned) {
+        moderated.push(
+          await this.circleProposalService.moderateActiveScopeForAdmin(
+            circleId,
+            'TOPIC',
+            publicReason,
+            session,
+          ),
+        );
+        moderated.push(
+          await this.circleProposalService.moderateActiveScopeForAdmin(
+            circleId,
+            'RULES',
+            publicReason,
+            session,
+          ),
+        );
+      }
+      for (const proposal of moderated) {
+        if (proposal) {
+          await this.circleService.recordProposalModerationForAdmin(
+            proposal,
+            publicReason,
+            session,
+          );
+        }
+      }
+      const circle = await this.circleService.setCircleStatusForAdmin(
         circleId,
-        agent.id,
-        dto.expectedVersion,
-        dto.publicReason,
+        banned ? 'BANNED' : 'ACTIVE',
+        publicReason,
         session,
       );
       await this.auditService.record({
         actorUserId: admin.userId,
-        action: ADMIN_AUDIT_ACTIONS.CIRCLE_STEWARD_TRANSFERRED,
+        action: banned
+          ? ADMIN_AUDIT_ACTIONS.CIRCLE_BANNED
+          : ADMIN_AUDIT_ACTIONS.CIRCLE_UNBANNED,
         targetType: 'CIRCLE',
-        targetId: circleId,
-        reason: dto.auditReason,
-        changes: {
-          previousStewardAgentId: transfer.previousStewardAgentId,
-          nextStewardAgentId: agent.id,
-          maintenanceVersion: transfer.maintenanceVersion,
-        },
+        targetId: circle.id,
+        reason: publicReason,
+        changes: { status: circle.status },
         session,
       });
-      return {
-        stewardAgentId: agent.id,
-        maintenanceVersion: transfer.maintenanceVersion,
-      };
+      return this.circleService.serializeCircleForAdmin(circle);
+    });
+  }
+
+  async moderateCircleProposal(
+    admin: AdminPrincipal,
+    circleId: string,
+    proposalId: string,
+    publicReason: string,
+  ) {
+    return this.databaseService.$requiredTransaction(async (session) => {
+      const proposal = await this.circleProposalService.moderateProposalForAdmin(
+        circleId,
+        proposalId,
+        publicReason,
+        session,
+      );
+      await this.circleService.recordProposalModerationForAdmin(
+        proposal,
+        publicReason,
+        session,
+      );
+      await this.auditService.record({
+        actorUserId: admin.userId,
+        action: ADMIN_AUDIT_ACTIONS.CIRCLE_PROPOSAL_MODERATED,
+        targetType: 'CIRCLE_PROPOSAL',
+        targetId: proposal.id,
+        reason: publicReason,
+        changes: { circleId, scope: proposal.scope },
+        session,
+      });
+      return { id: proposal.id, status: proposal.status };
     });
   }
 
@@ -651,6 +757,173 @@ export class AdminService {
       this.governanceCaseModel.find(where).sort({ openedAt: -1, _id: -1 }).skip((page - 1) * pageSize).limit(pageSize).lean(),
       this.governanceCaseModel.countDocuments(where),
     ]);
-    return { items, meta: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) } };
+    return {
+      items: items.map((item) => ({
+        ...item,
+        targetSummary: this.getGovernanceTargetSummary(item),
+      })),
+      meta: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) },
+    };
+  }
+
+  async decideGovernanceCase(
+    admin: AdminPrincipal,
+    caseId: string,
+    dto: AdminGovernanceDecisionDto,
+  ) {
+    const reason = dto.reason.trim();
+    return this.databaseService.$requiredTransaction(async (session) => {
+      const governanceCase = await this.governanceService.resolveCaseForAdmin(
+        caseId,
+        dto.decision,
+        reason,
+        admin.userId,
+        session,
+      );
+      await this.auditService.record({
+        actorUserId: admin.userId,
+        action: ADMIN_AUDIT_ACTIONS.GOVERNANCE_CASE_ADJUDICATED,
+        targetType: 'GOVERNANCE_CASE',
+        targetId: governanceCase.id,
+        reason,
+        changes: { decision: dto.decision },
+        session,
+      });
+      return {
+        id: governanceCase.id,
+        status: governanceCase.status,
+        resolutionSource: governanceCase.resolutionSource,
+        resolutionReason: governanceCase.resolutionReason,
+        resolvedAt: governanceCase.resolvedAt?.toISOString() ?? null,
+      };
+    });
+  }
+
+  private getGovernanceTargetSummary(governanceCase: GovernanceCase) {
+    const snapshot = governanceCase.targetSnapshot;
+    if (snapshot.kind === 'POST') {
+      return {
+        title: snapshot.post.title,
+        excerpt: snapshot.post.content.slice(0, 180),
+        postId: snapshot.post.id,
+      };
+    }
+    if (snapshot.kind === 'REPLY') {
+      return {
+        title: snapshot.post.title,
+        excerpt: snapshot.reply.content.slice(0, 180),
+        postId: snapshot.post.id,
+      };
+    }
+    if (snapshot.kind === 'CIRCLE_PROPOSAL') {
+      return {
+        title: snapshot.proposal.scope === 'TOPIC' ? '圈子简介提案' : '圈子规则提案',
+        excerpt: snapshot.proposal.reason.slice(0, 180),
+      };
+    }
+    return { title: '圈子共建评论', excerpt: snapshot.comment.content.slice(0, 180) };
+  }
+
+  async listContentReviews(dto: ListContentReviewsDto) {
+    const page = dto.page ?? 1;
+    const pageSize = dto.pageSize ?? 20;
+    const where: FilterQuery<ContentReviewRequest> = {};
+    if (dto.type) where.type = dto.type;
+    if (dto.status) where.status = dto.status;
+    const [requests, total] = await Promise.all([
+      this.contentReviewModel
+        .find(where)
+        .sort({ createdAt: -1, _id: -1 })
+        .skip((page - 1) * pageSize)
+        .limit(pageSize),
+      this.contentReviewModel.countDocuments(where),
+    ]);
+    const agentIds = [...new Set(requests.map((request) => request.requesterAgentId))];
+    const agents = await this.agentModel
+      .find({ _id: { $in: agentIds } })
+      .select('name avatarSeed');
+    const agentMap = new Map(agents.map((agent) => [agent.id, agent]));
+    return {
+      items: requests.map((request) => ({
+        id: request.id,
+        type: request.type,
+        status: request.status,
+        payload: request.payload,
+        requester: {
+          agentId: request.requesterAgentId,
+          name: agentMap.get(request.requesterAgentId)?.name ?? '已离线 Agent',
+          avatarSeed: agentMap.get(request.requesterAgentId)?.avatarSeed ?? `deleted-${request.requesterAgentId}`,
+        },
+        decisionReason: request.decisionReason,
+        decidedAt: request.decidedAt?.toISOString() ?? null,
+        publishedTargetId: request.publishedTargetId,
+        createdAt: request.createdAt.toISOString(),
+      })),
+      meta: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) },
+    };
+  }
+
+  async decideContentReview(
+    admin: AdminPrincipal,
+    reviewId: string,
+    dto: DecideContentReviewDto,
+  ) {
+    ensureObjectId(reviewId, '审核申请不存在');
+    const reason = dto.reason?.trim() || null;
+    if (dto.decision === 'REJECT' && (!reason || reason.length < 4)) {
+      throw new BadRequestException('拒绝审核时必须填写至少 4 个字的理由');
+    }
+    return this.databaseService.$requiredTransaction(async (session) => {
+      const request = await this.contentReviewModel.findOne(
+        { _id: reviewId, status: CONTENT_REVIEW_STATUSES.PENDING },
+        null,
+        { session },
+      );
+      if (!request) throw new ConflictException('审核申请不存在或已经处理');
+      let publishedTargetId: string | null = null;
+      if (dto.decision === 'APPROVE') {
+        publishedTargetId = request.type === CONTENT_REVIEW_TYPES.POST
+          ? await this.forumService.publishReviewedPost(request, session)
+          : await this.circleService.publishReviewedCircle(request, session);
+      }
+      const status = dto.decision === 'APPROVE'
+        ? CONTENT_REVIEW_STATUSES.APPROVED
+        : CONTENT_REVIEW_STATUSES.REJECTED;
+      request.status = status;
+      request.decisionReason = reason;
+      request.decidedByUserId = admin.userId;
+      request.decidedAt = new Date();
+      request.publishedTargetId = publishedTargetId;
+      request.activeKey = null;
+      request.pendingNameKey = null;
+      await request.save({ session });
+      await this.inboxService.createForReview(
+        {
+          reviewRequestId: request.id,
+          recipientAgentId: request.requesterAgentId,
+          status,
+        },
+        session,
+      );
+      await this.auditService.record({
+        actorUserId: admin.userId,
+        action: dto.decision === 'APPROVE'
+          ? ADMIN_AUDIT_ACTIONS.CONTENT_REVIEW_APPROVED
+          : ADMIN_AUDIT_ACTIONS.CONTENT_REVIEW_REJECTED,
+        targetType: 'CONTENT_REVIEW',
+        targetId: request.id,
+        reason,
+        changes: { status, publishedTargetId },
+        session,
+      });
+      return {
+        id: request.id,
+        type: request.type,
+        status,
+        decisionReason: reason,
+        decidedAt: request.decidedAt.toISOString(),
+        publishedTargetId,
+      };
+    });
   }
 }

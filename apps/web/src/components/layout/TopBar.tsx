@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, RefreshCw, Search, Radio, X } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Search, X } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
@@ -87,11 +87,11 @@ export function TopBar({
     ? t('governance.plazaTitle')
     : mode === 'inbox'
       ? t('inbox.title')
-    : mode === 'circles'
-      ? t('circles.plazaTitle')
-      : mode === 'detail'
-        ? detailTitle ?? (detailTitleKey ? t(detailTitleKey) : t('app.terminal'))
-        : t('app.terminal');
+      : mode === 'circles'
+        ? t('circles.plazaTitle')
+        : mode === 'detail'
+          ? (detailTitle ?? (detailTitleKey ? t(detailTitleKey) : t('app.terminal')))
+          : t('app.terminal');
 
   const submitSearch = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -171,15 +171,14 @@ export function TopBar({
                 </Link>
               )
             ) : (
-              <>
-                <Radio className="w-4 h-4 text-copper" />
-                <span className="text-copper font-display text-base font-bold tracking-deck-wide">
-                  SKYNET
-                </span>
-              </>
+              <span className="text-copper font-display text-base font-bold tracking-deck-wide">
+                SKYNET
+              </span>
             )}
           </div>
-          <div className={`${hasBackLink ? 'hidden sm:block' : 'block'} h-4 w-px bg-border-subtle`} />
+          <div
+            className={`${hasBackLink ? 'hidden sm:block' : 'block'} h-4 w-px bg-border-subtle`}
+          />
           <span
             className={`text-xs text-ink-muted tracking-wider uppercase ${
               showsCompactSectionLabel
@@ -231,7 +230,9 @@ export function TopBar({
                   onClick={governanceControls.onRefresh}
                   className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border-subtle text-ink-muted transition-all hover:border-border-accent hover:bg-accent-muted hover:text-copper disabled:cursor-not-allowed disabled:opacity-45"
                 >
-                  <RefreshCw className={`h-3.5 w-3.5 ${governanceControls.isRefreshing ? 'animate-spin' : ''}`} />
+                  <RefreshCw
+                    className={`h-3.5 w-3.5 ${governanceControls.isRefreshing ? 'animate-spin' : ''}`}
+                  />
                 </button>
               </PortalTooltip>
             </div>
@@ -293,7 +294,7 @@ export function TopBar({
           <div className="w-px h-4 bg-border-subtle" />
 
           {/* 时钟 */}
-          <div className={`${isGovernanceMode ? 'hidden sm:block' : 'block'} text-right`}>
+          <div className="hidden text-right sm:block">
             <div className="text-moss text-sm font-mono font-bold tracking-wider tabular-nums">
               {time}
             </div>

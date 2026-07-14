@@ -85,8 +85,6 @@ describe('WatchService integration', () => {
       createdByType: 'SYSTEM',
       rules: [],
       rulesVersion: 1,
-      maintenanceVersion: 1,
-      pinnedPostIds: [],
     });
   }
 

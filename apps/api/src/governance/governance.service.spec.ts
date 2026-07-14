@@ -24,7 +24,19 @@ import {
   CircleRuleRevision,
   CircleRuleRevisionSchema,
 } from '@/database/schemas/circle-rule-revision.schema';
-import { CircleService } from '@/circle/circle.service';
+import { Circle, CircleSchema } from '@/database/schemas/circle.schema';
+import {
+  CircleProposal,
+  CircleProposalSchema,
+} from '@/database/schemas/circle-proposal.schema';
+import {
+  CircleProposalComment,
+  CircleProposalCommentSchema,
+} from '@/database/schemas/circle-proposal-comment.schema';
+import {
+  CircleProposalRevision,
+  CircleProposalRevisionSchema,
+} from '@/database/schemas/circle-proposal-revision.schema';
 import { GOVERNANCE_ASSIGNMENT_STATUS, GOVERNANCE_CASE_STATUS, GOVERNANCE_DECISIONS, GOVERNANCE_ERROR_CODES, GOVERNANCE_HEALTH_LEVEL, GOVERNANCE_TARGET_TYPES } from './governance.constants';
 import { FeatureFlagService } from '@/system/feature-flag.service';
 import {
@@ -41,11 +53,9 @@ describe('GovernanceService integration', () => {
   let moduleRef: TestingModule;
   let connection: Connection;
   let service: GovernanceService;
-  let unpinRemovedPost: jest.MockedFunction<CircleService['unpinRemovedPost']>;
 
   beforeAll(async () => {
     replicaSet = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
-    unpinRemovedPost = jest.fn().mockResolvedValue(undefined);
     moduleRef = await Test.createTestingModule({
       imports: [
         MongooseModule.forRoot(replicaSet.getUri()),
@@ -62,6 +72,10 @@ describe('GovernanceService integration', () => {
           { name: AgentProgress.name, schema: AgentProgressSchema },
           { name: AgentXpEvent.name, schema: AgentXpEventSchema },
           { name: FeatureFlag.name, schema: FeatureFlagSchema },
+          { name: Circle.name, schema: CircleSchema },
+          { name: CircleProposal.name, schema: CircleProposalSchema },
+          { name: CircleProposalComment.name, schema: CircleProposalCommentSchema },
+          { name: CircleProposalRevision.name, schema: CircleProposalRevisionSchema },
           { name: CircleRuleRevision.name, schema: CircleRuleRevisionSchema },
         ]),
       ],
@@ -70,10 +84,6 @@ describe('GovernanceService integration', () => {
         ProgressionService,
         DatabaseService,
         FeatureFlagService,
-        {
-          provide: CircleService,
-          useValue: { unpinRemovedPost },
-        },
       ],
     }).compile();
 
@@ -83,21 +93,21 @@ describe('GovernanceService integration', () => {
       {
         circleId: TEST_CIRCLE_ID,
         version: 1,
-        rules: ['友好交流，不破坏社区'],
+        rules: [{ id: 'rule-friendly', text: '友好交流，不破坏社区' }],
         source: 'SYSTEM',
         actorAgentId: null,
       },
       {
         circleId: TEST_CIRCLE_ID,
         version: 2,
-        rules: ['回复时尊重讨论上下文'],
+        rules: [{ id: 'rule-context', text: '回复时尊重讨论上下文' }],
         source: 'AGENT',
         actorAgentId: null,
       },
       {
         circleId: TEST_CIRCLE_ID,
         version: 3,
-        rules: ['不得发布破坏社区的内容'],
+        rules: [{ id: 'rule-sabotage', text: '不得发布破坏社区的内容' }],
         source: 'AGENT',
         actorAgentId: null,
       },
@@ -105,7 +115,6 @@ describe('GovernanceService integration', () => {
   });
 
   beforeEach(async () => {
-    unpinRemovedPost.mockReset().mockResolvedValue(undefined);
     const now = new Date();
     await connection.model(GovernanceCase.name).updateMany(
       { status: { $in: [GOVERNANCE_CASE_STATUS.OPEN, GOVERNANCE_CASE_STATUS.EMERGENCY] } },
@@ -222,7 +231,7 @@ describe('GovernanceService integration', () => {
     expect(governanceCase.targetSnapshot.post.circleRules).toEqual({
       circleId: TEST_CIRCLE_ID,
       version: 1,
-      rules: ['友好交流，不破坏社区'],
+      rules: [{ id: 'rule-friendly', text: '友好交流，不破坏社区' }],
     });
   });
 
@@ -270,15 +279,15 @@ describe('GovernanceService integration', () => {
     expect(governanceCase.targetSnapshot.parentReply?.content).toBe('parent reply content');
     expect(governanceCase.targetSnapshot.post.circleRules).toMatchObject({
       version: 1,
-      rules: ['友好交流，不破坏社区'],
+      rules: [{ id: 'rule-friendly', text: '友好交流，不破坏社区' }],
     });
     expect(governanceCase.targetSnapshot.parentReply?.circleRules).toMatchObject({
       version: 2,
-      rules: ['回复时尊重讨论上下文'],
+      rules: [{ id: 'rule-context', text: '回复时尊重讨论上下文' }],
     });
     expect(governanceCase.targetSnapshot.reply.circleRules).toMatchObject({
       version: 3,
-      rules: ['不得发布破坏社区的内容'],
+      rules: [{ id: 'rule-sabotage', text: '不得发布破坏社区的内容' }],
     });
     expect(governanceCase.targetAuthorId).toBe(replyAuthor.id);
   });
@@ -759,36 +768,6 @@ describe('GovernanceService integration', () => {
 
     const profile = await connection.model(AgentGovernanceProfile.name).findOne({ agentId: author.id }).lean<{ healthLevel?: number }>();
     expect(profile?.healthLevel).toBe(GOVERNANCE_HEALTH_LEVEL.WARNING);
-  });
-
-  it('rolls back the whole case resolution when pinned-post cleanup fails', async () => {
-    const { author, post, governanceCase } = await createViolationCase();
-    await connection.model(GovernanceCase.name).findByIdAndUpdate(governanceCase.id, {
-      violationTally: 6,
-      notViolationTally: 0,
-      firstReviewAt: new Date(Date.now() - 1000),
-    });
-    unpinRemovedPost.mockRejectedValueOnce(new Error('pin cleanup failed'));
-
-    await expect(service.advanceDeadlines()).rejects.toThrow('pin cleanup failed');
-
-    const [unchangedCase, reportState, visiblePost, profile, penaltyCount] = await Promise.all([
-      connection.model(GovernanceCase.name).findById(governanceCase.id),
-      connection.model(ReportTargetState.name).findOne({ caseId: governanceCase.id }),
-      connection.model(Post.name).findById(post.id),
-      connection.model(AgentGovernanceProfile.name).findOne({ agentId: author.id }),
-      connection.model(AgentXpEvent.name).countDocuments({
-        agentId: author.id,
-        sourceType: 'GOVERNANCE_PENALTY',
-        sourceId: governanceCase.id,
-      }),
-    ]);
-    expect(unchangedCase?.status).toBe(GOVERNANCE_CASE_STATUS.OPEN);
-    expect(reportState?.status).toBe(REPORT_TARGET_STATUSES.CASE_OPEN);
-    expect(unchangedCase?.firstReviewedAt).toBeNull();
-    expect(visiblePost?.deletedAt).toBeNull();
-    expect(profile).toBeNull();
-    expect(penaltyCount).toBe(0);
   });
 
   it('resolves one case only once when two scheduler instances race', async () => {

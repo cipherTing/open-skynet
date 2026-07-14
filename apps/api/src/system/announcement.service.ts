@@ -25,10 +25,8 @@ export class AnnouncementService {
       .limit(Math.min(20, Math.max(1, limit)));
     return items.map((item) => ({
       id: item.id,
-      titleZh: item.titleZh,
-      titleEn: item.titleEn,
-      bodyZh: item.bodyZh,
-      bodyEn: item.bodyEn,
+      title: item.title,
+      body: item.body,
       kind: item.kind,
       dismissible: item.dismissible,
       linkUrl: item.linkUrl,

@@ -208,12 +208,20 @@ export function SignalInbox() {
 function InboxRow({ item, onRead }: { item: AgentInboxItem; onRead: (id: string) => void }) {
   const { t } = useTranslation();
   const isUnread = item.readAt === null;
+  const isReply = item.source.available && item.source.kind === 'REPLY';
+  const actorName = !item.source.available
+    ? t('inbox.sourceUnavailable')
+    : item.source.kind === 'REPLY'
+      ? item.source.actor.name
+      : item.source.kind === 'CIRCLE_PROPOSAL'
+        ? item.source.proposal.creatorName
+        : t('inbox.systemSource');
   const content = (
     <div className="flex min-w-0 flex-1 gap-3 py-3.5">
       <span
         className={`mt-2 h-2 w-2 shrink-0 rounded-full ${isUnread ? 'bg-copper' : 'bg-ink-muted/25'}`}
       />
-      {item.source.available ? (
+      {item.source.available && item.source.kind === 'REPLY' ? (
         <AgentAvatar
           agentId={item.source.actor.avatarSeed || item.source.actor.id}
           agentName={item.source.actor.name}
@@ -229,14 +237,14 @@ function InboxRow({ item, onRead }: { item: AgentInboxItem; onRead: (id: string)
           <span
             className={`text-xs ${isUnread ? 'font-bold text-ink-primary' : 'font-semibold text-ink-secondary'}`}
           >
-            {item.source.available ? item.source.actor.name : t('inbox.sourceUnavailable')}
+            {actorName}
           </span>
           <span className="text-[11px] text-ink-muted">{getRelativeTime(item.createdAt)}</span>
         </div>
         <p className="mt-1 text-[11px] font-semibold text-copper/90">
           {item.reasons.map((reason) => t(reasonKey(reason))).join(' · ')}
         </p>
-        {item.source.available ? (
+        {item.source.available && item.source.kind === 'REPLY' ? (
           <>
             <p className="mt-1.5 truncate text-sm font-semibold text-ink-primary">
               {item.source.post.title}
@@ -244,6 +252,21 @@ function InboxRow({ item, onRead }: { item: AgentInboxItem; onRead: (id: string)
             <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-ink-muted">
               {item.source.reply.excerpt}
             </p>
+          </>
+        ) : item.source.available && item.source.kind === 'CIRCLE_PROPOSAL' ? (
+          <>
+            <p className="mt-1.5 text-sm font-semibold text-ink-primary">
+              {t(`circles.coBuild.scopes.${item.source.proposal.scope}`)}
+            </p>
+            <p className="mt-1 text-xs text-ink-muted">
+              {t(`circles.coBuild.statuses.${item.source.proposal.status}`)}
+            </p>
+          </>
+        ) : item.source.available ? (
+          <>
+            <p className="mt-1.5 text-sm font-semibold text-ink-primary">{item.source.review.title}</p>
+            <p className="mt-1 text-xs text-ink-muted">{t(`inbox.review.${item.source.review.type}.${item.source.review.status}`)}</p>
+            {item.source.review.reason ? <p className="mt-1 text-xs leading-relaxed text-ochre">{item.source.review.reason}</p> : null}
           </>
         ) : (
           <p className="mt-1.5 text-xs leading-relaxed text-ink-muted">
@@ -263,6 +286,33 @@ function InboxRow({ item, onRead }: { item: AgentInboxItem; onRead: (id: string)
         ) : null}
       </div>
     );
+  }
+
+  if (item.source.kind === 'CIRCLE_PROPOSAL') {
+    return (
+      <div className="group flex items-start gap-2">
+        <Link
+          href={`/circles/${item.source.proposal.circleSlug}/co-build/${item.source.proposal.id}`}
+          onClick={() => {
+            if (isUnread) onRead(item.id);
+          }}
+          className="min-w-0 flex-1 transition-colors hover:bg-surface-1/25"
+        >
+          {content}
+        </Link>
+        {isUnread ? <ReadButton label={t('inbox.markRead')} onClick={() => onRead(item.id)} /> : null}
+      </div>
+    );
+  }
+
+  if (item.source.kind === 'REVIEW_REQUEST') {
+    const href = item.source.review.status === 'APPROVED' && item.source.review.type === 'POST' && item.source.review.publishedTargetId
+      ? `/post/${item.source.review.publishedTargetId}`
+      : null;
+    if (href) {
+      return <div className="group flex items-start gap-2"><Link href={href} onClick={() => { if (isUnread) onRead(item.id); }} className="min-w-0 flex-1 transition-colors hover:bg-surface-1/25">{content}</Link>{isUnread ? <ReadButton label={t('inbox.markRead')} onClick={() => onRead(item.id)} /> : null}</div>;
+    }
+    return <div className="group flex items-start gap-2">{content}{isUnread ? <ReadButton label={t('inbox.markRead')} onClick={() => onRead(item.id)} /> : null}</div>;
   }
 
   return (
@@ -333,6 +383,11 @@ function reasonKey(reason: AgentNotificationReason) {
     REPLY_REPLY: 'inbox.reasons.replyReply',
     MENTION: 'inbox.reasons.mention',
     WATCHED_POST_REPLY: 'inbox.reasons.watchedPostReply',
+    CO_BUILD_REVISION: 'inbox.reasons.coBuildRevision',
+    CO_BUILD_OBJECTION: 'inbox.reasons.coBuildObjection',
+    CO_BUILD_STATUS: 'inbox.reasons.coBuildStatus',
+    REVIEW_APPROVED: 'inbox.reasons.reviewApproved',
+    REVIEW_REJECTED: 'inbox.reasons.reviewRejected',
   };
   return keys[reason];
 }

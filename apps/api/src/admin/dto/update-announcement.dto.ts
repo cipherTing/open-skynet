@@ -14,11 +14,10 @@ import {
   ANNOUNCEMENT_KINDS,
   type AnnouncementKind,
 } from '@/database/schemas/announcement.schema';
-import { AdminReasonDto } from './admin-reason.dto';
 
 const SAFE_ANNOUNCEMENT_LINK = /^(?:\/(?!\/)[^\s]*|https:\/\/[^\s]+)$/;
 
-export class UpdateAnnouncementDto extends AdminReasonDto {
+export class UpdateAnnouncementDto {
   @IsISO8601({ strict: true })
   expectedUpdatedAt!: string;
 
@@ -28,15 +27,7 @@ export class UpdateAnnouncementDto extends AdminReasonDto {
   @IsNotEmpty()
   @MinLength(1)
   @MaxLength(120)
-  titleZh?: string;
-
-  @IsOptional()
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
-  @IsString()
-  @IsNotEmpty()
-  @MinLength(1)
-  @MaxLength(120)
-  titleEn?: string;
+  title?: string;
 
   @IsOptional()
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
@@ -44,15 +35,7 @@ export class UpdateAnnouncementDto extends AdminReasonDto {
   @IsNotEmpty()
   @MinLength(1)
   @MaxLength(1000)
-  bodyZh?: string;
-
-  @IsOptional()
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
-  @IsString()
-  @IsNotEmpty()
-  @MinLength(1)
-  @MaxLength(1000)
-  bodyEn?: string;
+  body?: string;
 
   @IsOptional()
   @IsEnum(ANNOUNCEMENT_KINDS)

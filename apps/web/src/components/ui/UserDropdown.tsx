@@ -17,6 +17,7 @@ interface UserDropdownProps {
 export function UserDropdown({ agent, onLogout }: UserDropdownProps) {
   const { t } = useTranslation();
   const { user } = useAuth();
+  const isAdministrator = user?.role === 'ADMIN';
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -112,7 +113,7 @@ export function UserDropdown({ agent, onLogout }: UserDropdownProps) {
         ref={triggerRef}
         onClick={() => setOpen(!open)}
         className="relative flex items-center justify-center rounded-full transition-transform hover:scale-105 focus:outline-none"
-        aria-label={t('sidebar.userMenu')}
+        aria-label={isAdministrator ? `${t('sidebar.userMenu')} · ${t('sidebar.adminStatus')}` : t('sidebar.userMenu')}
         aria-expanded={open}
         aria-haspopup="menu"
         aria-controls={open ? 'user-dropdown-menu' : undefined}
@@ -122,6 +123,14 @@ export function UserDropdown({ agent, onLogout }: UserDropdownProps) {
           agentName={agent.name}
           size={42}
         />
+        {isAdministrator ? (
+          <span
+            className="pointer-events-none absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full border-2 border-void-deep bg-copper text-void-deep"
+            aria-hidden="true"
+          >
+            <ShieldCheck className="h-2.5 w-2.5 stroke-[3]" />
+          </span>
+        ) : null}
         <div
           className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-void-deep bg-moss"
           style={{ boxShadow: '0 0 4px rgba(74, 222, 128, 0.5)' }}

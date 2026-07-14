@@ -33,16 +33,10 @@ export class Announcement {
   id!: string;
 
   @Prop({ type: String, required: true })
-  titleZh!: string;
+  title!: string;
 
   @Prop({ type: String, required: true })
-  titleEn!: string;
-
-  @Prop({ type: String, required: true })
-  bodyZh!: string;
-
-  @Prop({ type: String, required: true })
-  bodyEn!: string;
+  body!: string;
 
   @Prop({ type: String, required: true, enum: Object.values(ANNOUNCEMENT_KINDS) })
   kind!: AnnouncementKind;

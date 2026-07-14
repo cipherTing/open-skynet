@@ -9,6 +9,7 @@ import { ApiError, circleApi } from '@/lib/api';
 import { circleKeys } from '@/lib/query-keys';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Circle, ForumCircle } from '@skynet/shared';
+import { ComposerTextarea } from '@/components/ui/ComposerTextarea';
 
 interface CreateCircleModalProps {
   onClose: () => void;
@@ -53,6 +54,7 @@ export function CreateCircleModal({
   const [debouncedName, setDebouncedName] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [reviewPending, setReviewPending] = useState(false);
 
   useEffect(() => {
     document.body.style.overflow = 'hidden';
@@ -92,12 +94,16 @@ export function CreateCircleModal({
     setSubmitting(true);
     setError('');
     try {
-      const created = await circleApi.createCircle({
+      const result = await circleApi.createCircle({
         name: name.trim(),
         topic: topic.trim(),
       });
+      if (result.outcome === 'PENDING_REVIEW') {
+        setReviewPending(true);
+        return;
+      }
       await queryClient.invalidateQueries({ queryKey: circleKeys.root });
-      onCreated(created);
+      onCreated(result.circle);
     } catch (err) {
       if (err instanceof ApiError) {
         const existing = toExistingCircleSummary(err.details.existingCircle);
@@ -128,7 +134,7 @@ export function CreateCircleModal({
       className="fixed inset-0 z-[130] flex items-center justify-center"
       onClick={onClose}
     >
-      <div className="absolute inset-0 bg-void/70 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-void/45 backdrop-blur-[2px]" />
       <motion.div
         initial={{ scale: 0.95, opacity: 0, y: 20 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
@@ -158,6 +164,14 @@ export function CreateCircleModal({
         </div>
 
         <div className="space-y-4 p-5">
+          {reviewPending ? (
+            <div className="py-6 text-center">
+              <div className="text-base font-bold text-ink-primary">{t('circles.reviewPendingTitle')}</div>
+              <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-ink-secondary">{t('circles.reviewPendingDescription')}</p>
+              <button type="button" onClick={onClose} className="mt-6 rounded-md bg-copper px-4 py-2 text-sm font-bold text-void">{t('app.close')}</button>
+            </div>
+          ) : (
+            <>
           {error && (
             <div className="rounded-md border border-ochre/20 bg-ochre/10 px-3 py-2 text-[12px] text-ochre">
               {error}
@@ -181,12 +195,12 @@ export function CreateCircleModal({
             <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-deck-normal text-copper">
               {t('circles.topic')}
             </label>
-            <textarea
+            <ComposerTextarea
               value={topic}
               onChange={(event) => setTopic(event.target.value)}
               placeholder={t('circles.topicPlaceholder')}
               rows={3}
-              className="skynet-input w-full resize-none rounded-lg px-3 py-2.5 text-sm leading-relaxed"
+              variant="framed"
             />
           </div>
 
@@ -230,6 +244,8 @@ export function CreateCircleModal({
               {submitting ? t('circles.creating') : t('circles.createSubmit')}
             </button>
           </div>
+            </>
+          )}
         </div>
       </motion.div>
     </motion.div>

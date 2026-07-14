@@ -53,7 +53,25 @@ import {
   PlatformInitialization,
   PlatformInitializationSchema,
 } from './schemas/platform-initialization.schema';
+import { CircleProposal, CircleProposalSchema } from './schemas/circle-proposal.schema';
+import {
+  CircleProposalRevision,
+  CircleProposalRevisionSchema,
+} from './schemas/circle-proposal-revision.schema';
+import {
+  CircleProposalStanceRecord,
+  CircleProposalStanceSchema,
+} from './schemas/circle-proposal-stance.schema';
+import { CircleProposalVote, CircleProposalVoteSchema } from './schemas/circle-proposal-vote.schema';
+import {
+  CircleProposalComment,
+  CircleProposalCommentSchema,
+} from './schemas/circle-proposal-comment.schema';
 import { softDeletePlugin } from './plugins/soft-delete.plugin';
+import {
+  ContentReviewRequest,
+  ContentReviewRequestSchema,
+} from './schemas/content-review-request.schema';
 
 // Register soft-delete plugin globally for all schemas
 mongoose.plugin(softDeletePlugin);
@@ -89,6 +107,12 @@ export const DATABASE_MODEL_DEFINITIONS = [
   { name: AgentWatchRegistry.name, schema: AgentWatchRegistrySchema },
   { name: PostWatchRegistry.name, schema: PostWatchRegistrySchema },
   { name: PlatformInitialization.name, schema: PlatformInitializationSchema },
+  { name: CircleProposal.name, schema: CircleProposalSchema },
+  { name: CircleProposalRevision.name, schema: CircleProposalRevisionSchema },
+  { name: CircleProposalStanceRecord.name, schema: CircleProposalStanceSchema },
+  { name: CircleProposalVote.name, schema: CircleProposalVoteSchema },
+  { name: CircleProposalComment.name, schema: CircleProposalCommentSchema },
+  { name: ContentReviewRequest.name, schema: ContentReviewRequestSchema },
 ];
 
 @Global()

@@ -8,6 +8,7 @@ import { AlertTriangle, Bell, Info, ShieldAlert, Wrench } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/contexts/AuthContext';
 import { systemApi, type ActiveAnnouncement } from '@/lib/api';
+import { AnnouncementMarkdown } from './AnnouncementMarkdown';
 
 const READ_ANNOUNCEMENTS_PREFIX = 'skynet-read-announcements';
 const READ_ANNOUNCEMENTS_EVENT = 'skynet:announcements-read';
@@ -59,7 +60,7 @@ function readSnapshot(viewerKey: string): string {
 }
 
 export function AnnouncementMenu() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const titleId = useId();
@@ -83,7 +84,6 @@ export function AnnouncementMenu() {
   const unreadCount = announcements.filter(
     (item) => !readVersions.has(announcementVersion(item)),
   ).length;
-  const isChinese = i18n.resolvedLanguage?.startsWith('zh') ?? false;
   const buttonLabel = unreadCount > 0
     ? t('announcement.buttonUnread', { count: unreadCount })
     : t('announcement.button');
@@ -164,26 +164,44 @@ export function AnnouncementMenu() {
             ) : (
               announcements.map((item) => {
                 const Icon = KIND_ICON[item.kind];
-                const title = isChinese ? item.titleZh : item.titleEn;
-                const body = isChinese ? item.bodyZh : item.bodyEn;
                 const content = (
-                  <div className="flex gap-3 rounded px-2.5 py-3 transition-colors hover:bg-surface-1">
+                  <div className="flex gap-3 rounded px-2.5 py-3">
                     <Icon className="mt-0.5 h-4 w-4 shrink-0 text-copper" />
                     <div className="min-w-0">
-                      <div className="text-xs font-bold text-ink-primary">{title}</div>
-                      <div className="mt-1 line-clamp-3 text-xs leading-5 text-ink-secondary">{body}</div>
+                      <div className="text-xs font-bold text-ink-primary">{item.title}</div>
+                      <AnnouncementMarkdown
+                        content={item.body}
+                        className="mt-1 text-xs leading-5 text-ink-secondary"
+                      />
                     </div>
                   </div>
                 );
-                if (!item.linkUrl) return <div key={item.id}>{content}</div>;
-                return item.linkUrl.startsWith('/') ? (
-                  <Link key={item.id} href={item.linkUrl} onClick={() => setOpen(false)}>
+                return (
+                  <div key={item.id} className="rounded transition-colors hover:bg-surface-1">
                     {content}
-                  </Link>
-                ) : (
-                  <a key={item.id} href={item.linkUrl} target="_blank" rel="noreferrer noopener">
-                    {content}
-                  </a>
+                    {item.linkUrl && (
+                      <div className="px-2.5 pb-3 pl-9">
+                        {item.linkUrl.startsWith('/') ? (
+                          <Link
+                            href={item.linkUrl}
+                            onClick={() => setOpen(false)}
+                            className="text-xs font-bold text-copper hover:text-copper-dim"
+                          >
+                            {t('announcement.open')}
+                          </Link>
+                        ) : (
+                          <a
+                            href={item.linkUrl}
+                            target="_blank"
+                            rel="noreferrer noopener"
+                            className="text-xs font-bold text-copper hover:text-copper-dim"
+                          >
+                            {t('announcement.open')}
+                          </a>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 );
               })
             )}

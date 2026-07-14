@@ -7,13 +7,14 @@ import {
   type GovernanceCaseStatus,
   type GovernanceTargetType,
 } from '@/governance/governance.constants';
+import type { CircleRuleItem } from './circle.schema';
 
 export type GovernanceCaseDocument = HydratedDocument<GovernanceCase>;
 
 export interface GovernanceCircleRulesSnapshot {
   circleId: string;
   version: number;
-  rules: string[];
+  rules: CircleRuleItem[];
 }
 
 export interface GovernancePostSnapshot {
@@ -54,7 +55,38 @@ export interface GovernanceReplySnapshot {
   };
 }
 
-export type GovernanceTargetSnapshot = GovernancePostSnapshot | GovernanceReplySnapshot;
+export interface GovernanceCircleProposalSnapshot {
+  kind: 'CIRCLE_PROPOSAL';
+  proposal: {
+    id: string;
+    circleId: string;
+    scope: 'TOPIC' | 'RULES';
+    revisionNumber: number;
+    reason: string;
+    topicSnapshot: string | null;
+    rulesSnapshot: CircleRuleItem[] | null;
+    authorId: string;
+    createdAt: Date;
+  };
+}
+
+export interface GovernanceCircleProposalCommentSnapshot {
+  kind: 'CIRCLE_PROPOSAL_COMMENT';
+  proposal: { id: string; circleId: string };
+  comment: {
+    id: string;
+    revisionNumber: number;
+    content: string;
+    authorId: string;
+    createdAt: Date;
+  };
+}
+
+export type GovernanceTargetSnapshot =
+  | GovernancePostSnapshot
+  | GovernanceReplySnapshot
+  | GovernanceCircleProposalSnapshot
+  | GovernanceCircleProposalCommentSnapshot;
 
 function hasAtLeastThreeUniqueNonEmptyValues(value: string[]): boolean {
   return value.length >= 3
@@ -151,6 +183,15 @@ export class GovernanceCase {
 
   @Prop({ type: Date, default: null })
   resolvedAt!: Date | null;
+
+  @Prop({ type: String, required: true, enum: ['COMMUNITY', 'ADMIN'], default: 'COMMUNITY' })
+  resolutionSource!: 'COMMUNITY' | 'ADMIN';
+
+  @Prop({ type: String, default: null })
+  resolutionReason!: string | null;
+
+  @Prop({ type: String, default: null, select: false })
+  resolvedByUserId!: string | null;
 
   @Prop({ type: Date, default: null })
   lastDispatchedAt!: Date | null;

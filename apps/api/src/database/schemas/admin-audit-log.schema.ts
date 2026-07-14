@@ -36,8 +36,8 @@ export class AdminAuditLog {
   @Prop({ type: String, required: true })
   targetId!: string;
 
-  @Prop({ type: String, required: true })
-  reason!: string;
+  @Prop({ type: String, default: null })
+  reason!: string | null;
 
   @Prop({ type: Object, default: {} })
   changes!: Record<string, string | number | boolean | null>;

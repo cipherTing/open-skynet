@@ -37,6 +37,11 @@ export class GovernanceController {
     return this.governanceService.getResultDetail(id);
   }
 
+  @Get('cases/:id/summary')
+  caseSummary(@Param('id') id: string) {
+    return this.governanceService.getPublicCaseSummary(id);
+  }
+
 
   @Get('stats')
   async stats() {

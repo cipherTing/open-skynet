@@ -80,7 +80,11 @@ export class ForumController {
     @Param('id') id: string,
     @CurrentUser() user?: JwtAuthUser,
   ) {
-    const post = await this.forumService.getPost(id, user?.userId);
+    const post = await this.forumService.getPost(
+      id,
+      user?.userId,
+      user?.role === 'ADMIN',
+    );
     if (!user) return post;
     const agentId = await this.watchService.findCurrentAgentId(user);
     if (!agentId) return post;
@@ -138,7 +142,11 @@ export class ForumController {
     @Param('postId') postId: string,
     @CurrentUser() user?: JwtAuthUser,
   ) {
-    return this.forumService.listReplies(postId, user?.userId);
+    return this.forumService.listReplies(
+      postId,
+      user?.userId,
+      user?.role === 'ADMIN',
+    );
   }
 
   @Post('posts/:postId/replies')
@@ -251,7 +259,6 @@ export class ForumController {
       dto.page ?? 1,
       dto.pageSize ?? 20,
       user?.userId,
-      user?.authType,
     );
   }
 

@@ -1,12 +1,12 @@
 'use client';
 
-import { Bell, BellOff, MessageSquare, ShieldCheck, Users } from 'lucide-react';
-import dynamic from 'next/dynamic';
+import { Bell, BellOff, MessageSquare, Scale, Users } from 'lucide-react';
+import Link from 'next/link';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useQuery } from '@tanstack/react-query';
 import { useToast } from '@/components/ui/SignalToast';
 import { useAuth } from '@/contexts/AuthContext';
-import { useOwnerOperation } from '@/contexts/OwnerOperationContext';
 import { circleApi } from '@/lib/api';
 import { formatNumber } from '@/lib/utils';
 import type { Circle } from '@skynet/shared';
@@ -17,11 +17,6 @@ interface CircleInfoPanelProps {
   onSubscriptionChanged: () => Promise<void>;
 }
 
-const CircleMaintenanceModal = dynamic(
-  () => import('./CircleMaintenanceModal').then((module) => module.CircleMaintenanceModal),
-  { ssr: false },
-);
-
 export function CircleInfoPanel({
   circle,
   compact = false,
@@ -30,17 +25,17 @@ export function CircleInfoPanel({
   const { t } = useTranslation();
   const toast = useToast();
   const { isAuthenticated, agent, user } = useAuth();
-  const { canOperateAsAgent } = useOwnerOperation();
   const [subscriptionBusy, setSubscriptionBusy] = useState(false);
-  const [maintenanceOpen, setMaintenanceOpen] = useState(false);
-  const canSubscribe = canOperateAsAgent;
+  const panelQuery = useQuery({
+    queryKey: ['circles', circle.id, 'panel'],
+    queryFn: () => circleApi.getCirclePanel(circle.id),
+  });
+  const canSubscribe = isAuthenticated && Boolean(agent);
   const subscriptionDisabledReason = !isAuthenticated
     ? t('forum.loginRequired')
     : !agent
       ? t('forum.noAgent')
-      : !canSubscribe
-        ? t('replyThread.ownerOperationRequired')
-        : undefined;
+      : undefined;
   const subscriptionLabel = !isAuthenticated
     ? t('circles.loginToSubscribe')
     : !agent
@@ -56,10 +51,6 @@ export function CircleInfoPanel({
     }
     if (!agent) {
       toast.error(t('forum.noAgent'));
-      return;
-    }
-    if (!canOperateAsAgent) {
-      toast.error(t('replyThread.ownerOperationRequired'));
       return;
     }
     if (subscriptionBusy) return;
@@ -98,9 +89,9 @@ export function CircleInfoPanel({
             </p>
             <h1 className="mt-1 truncate text-xl font-bold text-ink-primary">/{circle.name}</h1>
           </div>
-          {circle.isDefault && (
+          {circle.kind === 'OFFICIAL' && (
             <span className="shrink-0 rounded-full border border-moss/20 bg-moss/10 px-2 py-0.5 text-[10px] font-bold text-moss">
-              {t('circles.default')}
+              {t('circles.official')}
             </span>
           )}
         </div>
@@ -128,6 +119,47 @@ export function CircleInfoPanel({
         </div>
       </div>
 
+      {panelQuery.data ? (
+        <div className="mt-5 space-y-5 border-t border-border-subtle pt-5">
+          <section>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-xs font-bold text-ink-primary">{t('circles.detail.todayPosts')}</h2>
+              <span className="font-mono text-lg font-bold text-copper">{panelQuery.data.todayPostCount}</span>
+            </div>
+          </section>
+          <section>
+            <h2 className="mb-2 text-xs font-bold text-ink-primary">{t('circles.detail.latestPosts')}</h2>
+            <div className="space-y-1.5">
+              {panelQuery.data.latestPosts.length ? panelQuery.data.latestPosts.map((post) => (
+                <Link key={post.id} href={`/post/${post.id}`} className="block truncate py-1 text-xs text-ink-secondary transition-colors hover:text-copper">
+                  {post.title}
+                </Link>
+              )) : <p className="text-xs text-ink-muted">{t('circles.detail.noLatestPosts')}</p>}
+            </div>
+          </section>
+          <section>
+            <h2 className="mb-2 text-xs font-bold text-ink-primary">{t('circles.detail.governanceProgress')}</h2>
+            <div className="space-y-2">
+              {panelQuery.data.activeProposals.map((proposal) => (
+                <Link key={proposal.id} href={`/circles/${circle.slug}/co-build/${proposal.id}`} className="flex items-center justify-between gap-3 py-1 text-xs text-ink-secondary hover:text-steel">
+                  <span>{t(`circles.coBuild.scopes.${proposal.scope}`)}</span>
+                  <span className="shrink-0 text-steel">{t(`circles.coBuild.statuses.${proposal.status}`)}</span>
+                </Link>
+              ))}
+              {panelQuery.data.activeGovernanceCases.map((item) => (
+                <div key={item.id} className="flex items-start justify-between gap-3 py-1 text-xs">
+                  <span className="line-clamp-2 text-ink-secondary">{item.title}</span>
+                  <span className="shrink-0 text-rose-500">{t(`governance.inReview.statuses.${item.status}`)}</span>
+                </div>
+              ))}
+              {!panelQuery.data.activeProposals.length && !panelQuery.data.activeGovernanceCases.length ? (
+                <p className="text-xs text-ink-muted">{t('circles.detail.noGovernanceProgress')}</p>
+              ) : null}
+            </div>
+          </section>
+        </div>
+      ) : null}
+
       <div className="mt-5 flex flex-col gap-2 pt-5">
         <button
           type="button"
@@ -143,24 +175,15 @@ export function CircleInfoPanel({
           {circle.subscribed ? <BellOff className="h-3.5 w-3.5" /> : <Bell className="h-3.5 w-3.5" />}
           {subscriptionLabel}
         </button>
-        <button
-          type="button"
-          onClick={() => setMaintenanceOpen(true)}
+        <Link
+          href={`/circles/${circle.slug}/co-build`}
           className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-steel/20 px-3 text-xs font-bold text-steel transition-colors hover:border-steel/35 hover:bg-steel/10"
         >
-          <ShieldCheck className="h-3.5 w-3.5" />
-          {t('circles.maintenance.open')}
-        </button>
+          <Scale className="h-3.5 w-3.5" />
+          {t('circles.coBuild.open')}
+          {circle.activeProposalCount > 0 ? <span className="rounded bg-steel/15 px-1.5 py-0.5 font-mono text-[10px]">{circle.activeProposalCount}</span> : null}
+        </Link>
       </div>
-
-      {maintenanceOpen && (
-        <CircleMaintenanceModal
-          circle={circle}
-          viewerKey={user?.id ?? 'anonymous'}
-          onClose={() => setMaintenanceOpen(false)}
-          onChanged={onSubscriptionChanged}
-        />
-      )}
     </section>
   );
 }

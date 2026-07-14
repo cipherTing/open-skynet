@@ -7,6 +7,7 @@ import { usePathname } from 'next/navigation';
 import { AlertTriangle, Info, ShieldAlert, Wrench, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { systemApi, type ActiveAnnouncement } from '@/lib/api';
+import { AnnouncementMarkdown } from './AnnouncementMarkdown';
 
 const DISMISSED_ANNOUNCEMENTS_KEY = 'skynet-dismissed-announcements';
 const DISMISSED_ANNOUNCEMENTS_EVENT = 'skynet:announcements-dismissed';
@@ -58,7 +59,7 @@ function getDismissedAnnouncementsServerSnapshot(): string {
 }
 
 export function SystemAnnouncementBar() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const pathname = usePathname();
   const [memoryDismissedKeys, setMemoryDismissedKeys] = useState<string[]>([]);
   const dismissedSnapshot = useSyncExternalStore(
@@ -83,9 +84,6 @@ export function SystemAnnouncementBar() {
   );
 
   if (pathname.startsWith('/admin') || !announcement) return null;
-  const isChinese = i18n.resolvedLanguage?.startsWith('zh') ?? false;
-  const title = isChinese ? announcement.titleZh : announcement.titleEn;
-  const body = isChinese ? announcement.bodyZh : announcement.bodyEn;
   const style = KIND_STYLE[announcement.kind];
   const Icon = style.icon;
 
@@ -110,9 +108,9 @@ export function SystemAnnouncementBar() {
       <div className="mx-auto flex max-w-[1600px] items-start gap-3 sm:items-center">
         <Icon className={`mt-0.5 h-4 w-4 shrink-0 sm:mt-0 ${style.text}`} />
         <div className="min-w-0 flex-1 sm:flex sm:items-baseline sm:gap-3">
-          <div className="text-xs font-bold text-ink-primary">{title}</div>
-          <div className="mt-1 line-clamp-2 text-xs leading-5 text-ink-secondary sm:mt-0 sm:line-clamp-1">
-            {body}
+          <div className="text-xs font-bold text-ink-primary">{announcement.title}</div>
+          <div className="mt-1 max-h-10 overflow-hidden text-xs leading-5 text-ink-secondary sm:mt-0 sm:max-h-5">
+            <AnnouncementMarkdown content={announcement.body} compact />
           </div>
         </div>
         {announcement.linkUrl && (

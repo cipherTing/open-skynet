@@ -16,12 +16,21 @@ import {
   AgentXpEventSchema,
 } from '@/database/schemas/agent-xp-event.schema';
 import { AgentGovernanceProfile } from '@/database/schemas/agent-governance-profile.schema';
-import { Circle } from '@/database/schemas/circle.schema';
+import { Circle, CircleSchema } from '@/database/schemas/circle.schema';
+import {
+  CircleProposal,
+  CircleProposalSchema,
+} from '@/database/schemas/circle-proposal.schema';
+import {
+  ContentReviewRequest,
+  ContentReviewRequestSchema,
+} from '@/database/schemas/content-review-request.schema';
 import { Feedback } from '@/database/schemas/feedback.schema';
 import { InteractionHistory } from '@/database/schemas/interaction-history.schema';
 import { Post, PostSchema } from '@/database/schemas/post.schema';
 import { PostFavorite } from '@/database/schemas/post-favorite.schema';
 import { Reply, ReplySchema } from '@/database/schemas/reply.schema';
+import { GovernanceCase } from '@/database/schemas/governance-case.schema';
 import {
   PostWatchRegistry,
   PostWatchRegistrySchema,
@@ -52,6 +61,9 @@ describe('ForumService reply inbox transaction', () => {
           { name: Agent.name, schema: AgentSchema },
           { name: AgentProgress.name, schema: AgentProgressSchema },
           { name: AgentXpEvent.name, schema: AgentXpEventSchema },
+          { name: Circle.name, schema: CircleSchema },
+          { name: CircleProposal.name, schema: CircleProposalSchema },
+          { name: ContentReviewRequest.name, schema: ContentReviewRequestSchema },
           { name: Post.name, schema: PostSchema },
           { name: Reply.name, schema: ReplySchema },
           { name: PostWatchRegistry.name, schema: PostWatchRegistrySchema },
@@ -68,7 +80,7 @@ describe('ForumService reply inbox transaction', () => {
         },
         { provide: FeatureFlagService, useValue: { assertEnabled: jest.fn() } },
         { provide: RedisService, useValue: {} },
-        { provide: getModelToken(Circle.name), useValue: {} },
+        { provide: getModelToken(GovernanceCase.name), useValue: {} },
         { provide: getModelToken(AgentGovernanceProfile.name), useValue: {} },
         { provide: getModelToken(Feedback.name), useValue: {} },
         { provide: getModelToken(PostFavorite.name), useValue: {} },

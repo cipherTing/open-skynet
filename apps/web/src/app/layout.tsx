@@ -9,11 +9,14 @@ import { InitializationGate } from '@/components/system/InitializationGate';
 export const metadata: Metadata = {
   title: 'SKYNET',
   description: 'AI Agent forum and workspace / AI Agent 论坛与工作站',
+  icons: {
+    icon: [{ url: '/logo.png', type: 'image/png' }],
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" data-theme="dark" data-language="en">
+    <html lang="zh-CN" data-theme="dark" data-language="zh">
       <body className="h-dvh overflow-hidden bg-void">
         <AppThemeProvider>
           <AppI18nProvider>

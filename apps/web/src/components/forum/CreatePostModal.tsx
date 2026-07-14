@@ -1,19 +1,16 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { X, Eye, Send, Radio } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { CircleSearchSelect } from '@/components/circle/CircleSearchSelect';
-import { circleApi, forumApi, ApiError } from '@/lib/api';
-import { circleKeys } from '@/lib/query-keys';
+import { forumApi, ApiError } from '@/lib/api';
 import { notifyProgressionUpdated } from '@/lib/progression-events';
 import { ComposerTextarea } from '@/components/ui/ComposerTextarea';
 import { FLOATING_Z_INDEX } from '@/components/ui/FloatingPortal';
-import { useAuth } from '@/contexts/AuthContext';
 import type { Circle, ForumPost } from '@skynet/shared';
 
 interface CreatePostModalProps {
@@ -24,20 +21,13 @@ interface CreatePostModalProps {
 
 export function CreatePostModal({ onClose, onCreated, initialCircle }: CreatePostModalProps) {
   const { t } = useTranslation();
-  const { user } = useAuth();
-  const viewerKey = user?.id ?? 'anonymous';
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [selectedCircleOverride, setSelectedCircleOverride] = useState<Circle | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const hasInitialCircle = Boolean(initialCircle);
-  const defaultCircleQuery = useQuery({
-    queryKey: circleKeys.defaultCircle(viewerKey),
-    queryFn: () => circleApi.getDefaultCircle(),
-    enabled: !hasInitialCircle,
-  });
+  const [reviewPending, setReviewPending] = useState(false);
 
   useEffect(() => {
     document.body.style.overflow = 'hidden';
@@ -51,7 +41,7 @@ export function CreatePostModal({ onClose, onCreated, initialCircle }: CreatePos
     };
   }, [onClose]);
 
-  const selectedCircle = selectedCircleOverride ?? initialCircle ?? defaultCircleQuery.data ?? null;
+  const selectedCircle = selectedCircleOverride ?? initialCircle ?? null;
 
   const handleSubmit = useCallback(async () => {
     if (!title.trim() || !content.trim()) {
@@ -65,13 +55,17 @@ export function CreatePostModal({ onClose, onCreated, initialCircle }: CreatePos
     setError('');
     setSubmitting(true);
     try {
-      const created = await forumApi.createPost({
+      const result = await forumApi.createPost({
         title: title.trim(),
         content: content.trim(),
         circleId: selectedCircle.id,
       });
-      if (created.progressDelta) notifyProgressionUpdated();
-      onCreated(created);
+      if (result.outcome === 'PENDING_REVIEW') {
+        setReviewPending(true);
+        return;
+      }
+      if (result.post.progressDelta) notifyProgressionUpdated();
+      onCreated(result.post);
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.message);
@@ -93,7 +87,7 @@ export function CreatePostModal({ onClose, onCreated, initialCircle }: CreatePos
       onClick={onClose}
     >
       {/* 遮罩 */}
-      <div className="absolute inset-0 bg-void/70 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-void/45 backdrop-blur-[2px]" />
 
       {/* 模态框 */}
       <motion.div
@@ -125,6 +119,14 @@ export function CreatePostModal({ onClose, onCreated, initialCircle }: CreatePos
         </div>
 
         <div className="p-5 space-y-4">
+          {reviewPending ? (
+            <div className="py-6 text-center">
+              <div className="text-base font-bold text-ink-primary">{t('createPost.reviewPendingTitle')}</div>
+              <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-ink-secondary">{t('createPost.reviewPendingDescription')}</p>
+              <button type="button" onClick={onClose} className="mt-6 rounded-md bg-copper px-4 py-2 text-sm font-bold text-void">{t('app.close')}</button>
+            </div>
+          ) : (
+            <>
           {/* 错误提示 */}
           {error && (
             <div className="px-3 py-2 border border-ochre/20 bg-ochre/10 text-ochre text-[12px] rounded-md">
@@ -142,9 +144,6 @@ export function CreatePostModal({ onClose, onCreated, initialCircle }: CreatePos
               onSelect={setSelectedCircleOverride}
               disabled={submitting}
             />
-            {defaultCircleQuery.isError && !selectedCircle && (
-              <p className="mt-1.5 text-[11px] text-ochre">{t('createPost.defaultCircleLoadFailed')}</p>
-            )}
           </div>
 
           {/* 标题 */}
@@ -218,6 +217,8 @@ export function CreatePostModal({ onClose, onCreated, initialCircle }: CreatePos
               {submitting ? t('createPost.submitting') : t('createPost.submit')}
             </button>
           </div>
+            </>
+          )}
         </div>
       </motion.div>
     </motion.div>

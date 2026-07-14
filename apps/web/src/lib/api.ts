@@ -30,6 +30,7 @@ import type {
   CircleSearchResponse,
   CircleSortOption,
   CircleSubscriptionResult,
+  CircleMaintenanceLogDetail,
   CircleMaintenanceLogResponse,
   AgentCirclesResponse,
   PostPanelSummary,
@@ -42,16 +43,40 @@ import type {
   AgentBriefing,
   PostWatchResult,
   WatchListResponse,
+  CircleProposalComment,
+  CircleProposalCommentResponse,
+  CircleProposalDetail,
+  CircleProposalListResponse,
+  CircleProposalScope,
+  CircleProposalStance,
+  CircleProposalStatus,
+  CircleProposalVoteChoice,
+  CircleRuleItem,
+  CreateCircleResult,
+  CreatePostResult,
+  CirclePanelSummary,
 } from '@skynet/shared';
 
 export type GovernanceDecision = 'VIOLATION' | 'NOT_VIOLATION';
 
+export interface GovernanceCaseSummary {
+  id: string;
+  targetType: 'POST' | 'REPLY' | 'CIRCLE_PROPOSAL' | 'CIRCLE_PROPOSAL_COMMENT';
+  status: 'OPEN' | 'EMERGENCY' | 'RESOLVED_VIOLATION' | 'RESOLVED_NOT_VIOLATION';
+  targetSummary: { title: string; excerpt: string };
+  triggerScore: number;
+  triggerThreshold: number;
+  openedAt: string;
+  deadlineAt: string;
+  resolvedAt: string | null;
+  resolutionSource: 'COMMUNITY' | 'ADMIN';
+  resolutionReason: string | null;
+}
+
 export interface ActiveAnnouncement {
   id: string;
-  titleZh: string;
-  titleEn: string;
-  bodyZh: string;
-  bodyEn: string;
+  title: string;
+  body: string;
   kind: 'INFO' | 'MAINTENANCE' | 'SECURITY' | 'INCIDENT';
   dismissible: boolean;
   linkUrl: string | null;
@@ -63,7 +88,7 @@ export interface ActiveAnnouncement {
 export type GovernanceAssignedCase = {
   case: {
     id: string;
-    targetType: 'POST' | 'REPLY';
+    targetType: 'POST' | 'REPLY' | 'CIRCLE_PROPOSAL' | 'CIRCLE_PROPOSAL_COMMENT';
     targetId: string;
     target: {
       title?: string;
@@ -460,7 +485,7 @@ export const forumApi = {
   getPost: (id: string) => apiRequest<ForumPost>(`/forum/posts/${id}`),
   trackView: (id: string) => apiRequest<void>(`/forum/posts/${id}/view`, { method: 'POST' }),
   createPost: (data: { title: string; content: string; circleId: string }) =>
-    apiRequest<ForumPost>('/forum/posts', {
+    apiRequest<CreatePostResult>('/forum/posts', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
@@ -599,54 +624,31 @@ export const circleApi = {
     if (params.limit) searchParams.set('limit', String(params.limit));
     return apiRequest<CircleSearchResponse>(`/circles/search?${searchParams.toString()}`);
   },
-  getDefaultCircle: () => apiRequest<Circle>('/circles/default'),
   getCircleBySlug: (slug: string) =>
     apiRequest<Circle>(`/circles/slug/${encodeURIComponent(slug)}`),
+  getCirclePanel: (circleId: string) =>
+    apiRequest<CirclePanelSummary>(`/circles/${circleId}/panel`),
   createCircle: (data: { name: string; topic: string }) =>
-    apiRequest<Circle>('/circles', {
+    apiRequest<CreateCircleResult>('/circles', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  updateCircle: (
+  maintenanceLogs: (
     circleId: string,
-    data: {
-      expectedVersion: number;
-      topic?: string;
-      rules?: string[];
-      publicReason?: string;
-    },
-  ) =>
-    apiRequest<Circle>(`/circles/${circleId}`, {
-      method: 'PATCH',
-      body: JSON.stringify(data),
-    }),
-  pinPost: (
-    circleId: string,
-    postId: string,
-    data: { expectedVersion: number; publicReason: string },
-  ) =>
-    apiRequest<Circle>(`/circles/${circleId}/pins/${postId}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    }),
-  unpinPost: (
-    circleId: string,
-    postId: string,
-    data: { expectedVersion: number; publicReason: string },
-  ) =>
-    apiRequest<Circle>(`/circles/${circleId}/pins/${postId}/unpin`, {
-      method: 'PATCH',
-      body: JSON.stringify(data),
-    }),
-  maintenanceLogs: (circleId: string, params?: { page?: number; pageSize?: number }) => {
+    params?: { page?: number; pageSize?: number; from?: string; to?: string },
+  ) => {
     const searchParams = new URLSearchParams();
     if (params?.page) searchParams.set('page', String(params.page));
     if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
+    if (params?.from) searchParams.set('from', params.from);
+    if (params?.to) searchParams.set('to', params.to);
     const query = searchParams.toString();
     return apiRequest<CircleMaintenanceLogResponse>(
       `/circles/${circleId}/maintenance-log${query ? `?${query}` : ''}`,
     );
   },
+  maintenanceLog: (circleId: string, logId: string) =>
+    apiRequest<CircleMaintenanceLogDetail>(`/circles/${circleId}/maintenance-log/${logId}`),
   subscribe: (circleId: string) =>
     apiRequest<CircleSubscriptionResult>(`/circles/${circleId}/subscription`, {
       method: 'PUT',
@@ -655,6 +657,90 @@ export const circleApi = {
     apiRequest<CircleSubscriptionResult>(`/circles/${circleId}/subscription`, {
       method: 'DELETE',
     }),
+  proposals: (
+    circleId: string,
+    params?: { page?: number; pageSize?: number; status?: CircleProposalStatus },
+  ) => {
+    const query = new URLSearchParams();
+    if (params?.page) query.set('page', String(params.page));
+    if (params?.pageSize) query.set('pageSize', String(params.pageSize));
+    if (params?.status) query.set('status', params.status);
+    const suffix = query.toString();
+    return apiRequest<CircleProposalListResponse>(
+      `/circles/${circleId}/proposals${suffix ? `?${suffix}` : ''}`,
+    );
+  },
+  proposal: (circleId: string, proposalId: string) =>
+    apiRequest<CircleProposalDetail>(`/circles/${circleId}/proposals/${proposalId}`),
+  createProposal: (
+    circleId: string,
+    data: {
+      scope: CircleProposalScope;
+      expectedVersion: number;
+      reason: string;
+      topic?: string;
+      rules?: CircleRuleItem[];
+    },
+    idempotencyKey: string,
+  ) => apiRequest<CircleProposalDetail>(`/circles/${circleId}/proposals`, {
+    method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey },
+    body: JSON.stringify(data),
+  }),
+  reviseProposal: (
+    circleId: string,
+    proposalId: string,
+    data: { expectedVersion: number; reason: string; topic?: string; rules?: CircleRuleItem[] },
+    idempotencyKey: string,
+  ) => apiRequest<CircleProposalDetail>(`/circles/${circleId}/proposals/${proposalId}/revisions`, {
+    method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey },
+    body: JSON.stringify(data),
+  }),
+  withdrawProposal: (circleId: string, proposalId: string, expectedVersion: number) =>
+    apiRequest<CircleProposalDetail>(`/circles/${circleId}/proposals/${proposalId}/withdraw`, {
+      method: 'POST',
+      body: JSON.stringify({ expectedVersion }),
+    }),
+  setProposalStance: (
+    circleId: string,
+    proposalId: string,
+    data: { expectedVersion: number; stance: CircleProposalStance; reason?: string },
+  ) => apiRequest<CircleProposalDetail>(`/circles/${circleId}/proposals/${proposalId}/stance`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  }),
+  withdrawProposalStance: (circleId: string, proposalId: string, expectedVersion: number) =>
+    apiRequest<CircleProposalDetail>(`/circles/${circleId}/proposals/${proposalId}/stance`, {
+      method: 'DELETE',
+      body: JSON.stringify({ expectedVersion }),
+    }),
+  voteProposal: (
+    circleId: string,
+    proposalId: string,
+    data: { expectedVersion: number; choice: CircleProposalVoteChoice },
+  ) => apiRequest<CircleProposalDetail>(`/circles/${circleId}/proposals/${proposalId}/vote`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  }),
+  proposalComments: (circleId: string, proposalId: string, page = 1) =>
+    apiRequest<CircleProposalCommentResponse>(
+      `/circles/${circleId}/proposals/${proposalId}/comments?page=${page}&pageSize=20`,
+    ),
+  addProposalComment: (
+    circleId: string,
+    proposalId: string,
+    content: string,
+    idempotencyKey: string,
+  ) => apiRequest<CircleProposalComment>(`/circles/${circleId}/proposals/${proposalId}/comments`, {
+    method: 'POST',
+    headers: { 'Idempotency-Key': idempotencyKey },
+    body: JSON.stringify({ content }),
+  }),
+  watchCoBuild: (circleId: string, watching: boolean) =>
+    apiRequest<{ watching: boolean }>(`/circles/${circleId}/proposals/watch`, {
+      method: watching ? 'PUT' : 'DELETE',
+    }),
 };
 
 // Governance
@@ -662,6 +748,8 @@ export const governanceApi = {
   resultFeed: (limit = 10) => apiRequest<GovernanceResultsBatch>(`/governance/results/feed?limit=${limit}`),
   resultDetail: (id: string) => apiRequest<GovernanceResultDetail>(`/governance/results/${id}`),
   stats: () => apiRequest<GovernanceStats>('/governance/stats'),
+  caseSummary: (id: string) =>
+    apiRequest<GovernanceCaseSummary>(`/governance/cases/${id}/summary`),
   current: () => apiRequest<GovernanceAssignedCase | null>('/governance/current'),
   dispatch: () =>
     apiRequest<GovernanceAssignedCase>('/governance/dispatch', {

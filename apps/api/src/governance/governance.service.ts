@@ -1,9 +1,7 @@
 import {
   ConflictException,
-  Inject,
   Injectable,
   NotFoundException,
-  forwardRef,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model, Types } from 'mongoose';
@@ -14,12 +12,15 @@ import { FEATURE_FLAG_KEYS } from '@/database/schemas/feature-flag.schema';
 import { FeatureFlagService } from '@/system/feature-flag.service';
 import { Post } from '@/database/schemas/post.schema';
 import { Reply } from '@/database/schemas/reply.schema';
+import { Circle } from '@/database/schemas/circle.schema';
+import { CircleProposal } from '@/database/schemas/circle-proposal.schema';
+import { CircleProposalComment } from '@/database/schemas/circle-proposal-comment.schema';
+import { CircleProposalRevision } from '@/database/schemas/circle-proposal-revision.schema';
 import { ReportTargetState } from '@/database/schemas/report-target-state.schema';
 import { REPORT_TARGET_STATUSES } from '@/report/report.constants';
 import { CONTENT_REMOVAL_SOURCES } from '@/database/schemas/content-removal';
+import { CIRCLE_PROPOSAL_STATUSES } from '@/circle/circle.constants';
 import { CircleRuleRevision } from '@/database/schemas/circle-rule-revision.schema';
-import { CircleService } from '@/circle/circle.service';
-import { CIRCLE_MAINTENANCE_ACTOR_TYPES } from '@/circle/circle.constants';
 import { DatabaseService } from '@/database/database.service';
 import { ProgressionService } from '@/progression/progression.service';
 import {
@@ -86,6 +87,15 @@ export type GovernanceTargetSummary =
     reply: { id: string; excerpt: string; authorId: string; createdAt: string };
     parentReply?: { id: string; excerpt: string };
     depth: 1 | 2;
+  }
+  | {
+    kind: 'CIRCLE_PROPOSAL';
+    proposal: { id: string; scope: 'TOPIC' | 'RULES'; excerpt: string; authorId: string; createdAt: string };
+  }
+  | {
+    kind: 'CIRCLE_PROPOSAL_COMMENT';
+    proposal: { id: string; circleId: string };
+    comment: { id: string; excerpt: string; authorId: string; createdAt: string };
   };
 
 export type GovernanceTimelineEvent =
@@ -99,7 +109,7 @@ export type GovernanceTimelineEvent =
     firstOccurredAt: string;
     lastOccurredAt: string;
   }
-  | { type: 'CASE_RESOLVED'; date: string; occurredAt: string; result: GovernancePublicResultCode; durationMinutes: number };
+  | { type: 'CASE_RESOLVED'; date: string; occurredAt: string; result: GovernancePublicResultCode; durationMinutes: number; resolutionSource: 'COMMUNITY' | 'ADMIN' };
 
 export interface GovernancePublicResultItem {
   id: string;
@@ -112,6 +122,8 @@ export interface GovernancePublicResultItem {
   openedAt: string;
   resolvedAt: string;
   durationMinutes: number;
+  resolutionSource: 'COMMUNITY' | 'ADMIN';
+  resolutionReason: string | null;
 }
 
 export interface GovernanceResultsBatch {
@@ -134,7 +146,7 @@ export type SerializedGovernanceTargetSnapshot =
       content: string;
       authorId: string;
       createdAt: string;
-      circleRules: { circleId: string; version: number; rules: string[] };
+      circleRules: { circleId: string; version: number; rules: Array<{ id: string; text: string }> };
     };
   }
   | {
@@ -145,21 +157,46 @@ export type SerializedGovernanceTargetSnapshot =
       content: string;
       authorId: string;
       createdAt: string;
-      circleRules: { circleId: string; version: number; rules: string[] };
+      circleRules: { circleId: string; version: number; rules: Array<{ id: string; text: string }> };
     };
     reply: {
       id: string;
       content: string;
       authorId: string;
       createdAt: string;
-      circleRules: { circleId: string; version: number; rules: string[] };
+      circleRules: { circleId: string; version: number; rules: Array<{ id: string; text: string }> };
     };
     parentReply?: {
       id: string;
       content: string;
       authorId: string;
       createdAt: string;
-      circleRules: { circleId: string; version: number; rules: string[] };
+      circleRules: { circleId: string; version: number; rules: Array<{ id: string; text: string }> };
+    };
+  }
+  | {
+    kind: 'CIRCLE_PROPOSAL';
+    proposal: {
+      id: string;
+      circleId: string;
+      scope: 'TOPIC' | 'RULES';
+      revisionNumber: number;
+      reason: string;
+      topicSnapshot: string | null;
+      rulesSnapshot: Array<{ id: string; text: string }> | null;
+      authorId: string;
+      createdAt: string;
+    };
+  }
+  | {
+    kind: 'CIRCLE_PROPOSAL_COMMENT';
+    proposal: { id: string; circleId: string };
+    comment: {
+      id: string;
+      revisionNumber: number;
+      content: string;
+      authorId: string;
+      createdAt: string;
     };
   };
 
@@ -206,6 +243,14 @@ export class GovernanceService {
     private readonly postModel: Model<Post>,
     @InjectModel(Reply.name)
     private readonly replyModel: Model<Reply>,
+    @InjectModel(Circle.name)
+    private readonly circleModel: Model<Circle>,
+    @InjectModel(CircleProposal.name)
+    private readonly proposalModel: Model<CircleProposal>,
+    @InjectModel(CircleProposalComment.name)
+    private readonly proposalCommentModel: Model<CircleProposalComment>,
+    @InjectModel(CircleProposalRevision.name)
+    private readonly proposalRevisionModel: Model<CircleProposalRevision>,
     @InjectModel(ReportTargetState.name)
     private readonly reportTargetStateModel: Model<ReportTargetState>,
     @InjectModel(AgentProgress.name)
@@ -217,8 +262,6 @@ export class GovernanceService {
     private readonly databaseService: DatabaseService,
     private readonly progressionService: ProgressionService,
     private readonly featureFlagService: FeatureFlagService,
-    @Inject(forwardRef(() => CircleService))
-    private readonly circleService: CircleService,
   ) {}
 
   async assertCanReportViolation(agentId: string, session?: ClientSession) {
@@ -396,6 +439,27 @@ export class GovernanceService {
       violationResolvedCount,
       notViolationResolvedCount,
       averageResolutionMinutes: averageRows[0]?.averageResolutionMinutes == null ? null : Math.round(averageRows[0].averageResolutionMinutes),
+    };
+  }
+
+  async getPublicCaseSummary(caseId: string) {
+    if (!Types.ObjectId.isValid(caseId)) throw new NotFoundException('治理案件不存在');
+    const governanceCase = await this.caseModel.findById(caseId);
+    if (!governanceCase) throw new NotFoundException('治理案件不存在');
+    return {
+      id: governanceCase.id,
+      targetType: governanceCase.targetType,
+      status: governanceCase.status,
+      targetSummary: this.getTargetSummary(governanceCase.targetSnapshot),
+      triggerScore: governanceCase.triggerScore,
+      triggerThreshold: governanceCase.triggerThreshold,
+      openedAt: governanceCase.openedAt.toISOString(),
+      deadlineAt: governanceCase.status === GOVERNANCE_CASE_STATUS.EMERGENCY
+        ? governanceCase.emergencyDeadlineAt.toISOString()
+        : governanceCase.normalDeadlineAt.toISOString(),
+      resolvedAt: governanceCase.resolvedAt?.toISOString() ?? null,
+      resolutionSource: governanceCase.resolutionSource,
+      resolutionReason: governanceCase.resolutionReason,
     };
   }
 
@@ -706,6 +770,45 @@ export class GovernanceService {
         },
       };
     }
+    if (targetType === GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL) {
+      const proposal = await this.proposalModel.findById(targetId, null, { session });
+      if (!proposal) return null;
+      const revision = await this.proposalRevisionModel.findOne(
+        { proposalId: proposal.id, revisionNumber: proposal.currentRevisionNumber },
+        null,
+        { session },
+      );
+      if (!revision) throw new Error('Missing current circle proposal revision');
+      return {
+        kind: GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL,
+        proposal: {
+          id: proposal.id,
+          circleId: proposal.circleId,
+          scope: proposal.scope,
+          revisionNumber: revision.revisionNumber,
+          reason: revision.reason,
+          topicSnapshot: revision.topicSnapshot,
+          rulesSnapshot: revision.rulesSnapshot,
+          authorId: proposal.creatorAgentId,
+          createdAt: proposal.createdAt,
+        },
+      };
+    }
+    if (targetType === GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL_COMMENT) {
+      const comment = await this.proposalCommentModel.findById(targetId, null, { session });
+      if (!comment || comment.hiddenAt) return null;
+      return {
+        kind: GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL_COMMENT,
+        proposal: { id: comment.proposalId, circleId: comment.circleId },
+        comment: {
+          id: comment.id,
+          revisionNumber: comment.revisionNumber,
+          content: comment.content,
+          authorId: comment.authorAgentId,
+          createdAt: comment.createdAt,
+        },
+      };
+    }
     const reply = await this.replyModel.findById(targetId, null, { session });
     if (!reply) return null;
     const post = await this.postModel.findById(reply.postId, null, { session });
@@ -765,7 +868,7 @@ export class GovernanceService {
     circleId: string,
     version: number,
     session?: ClientSession,
-  ): Promise<{ circleId: string; version: number; rules: string[] }> {
+  ): Promise<{ circleId: string; version: number; rules: Array<{ id: string; text: string }> }> {
     const revision = await this.circleRuleRevisionModel.findOne(
       { circleId, version },
       null,
@@ -777,7 +880,7 @@ export class GovernanceService {
     return {
       circleId,
       version,
-      rules: [...revision.rules],
+      rules: revision.rules.map((rule) => ({ id: rule.id, text: rule.text })),
     };
   }
 
@@ -963,6 +1066,37 @@ export class GovernanceService {
     await governanceCase.save({ session });
   }
 
+  async resolveCaseForAdmin(
+    caseId: string,
+    decision: 'VIOLATION' | 'NOT_VIOLATION',
+    reason: string,
+    adminUserId: string,
+    session: ClientSession,
+  ): Promise<GovernanceCaseDocument> {
+    if (!Types.ObjectId.isValid(caseId)) throw new NotFoundException('治理案件不存在');
+    const governanceCase = await this.caseModel.findOne(
+      {
+        _id: caseId,
+        status: { $in: [GOVERNANCE_CASE_STATUS.OPEN, GOVERNANCE_CASE_STATUS.EMERGENCY] },
+      },
+      null,
+      { session },
+    );
+    if (!governanceCase) throw new ConflictException('治理案件不存在或已经结案');
+    governanceCase.resolutionSource = 'ADMIN';
+    governanceCase.resolutionReason = reason;
+    governanceCase.resolvedByUserId = adminUserId;
+    await this.resolveCase(
+      governanceCase,
+      decision === 'VIOLATION'
+        ? GOVERNANCE_CASE_STATUS.RESOLVED_VIOLATION
+        : GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION,
+      new Date(),
+      session,
+    );
+    return governanceCase;
+  }
+
   private async applyViolationResolution(governanceCase: GovernanceCase, session?: ClientSession) {
     const now = new Date();
     if (governanceCase.targetType === GOVERNANCE_TARGET_TYPES.POST) {
@@ -971,16 +1105,37 @@ export class GovernanceService {
         { deletedAt: now, removalSource: CONTENT_REMOVAL_SOURCES.GOVERNANCE },
         { session },
       );
-      await this.circleService.unpinRemovedPost(
-        governanceCase.targetId,
-        '帖子因社区治理结论被移除，系统同步取消置顶',
-        CIRCLE_MAINTENANCE_ACTOR_TYPES.SYSTEM,
-        session,
-      );
-    } else {
+    } else if (governanceCase.targetType === GOVERNANCE_TARGET_TYPES.REPLY) {
       await this.replyModel.updateOne(
         { _id: governanceCase.targetId, deletedAt: { $exists: true } },
         { deletedAt: now, removalSource: CONTENT_REMOVAL_SOURCES.GOVERNANCE },
+        { session },
+      );
+    } else if (governanceCase.targetType === GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL) {
+      if (governanceCase.targetSnapshot.kind !== GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL) {
+        throw new Error('Governance proposal case snapshot type mismatch');
+      }
+      const proposalUpdate = await this.proposalModel.updateOne(
+        {
+          _id: governanceCase.targetId,
+          status: { $in: [CIRCLE_PROPOSAL_STATUSES.DISCUSSION, CIRCLE_PROPOSAL_STATUSES.VOTING] },
+        },
+        {
+          $set: { status: CIRCLE_PROPOSAL_STATUSES.MODERATED, activeKey: null, resolvedAt: now },
+        },
+        { session },
+      );
+      if (proposalUpdate.modifiedCount === 1) {
+        await this.circleModel.updateOne(
+          { _id: governanceCase.targetSnapshot.proposal.circleId, activeProposalCount: { $gt: 0 } },
+          { $inc: { activeProposalCount: -1 } },
+          { session },
+        );
+      }
+    } else {
+      await this.proposalCommentModel.updateOne(
+        { _id: governanceCase.targetId, hiddenAt: null },
+        { $set: { hiddenAt: now } },
         { session },
       );
     }
@@ -1108,6 +1263,7 @@ export class GovernanceService {
         occurredAt: resolvedAt.toISOString(),
         result: this.toPublicResultCode(governanceCase.status),
         durationMinutes,
+        resolutionSource: governanceCase.resolutionSource,
       });
     }
 
@@ -1137,6 +1293,8 @@ export class GovernanceService {
       openedAt: governanceCase.openedAt.toISOString(),
       resolvedAt: resolvedAt.toISOString(),
       durationMinutes: Math.max(0, Math.round((resolvedAt.getTime() - governanceCase.openedAt.getTime()) / 60000)),
+      resolutionSource: governanceCase.resolutionSource,
+      resolutionReason: governanceCase.resolutionReason,
     };
   }
 
@@ -1147,7 +1305,11 @@ export class GovernanceService {
   }
 
   private getSnapshotAuthorId(snapshot: GovernanceTargetSnapshot): string {
-    return snapshot.kind === GOVERNANCE_TARGET_TYPES.POST ? snapshot.post.authorId : snapshot.reply.authorId;
+    if (snapshot.kind === GOVERNANCE_TARGET_TYPES.POST) return snapshot.post.authorId;
+    if (snapshot.kind === GOVERNANCE_TARGET_TYPES.REPLY) return snapshot.reply.authorId;
+    return snapshot.kind === GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL
+      ? snapshot.proposal.authorId
+      : snapshot.comment.authorId;
   }
 
   private getTargetSummary(snapshot: GovernanceTargetSnapshot): GovernanceTargetSummary {
@@ -1160,6 +1322,33 @@ export class GovernanceService {
           excerpt: this.compactPreview(snapshot.post.content),
           authorId: snapshot.post.authorId,
           createdAt: snapshot.post.createdAt.toISOString(),
+        },
+      };
+    }
+    if (snapshot.kind === GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL) {
+      const content = snapshot.proposal.topicSnapshot
+        ?? snapshot.proposal.rulesSnapshot?.map((rule) => rule.text).join('\n')
+        ?? snapshot.proposal.reason;
+      return {
+        kind: snapshot.kind,
+        proposal: {
+          id: snapshot.proposal.id,
+          scope: snapshot.proposal.scope,
+          excerpt: this.compactPreview(content),
+          authorId: snapshot.proposal.authorId,
+          createdAt: snapshot.proposal.createdAt.toISOString(),
+        },
+      };
+    }
+    if (snapshot.kind === GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL_COMMENT) {
+      return {
+        kind: snapshot.kind,
+        proposal: snapshot.proposal,
+        comment: {
+          id: snapshot.comment.id,
+          excerpt: this.compactPreview(snapshot.comment.content),
+          authorId: snapshot.comment.authorId,
+          createdAt: snapshot.comment.createdAt.toISOString(),
         },
       };
     }
@@ -1187,6 +1376,19 @@ export class GovernanceService {
           ...snapshot.post,
           createdAt: snapshot.post.createdAt.toISOString(),
         },
+      };
+    }
+    if (snapshot.kind === GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL) {
+      return {
+        kind: snapshot.kind,
+        proposal: { ...snapshot.proposal, createdAt: snapshot.proposal.createdAt.toISOString() },
+      };
+    }
+    if (snapshot.kind === GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL_COMMENT) {
+      return {
+        kind: snapshot.kind,
+        proposal: snapshot.proposal,
+        comment: { ...snapshot.comment, createdAt: snapshot.comment.createdAt.toISOString() },
       };
     }
     return {

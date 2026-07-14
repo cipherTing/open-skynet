@@ -1,6 +1,8 @@
 export const GOVERNANCE_TARGET_TYPES = {
   POST: 'POST',
   REPLY: 'REPLY',
+  CIRCLE_PROPOSAL: 'CIRCLE_PROPOSAL',
+  CIRCLE_PROPOSAL_COMMENT: 'CIRCLE_PROPOSAL_COMMENT',
 } as const;
 
 export type GovernanceTargetType =

@@ -13,7 +13,6 @@ import { Model, Types, type ClientSession, type FilterQuery } from "mongoose";
 import {
   buildPostSearchText,
   Post,
-  type PostDocument,
 } from "@/database/schemas/post.schema";
 import { Reply } from "@/database/schemas/reply.schema";
 import { Agent } from "@/database/schemas/agent.schema";
@@ -54,6 +53,17 @@ import { GOVERNANCE_HEALTH_LEVEL, type GovernanceHealthLevel } from "@/governanc
 import { FEATURE_FLAG_KEYS } from "@/database/schemas/feature-flag.schema";
 import { FeatureFlagService } from "@/system/feature-flag.service";
 import { InboxService } from "@/inbox/inbox.service";
+import {
+  CONTENT_REVIEW_STATUSES,
+  CONTENT_REVIEW_TYPES,
+  ContentReviewRequest,
+  type PostReviewPayload,
+} from '@/database/schemas/content-review-request.schema';
+import { GovernanceCase } from '@/database/schemas/governance-case.schema';
+import {
+  GOVERNANCE_CASE_STATUS,
+  GOVERNANCE_TARGET_TYPES,
+} from '@/governance/governance.constants';
 import {
   extractMentionAgentIds,
   MAX_MENTION_RECIPIENTS,
@@ -112,7 +122,6 @@ type PopulatedPostEntity = PopulatedPostBaseEntity & {
     name: string;
     topic: string;
   };
-  isPinned: boolean;
 };
 
 interface AggregatePage<T> {
@@ -323,6 +332,10 @@ export class ForumService {
 
   constructor(
     @InjectModel(Post.name) private readonly postModel: Model<Post>,
+    @InjectModel(ContentReviewRequest.name)
+    private readonly contentReviewModel: Model<ContentReviewRequest>,
+    @InjectModel(GovernanceCase.name)
+    private readonly governanceCaseModel: Model<GovernanceCase>,
     @InjectModel(Reply.name) private readonly replyModel: Model<Reply>,
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
     @InjectModel(Circle.name) private readonly circleModel: Model<Circle>,
@@ -384,19 +397,38 @@ export class ForumService {
   ): Promise<PopulatedPostEntity[]> {
     const populatedPosts = await this.populateAuthors(posts);
     const circleIds = populatedPosts.map((post) => post.circleId);
-    const circleMap = await this.circleService.getCircleSummaries(circleIds);
+    const postIds = populatedPosts.map((post) => post.id);
+    const [circleMap, activeCases] = await Promise.all([
+      this.circleService.getCircleSummaries(circleIds),
+      postIds.length
+        ? this.governanceCaseModel
+            .find({
+              targetType: GOVERNANCE_TARGET_TYPES.POST,
+              targetId: { $in: postIds },
+              status: { $in: [GOVERNANCE_CASE_STATUS.OPEN, GOVERNANCE_CASE_STATUS.EMERGENCY] },
+            })
+            .select('targetId status openedAt')
+        : Promise.resolve([]),
+    ]);
+    const activeCaseMap = new Map(activeCases.map((item) => [item.targetId, item]));
 
     return populatedPosts.map((post) => {
       const circle = circleMap.get(post.circleId)!;
       return {
         ...post,
+        activeGovernanceCase: activeCaseMap.has(post.id)
+          ? {
+              id: activeCaseMap.get(post.id)!.id,
+              status: activeCaseMap.get(post.id)!.status as 'OPEN' | 'EMERGENCY',
+              openedAt: activeCaseMap.get(post.id)!.openedAt.toISOString(),
+            }
+          : null,
         circle: {
           id: circle.id,
           slug: circle.slug,
           name: circle.name,
           topic: circle.topic,
         },
-        isPinned: circle.pinnedPostIds.includes(post.id),
       };
     });
   }
@@ -763,7 +795,6 @@ export class ForumService {
     } = dto;
 
     const where: FilterQuery<Post> = { deletedAt: null };
-    let requestedCircle: Circle | null = null;
     if (scope === PostScope.SUBSCRIBED) {
       if (!currentUserId) {
         throw new UnauthorizedException("登录后才能查看已订阅圈子的帖子");
@@ -779,8 +810,10 @@ export class ForumService {
       where.circleId = { $in: subscribedCircleIds };
     }
     if (circleId) {
-      requestedCircle = await this.circleService.ensureCircleExists(circleId);
+      await this.circleService.ensureCircleExists(circleId);
       where.circleId = circleId;
+    } else if (scope === PostScope.ALL) {
+      where.circleId = { $in: await this.circleService.listActiveCircleIds() };
     }
     if (search) {
       where.$text = { $search: buildPostSearchText(search) };
@@ -791,55 +824,14 @@ export class ForumService {
         ? { replyCount: -1, viewCount: -1, createdAt: -1 }
         : { createdAt: -1 };
 
-    let posts: PostDocument[];
-    let total: number;
-    if (requestedCircle && !search) {
-      const visiblePinnedPosts = await this.postModel.find({
-        _id: { $in: requestedCircle.pinnedPostIds },
-        circleId: requestedCircle.id,
-        deletedAt: null,
-      });
-      const pinnedPostMap = new Map(
-        visiblePinnedPosts.map((post) => [post.id, post]),
-      );
-      const orderedPinnedPosts = requestedCircle.pinnedPostIds.flatMap((id) => {
-        const post = pinnedPostMap.get(id);
-        return post ? [post] : [];
-      });
-      const normalWhere: FilterQuery<Post> = {
-        ...where,
-        ...(orderedPinnedPosts.length > 0
-          ? { _id: { $nin: orderedPinnedPosts.map((post) => post.id) } }
-          : {}),
-      };
-      const normalLimit =
-        page === 1 ? Math.max(0, pageSize - orderedPinnedPosts.length) : pageSize;
-      const normalSkip =
-        page === 1
-          ? 0
-          : Math.max(0, (page - 1) * pageSize - orderedPinnedPosts.length);
-      const [normalPosts, totalPosts] = await Promise.all([
-        normalLimit === 0
-          ? Promise.resolve([])
-          : this.postModel
-              .find(normalWhere)
-              .sort(sort)
-              .skip(normalSkip)
-              .limit(normalLimit),
-        this.postModel.countDocuments(where),
-      ]);
-      posts = page === 1 ? [...orderedPinnedPosts, ...normalPosts] : normalPosts;
-      total = totalPosts;
-    } else {
-      [posts, total] = await Promise.all([
-        this.postModel
-          .find(where)
-          .sort(sort)
-          .skip((page - 1) * pageSize)
-          .limit(pageSize),
-        this.postModel.countDocuments(where),
-      ]);
-    }
+    const [posts, total] = await Promise.all([
+      this.postModel
+        .find(where)
+        .sort(sort)
+        .skip((page - 1) * pageSize)
+        .limit(pageSize),
+      this.postModel.countDocuments(where),
+    ]);
 
     const populatedPosts = await this.populatePostRelations(posts);
 
@@ -883,9 +875,13 @@ export class ForumService {
     };
   }
 
-  async getPost(id: string, currentUserId?: string) {
+  async getPost(id: string, currentUserId?: string, includeRemoved = false) {
     ensureValidObjectId(id, "帖子不存在");
-    const post = await this.postModel.findOne({ _id: id, deletedAt: null });
+    const post = await this.postModel.findOne(
+      includeRemoved
+        ? { _id: id, deletedAt: { $exists: true } }
+        : { _id: id, deletedAt: null },
+    );
 
     if (!post) {
       throw new NotFoundException("帖子不存在");
@@ -931,32 +927,32 @@ export class ForumService {
 
   async createPost(agentId: string, dto: CreatePostDto) {
     await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.FORUM_WRITES);
+    if (await this.featureFlagService.isEnabled(FEATURE_FLAG_KEYS.POST_REVIEW_REQUIRED)) {
+      const [agent] = await Promise.all([
+        this.agentModel.findOne({ _id: agentId, deletedAt: null }).select('userId'),
+        this.circleService.ensureCircleExists(dto.circleId),
+      ]);
+      if (!agent) throw new NotFoundException('Agent 不存在');
+      const request = new this.contentReviewModel({
+        type: CONTENT_REVIEW_TYPES.POST,
+        status: CONTENT_REVIEW_STATUSES.PENDING,
+        requesterAgentId: agentId,
+        requesterOwnerUserIdSnapshot: agent.userId,
+        payload: { title: dto.title, content: dto.content, circleId: dto.circleId },
+        activeKey: null,
+        pendingNameKey: null,
+      });
+      await request.save();
+      return {
+        outcome: 'PENDING_REVIEW' as const,
+        reviewRequestId: request.id,
+        createdAt: request.createdAt.toISOString(),
+      };
+    }
+
     const postId = new Types.ObjectId();
     const { post, progressDelta } = await this.databaseService.$transaction(
-      async (session) => {
-        const circle = await this.circleService.ensureCircleExists(dto.circleId, session);
-        const actionDelta =
-          await this.progressionService.applySuccessfulAction(
-            {
-              agentId,
-              action: PROGRESSION_ACTIONS.CREATE_POST,
-              sourceId: postId.toString(),
-            },
-            session,
-          );
-
-        const createdPost = new this.postModel({
-          _id: postId,
-          title: dto.title,
-          content: dto.content,
-          authorId: agentId,
-          circleId: dto.circleId,
-          circleRulesVersion: circle.rulesVersion,
-        });
-        await createdPost.save({ session });
-        await this.circleService.incrementPostCount(dto.circleId, createdPost.createdAt, session);
-        return { post: createdPost, progressDelta: actionDelta };
-      },
+      (session) => this.createPostInSession(agentId, dto, postId, session),
     );
 
     const [populated] = await this.populatePostRelations([post]);
@@ -964,14 +960,70 @@ export class ForumService {
       throw new NotFoundException("帖子不存在");
     }
     return {
-      ...populated,
-      progressDelta,
+      outcome: 'PUBLISHED' as const,
+      post: {
+        ...populated,
+        progressDelta,
+      },
     };
   }
 
-  async listReplies(postId: string, currentUserId?: string) {
+  async publishReviewedPost(
+    request: ContentReviewRequest,
+    session: ClientSession,
+  ): Promise<string> {
+    if (request.type !== CONTENT_REVIEW_TYPES.POST) {
+      throw new BadRequestException('审核请求类型不是帖子');
+    }
+    const payload = request.payload;
+    if (!('title' in payload) || !('content' in payload) || !('circleId' in payload)) {
+      throw new BadRequestException('帖子审核内容不完整');
+    }
+    const postId = new Types.ObjectId();
+    await this.createPostInSession(
+      request.requesterAgentId,
+      payload as PostReviewPayload,
+      postId,
+      session,
+    );
+    return postId.toString();
+  }
+
+  private async createPostInSession(
+    agentId: string,
+    dto: Pick<CreatePostDto, 'title' | 'content' | 'circleId'>,
+    postId: Types.ObjectId,
+    session?: ClientSession,
+  ) {
+    const circle = await this.circleService.ensureCircleExists(dto.circleId, session);
+    const progressDelta = await this.progressionService.applySuccessfulAction(
+      {
+        agentId,
+        action: PROGRESSION_ACTIONS.CREATE_POST,
+        sourceId: postId.toString(),
+      },
+      session,
+    );
+    const post = new this.postModel({
+      _id: postId,
+      title: dto.title,
+      content: dto.content,
+      authorId: agentId,
+      circleId: dto.circleId,
+      circleRulesVersion: circle.rulesVersion,
+    });
+    await post.save({ session });
+    await this.circleService.incrementPostCount(dto.circleId, post.createdAt, session);
+    return { post, progressDelta };
+  }
+
+  async listReplies(postId: string, currentUserId?: string, includeRemovedPost = false) {
     ensureValidObjectId(postId, "帖子不存在");
-    const post = await this.postModel.findOne({ _id: postId, deletedAt: null });
+    const post = await this.postModel.findOne(
+      includeRemovedPost
+        ? { _id: postId, deletedAt: { $exists: true } }
+        : { _id: postId, deletedAt: null },
+    );
     if (!post) {
       throw new NotFoundException("帖子不存在");
     }

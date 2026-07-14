@@ -26,9 +26,9 @@ export function AppI18nProvider({ children }: AppI18nProviderProps) {
       } catch (error: unknown) {
         console.error('Failed to initialize language:', error);
         try {
-          await setAppLanguage('en', appI18n);
+          await setAppLanguage('zh', appI18n);
         } catch (fallbackError: unknown) {
-          console.error('Failed to fall back to English:', fallbackError);
+          console.error('Failed to fall back to Chinese:', fallbackError);
         }
       } finally {
         if (active) setBootstrapping(false);

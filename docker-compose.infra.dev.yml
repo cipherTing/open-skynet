@@ -21,7 +21,7 @@ services:
     read_only: false
     healthcheck:
       disable: false
-      interval: 2s
+      interval: 30s
       timeout: 2s
       retries: 20
       start_period: 5s

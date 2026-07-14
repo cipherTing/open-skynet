@@ -23,7 +23,7 @@ import { ADMIN_AUDIT_ACTIONS } from './admin.constants';
 import type { AdminPrincipal } from './interfaces/admin-principal.interface';
 import type { CreateAnnouncementDto } from './dto/create-announcement.dto';
 import type { UpdateAnnouncementDto } from './dto/update-announcement.dto';
-import type { VersionedAdminReasonDto } from './dto/versioned-admin-reason.dto';
+import type { VersionedAnnouncementDto } from './dto/versioned-announcement.dto';
 import type { UpdateFeatureFlagDto } from './dto/update-feature-flag.dto';
 import type { ListAnnouncementsDto } from './dto/list-announcements.dto';
 import type { ListSecurityEventsDto } from './dto/list-security-events.dto';
@@ -71,10 +71,8 @@ export class AdminSystemService {
     if (dto.search?.trim()) {
       const pattern = escapeRegex(dto.search.trim());
       where.$or = [
-        { titleZh: { $regex: pattern, $options: 'i' } },
-        { titleEn: { $regex: pattern, $options: 'i' } },
-        { bodyZh: { $regex: pattern, $options: 'i' } },
-        { bodyEn: { $regex: pattern, $options: 'i' } },
+        { title: { $regex: pattern, $options: 'i' } },
+        { body: { $regex: pattern, $options: 'i' } },
       ];
     }
     const [items, total] = await Promise.all([
@@ -103,10 +101,8 @@ export class AdminSystemService {
 
     return this.databaseService.$transaction(async (session) => {
       const announcement = new this.announcementModel({
-        titleZh: dto.titleZh.trim(),
-        titleEn: dto.titleEn.trim(),
-        bodyZh: dto.bodyZh.trim(),
-        bodyEn: dto.bodyEn.trim(),
+        title: dto.title.trim(),
+        body: dto.body.trim(),
         kind: dto.kind,
         status: ANNOUNCEMENT_STATUSES.DRAFT,
         startsAt,
@@ -122,7 +118,7 @@ export class AdminSystemService {
         action: ADMIN_AUDIT_ACTIONS.ANNOUNCEMENT_CREATED,
         targetType: 'ANNOUNCEMENT',
         targetId: announcement.id,
-        reason: dto.reason,
+        reason: null,
         changes: {
           status: announcement.status,
           kind: announcement.kind,
@@ -153,17 +149,15 @@ export class AdminSystemService {
 
       const updatedFields: string[] = [];
       const setString = (
-        field: 'titleZh' | 'titleEn' | 'bodyZh' | 'bodyEn',
+        field: 'title' | 'body',
         value: string | undefined,
       ) => {
         if (value === undefined) return;
         announcement[field] = value.trim();
         updatedFields.push(field);
       };
-      setString('titleZh', dto.titleZh);
-      setString('titleEn', dto.titleEn);
-      setString('bodyZh', dto.bodyZh);
-      setString('bodyEn', dto.bodyEn);
+      setString('title', dto.title);
+      setString('body', dto.body);
       if (dto.kind !== undefined) {
         announcement.kind = dto.kind;
         updatedFields.push('kind');
@@ -195,7 +189,7 @@ export class AdminSystemService {
         action: ADMIN_AUDIT_ACTIONS.ANNOUNCEMENT_UPDATED,
         targetType: 'ANNOUNCEMENT',
         targetId: announcement.id,
-        reason: dto.reason,
+        reason: null,
         changes: {
           updatedFields: updatedFields.join(','),
           previousUpdatedAt: dto.expectedUpdatedAt,
@@ -209,7 +203,7 @@ export class AdminSystemService {
   publishAnnouncement(
     admin: AdminPrincipal,
     announcementId: string,
-    dto: VersionedAdminReasonDto,
+    dto: VersionedAnnouncementDto,
   ) {
     return this.changeAnnouncementStatus(
       admin,
@@ -222,7 +216,7 @@ export class AdminSystemService {
   withdrawAnnouncement(
     admin: AdminPrincipal,
     announcementId: string,
-    dto: VersionedAdminReasonDto,
+    dto: VersionedAnnouncementDto,
   ) {
     return this.changeAnnouncementStatus(
       admin,
@@ -235,7 +229,7 @@ export class AdminSystemService {
   async deleteAnnouncementDraft(
     admin: AdminPrincipal,
     announcementId: string,
-    dto: VersionedAdminReasonDto,
+    dto: VersionedAnnouncementDto,
   ) {
     ensureObjectId(announcementId, '公告不存在');
     return this.databaseService.$transaction(async (session) => {
@@ -254,7 +248,7 @@ export class AdminSystemService {
         action: ADMIN_AUDIT_ACTIONS.ANNOUNCEMENT_DELETED,
         targetType: 'ANNOUNCEMENT',
         targetId: announcement.id,
-        reason: dto.reason,
+        reason: null,
         changes: { previousStatus: announcement.status },
         session,
       });
@@ -271,10 +265,6 @@ export class AdminSystemService {
     key: FeatureFlagKey,
     dto: UpdateFeatureFlagDto,
   ) {
-    const reviewAt = parseOptionalDate(dto.reviewAt);
-    if (reviewAt && reviewAt.getTime() <= Date.now()) {
-      throw new BadRequestException('复查时间必须晚于当前时间');
-    }
     try {
       return await this.databaseService.$transaction(async (session) => {
         let flag = await this.featureFlagModel.findOne({ key }, null, { session });
@@ -285,13 +275,11 @@ export class AdminSystemService {
         } else if (flag) {
           throw new ConflictException('功能开关已存在，请刷新后重试');
         }
-        const previousEnabled = flag?.enabled ?? true;
+        const previousEnabled = flag?.enabled ?? this.featureFlagService.defaultValue(key);
         if (!flag) {
           flag = new this.featureFlagModel({ key });
         }
         flag.enabled = dto.enabled;
-        flag.reason = dto.reason;
-        flag.reviewAt = reviewAt;
         flag.updatedByUserId = admin.userId;
         await flag.save({ session });
         await this.auditService.record({
@@ -299,11 +287,10 @@ export class AdminSystemService {
           action: ADMIN_AUDIT_ACTIONS.FEATURE_FLAG_UPDATED,
           targetType: 'FEATURE_FLAG',
           targetId: key,
-          reason: dto.reason,
+          reason: null,
           changes: {
             previousEnabled,
             nextEnabled: flag.enabled,
-            reviewAt: flag.reviewAt?.toISOString() ?? null,
           },
           session,
         });
@@ -324,7 +311,7 @@ export class AdminSystemService {
   private async changeAnnouncementStatus(
     admin: AdminPrincipal,
     announcementId: string,
-    dto: VersionedAdminReasonDto,
+    dto: VersionedAnnouncementDto,
     nextStatus: AnnouncementStatus,
   ) {
     ensureObjectId(announcementId, '公告不存在');
@@ -360,7 +347,7 @@ export class AdminSystemService {
             : ADMIN_AUDIT_ACTIONS.ANNOUNCEMENT_WITHDRAWN,
         targetType: 'ANNOUNCEMENT',
         targetId: announcement.id,
-        reason: dto.reason,
+        reason: null,
         changes: { previousStatus, nextStatus },
         session,
       });
@@ -390,10 +377,8 @@ export class AdminSystemService {
   private serializeAnnouncement(item: Announcement) {
     return {
       id: item.id,
-      titleZh: item.titleZh,
-      titleEn: item.titleEn,
-      bodyZh: item.bodyZh,
-      bodyEn: item.bodyEn,
+      title: item.title,
+      body: item.body,
       kind: item.kind,
       status: item.status,
       startsAt: item.startsAt.toISOString(),

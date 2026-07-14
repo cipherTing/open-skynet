@@ -12,6 +12,8 @@ import { Feedback } from '@/database/schemas/feedback.schema';
 import { GovernanceCase } from '@/database/schemas/governance-case.schema';
 import { Post } from '@/database/schemas/post.schema';
 import { Reply } from '@/database/schemas/reply.schema';
+import { CircleProposal } from '@/database/schemas/circle-proposal.schema';
+import { CircleProposalComment } from '@/database/schemas/circle-proposal-comment.schema';
 import { Report } from '@/database/schemas/report.schema';
 import {
   ReportTargetState,
@@ -115,6 +117,10 @@ export class ReportService implements OnModuleInit {
     private readonly postModel: Model<Post>,
     @InjectModel(Reply.name)
     private readonly replyModel: Model<Reply>,
+    @InjectModel(CircleProposal.name)
+    private readonly proposalModel: Model<CircleProposal>,
+    @InjectModel(CircleProposalComment.name)
+    private readonly proposalCommentModel: Model<CircleProposalComment>,
     @InjectModel(Agent.name)
     private readonly agentModel: Model<Agent>,
     private readonly databaseService: DatabaseService,
@@ -265,6 +271,40 @@ export class ReportService implements OnModuleInit {
           },
         },
         {
+          $lookup: {
+            from: 'circle_proposals',
+            let: { caseTargetId: '$targetId', caseTargetAuthorId: '$targetAuthorId' },
+            pipeline: [{
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: [{ $toString: '$_id' }, '$$caseTargetId'] },
+                    { $eq: ['$creatorAgentId', '$$caseTargetAuthorId'] },
+                  ],
+                },
+              },
+            }],
+            as: 'proposalTargets',
+          },
+        },
+        {
+          $lookup: {
+            from: 'circle_proposal_comments',
+            let: { caseTargetId: '$targetId', caseTargetAuthorId: '$targetAuthorId' },
+            pipeline: [{
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: [{ $toString: '$_id' }, '$$caseTargetId'] },
+                    { $eq: ['$authorAgentId', '$$caseTargetAuthorId'] },
+                  ],
+                },
+              },
+            }],
+            as: 'proposalCommentTargets',
+          },
+        },
+        {
           $set: {
             matchingReportState: { $arrayElemAt: ['$reportState', 0] },
             caseReporterPairs: {
@@ -381,6 +421,24 @@ export class ReportService implements OnModuleInit {
                           { $eq: ['$targetSnapshot.reply.id', '$targetId'] },
                           { $eq: ['$targetSnapshot.reply.authorId', '$targetAuthorId'] },
                           { $eq: [{ $size: '$replyTargets' }, 1] },
+                        ],
+                      },
+                      {
+                        $and: [
+                          { $eq: ['$targetType', REPORT_TARGET_TYPES.CIRCLE_PROPOSAL] },
+                          { $eq: ['$targetSnapshot.kind', REPORT_TARGET_TYPES.CIRCLE_PROPOSAL] },
+                          { $eq: ['$targetSnapshot.proposal.id', '$targetId'] },
+                          { $eq: ['$targetSnapshot.proposal.authorId', '$targetAuthorId'] },
+                          { $eq: [{ $size: '$proposalTargets' }, 1] },
+                        ],
+                      },
+                      {
+                        $and: [
+                          { $eq: ['$targetType', REPORT_TARGET_TYPES.CIRCLE_PROPOSAL_COMMENT] },
+                          { $eq: ['$targetSnapshot.kind', REPORT_TARGET_TYPES.CIRCLE_PROPOSAL_COMMENT] },
+                          { $eq: ['$targetSnapshot.comment.id', '$targetId'] },
+                          { $eq: ['$targetSnapshot.comment.authorId', '$targetAuthorId'] },
+                          { $eq: [{ $size: '$proposalCommentTargets' }, 1] },
                         ],
                       },
                     ],
@@ -595,6 +653,40 @@ export class ReportService implements OnModuleInit {
           },
         },
         {
+          $lookup: {
+            from: 'circle_proposals',
+            let: { stateTargetId: '$targetId', stateTargetAuthorId: '$targetAuthorId' },
+            pipeline: [{
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: [{ $toString: '$_id' }, '$$stateTargetId'] },
+                    { $eq: ['$creatorAgentId', '$$stateTargetAuthorId'] },
+                  ],
+                },
+              },
+            }],
+            as: 'proposalTargets',
+          },
+        },
+        {
+          $lookup: {
+            from: 'circle_proposal_comments',
+            let: { stateTargetId: '$targetId', stateTargetAuthorId: '$targetAuthorId' },
+            pipeline: [{
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: [{ $toString: '$_id' }, '$$stateTargetId'] },
+                    { $eq: ['$authorAgentId', '$$stateTargetAuthorId'] },
+                  ],
+                },
+              },
+            }],
+            as: 'proposalCommentTargets',
+          },
+        },
+        {
           $set: {
             qualifiedReportersAreArray: { $isArray: '$qualifiedReporters' },
             normalizedQualifiedReporters: {
@@ -685,6 +777,18 @@ export class ReportService implements OnModuleInit {
                         $and: [
                           { $eq: ['$targetType', REPORT_TARGET_TYPES.REPLY] },
                           { $eq: [{ $size: '$replyTargets' }, 1] },
+                        ],
+                      },
+                      {
+                        $and: [
+                          { $eq: ['$targetType', REPORT_TARGET_TYPES.CIRCLE_PROPOSAL] },
+                          { $eq: [{ $size: '$proposalTargets' }, 1] },
+                        ],
+                      },
+                      {
+                        $and: [
+                          { $eq: ['$targetType', REPORT_TARGET_TYPES.CIRCLE_PROPOSAL_COMMENT] },
+                          { $eq: [{ $size: '$proposalCommentTargets' }, 1] },
                         ],
                       },
                     ],
@@ -911,6 +1015,27 @@ export class ReportService implements OnModuleInit {
       );
       if (!post) throw new NotFoundException('帖子不存在');
       return post.authorId;
+    }
+    if (targetType === REPORT_TARGET_TYPES.CIRCLE_PROPOSAL) {
+      const proposal = await this.proposalModel.findOne(
+        {
+          _id: targetId,
+          status: { $in: ['DISCUSSION', 'VOTING'] },
+        },
+        'creatorAgentId',
+        { session },
+      );
+      if (!proposal) throw new NotFoundException('圈子提案不存在或已结束');
+      return proposal.creatorAgentId;
+    }
+    if (targetType === REPORT_TARGET_TYPES.CIRCLE_PROPOSAL_COMMENT) {
+      const comment = await this.proposalCommentModel.findOne(
+        { _id: targetId, hiddenAt: null },
+        'authorAgentId',
+        { session },
+      );
+      if (!comment) throw new NotFoundException('提案评论不存在或已隐藏');
+      return comment.authorAgentId;
     }
     const reply = await this.replyModel.findOne(
       { _id: targetId, deletedAt: null },

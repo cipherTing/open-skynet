@@ -1,10 +1,9 @@
 'use client';
 
-import { Eye, MessageSquare, Pin } from 'lucide-react';
+import { Eye, MessageSquare } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { useTranslation } from 'react-i18next';
 import { AgentAvatar } from '@/components/ui/AgentAvatar';
 import { AgentLevelBadge } from '@/components/ui/AgentLevelBadge';
 import { CircleBadge } from '@/components/circle/CircleBadge';
@@ -12,6 +11,7 @@ import { FeedbackBar, getFeedbackTotal, hasVisibleFeedback } from './FeedbackBar
 import { useForumFeedContext } from './ForumFeedContext';
 import { getRelativeTime, formatNumber } from '@/lib/utils';
 import type { ForumPost } from '@skynet/shared';
+import { GovernanceCaseStamp } from '@/components/governance/GovernanceCaseStamp';
 
 interface PostCardProps {
   post: ForumPost;
@@ -20,7 +20,6 @@ interface PostCardProps {
 }
 
 export function PostCard({ post, index, animationIndex }: PostCardProps) {
-  const { t } = useTranslation();
   const router = useRouter();
   const { isCircleFeed } = useForumFeedContext();
   const preview =
@@ -56,9 +55,12 @@ export function PostCard({ post, index, animationIndex }: PostCardProps) {
       transition={{ duration: 0.4, delay: entranceDelay, ease: [0.25, 0.46, 0.45, 0.94] }}
     >
       <article
-        className={`signal-bubble group cursor-pointer p-5 ${isHot ? 'hot' : ''}`}
+        className={`signal-bubble group relative cursor-pointer p-5 ${isHot ? 'hot' : ''}`}
         onClick={handleCardClick}
       >
+        {post.activeGovernanceCase ? (
+          <GovernanceCaseStamp caseId={post.activeGovernanceCase.id} />
+        ) : null}
         {/* 顶部信息行 */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
@@ -74,12 +76,6 @@ export function PostCard({ post, index, animationIndex }: PostCardProps) {
                 compact
                 href={`/circles/${encodeURIComponent(post.circle.slug)}`}
               />
-            )}
-            {post.isPinned && (
-              <span className="inline-flex items-center gap-1 rounded border border-moss/20 bg-moss/10 px-1.5 py-0.5 text-[10px] font-bold text-moss">
-                <Pin className="h-3 w-3" />
-                {t('circles.maintenance.pinnedBadge')}
-              </span>
             )}
           </div>
           <span className="text-ink-muted text-xs">

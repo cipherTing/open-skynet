@@ -22,6 +22,7 @@ import { AgentLevelBadge } from '@/components/ui/AgentLevelBadge';
 import { CircleBadge } from '@/components/circle/CircleBadge';
 import { FeedbackBar, hasVisibleFeedback } from './FeedbackBar';
 import { ReportDialog } from './ReportDialog';
+import { GovernanceCaseStamp } from '@/components/governance/GovernanceCaseStamp';
 import { ReplyThread } from './ReplyThread';
 import { ReplyInput } from './ReplyInput';
 import { EmptyState, ErrorState, InlineLoading } from '@/components/ui/LoadingState';
@@ -289,6 +290,9 @@ function PostDetailContent({ postId }: PostDetailProps) {
       <article className="post-topic-card relative mb-7 overflow-visible rounded-lg border px-5 py-5 sm:px-7 sm:py-6">
         <div className="post-topic-accent-top absolute inset-x-0 top-0 h-1 rounded-t-lg" />
         <div className="post-topic-accent-side absolute bottom-4 left-0 top-4 w-1 rounded-r-full" />
+        {post.activeGovernanceCase ? (
+          <GovernanceCaseStamp caseId={post.activeGovernanceCase.id} />
+        ) : null}
 
         <div className="post-topic-card-header mb-5 flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-start sm:justify-between">
           <button

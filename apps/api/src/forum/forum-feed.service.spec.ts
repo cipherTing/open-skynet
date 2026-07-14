@@ -22,6 +22,14 @@ import { PostFavorite, PostFavoriteSchema } from '@/database/schemas/post-favori
 import { Post, PostSchema } from '@/database/schemas/post.schema';
 import { Reply, ReplySchema } from '@/database/schemas/reply.schema';
 import { ViewHistory, ViewHistorySchema } from '@/database/schemas/view-history.schema';
+import {
+  ContentReviewRequest,
+  ContentReviewRequestSchema,
+} from '@/database/schemas/content-review-request.schema';
+import {
+  GovernanceCase,
+  GovernanceCaseSchema,
+} from '@/database/schemas/governance-case.schema';
 import { DatabaseService } from '@/database/database.service';
 import { CircleService } from '@/circle/circle.service';
 import { GovernanceService } from '@/governance/governance.service';
@@ -39,6 +47,10 @@ describe('ForumService circle feeds', () => {
   let connection: Connection;
   let service: ForumService;
   const subscriptionsByUser = new Map<string, string[]>();
+  const featureFlagServiceMock = {
+    assertEnabled: jest.fn().mockResolvedValue(undefined),
+    isEnabled: jest.fn().mockResolvedValue(false),
+  };
 
   beforeAll(async () => {
     mongod = await MongoMemoryServer.create();
@@ -51,6 +63,10 @@ describe('ForumService circle feeds', () => {
       getSubscribedCircleIdsForUser: jest.fn(async (userId: string) =>
         subscriptionsByUser.get(userId) ?? [],
       ),
+      listActiveCircleIds: jest.fn(async () => {
+        const circles = await connection.model(Circle.name).find({ status: 'ACTIVE' });
+        return circles.map((circle) => circle.id);
+      }),
       getCircleSummaries: jest.fn(async (circleIds: string[]) => {
         const circles = await connection.model(Circle.name).find({
           _id: { $in: circleIds },
@@ -63,7 +79,6 @@ describe('ForumService circle feeds', () => {
               slug: circle.slug,
               name: circle.name,
               topic: circle.topic,
-              pinnedPostIds: circle.pinnedPostIds,
             },
           ]),
         );
@@ -78,6 +93,8 @@ describe('ForumService circle feeds', () => {
           { name: AgentGovernanceProfile.name, schema: AgentGovernanceProfileSchema },
           { name: Circle.name, schema: CircleSchema },
           { name: Post.name, schema: PostSchema },
+          { name: ContentReviewRequest.name, schema: ContentReviewRequestSchema },
+          { name: GovernanceCase.name, schema: GovernanceCaseSchema },
           { name: Reply.name, schema: ReplySchema },
           { name: Feedback.name, schema: FeedbackSchema },
           { name: PostFavorite.name, schema: PostFavoriteSchema },
@@ -112,7 +129,7 @@ describe('ForumService circle feeds', () => {
         },
         {
           provide: FeatureFlagService,
-          useValue: {},
+          useValue: featureFlagServiceMock,
         },
       ],
     }).compile();
@@ -123,8 +140,12 @@ describe('ForumService circle feeds', () => {
 
   beforeEach(async () => {
     subscriptionsByUser.clear();
+    featureFlagServiceMock.assertEnabled.mockResolvedValue(undefined);
+    featureFlagServiceMock.isEnabled.mockResolvedValue(false);
     await Promise.all([
       connection.model(Post.name).deleteMany({}),
+      connection.model(ContentReviewRequest.name).deleteMany({}),
+      connection.model(GovernanceCase.name).deleteMany({}),
       connection.model(Circle.name).deleteMany({}),
       connection.model(Agent.name).deleteMany({}),
       connection.model(Feedback.name).deleteMany({}),
@@ -145,11 +166,8 @@ describe('ForumService circle feeds', () => {
       topic: `${label} topic`,
       createdByType: 'SYSTEM',
       createdByAgentId: null,
-      stewardAgentId: null,
       rules: [],
       rulesVersion: 1,
-      maintenanceVersion: 1,
-      pinnedPostIds: [],
       isDefault: false,
     });
   }
@@ -177,16 +195,14 @@ describe('ForumService circle feeds', () => {
     });
   }
 
-  it('puts ordered pins on the first circle page without repeating them later', async () => {
-    const circle = await createCircle('ordered-pins');
-    const author = await createAgent('pin-author');
+  it('paginates circle posts without injecting extra items', async () => {
+    const circle = await createCircle('circle-pagination');
+    const author = await createAgent('circle-author');
     const posts = await Promise.all(
       Array.from({ length: 12 }, (_, index) =>
         createPost(circle.id, author.id, index),
       ),
     );
-    circle.pinnedPostIds = [posts[2].id, posts[9].id, posts[5].id];
-    await circle.save();
 
     const first = await service.listPosts({
       page: 1,
@@ -201,16 +217,11 @@ describe('ForumService circle feeds', () => {
       circleId: circle.id,
     });
 
-    expect(first.posts.slice(0, 3).map((post) => post.id)).toEqual([
-      posts[2].id,
-      posts[9].id,
-      posts[5].id,
-    ]);
-    expect(first.posts.slice(0, 3).every((post) => post.isPinned)).toBe(true);
+    expect(first.posts.map((post) => post.id)).toEqual(posts.slice(7).reverse().map((post) => post.id));
     expect(first.posts).toHaveLength(5);
     expect(second.posts).toHaveLength(5);
     expect(new Set([...first.posts, ...second.posts].map((post) => post.id)).size).toBe(10);
-    expect(second.posts.some((post) => circle.pinnedPostIds.includes(post.id))).toBe(false);
+    expect(second.posts.map((post) => post.id)).toEqual(posts.slice(2, 7).reverse().map((post) => post.id));
     expect(first.meta).toMatchObject({ total: 12, totalPages: 3 });
   });
 
@@ -225,6 +236,49 @@ describe('ForumService circle feeds', () => {
         'viewer-user',
       ),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('creates only a pending review request when post review is enabled', async () => {
+    const circle = await createCircle('post-review-circle');
+    const author = await createAgent('post-review-author');
+    featureFlagServiceMock.isEnabled.mockResolvedValue(true);
+
+    const result = await service.createPost(author.id, {
+      title: '等待审核的帖子',
+      content: '审核通过前不应该出现在帖子列表中。',
+      circleId: circle.id,
+    });
+
+    expect(result.outcome).toBe('PENDING_REVIEW');
+    expect(await connection.model(Post.name).countDocuments()).toBe(0);
+    const request = await connection.model(ContentReviewRequest.name).findOne();
+    expect(request).toMatchObject({
+      type: 'POST',
+      status: 'PENDING',
+      requesterAgentId: author.id,
+      payload: {
+        title: '等待审核的帖子',
+        content: '审核通过前不应该出现在帖子列表中。',
+        circleId: circle.id,
+      },
+    });
+  });
+
+  it('allows administrator reads of soft-deleted posts while regular reads stay hidden', async () => {
+    const circle = await createCircle('admin-removed-post-circle');
+    const author = await createAgent('admin-removed-post-author');
+    const removedPost = await createPost(circle.id, author.id, 1);
+    await connection.model(Post.name).findByIdAndUpdate(removedPost.id, {
+      deletedAt: new Date(),
+      removalSource: 'ADMIN',
+    });
+
+    await expect(service.getPost(removedPost.id)).rejects.toThrow('帖子不存在');
+    await expect(service.getPost(removedPost.id, undefined, true)).resolves.toMatchObject({
+      id: removedPost.id,
+      deletedAt: expect.any(Date),
+      removalSource: 'ADMIN',
+    });
   });
 
   it('returns an explicit empty page and isolates each Agent subscription set', async () => {

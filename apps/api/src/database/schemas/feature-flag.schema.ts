@@ -10,6 +10,8 @@ export const FEATURE_FLAG_KEYS = {
   REPORTS: 'reports',
   CIRCLE_CREATION: 'circleCreation',
   GOVERNANCE_PARTICIPATION: 'governanceParticipation',
+  POST_REVIEW_REQUIRED: 'postReviewRequired',
+  CIRCLE_REVIEW_REQUIRED: 'circleReviewRequired',
 } as const;
 
 export type FeatureFlagKey =
@@ -31,13 +33,7 @@ export class FeatureFlag {
   enabled!: boolean;
 
   @Prop({ type: String, required: true })
-  reason!: string;
-
-  @Prop({ type: String, required: true })
   updatedByUserId!: string;
-
-  @Prop({ type: Date, default: null })
-  reviewAt!: Date | null;
 
   createdAt!: Date;
   updatedAt!: Date;

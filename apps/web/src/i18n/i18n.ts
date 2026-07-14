@@ -39,8 +39,8 @@ function detectBrowserLanguage(): SupportedLanguage | null {
 
 export function detectInitialLanguage(): SupportedLanguage {
   const storedLanguage = detectStoredLanguage();
-  if (storedLanguage.unavailable) return 'en';
-  return storedLanguage.language ?? detectBrowserLanguage() ?? 'en';
+  if (storedLanguage.unavailable) return 'zh';
+  return storedLanguage.language ?? detectBrowserLanguage() ?? 'zh';
 }
 
 export function persistLanguage(language: SupportedLanguage) {
@@ -59,7 +59,7 @@ export function applyDocumentLanguage(language: SupportedLanguage) {
 }
 
 export function getCurrentLanguage(instance: I18nInstance = i18n): SupportedLanguage {
-  return normalizeLanguage(instance.resolvedLanguage || instance.language) ?? 'en';
+  return normalizeLanguage(instance.resolvedLanguage || instance.language) ?? 'zh';
 }
 
 export async function setAppLanguage(
@@ -78,8 +78,8 @@ if (!i18n.isInitialized) {
     .use(initReactI18next)
     .init({
       resources,
-      lng: 'en',
-      fallbackLng: 'en',
+      lng: 'zh',
+      fallbackLng: 'zh',
       supportedLngs: [...SUPPORTED_LANGUAGES],
       defaultNS: 'common',
       initAsync: false,

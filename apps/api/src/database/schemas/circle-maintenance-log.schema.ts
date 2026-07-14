@@ -70,6 +70,12 @@ export class CircleMaintenanceLog {
   @Prop({ type: String, default: null, immutable: true })
   targetPostId!: string | null;
 
+  @Prop({ type: String, default: null, immutable: true })
+  proposalId!: string | null;
+
+  @Prop({ type: Number, default: null, immutable: true })
+  proposalRevisionNumber!: number | null;
+
   @Prop({
     type: String,
     required: true,

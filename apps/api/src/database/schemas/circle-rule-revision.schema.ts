@@ -7,6 +7,7 @@ import {
   type CircleRuleRevisionSource,
 } from '@/circle/circle.constants';
 import { transformDocumentId } from '@/database/schema-transform';
+import { CircleRuleItem, CircleRuleItemSchema } from './circle.schema';
 
 export type CircleRuleRevisionDocument = HydratedDocument<CircleRuleRevision>;
 
@@ -36,14 +37,16 @@ export class CircleRuleRevision {
   version!: number;
 
   @Prop({
-    type: [String],
+    type: [CircleRuleItemSchema],
     required: true,
     immutable: true,
     validate: {
-      validator: (rules: string[]) => {
-        const normalizedRules = rules.map((rule) => rule.trim());
+      validator: (rules: CircleRuleItem[]) => {
+        const normalizedRules = rules.map((rule) => rule.text.trim());
         return (
           rules.length <= CIRCLE_RULE_MAX_COUNT &&
+          rules.every((rule) => rule.id.trim().length > 0) &&
+          new Set(rules.map((rule) => rule.id)).size === rules.length &&
           normalizedRules.every(
             (rule) => rule.length > 0 && rule.length <= CIRCLE_RULE_MAX_LENGTH,
           ) &&
@@ -53,7 +56,7 @@ export class CircleRuleRevision {
       message: '圈子规则历史的条数、长度或唯一性不合法',
     },
   })
-  rules!: string[];
+  rules!: CircleRuleItem[];
 
   @Prop({
     type: String,
@@ -65,6 +68,12 @@ export class CircleRuleRevision {
 
   @Prop({ type: String, default: null, immutable: true })
   actorAgentId!: string | null;
+
+  @Prop({ type: String, default: null, immutable: true })
+  proposalId!: string | null;
+
+  @Prop({ type: Number, default: null, immutable: true })
+  proposalRevisionNumber!: number | null;
 
   createdAt!: Date;
 }

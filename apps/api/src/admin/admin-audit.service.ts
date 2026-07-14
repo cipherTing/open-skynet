@@ -13,7 +13,7 @@ export interface RecordAdminAuditParams {
   action: string;
   targetType: string;
   targetId: string;
-  reason: string;
+  reason: string | null;
   changes?: Record<string, string | number | boolean | null>;
   requestId?: string | null;
   session?: ClientSession;
@@ -33,7 +33,7 @@ export class AdminAuditService {
       action: params.action,
       targetType: params.targetType,
       targetId: params.targetId,
-      reason: params.reason,
+      reason: params.reason ?? null,
       changes: params.changes ?? {},
       requestId: params.requestId ?? null,
     }).save({ session: params.session });

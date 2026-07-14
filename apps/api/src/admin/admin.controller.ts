@@ -9,7 +9,7 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiExcludeController } from '@nestjs/swagger';
 import { PaginationQueryDto } from '@/forum/dto/pagination-query.dto';
 import { AdminOnly } from './decorators/admin-only.decorator';
 import { CurrentAdmin } from './decorators/current-admin.decorator';
@@ -23,24 +23,29 @@ import { AdjustAgentXpDto } from './dto/adjust-agent-xp.dto';
 import { AdjustAgentHealthDto } from './dto/adjust-agent-health.dto';
 import { ListAdminContentDto } from './dto/list-admin-content.dto';
 import { ListAdminCirclesDto } from './dto/list-admin-circles.dto';
-import { TransferCircleStewardDto } from './dto/transfer-circle-steward.dto';
 import { ListAdminGovernanceDto } from './dto/list-admin-governance.dto';
 import { ADMIN_CONTENT_TYPES, type AdminContentType } from './admin.constants';
 import { AdminSystemService } from './admin-system.service';
 import { ListAnnouncementsDto } from './dto/list-announcements.dto';
 import { CreateAnnouncementDto } from './dto/create-announcement.dto';
 import { UpdateAnnouncementDto } from './dto/update-announcement.dto';
-import { VersionedAdminReasonDto } from './dto/versioned-admin-reason.dto';
+import { VersionedAnnouncementDto } from './dto/versioned-announcement.dto';
 import { UpdateFeatureFlagDto } from './dto/update-feature-flag.dto';
 import { ListSecurityEventsDto } from './dto/list-security-events.dto';
-import { ListAdminReportsDto } from './dto/list-admin-reports.dto';
-import { AdminReportService } from './admin-report.service';
+import { ListContentReviewsDto } from './dto/list-content-reviews.dto';
+import { DecideContentReviewDto } from './dto/decide-content-review.dto';
+import {
+  AdminCircleReasonDto,
+  CreateAdminCircleDto,
+  UpdateAdminCircleDto,
+} from './dto/admin-circle.dto';
+import { AdminGovernanceDecisionDto } from './dto/admin-governance-decision.dto';
 import {
   FEATURE_FLAG_KEYS,
   type FeatureFlagKey,
 } from '@/database/schemas/feature-flag.schema';
 
-@ApiTags('admin')
+@ApiExcludeController()
 @AdminOnly()
 @Controller('admin')
 export class AdminController {
@@ -48,7 +53,6 @@ export class AdminController {
     private readonly auditService: AdminAuditService,
     private readonly adminService: AdminService,
     private readonly adminSystemService: AdminSystemService,
-    private readonly adminReportService: AdminReportService,
   ) {}
 
   @Get('audit-logs')
@@ -141,13 +145,54 @@ export class AdminController {
     return this.adminService.listCircles(dto);
   }
 
-  @Patch('circles/:id/steward')
-  transferCircleSteward(
+  @Post('circles')
+  createCircle(
+    @CurrentAdmin() admin: AdminPrincipal,
+    @Body() dto: CreateAdminCircleDto,
+  ) {
+    return this.adminService.createCircle(admin, dto);
+  }
+
+  @Patch('circles/:id')
+  updateCircle(
     @CurrentAdmin() admin: AdminPrincipal,
     @Param('id') id: string,
-    @Body() dto: TransferCircleStewardDto,
+    @Body() dto: UpdateAdminCircleDto,
   ) {
-    return this.adminService.transferCircleSteward(admin, id, dto);
+    return this.adminService.updateCircle(admin, id, dto);
+  }
+
+  @Post('circles/:id/ban')
+  banCircle(
+    @CurrentAdmin() admin: AdminPrincipal,
+    @Param('id') id: string,
+    @Body() dto: AdminCircleReasonDto,
+  ) {
+    return this.adminService.setCircleBanned(admin, id, true, dto.publicReason);
+  }
+
+  @Delete('circles/:id/ban')
+  unbanCircle(
+    @CurrentAdmin() admin: AdminPrincipal,
+    @Param('id') id: string,
+    @Body() dto: AdminCircleReasonDto,
+  ) {
+    return this.adminService.setCircleBanned(admin, id, false, dto.publicReason);
+  }
+
+  @Post('circles/:circleId/proposals/:proposalId/moderate')
+  moderateCircleProposal(
+    @CurrentAdmin() admin: AdminPrincipal,
+    @Param('circleId') circleId: string,
+    @Param('proposalId') proposalId: string,
+    @Body() dto: AdminCircleReasonDto,
+  ) {
+    return this.adminService.moderateCircleProposal(
+      admin,
+      circleId,
+      proposalId,
+      dto.publicReason,
+    );
   }
 
   @Get('governance/cases')
@@ -155,14 +200,27 @@ export class AdminController {
     return this.adminService.listGovernanceCases(dto);
   }
 
-  @Get('reports')
-  reports(@Query() dto: ListAdminReportsDto) {
-    return this.adminReportService.list(dto);
+  @Post('governance/cases/:id/decision')
+  decideGovernanceCase(
+    @CurrentAdmin() admin: AdminPrincipal,
+    @Param('id') id: string,
+    @Body() dto: AdminGovernanceDecisionDto,
+  ) {
+    return this.adminService.decideGovernanceCase(admin, id, dto);
   }
 
-  @Get('reports/:id')
-  report(@Param('id') id: string) {
-    return this.adminReportService.get(id);
+  @Get('reviews')
+  reviews(@Query() dto: ListContentReviewsDto) {
+    return this.adminService.listContentReviews(dto);
+  }
+
+  @Post('reviews/:id/decision')
+  decideReview(
+    @CurrentAdmin() admin: AdminPrincipal,
+    @Param('id') id: string,
+    @Body() dto: DecideContentReviewDto,
+  ) {
+    return this.adminService.decideContentReview(admin, id, dto);
   }
 
   @Get('announcements')
@@ -191,7 +249,7 @@ export class AdminController {
   publishAnnouncement(
     @CurrentAdmin() admin: AdminPrincipal,
     @Param('id') id: string,
-    @Body() dto: VersionedAdminReasonDto,
+    @Body() dto: VersionedAnnouncementDto,
   ) {
     return this.adminSystemService.publishAnnouncement(admin, id, dto);
   }
@@ -200,7 +258,7 @@ export class AdminController {
   withdrawAnnouncement(
     @CurrentAdmin() admin: AdminPrincipal,
     @Param('id') id: string,
-    @Body() dto: VersionedAdminReasonDto,
+    @Body() dto: VersionedAnnouncementDto,
   ) {
     return this.adminSystemService.withdrawAnnouncement(admin, id, dto);
   }
@@ -209,7 +267,7 @@ export class AdminController {
   deleteAnnouncement(
     @CurrentAdmin() admin: AdminPrincipal,
     @Param('id') id: string,
-    @Body() dto: VersionedAdminReasonDto,
+    @Body() dto: VersionedAnnouncementDto,
   ) {
     return this.adminSystemService.deleteAnnouncementDraft(admin, id, dto);
   }
