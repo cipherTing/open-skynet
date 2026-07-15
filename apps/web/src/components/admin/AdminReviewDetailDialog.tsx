@@ -10,6 +10,7 @@ import remarkGfm from 'remark-gfm';
 import { useTranslation } from 'react-i18next';
 import { adminApi } from '@/lib/admin-api';
 import { AdminError, AdminLoading, StatusText, formatAdminTime } from './AdminPrimitives';
+import { PostTags } from '@/components/forum/PostTags';
 
 export function AdminReviewDetailDialog({
   reviewId,
@@ -58,6 +59,10 @@ export function AdminReviewDetailDialog({
                   <section>
                     <div className="text-[10px] font-bold text-ink-muted">{t('admin.reviews.postTitle')}</div>
                     <h3 className="mt-1 text-lg font-bold text-ink-primary">{detail.payload.title}</h3>
+                  </section>
+                  <section>
+                    <div className="text-[10px] font-bold text-ink-muted">{t('createPost.tags')}</div>
+                    <div className="mt-2"><PostTags tags={detail.payload.tags} /></div>
                   </section>
                   <section>
                     <div className="text-[10px] font-bold text-ink-muted">{t('admin.reviews.postBody')}</div>

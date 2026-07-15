@@ -82,7 +82,7 @@ export class AdminAuditService {
       this.auditModel.countDocuments(where),
     ]);
 
-    const resolvedItems = await Promise.all(items.map((item) => this.serialize(item)));
+    const resolvedItems = await this.serializeMany(items);
 
     return {
       items: resolvedItems,
@@ -95,6 +95,107 @@ export class AdminAuditService {
     const item = await this.auditModel.findById(id);
     if (!item) throw new NotFoundException('操作日志不存在');
     return this.serialize(item);
+  }
+
+  private async serializeMany(items: AdminAuditLogDocument[]) {
+    const actorIds = [...new Set(items.flatMap((item) => item.actorUserId ? [item.actorUserId] : []))];
+    const targetIdsByType = new Map<string, string[]>();
+    for (const item of items) {
+      if (!Types.ObjectId.isValid(item.targetId)) continue;
+      const ids = targetIdsByType.get(item.targetType) ?? [];
+      if (!ids.includes(item.targetId)) ids.push(item.targetId);
+      targetIdsByType.set(item.targetType, ids);
+    }
+    const ids = (targetType: string) => targetIdsByType.get(targetType) ?? [];
+    const [actors, agents, posts, replies, circles, proposals, governanceCases, reviews] = await Promise.all([
+      actorIds.length
+        ? this.userModel.find({ _id: { $in: actorIds } }).select('username').lean()
+        : Promise.resolve([]),
+      ids('AGENT').length
+        ? this.agentModel.find({ _id: { $in: ids('AGENT') } }).select('name').lean()
+        : Promise.resolve([]),
+      ids('POST').length
+        ? this.postModel.find({ _id: { $in: ids('POST') } }).select('title').lean()
+        : Promise.resolve([]),
+      ids('REPLY').length
+        ? this.replyModel.find({ _id: { $in: ids('REPLY') } }).select('content').lean()
+        : Promise.resolve([]),
+      ids('CIRCLE').length
+        ? this.circleModel.find({ _id: { $in: ids('CIRCLE') } }).select('name').lean()
+        : Promise.resolve([]),
+      ids('CIRCLE_PROPOSAL').length
+        ? this.circleProposalModel.find({ _id: { $in: ids('CIRCLE_PROPOSAL') } }).select('scope').lean()
+        : Promise.resolve([]),
+      ids('GOVERNANCE_CASE').length
+        ? this.governanceCaseModel.find({ _id: { $in: ids('GOVERNANCE_CASE') } }).select('targetSnapshot').lean()
+        : Promise.resolve([]),
+      ids('CONTENT_REVIEW').length
+        ? this.contentReviewModel.find({ _id: { $in: ids('CONTENT_REVIEW') } }).select('type payload').lean()
+        : Promise.resolve([]),
+    ]);
+
+    const actorMap = new Map(actors.map((actor) => [actor._id.toString(), actor.username]));
+    const targetLabelMap = new Map<string, string>();
+    for (const agent of agents) targetLabelMap.set(`AGENT:${agent._id.toString()}`, agent.name);
+    for (const post of posts) targetLabelMap.set(`POST:${post._id.toString()}`, post.title);
+    for (const reply of replies) {
+      const excerpt = reply.content.replace(/\s+/g, ' ').trim();
+      targetLabelMap.set(`REPLY:${reply._id.toString()}`, excerpt ? excerpt.slice(0, 60) : '已删除回复');
+    }
+    for (const circle of circles) targetLabelMap.set(`CIRCLE:${circle._id.toString()}`, circle.name);
+    for (const proposal of proposals) {
+      targetLabelMap.set(
+        `CIRCLE_PROPOSAL:${proposal._id.toString()}`,
+        proposal.scope === 'TOPIC' ? '圈子简介提案' : '圈子规则提案',
+      );
+    }
+    for (const governanceCase of governanceCases) {
+      const snapshot = governanceCase.targetSnapshot;
+      const label = snapshot.kind === 'POST' || snapshot.kind === 'REPLY'
+        ? snapshot.post.title
+        : snapshot.kind === 'CIRCLE_PROPOSAL'
+          ? (snapshot.proposal.scope === 'TOPIC' ? '圈子简介提案案件' : '圈子规则提案案件')
+          : '圈子共建评论案件';
+      targetLabelMap.set(`GOVERNANCE_CASE:${governanceCase._id.toString()}`, label);
+    }
+    for (const review of reviews) {
+      const label = review.type === 'POST' && 'title' in review.payload
+        ? review.payload.title
+        : review.type === 'CIRCLE' && 'name' in review.payload
+          ? review.payload.name
+          : '已删除审核申请';
+      targetLabelMap.set(`CONTENT_REVIEW:${review._id.toString()}`, label);
+    }
+
+    return items.map((item) => ({
+      ...item.toObject(),
+      actor: {
+        id: item.actorUserId,
+        label: item.actorUserId
+          ? (actorMap.get(item.actorUserId) ?? '管理员')
+          : item.actorType === 'BOOTSTRAP_CLI'
+            ? '管理员初始化命令'
+            : '管理员',
+      },
+      target: {
+        id: item.targetId,
+        type: item.targetType,
+        label: targetLabelMap.get(`${item.targetType}:${item.targetId}`)
+          ?? this.getMissingTargetLabel(item.targetType, item.targetId),
+      },
+    }));
+  }
+
+  private getMissingTargetLabel(targetType: string, targetId: string): string {
+    if (!Types.ObjectId.isValid(targetId)) return targetId;
+    if (targetType === 'AGENT') return '已离线 Agent';
+    if (targetType === 'POST') return '已删除帖子';
+    if (targetType === 'REPLY') return '已删除回复';
+    if (targetType === 'CIRCLE') return '已删除圈子';
+    if (targetType === 'CIRCLE_PROPOSAL') return '已删除提案';
+    if (targetType === 'GOVERNANCE_CASE') return '已删除治理案件';
+    if (targetType === 'CONTENT_REVIEW') return '已删除审核申请';
+    return targetId;
   }
 
   private async serialize(item: AdminAuditLogDocument) {

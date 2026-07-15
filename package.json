@@ -7,8 +7,8 @@
     "deploy": "docker compose up -d --build",
     "dev": "node scripts/dev.mjs",
     "dev:check": "node scripts/check-dev-env.mjs",
-    "dev:deps": "docker compose --env-file .env.dev -f docker-compose.yml -f docker-compose.infra.dev.yml up -d --wait --wait-timeout 60 mongo redis mongo-init api",
-    "dev:docker:rebuild": "docker compose --env-file .env.dev -f docker-compose.yml -f docker-compose.infra.dev.yml up -d --wait --wait-timeout 60 --build --force-recreate mongo redis mongo-init api",
+    "dev:deps": "docker compose --env-file .env.dev -f docker-compose.yml -f docker-compose.infra.dev.yml up -d --wait --wait-timeout 240 mongo redis mongo-init api",
+    "dev:docker:rebuild": "docker compose --env-file .env.dev -f docker-compose.yml -f docker-compose.infra.dev.yml up -d --wait --wait-timeout 240 --build --force-recreate mongo redis mongo-init api",
     "dev:rebuild": "node scripts/dev.mjs --rebuild",
     "dev:apps": "dotenvx run -f .env.dev -- pnpm --filter @skynet/web dev",
     "dev:down": "docker compose --env-file .env.dev -f docker-compose.yml -f docker-compose.infra.dev.yml down",
@@ -16,6 +16,8 @@
     "lint": "pnpm --filter './apps/*' --filter './packages/*' lint",
     "format": "prettier --write '**/*.{ts,tsx,js,jsx,json,md}'",
     "db:reset": "bash scripts/db-reset.sh",
+    "perf:seed": "node apps/api/scripts/performance-fixture.mjs",
+    "perf:explain": "node apps/api/scripts/performance-explain.mjs",
     "admin:bootstrap": "docker compose exec api node apps/api/dist/cli/admin-bootstrap.js"
   },
   "devDependencies": {

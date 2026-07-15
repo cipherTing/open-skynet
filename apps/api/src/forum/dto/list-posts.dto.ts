@@ -1,6 +1,7 @@
 import { Transform } from 'class-transformer';
 import { IsMongoId, IsOptional, IsEnum, IsString, MaxLength, MinLength } from 'class-validator';
 import { PaginationDto } from '@/common/dto/pagination.dto';
+import { POST_TAGS, type PostTag } from '@/forum/post-tag.constants';
 
 export enum SortBy {
   HOT = 'hot',
@@ -31,4 +32,13 @@ export class ListPostsDto extends PaginationDto {
   @IsOptional()
   @IsEnum(PostScope)
   scope?: PostScope = PostScope.ALL;
+
+  @IsOptional()
+  @IsEnum(POST_TAGS)
+  tag?: PostTag;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  cursor?: string;
 }

@@ -31,6 +31,11 @@ import { Circle } from '@/database/schemas/circle.schema';
 import { CircleProposal } from '@/database/schemas/circle-proposal.schema';
 import { GovernanceCase } from '@/database/schemas/governance-case.schema';
 import { ContentReviewRequest } from '@/database/schemas/content-review-request.schema';
+import {
+  PublicAccessConfig,
+  PublicAccessConfigSchema,
+} from '@/database/schemas/public-access-config.schema';
+import { PublicAccessService } from '@/system/public-access.service';
 
 const ADMIN: AdminPrincipal = {
   userId: 'admin-user',
@@ -46,6 +51,19 @@ describe('AdminSystemService integration', () => {
   let service: AdminSystemService;
   let announcementService: AnnouncementService;
   let auditService: AdminAuditService;
+  const publicAccessServiceMock = {
+    getPublicConfig: jest.fn(),
+    normalizeSiteOrigin: jest.fn((value: string) => value.trim().replace(/\/+$/u, '')),
+    normalizeApiBaseUrl: jest.fn((value: string) => value.trim().replace(/\/+$/u, '')),
+    serialize: jest.fn((config: PublicAccessConfig) => ({
+      siteOrigin: config.siteOrigin,
+      apiBaseUrl: config.apiBaseUrl,
+      guideUrl: `${config.siteOrigin}/guide.md`,
+      version: config.version,
+      updatedAt: config.updatedAt.toISOString(),
+    })),
+    invalidateGuideCache: jest.fn().mockResolvedValue(undefined),
+  };
 
   beforeAll(async () => {
     replicaSet = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
@@ -56,6 +74,7 @@ describe('AdminSystemService integration', () => {
           { name: Announcement.name, schema: AnnouncementSchema },
           { name: FeatureFlag.name, schema: FeatureFlagSchema },
           { name: AdminAuditLog.name, schema: AdminAuditLogSchema },
+          { name: PublicAccessConfig.name, schema: PublicAccessConfigSchema },
         ]),
       ],
       providers: [
@@ -64,6 +83,7 @@ describe('AdminSystemService integration', () => {
         FeatureFlagService,
         AnnouncementService,
         AdminSystemService,
+        { provide: PublicAccessService, useValue: publicAccessServiceMock },
         { provide: getModelToken(User.name), useValue: {} },
         { provide: getModelToken(Agent.name), useValue: {} },
         { provide: getModelToken(Post.name), useValue: {} },
@@ -86,6 +106,7 @@ describe('AdminSystemService integration', () => {
       connection.model(Announcement.name).init(),
       connection.model(FeatureFlag.name).init(),
       connection.model(AdminAuditLog.name).init(),
+      connection.model(PublicAccessConfig.name).init(),
     ]);
   });
 
@@ -95,6 +116,7 @@ describe('AdminSystemService integration', () => {
       connection.model(Announcement.name).deleteMany({}),
       connection.model(FeatureFlag.name).deleteMany({}),
       connection.model(AdminAuditLog.name).deleteMany({}),
+      connection.model(PublicAccessConfig.name).deleteMany({}),
     ]);
   });
 
@@ -218,5 +240,34 @@ describe('AdminSystemService integration', () => {
     const flags = await service.listFeatureFlags();
     expect(flags).toHaveLength(7);
     expect(flags.find((flag) => flag.key === FEATURE_FLAG_KEYS.REGISTRATION)?.enabled).toBe(false);
+  });
+
+  it('updates public access addresses with version checks and no reason field', async () => {
+    const first = await service.updatePublicAccessConfig(ADMIN, {
+      siteOrigin: 'https://skynet.example.com/',
+      apiBaseUrl: 'https://api.skynet.example.com/api/v1/',
+      expectedVersion: 0,
+    });
+    expect(first).toMatchObject({
+      siteOrigin: 'https://skynet.example.com',
+      apiBaseUrl: 'https://api.skynet.example.com/api/v1',
+      version: 1,
+    });
+    await expect(
+      service.updatePublicAccessConfig(ADMIN, {
+        siteOrigin: 'https://other.example.com',
+        apiBaseUrl: 'https://api.other.example.com/api/v1',
+        expectedVersion: 0,
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(publicAccessServiceMock.invalidateGuideCache).toHaveBeenCalledWith(0);
+    const audit = await connection.model(AdminAuditLog.name).findOne({
+      action: 'PUBLIC_ACCESS_CONFIG_UPDATED',
+    });
+    expect(audit).toMatchObject({ reason: null });
+    expect(audit?.changes).toMatchObject({
+      before: { version: 0 },
+      after: { version: 1 },
+    });
   });
 });

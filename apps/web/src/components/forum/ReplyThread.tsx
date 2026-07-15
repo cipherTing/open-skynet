@@ -1,26 +1,27 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeSanitize from 'rehype-sanitize';
-import { Reply } from 'lucide-react';
+import { Quote, Reply } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { AgentAvatar } from '@/components/ui/AgentAvatar';
 import { AgentLevelBadge } from '@/components/ui/AgentLevelBadge';
 import { FeedbackBar, hasVisibleFeedback } from './FeedbackBar';
 import { ReportDialog } from './ReportDialog';
 import { ReplyInput } from './ReplyInput';
+import { ReplyRevisionActions } from './ReplyRevisionActions';
 import { ApiError, forumApi } from '@/lib/api';
 import { notifyProgressionUpdated } from '@/lib/progression-events';
 import { getRelativeTime } from '@/lib/utils';
 import { useOwnerOperation } from '@/contexts/OwnerOperationContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/components/ui/SignalToast';
-import type { FeedbackType, ForumMention, ForumReply } from '@skynet/shared';
+import type { FeedbackType, ForumMention, ForumReply, ForumReplyQuote } from '@skynet/shared';
 
 interface ReplyThreadProps {
   reply: ForumReply;
@@ -37,6 +38,37 @@ interface ChildReplyItemProps {
   parentAuthorName?: string;
   onReplyUpdated: () => void | Promise<void>;
   highlightedReplyId: string | null;
+}
+
+interface ReplyQuoteDraft {
+  sourceType: 'REPLY';
+  sourceId: string;
+  sourceContentVersion: number;
+  text: string;
+}
+
+function ReplyQuoteBlock({ quote }: { quote: ForumReplyQuote | null | undefined }) {
+  const { t } = useTranslation();
+  if (!quote) return null;
+  if (!quote.available || !quote.text) {
+    return (
+      <div className="mb-2.5 rounded-md border border-border-subtle bg-void/25 px-3 py-2 text-[11px] text-ink-muted">
+        {t('replyThread.quoteUnavailable')}
+      </div>
+    );
+  }
+  const href = quote.sourceType === 'POST' ? '#post-content' : `#reply-${quote.sourceId}`;
+  return (
+    <Link
+      href={href}
+      className="mb-2.5 block rounded-md border border-steel/20 bg-steel/[0.05] px-3 py-2 text-[11px] text-ink-secondary hover:border-steel/35"
+    >
+      <span className="block font-semibold text-steel">
+        {quote.sourceAuthor?.name ?? t('replyThread.quoteSource')}
+      </span>
+      <span className="mt-1 line-clamp-3 block whitespace-pre-wrap">{quote.text}</span>
+    </Link>
+  );
 }
 
 function escapeMarkdownText(value: string): string {
@@ -132,7 +164,32 @@ export function ReplyThread({
   const { agent, isAuthenticated } = useAuth();
   const toast = useToast();
   const [showReplyInput, setShowReplyInput] = useState(false);
+  const [quoteDraft, setQuoteDraft] = useState<ReplyQuoteDraft | null>(null);
+  const [childPaging, setChildPaging] = useState<{
+    sourceCursor: string | null;
+    nextCursor: string | null;
+    items: ForumReply[];
+  }>({
+    sourceCursor: reply.childrenNextCursor ?? null,
+    nextCursor: reply.childrenNextCursor ?? null,
+    items: [],
+  });
+  const [childrenBusy, setChildrenBusy] = useState(false);
+  const replyContentRef = useRef<HTMLDivElement | null>(null);
   const isReplyInputVisible = canOperateAsAgent && showReplyInput;
+  const initialChildren = reply.children ?? [];
+  const effectivePaging = childPaging.sourceCursor === (reply.childrenNextCursor ?? null)
+    ? childPaging
+    : {
+        sourceCursor: reply.childrenNextCursor ?? null,
+        nextCursor: reply.childrenNextCursor ?? null,
+        items: [],
+      };
+  const initialChildIds = new Set(initialChildren.map((item) => item.id));
+  const children = [
+    ...initialChildren,
+    ...effectivePaging.items.filter((item) => !initialChildIds.has(item.id)),
+  ];
 
   const hasAgent = !!agent;
   const isOwnReply = agent?.id === reply.author?.id;
@@ -197,14 +254,71 @@ export function ReplyThread({
       const created = await forumApi.createReply(postId, {
         content,
         parentReplyId: reply.id,
+        ...(quoteDraft ? { quote: quoteDraft } : {}),
       });
       if (created.progressDelta) notifyProgressionUpdated();
       setShowReplyInput(false);
+      setQuoteDraft(null);
       void onReplyCreated();
     } catch (err) {
       console.error('创建回复失败:', err);
       toast.error(err instanceof ApiError ? err.message : t('replyThread.createReplyFailed'));
     }
+  };
+
+  const handleLoadMoreChildren = async () => {
+    if (!effectivePaging.nextCursor || childrenBusy) return;
+    setChildrenBusy(true);
+    try {
+      const page = await forumApi.listChildReplies(reply.id, {
+        cursor: effectivePaging.nextCursor,
+        limit: 20,
+      });
+      setChildPaging((current) => {
+        const currentItems = current.sourceCursor === (reply.childrenNextCursor ?? null)
+          ? current.items
+          : [];
+        const existingIds = new Set([
+          ...initialChildren.map((item) => item.id),
+          ...currentItems.map((item) => item.id),
+        ]);
+        return {
+          sourceCursor: reply.childrenNextCursor ?? null,
+          nextCursor: page.nextCursor,
+          items: [...currentItems, ...page.items.filter((item) => !existingIds.has(item.id))],
+        };
+      });
+    } catch (error) {
+      console.error('加载二级回复失败:', error);
+      toast.error(error instanceof ApiError ? error.message : t('replyThread.childrenLoadFailed'));
+    } finally {
+      setChildrenBusy(false);
+    }
+  };
+
+  const handleQuoteSelection = () => {
+    const selection = window.getSelection();
+    const selectedText = selection?.toString().trim() ?? '';
+    const anchorNode = selection?.anchorNode;
+    const focusNode = selection?.focusNode;
+    if (
+      !selectedText ||
+      selectedText.length > 2000 ||
+      !anchorNode ||
+      !focusNode ||
+      !replyContentRef.current?.contains(anchorNode) ||
+      !replyContentRef.current.contains(focusNode)
+    ) {
+      toast.error(t('replyInput.selectQuoteText'));
+      return;
+    }
+    setQuoteDraft({
+      sourceType: 'REPLY',
+      sourceId: reply.id,
+      sourceContentVersion: reply.contentVersion,
+      text: selectedText,
+    });
+    setShowReplyInput(true);
   };
 
   const handleReplyToggle = () => {
@@ -246,10 +360,23 @@ export function ReplyThread({
           <span className="ml-auto text-[11px] text-ink-muted">
             {getRelativeTime(reply.createdAt)}
           </span>
-          {removed ? <span className="text-[10px] font-bold text-ochre">{t('replyThread.adminRemoved')}</span> : null}
+          {(reply.contentVersion > 1 || isOwnReply) && (
+            <ReplyRevisionActions
+              reply={reply}
+              canEdit={isOwnReply && canOperateAsAgent}
+              onUpdated={onReplyUpdated}
+            />
+          )}
+          {removed ? (
+            <span className="text-[10px] font-bold text-ochre">
+              {t('replyThread.adminRemoved')}
+            </span>
+          ) : null}
         </div>
 
-        <div className="prose-deck mb-2.5 text-[13px] leading-relaxed">
+        <ReplyQuoteBlock quote={reply.quote} />
+
+        <div ref={replyContentRef} className="prose-deck mb-2.5 text-[13px] leading-relaxed">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             rehypePlugins={[rehypeSanitize]}
@@ -259,40 +386,50 @@ export function ReplyThread({
           </ReactMarkdown>
         </div>
 
-        {!removed && (showFeedback || canOperateAsAgent || feedbackReason || replyUnavailableReason) && (
-          <div className="skynet-reply-divider flex flex-col gap-2 border-t pt-2 sm:flex-row sm:items-center">
-            {(showFeedback || canFeedback || feedbackReason) && (
-              <FeedbackBar
-                counts={reply.feedbackCounts}
-                currentFeedback={reply.currentUserFeedback}
-                canInteract={canFeedback}
-                unavailableReason={feedbackReason}
-                density="compact"
-                onSelect={handleFeedback}
-                onUnavailable={() => {
-                  if (feedbackReason) toast.error(feedbackReason);
-                }}
-              />
-            )}
-            <div className="flex items-center gap-3 sm:ml-auto">
-              <ReportDialog
-                targetType="REPLY"
-                targetId={reply.id}
-                unavailableReason={reportReason}
-                density="compact"
-              />
-              <button
-                type="button"
-                aria-expanded={isReplyInputVisible}
-                onClick={handleReplyToggle}
-                className="inline-flex items-center gap-1 text-[11px] text-ink-muted transition-colors hover:text-steel"
-              >
-                <Reply className="w-3 h-3" />
-                {t('replyThread.reply')}
-              </button>
+        {!removed &&
+          (showFeedback || canOperateAsAgent || feedbackReason || replyUnavailableReason) && (
+            <div className="skynet-reply-divider flex flex-col gap-2 border-t pt-2 sm:flex-row sm:items-center">
+              {(showFeedback || canFeedback || feedbackReason) && (
+                <FeedbackBar
+                  counts={reply.feedbackCounts}
+                  currentFeedback={reply.currentUserFeedback}
+                  canInteract={canFeedback}
+                  unavailableReason={feedbackReason}
+                  density="compact"
+                  onSelect={handleFeedback}
+                  onUnavailable={() => {
+                    if (feedbackReason) toast.error(feedbackReason);
+                  }}
+                />
+              )}
+              <div className="flex items-center gap-3 sm:ml-auto">
+                <ReportDialog
+                  targetType="REPLY"
+                  targetId={reply.id}
+                  targetContentVersion={reply.contentVersion}
+                  unavailableReason={reportReason}
+                  density="compact"
+                />
+                <button
+                  type="button"
+                  onClick={handleQuoteSelection}
+                  className="inline-flex items-center gap-1 text-[11px] text-ink-muted transition-colors hover:text-steel"
+                >
+                  <Quote className="h-3 w-3" />
+                  {t('replyInput.quoteSelection')}
+                </button>
+                <button
+                  type="button"
+                  aria-expanded={isReplyInputVisible}
+                  onClick={handleReplyToggle}
+                  className="inline-flex items-center gap-1 text-[11px] text-ink-muted transition-colors hover:text-steel"
+                >
+                  <Reply className="w-3 h-3" />
+                  {t('replyThread.reply')}
+                </button>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
         <AnimatePresence>
           {isReplyInputVisible && (
@@ -307,15 +444,17 @@ export function ReplyThread({
                 onCancel={() => setShowReplyInput(false)}
                 placeholder={t('replyThread.replyPlaceholder', { name: reply.author?.name })}
                 compact
+                quoteText={quoteDraft?.text ?? null}
+                onClearQuote={() => setQuoteDraft(null)}
               />
             </motion.div>
           )}
         </AnimatePresence>
       </div>
 
-      {reply.children && reply.children.length > 0 && (
+      {children.length > 0 && (
         <div className="skynet-reply-branch-line ml-3 mt-2 space-y-2 border-l pl-3 sm:ml-6 sm:pl-4">
-          {reply.children.map((child: ForumReply, childIndex: number) => (
+          {children.map((child: ForumReply, childIndex: number) => (
             <ChildReplyItem
               key={child.id}
               child={child}
@@ -325,6 +464,20 @@ export function ReplyThread({
               highlightedReplyId={highlightedReplyId}
             />
           ))}
+          {effectivePaging.nextCursor && (
+            <button
+              type="button"
+              disabled={childrenBusy}
+              onClick={() => void handleLoadMoreChildren()}
+              className="text-[11px] text-ink-muted transition-colors hover:text-copper disabled:cursor-wait disabled:opacity-50"
+            >
+              {childrenBusy
+                ? t('replyThread.loadingMoreChildren')
+                : t('replyThread.loadMoreChildren', {
+                    count: Math.max(0, (reply.childCount ?? children.length) - children.length),
+                  })}
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -423,8 +576,19 @@ function ChildReplyItem({
           <AgentLevelBadge level={child.author?.level} compact />
         </button>
         <span className="ml-auto text-ink-muted">{getRelativeTime(child.createdAt)}</span>
-        {removed ? <span className="text-[10px] font-bold text-ochre">{t('replyThread.adminRemoved')}</span> : null}
+        {(child.contentVersion > 1 || isOwnReply) && (
+          <ReplyRevisionActions
+            reply={child}
+            canEdit={isOwnReply && canOperateAsAgent}
+            onUpdated={onReplyUpdated}
+          />
+        )}
+        {removed ? (
+          <span className="text-[10px] font-bold text-ochre">{t('replyThread.adminRemoved')}</span>
+        ) : null}
       </div>
+
+      <ReplyQuoteBlock quote={child.quote} />
 
       <div className="prose-deck mb-2 text-[12px] leading-relaxed">
         <ReactMarkdown
@@ -454,6 +618,7 @@ function ChildReplyItem({
           <ReportDialog
             targetType="REPLY"
             targetId={child.id}
+            targetContentVersion={child.contentVersion}
             unavailableReason={reportReason}
             density="compact"
           />

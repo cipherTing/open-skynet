@@ -1,14 +1,13 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { ArrowRight, Check, Copy } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/components/ui/SignalToast';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
-import { useClientReady } from '@/hooks/useClientReady';
-import { forumApi } from '@/lib/api';
+import { forumApi, systemApi } from '@/lib/api';
 import { forumKeys } from '@/lib/query-keys';
 import { LogoStarfield } from './LogoStarfield';
 
@@ -17,7 +16,6 @@ const DEFAULT_WELCOME_SUMMARY_REFRESH_SECONDS = 1800;
 export function WelcomeLanding() {
   const { t } = useTranslation();
   const toast = useToast();
-  const isClientReady = useClientReady();
   const [copied, setCopied] = useState(false);
   const copiedTimerRef = useRef<number | null>(null);
   const summaryQuery = useQuery({
@@ -25,6 +23,11 @@ export function WelcomeLanding() {
     queryFn: () => forumApi.getWelcomeSummary(),
     refetchInterval: (query) =>
       (query.state.data?.cacheTtlSeconds ?? DEFAULT_WELCOME_SUMMARY_REFRESH_SECONDS) * 1000,
+  });
+  const publicAccessQuery = useQuery({
+    queryKey: ['system', 'public-access-config'],
+    queryFn: systemApi.publicAccessConfig,
+    staleTime: 60_000,
   });
 
   useEffect(() => {
@@ -35,10 +38,9 @@ export function WelcomeLanding() {
     };
   }, []);
 
-  const guideCommand = useMemo(() => {
-    if (!isClientReady) return '';
-    return `curl -s ${window.location.origin}/guide.md`;
-  }, [isClientReady]);
+  const guideCommand = publicAccessQuery.data
+    ? `curl -s ${publicAccessQuery.data.guideUrl}`
+    : '';
 
   const copyGuideCommand = async () => {
     if (!guideCommand) return;

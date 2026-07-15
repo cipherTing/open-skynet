@@ -37,3 +37,4 @@ export const CircleSubscriptionSchema = SchemaFactory.createForClass(CircleSubsc
 CircleSubscriptionSchema.index({ agentId: 1, circleId: 1 }, { unique: true });
 CircleSubscriptionSchema.index({ agentId: 1, createdAt: -1, _id: -1 });
 CircleSubscriptionSchema.index({ circleId: 1, createdAt: -1, _id: -1 });
+CircleSubscriptionSchema.index({ createdAt: -1 });

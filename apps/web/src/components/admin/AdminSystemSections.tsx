@@ -1,6 +1,6 @@
 'use client';
 
-import { useDeferredValue, useRef, useState } from 'react';
+import { useDeferredValue, useEffect, useRef, useState } from 'react';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -26,6 +26,7 @@ import {
   type AdminAnnouncement,
   type AdminAnnouncementKind,
   type AdminFeatureFlag,
+  type AdminPublicAccessConfig,
 } from '@/lib/admin-api';
 import {
   ActionButton,
@@ -565,6 +566,104 @@ function AnnouncementActionDialog({
       </AlertDialog.Portal>
     </AlertDialog.Root>
   );
+}
+
+function PublicAccessEditor({ config }: { config: AdminPublicAccessConfig }) {
+  const { t } = useTranslation();
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const [siteOrigin, setSiteOrigin] = useState(config.siteOrigin);
+  const [apiBaseUrl, setApiBaseUrl] = useState(config.apiBaseUrl);
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      adminApi.updatePublicAccessConfig({
+        siteOrigin: siteOrigin.trim(),
+        apiBaseUrl: apiBaseUrl.trim(),
+        expectedVersion: config.version,
+      }),
+    onSuccess: async (updated) => {
+      queryClient.setQueryData(['admin', 'publicAccess'], updated);
+      await queryClient.invalidateQueries({ queryKey: ['system', 'public-access-config'] });
+      toast.success(t('admin.publicAccess.saved'));
+    },
+    onError: (error) => {
+      toast.error(error instanceof ApiError ? error.message : t('admin.publicAccess.saveFailed'));
+    },
+  });
+
+  const changed =
+    siteOrigin.trim() !== config.siteOrigin || apiBaseUrl.trim() !== config.apiBaseUrl;
+  const previewGuideUrl = `${siteOrigin.trim().replace(/\/+$/u, '')}/guide.md`;
+
+  return (
+    <section className="max-w-4xl">
+      <h2 className="text-sm font-bold text-ink-primary">{t('admin.publicAccess.title')}</h2>
+      <p className="mt-1 text-xs leading-5 text-ink-muted">{t('admin.publicAccess.description')}</p>
+      <div className="mt-5 space-y-5 rounded-xl border border-border-subtle bg-void/25 p-5">
+        <AdminField label={t('admin.publicAccess.siteOrigin')}>
+          <input
+            value={siteOrigin}
+            onChange={(event) => setSiteOrigin(event.target.value)}
+            className="skynet-input w-full rounded-md px-3 py-2.5 text-sm"
+            placeholder={t('admin.publicAccess.siteOriginPlaceholder')}
+          />
+        </AdminField>
+        <AdminField label={t('admin.publicAccess.apiBaseUrl')}>
+          <input
+            value={apiBaseUrl}
+            onChange={(event) => setApiBaseUrl(event.target.value)}
+            className="skynet-input w-full rounded-md px-3 py-2.5 text-sm"
+            placeholder={t('admin.publicAccess.apiBaseUrlPlaceholder')}
+          />
+        </AdminField>
+        <div>
+          <h3 className="text-xs font-bold text-ink-secondary">{t('admin.publicAccess.preview')}</h3>
+          <div className="mt-2 space-y-2 rounded-lg border border-border-subtle bg-void-deep/50 p-3 font-mono text-[11px] leading-5 text-steel">
+            <p>curl -s {previewGuideUrl}</p>
+            <p>export SKYNET_ORIGIN=&quot;{siteOrigin.trim()}&quot;</p>
+            <p>export SKYNET_API_BASE=&quot;{apiBaseUrl.trim()}&quot;</p>
+          </div>
+        </div>
+        {changed ? (
+          <div className="rounded-lg border border-copper/20 bg-copper/[0.05] px-3 py-2 text-xs text-ink-secondary">
+            <p className="font-bold text-copper">{t('admin.publicAccess.changes')}</p>
+            {siteOrigin.trim() !== config.siteOrigin ? (
+              <p className="mt-1 break-all">{config.siteOrigin} → {siteOrigin.trim()}</p>
+            ) : null}
+            {apiBaseUrl.trim() !== config.apiBaseUrl ? (
+              <p className="mt-1 break-all">{config.apiBaseUrl} → {apiBaseUrl.trim()}</p>
+            ) : null}
+          </div>
+        ) : null}
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-[11px] text-ink-muted">
+            {config.updatedAt
+              ? t('admin.publicAccess.updatedAt', { time: formatAdminTime(config.updatedAt) })
+              : t('admin.publicAccess.defaultValue')}
+          </span>
+          <button
+            type="button"
+            disabled={!changed || mutation.isPending || !siteOrigin.trim() || !apiBaseUrl.trim()}
+            onClick={() => mutation.mutate()}
+            className="rounded-md bg-copper px-4 py-2 text-sm font-bold text-void disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {mutation.isPending ? t('admin.action.running') : t('admin.publicAccess.save')}
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export function PublicAccessSection() {
+  const query = useQuery({
+    queryKey: ['admin', 'publicAccess'],
+    queryFn: adminApi.publicAccessConfig,
+  });
+  if (query.isPending) return <AdminLoading />;
+  if (query.isError || !query.data) return <AdminError retry={() => void query.refetch()} />;
+  return <PublicAccessEditor key={query.data.version} config={query.data} />;
 }
 
 export function FeatureFlagsSection() {

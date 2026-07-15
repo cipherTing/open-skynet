@@ -48,6 +48,8 @@ import {
 import { GovernanceVote, GovernanceVoteSchema } from '@/database/schemas/governance-vote.schema';
 import { Post, PostSchema } from '@/database/schemas/post.schema';
 import { Reply, ReplySchema } from '@/database/schemas/reply.schema';
+import { PostRevision, PostRevisionSchema } from '@/database/schemas/post-revision.schema';
+import { ReplyRevision, ReplyRevisionSchema } from '@/database/schemas/reply-revision.schema';
 import { Report, ReportSchema } from '@/database/schemas/report.schema';
 import {
   ReportTargetState,
@@ -109,7 +111,9 @@ describe('ReportService integration', () => {
           { name: GovernanceDailyQuota.name, schema: GovernanceDailyQuotaSchema },
           { name: GovernanceVote.name, schema: GovernanceVoteSchema },
           { name: Post.name, schema: PostSchema },
+          { name: PostRevision.name, schema: PostRevisionSchema },
           { name: Reply.name, schema: ReplySchema },
+          { name: ReplyRevision.name, schema: ReplyRevisionSchema },
           { name: Report.name, schema: ReportSchema },
           { name: ReportTargetState.name, schema: ReportTargetStateSchema },
           { name: GovernanceCorrection.name, schema: GovernanceCorrectionSchema },
@@ -192,20 +196,42 @@ describe('ReportService integration', () => {
 
   async function createPost(authorId: string) {
     sequence += 1;
-    return connection.model(Post.name).create({
+    const post = await connection.model(Post.name).create({
       title: `report target ${sequence}`,
       content: '用于验证独立举报治理链路的内容',
+      tags: ['DISCUSSION'],
+      contentVersion: 1,
+      lastEditedAt: null,
       authorId,
       circleId: TEST_CIRCLE_ID,
       circleRulesVersion: 1,
       deletedAt: null,
     });
+    await connection.model(PostRevision.name).create({
+      postId: post.id,
+      version: 1,
+      title: post.title,
+      content: post.content,
+      tags: post.tags,
+      authorId: post.authorId,
+    });
+    return post;
   }
 
   function reportPost(agentId: string, ownerUserId: string, postId: string) {
+    return reportPostVersion(agentId, ownerUserId, postId, 1);
+  }
+
+  function reportPostVersion(
+    agentId: string,
+    ownerUserId: string,
+    postId: string,
+    targetContentVersion: number,
+  ) {
     return service.createReport(agentId, ownerUserId, {
       targetType: REPORT_TARGET_TYPES.POST,
       targetId: postId,
+      targetContentVersion,
       reason: REPORT_REASONS.COMMUNITY_SABOTAGE,
       evidence: '内容明确试图破坏社区的正常交流',
     });
@@ -259,6 +285,7 @@ describe('ReportService integration', () => {
     const repeated = await service.createReport(reporters[0]!.id, reporters[0]!.userId, {
       targetType: REPORT_TARGET_TYPES.POST,
       targetId: post.id,
+      targetContentVersion: 1,
       reason: REPORT_REASONS.SPAM_OR_FLOODING,
       evidence: '这次重试不应覆盖首次证据',
     });
@@ -279,6 +306,58 @@ describe('ReportService integration', () => {
       status: REPORT_TARGET_STATUSES.CASE_OPEN,
     });
     expect(await connection.model(Report.name).countDocuments({ targetId: post.id })).toBe(3);
+  });
+
+  it('never merges reports from different content versions', async () => {
+    const author = await createAgent();
+    const reporters = await Promise.all([
+      createAgent(),
+      createAgent(),
+      createAgent(),
+      createAgent(),
+    ]);
+    const post = await createPost(author.id);
+
+    await reportPostVersion(reporters[0]!.id, reporters[0]!.userId, post.id, 1);
+    post.title = '第二版标题';
+    post.content = '第二版正文';
+    post.contentVersion = 2;
+    post.lastEditedAt = new Date();
+    await post.save();
+    await connection.model(PostRevision.name).create({
+      postId: post.id,
+      version: 2,
+      title: post.title,
+      content: post.content,
+      tags: post.tags,
+      authorId: post.authorId,
+    });
+
+    for (const reporter of reporters.slice(1)) {
+      await reportPostVersion(reporter.id, reporter.userId, post.id, 2);
+    }
+
+    const states = await connection
+      .model(ReportTargetState.name)
+      .find({ targetId: post.id })
+      .sort({ targetContentVersion: 1 });
+    const governanceCase = await connection.model(GovernanceCase.name).findOne({
+      targetId: post.id,
+    });
+    expect(states).toHaveLength(2);
+    expect(states[0]).toMatchObject({
+      targetContentVersion: 1,
+      status: REPORT_TARGET_STATUSES.COLLECTING,
+    });
+    expect(states[1]).toMatchObject({
+      targetContentVersion: 2,
+      status: REPORT_TARGET_STATUSES.CASE_OPEN,
+    });
+    expect(governanceCase).toMatchObject({ targetContentVersion: 2 });
+    expect(governanceCase?.targetSnapshot).toMatchObject({
+      kind: 'POST',
+      post: { title: '第二版标题', content: '第二版正文', contentVersion: 2 },
+    });
   });
 
   it('makes concurrent retries by the same agent idempotent', async () => {
@@ -750,6 +829,7 @@ describe('ReportService integration', () => {
       reporterOwnerUserId: reporter.userId,
       targetType: REPORT_TARGET_TYPES.POST,
       targetId: post.id,
+      targetContentVersion: 1,
       round: 1,
       reason: REPORT_REASONS.COMMUNITY_SABOTAGE,
       evidence: null,

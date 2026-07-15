@@ -14,6 +14,8 @@ import { FEATURE_FLAG_KEYS } from '@/database/schemas/feature-flag.schema';
 import { FeatureFlagService } from '@/system/feature-flag.service';
 import { Post } from '@/database/schemas/post.schema';
 import { Reply } from '@/database/schemas/reply.schema';
+import { PostRevision } from '@/database/schemas/post-revision.schema';
+import { ReplyRevision } from '@/database/schemas/reply-revision.schema';
 import { Circle } from '@/database/schemas/circle.schema';
 import { CircleProposal } from '@/database/schemas/circle-proposal.schema';
 import { CircleProposalComment } from '@/database/schemas/circle-proposal-comment.schema';
@@ -73,6 +75,7 @@ import { InboxService } from '@/inbox/inbox.service';
 interface OpenCaseFromReportsParams {
   targetType: GovernanceTargetType;
   targetId: string;
+  targetContentVersion: number;
   round: number;
   reporters: Array<{ agentId: string; ownerUserId: string }>;
   session?: ClientSession;
@@ -134,6 +137,7 @@ export interface GovernancePublicResultItem {
   id: string;
   targetType: GovernanceTargetType;
   targetId: string;
+  targetContentVersion: number;
   status: typeof GOVERNANCE_CASE_STATUS.RESOLVED_VIOLATION | typeof GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION;
   result: GovernancePublicResultCode;
   targetSummary: GovernanceTargetSummary;
@@ -227,6 +231,7 @@ export interface GovernanceStats {
   emergencyCount: number;
   violationResolvedCount: number;
   notViolationResolvedCount: number;
+  correctionCount: number;
   averageResolutionMinutes: number | null;
 }
 
@@ -261,8 +266,12 @@ export class GovernanceService {
     private readonly profileModel: Model<AgentGovernanceProfile>,
     @InjectModel(Post.name)
     private readonly postModel: Model<Post>,
+    @InjectModel(PostRevision.name)
+    private readonly postRevisionModel: Model<PostRevision>,
     @InjectModel(Reply.name)
     private readonly replyModel: Model<Reply>,
+    @InjectModel(ReplyRevision.name)
+    private readonly replyRevisionModel: Model<ReplyRevision>,
     @InjectModel(Circle.name)
     private readonly circleModel: Model<Circle>,
     @InjectModel(CircleProposal.name)
@@ -318,6 +327,7 @@ export class GovernanceService {
     const snapshot = await this.getTargetSnapshot(
       params.targetType,
       params.targetId,
+      params.targetContentVersion,
       params.session,
     );
     if (!snapshot) {
@@ -356,10 +366,16 @@ export class GovernanceService {
     }
 
     const now = new Date();
-    const activeKey = getReportTargetKey(params.targetType, params.targetId, params.round);
+    const activeKey = getReportTargetKey(
+      params.targetType,
+      params.targetId,
+      params.targetContentVersion,
+      params.round,
+    );
     const governanceCase = new this.caseModel({
       targetType: params.targetType,
       targetId: params.targetId,
+      targetContentVersion: params.targetContentVersion,
       round: params.round,
       targetAuthorId,
       targetAuthorOwnerUserId,
@@ -463,6 +479,7 @@ export class GovernanceService {
       emergencyCount,
       violationResolvedCount,
       notViolationResolvedCount,
+      correctionCount,
       averageRows,
     ] = await Promise.all([
       this.caseModel.countDocuments({ status: { $in: GOVERNANCE_PUBLIC_RESULT_STATUSES }, resolvedAt: { $gte: todayStart } }),
@@ -471,6 +488,7 @@ export class GovernanceService {
       this.caseModel.countDocuments({ status: GOVERNANCE_CASE_STATUS.EMERGENCY }),
       this.caseModel.countDocuments({ status: GOVERNANCE_CASE_STATUS.RESOLVED_VIOLATION, resolvedAt: { $gte: sevenDaysAgo } }),
       this.caseModel.countDocuments({ status: GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION, resolvedAt: { $gte: sevenDaysAgo } }),
+      this.correctionModel.countDocuments({ createdAt: { $gte: sevenDaysAgo } }),
       this.caseModel.aggregate<{ averageResolutionMinutes: number }>([
         { $match: terminalRecentFilter },
         { $match: { resolvedAt: { $ne: null } } },
@@ -485,6 +503,7 @@ export class GovernanceService {
       emergencyCount,
       violationResolvedCount,
       notViolationResolvedCount,
+      correctionCount,
       averageResolutionMinutes: averageRows[0]?.averageResolutionMinutes == null ? null : Math.round(averageRows[0].averageResolutionMinutes),
     };
   }
@@ -796,10 +815,22 @@ export class GovernanceService {
     return agent.userId;
   }
 
-  private async getTargetSnapshot(targetType: GovernanceTargetType, targetId: string, session?: ClientSession): Promise<GovernanceTargetSnapshot | null> {
+  private async getTargetSnapshot(
+    targetType: GovernanceTargetType,
+    targetId: string,
+    targetContentVersion: number,
+    session?: ClientSession,
+  ): Promise<GovernanceTargetSnapshot | null> {
     if (targetType === GOVERNANCE_TARGET_TYPES.POST) {
-      const post = await this.postModel.findById(targetId, null, { session });
-      if (!post) return null;
+      const [post, revision] = await Promise.all([
+        this.postModel.findById(targetId, null, { session }),
+        this.postRevisionModel.findOne(
+          { postId: targetId, version: targetContentVersion },
+          null,
+          { session },
+        ),
+      ]);
+      if (!post || !revision) return null;
       const circleRules = await this.getCircleRulesSnapshot(
         post.circleId,
         post.circleRulesVersion,
@@ -809,9 +840,11 @@ export class GovernanceService {
         kind: GOVERNANCE_TARGET_TYPES.POST,
         post: {
           id: post.id,
-          title: post.title,
-          content: post.content,
-          authorId: post.authorId,
+          title: revision.title,
+          content: revision.content,
+          tags: revision.tags,
+          contentVersion: revision.version,
+          authorId: revision.authorId,
           createdAt: post.createdAt,
           circleRules,
         },
@@ -821,7 +854,7 @@ export class GovernanceService {
       const proposal = await this.proposalModel.findById(targetId, null, { session });
       if (!proposal) return null;
       const revision = await this.proposalRevisionModel.findOne(
-        { proposalId: proposal.id, revisionNumber: proposal.currentRevisionNumber },
+        { proposalId: proposal.id, revisionNumber: targetContentVersion },
         null,
         { session },
       );
@@ -842,6 +875,7 @@ export class GovernanceService {
       };
     }
     if (targetType === GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL_COMMENT) {
+      if (targetContentVersion !== 1) return null;
       const comment = await this.proposalCommentModel.findById(targetId, null, { session });
       if (!comment || comment.hiddenAt) return null;
       return {
@@ -856,8 +890,15 @@ export class GovernanceService {
         },
       };
     }
-    const reply = await this.replyModel.findById(targetId, null, { session });
-    if (!reply) return null;
+    const [reply, replyRevision] = await Promise.all([
+      this.replyModel.findById(targetId, null, { session }),
+      this.replyRevisionModel.findOne(
+        { replyId: targetId, version: targetContentVersion },
+        null,
+        { session },
+      ),
+    ]);
+    if (!reply || !replyRevision) return null;
     const post = await this.postModel.findById(reply.postId, null, { session });
     if (!post) return null;
     const parentReply = reply.parentReplyId
@@ -881,6 +922,7 @@ export class GovernanceService {
       ? {
           id: parentReply.id,
           content: parentReply.content,
+          contentVersion: parentReply.contentVersion,
           authorId: parentReply.authorId,
           createdAt: parentReply.createdAt,
           circleRules: parentReplyCircleRules,
@@ -892,14 +934,17 @@ export class GovernanceService {
         id: post.id,
         title: post.title,
         content: post.content,
+        tags: post.tags,
+        contentVersion: post.contentVersion,
         authorId: post.authorId,
         createdAt: post.createdAt,
         circleRules: postCircleRules,
       },
       reply: {
         id: reply.id,
-        content: reply.content,
-        authorId: reply.authorId,
+        content: replyRevision.content,
+        contentVersion: replyRevision.version,
+        authorId: replyRevision.authorId,
         createdAt: reply.createdAt,
         circleRules: replyCircleRules,
       },
@@ -1087,6 +1132,7 @@ export class GovernanceService {
       {
         targetType: governanceCase.targetType,
         targetId: governanceCase.targetId,
+        targetContentVersion: governanceCase.targetContentVersion,
         round: governanceCase.round,
         caseId: governanceCase.id,
         status: REPORT_TARGET_STATUSES.CASE_OPEN,
@@ -1195,6 +1241,7 @@ export class GovernanceService {
         caseId: governanceCase.id,
         targetType: governanceCase.targetType,
         targetId: governanceCase.targetId,
+        targetContentVersion: governanceCase.targetContentVersion,
         round: governanceCase.round,
         status: REPORT_TARGET_STATUSES.RESOLVED_VIOLATION,
       },
@@ -1220,9 +1267,15 @@ export class GovernanceService {
 
     const nextRound = governanceCase.round + 1;
     await new this.reportTargetStateModel({
-      targetKey: getReportTargetKey(governanceCase.targetType, governanceCase.targetId, nextRound),
+      targetKey: getReportTargetKey(
+        governanceCase.targetType,
+        governanceCase.targetId,
+        governanceCase.targetContentVersion,
+        nextRound,
+      ),
       targetType: governanceCase.targetType,
       targetId: governanceCase.targetId,
+      targetContentVersion: governanceCase.targetContentVersion,
       round: nextRound,
       targetAuthorId: governanceCase.targetAuthorId,
       qualifiedReporters: [],
@@ -1250,13 +1303,21 @@ export class GovernanceService {
     const now = new Date();
     if (governanceCase.targetType === GOVERNANCE_TARGET_TYPES.POST) {
       await this.postModel.updateOne(
-        { _id: governanceCase.targetId, deletedAt: { $exists: true } },
+        {
+          _id: governanceCase.targetId,
+          contentVersion: governanceCase.targetContentVersion,
+          deletedAt: null,
+        },
         { deletedAt: now, removalSource: CONTENT_REMOVAL_SOURCES.GOVERNANCE },
         { session },
       );
     } else if (governanceCase.targetType === GOVERNANCE_TARGET_TYPES.REPLY) {
       await this.replyModel.updateOne(
-        { _id: governanceCase.targetId, deletedAt: { $exists: true } },
+        {
+          _id: governanceCase.targetId,
+          contentVersion: governanceCase.targetContentVersion,
+          deletedAt: null,
+        },
         { deletedAt: now, removalSource: CONTENT_REMOVAL_SOURCES.GOVERNANCE },
         { session },
       );
@@ -1462,6 +1523,7 @@ export class GovernanceService {
       id: governanceCase.id,
       targetType: governanceCase.targetType,
       targetId: governanceCase.targetId,
+      targetContentVersion: governanceCase.targetContentVersion,
       status: this.toPublicResultStatus(governanceCase.status),
       result: this.toPublicResultCode(governanceCase.status),
       targetSummary: this.getTargetSummary(governanceCase.targetSnapshot),
@@ -1686,6 +1748,7 @@ export class GovernanceService {
       id: governanceCase.id,
       targetType: governanceCase.targetType,
       targetId: governanceCase.targetId,
+      targetContentVersion: governanceCase.targetContentVersion,
       target: governanceCase.targetSnapshot,
       status: governanceCase.status,
       openedAt: governanceCase.openedAt.toISOString(),

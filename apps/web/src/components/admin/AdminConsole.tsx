@@ -20,6 +20,7 @@ import {
   Eye,
   FileText,
   Gavel,
+  Globe2,
   History,
   KeyRound,
   Megaphone,
@@ -52,6 +53,7 @@ import { AdminCircleEditorDialog } from './AdminCircleEditorDialog';
 import { AdminGovernanceCaseDialog } from './AdminGovernanceCaseDialog';
 import { AdminReviewDetailDialog } from './AdminReviewDetailDialog';
 import { AdminAuditDetailDialog } from './AdminAuditDetailDialog';
+import { PostTags } from '@/components/forum/PostTags';
 import {
   ActionButton,
   AdminError,
@@ -69,6 +71,10 @@ const AnnouncementsSection = dynamic(
 );
 const FeatureFlagsSection = dynamic(
   () => import('./AdminSystemSections').then((module) => module.FeatureFlagsSection),
+  { loading: () => <AdminLoading /> },
+);
+const PublicAccessSection = dynamic(
+  () => import('./AdminSystemSections').then((module) => module.PublicAccessSection),
   { loading: () => <AdminLoading /> },
 );
 const SecurityEventsSection = dynamic(
@@ -94,6 +100,7 @@ const SECTION_GROUPS: Array<{
     id: 'operations',
     items: [
       { id: 'announcements', icon: Megaphone },
+      { id: 'publicAccess', icon: Globe2 },
       { id: 'featureFlags', icon: ToggleLeft },
       { id: 'audit', icon: History },
     ],
@@ -116,6 +123,7 @@ const ADMIN_AUDIT_ACTIONS = new Set([
   'ANNOUNCEMENT_WITHDRAWN',
   'ANNOUNCEMENT_DELETED',
   'FEATURE_FLAG_UPDATED',
+  'PUBLIC_ACCESS_CONFIG_UPDATED',
   'CONTENT_REVIEW_APPROVED',
   'CONTENT_REVIEW_REJECTED',
   'CIRCLE_CREATED',
@@ -294,6 +302,7 @@ function AdminWorkspace({ section }: { section: AdminSection }) {
           {section === 'circles' && <CirclesSection />}
           {section === 'governance' && <GovernanceSection />}
           {section === 'announcements' && <AnnouncementsSection />}
+          {section === 'publicAccess' && <PublicAccessSection />}
           {section === 'featureFlags' && <FeatureFlagsSection />}
           {section === 'security' && <SecurityEventsSection />}
           {section === 'audit' && <AuditSection />}
@@ -317,10 +326,14 @@ function OverviewSection() {
     ['replies', data.replies],
     ['circles', data.circles],
     ['openCases', data.openCases],
+    ['emergencyCases', data.emergencyCases],
+    ['pendingReviews', data.pendingReviews],
+    ['activeProposals', data.activeProposals],
+    ['failedJobs', data.failedJobs],
   ] as const;
   return (
     <section>
-      <div className="grid grid-cols-2 border-y border-border-subtle sm:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 border-y border-border-subtle sm:grid-cols-3 xl:grid-cols-5">
         {metrics.map(([label, value]) => (
           <div key={label} className="border-r border-border-subtle px-4 py-5 last:border-r-0">
             <div className="font-mono text-2xl font-bold tabular-nums text-ink-primary">
@@ -647,6 +660,9 @@ function ContentSection({ onAction }: { onAction: (action: AdminAction) => void 
                     <div className="mt-1 line-clamp-2 max-w-xl text-xs text-ink-muted">
                       {item.content}
                     </div>
+                    {type === 'POST' && item.tags ? (
+                      <div className="mt-2"><PostTags tags={item.tags} /></div>
+                    ) : null}
                   </td>
                   <td className="px-3 py-3 font-mono text-xs text-ink-muted">{id}</td>
                   <td className="px-3 py-3">

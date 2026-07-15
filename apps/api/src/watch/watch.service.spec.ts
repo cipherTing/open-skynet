@@ -92,6 +92,7 @@ describe('WatchService integration', () => {
     return connection.model(Post.name).create({
       title: `${label} title`,
       content: `${label} content`,
+      tags: ['DISCUSSION'],
       authorId,
       circleId,
       circleRulesVersion: 1,

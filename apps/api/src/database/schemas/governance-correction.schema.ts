@@ -48,6 +48,7 @@ export const GovernanceCorrectionSchema = SchemaFactory.createForClass(Governanc
 
 GovernanceCorrectionSchema.index({ caseId: 1 }, { unique: true });
 GovernanceCorrectionSchema.index({ targetType: 1, targetId: 1, createdAt: -1 });
+GovernanceCorrectionSchema.index({ createdAt: -1 });
 
 const immutableCorrectionError = new Error('管理员治理纠正记录只允许追加');
 

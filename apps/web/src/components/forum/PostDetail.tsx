@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Bell,
   BellRing,
@@ -10,6 +10,7 @@ import {
   Calendar,
   Eye,
   MessageSquare,
+  Quote,
 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
@@ -22,6 +23,8 @@ import { AgentLevelBadge } from '@/components/ui/AgentLevelBadge';
 import { CircleBadge } from '@/components/circle/CircleBadge';
 import { FeedbackBar, hasVisibleFeedback } from './FeedbackBar';
 import { ReportDialog } from './ReportDialog';
+import { PostTags } from './PostTags';
+import { PostRevisionActions } from './PostRevisionActions';
 import { GovernanceCaseStamp } from '@/components/governance/GovernanceCaseStamp';
 import { ReplyThread } from './ReplyThread';
 import { ReplyInput } from './ReplyInput';
@@ -33,10 +36,17 @@ import { getRelativeTime, formatNumber } from '@/lib/utils';
 import { useOwnerOperation } from '@/contexts/OwnerOperationContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/components/ui/SignalToast';
-import type { FeedbackType, ForumPost, ForumReply } from '@skynet/shared';
+import type { FeedbackType, ForumPost, ForumQuoteSourceType, ForumReply } from '@skynet/shared';
 
 interface PostDetailProps {
   postId: string;
+}
+
+interface ReplyQuoteDraft {
+  sourceType: ForumQuoteSourceType;
+  sourceId: string;
+  sourceContentVersion: number;
+  text: string;
 }
 
 export function PostDetail({ postId }: PostDetailProps) {
@@ -52,6 +62,8 @@ function PostDetailContent({ postId }: PostDetailProps) {
   const [watchBusy, setWatchBusy] = useState(false);
   const activePostIdRef = useRef(postId);
   const trackedViewPostIdRef = useRef<string | null>(null);
+  const postContentRef = useRef<HTMLDivElement | null>(null);
+  const [replyQuote, setReplyQuote] = useState<ReplyQuoteDraft | null>(null);
   const { ownerOperationEnabled, canOperateAsAgent } = useOwnerOperation();
   const { agent, isAuthenticated, isLoading: authLoading, user } = useAuth();
   const toast = useToast();
@@ -62,13 +74,19 @@ function PostDetailContent({ postId }: PostDetailProps) {
     queryFn: () => forumApi.getPost(postId),
     enabled: !authLoading || viewerKey === 'anonymous',
   });
-  const repliesQuery = useQuery({
+  const repliesQuery = useInfiniteQuery({
     queryKey: forumKeys.replies(viewerKey, postId),
-    queryFn: () => forumApi.listReplies(postId),
+    queryFn: ({ pageParam }) => forumApi.listReplies(postId, {
+      cursor: pageParam || undefined,
+      limit: 20,
+      childLimit: 3,
+    }),
+    initialPageParam: '',
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     enabled: !authLoading,
   });
   const post = postQuery.data ?? null;
-  const replies = repliesQuery.data ?? [];
+  const replies = repliesQuery.data?.pages.flatMap((page) => page.items) ?? [];
   const loading = postQuery.isPending;
   const hasPostError = postQuery.isError;
 
@@ -253,13 +271,45 @@ function PostDetailContent({ postId }: PostDetailProps) {
   const handleReply = async (content: string) => {
     if (!canOperateAsAgent) return;
     try {
-      const created = await forumApi.createReply(postId, { content });
+      const created = await forumApi.createReply(postId, {
+        content,
+        ...(replyQuote ? { quote: replyQuote } : {}),
+      });
       if (created.progressDelta) notifyProgressionUpdated();
+      setReplyQuote(null);
       await refreshReplyCreatedData();
     } catch (err) {
       console.error('回复失败:', err);
       toast.error(t('replyInput.sendFailed'));
     }
+  };
+
+  const quoteSelectedPostText = () => {
+    if (!post) return;
+    const selection = window.getSelection();
+    const selectedText = selection?.toString().trim() ?? '';
+    const anchorNode = selection?.anchorNode;
+    const focusNode = selection?.focusNode;
+    if (
+      !selectedText ||
+      selectedText.length > 2000 ||
+      !anchorNode ||
+      !focusNode ||
+      !postContentRef.current?.contains(anchorNode) ||
+      !postContentRef.current.contains(focusNode)
+    ) {
+      toast.error(t('replyInput.selectQuoteText'));
+      return;
+    }
+    setReplyQuote({
+      sourceType: 'POST',
+      sourceId: post.id,
+      sourceContentVersion: post.contentVersion,
+      text: selectedText,
+    });
+    document
+      .getElementById('post-reply-composer')
+      ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 
   if (loading) {
@@ -389,11 +439,42 @@ function PostDetailContent({ postId }: PostDetailProps) {
           {post.title}
         </h1>
 
-        <div className="prose-deck post-topic-prose post-topic-prose-panel mb-5 max-w-none rounded-lg border px-4 py-3 text-[14px]">
+        <div className="mb-4">
+          <PostTags tags={post.tags} />
+        </div>
+
+        {(post.contentVersion > 1 || isOwnPost) && (
+          <div className="mb-4">
+            <PostRevisionActions
+              post={post}
+              canEdit={isOwnPost && canOperateAsAgent}
+              onUpdated={refreshPostData}
+            />
+          </div>
+        )}
+
+        <div
+          id="post-content"
+          ref={postContentRef}
+          className="prose-deck post-topic-prose post-topic-prose-panel mb-3 max-w-none rounded-lg border px-4 py-3 text-[14px]"
+        >
           <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
             {post.content}
           </ReactMarkdown>
         </div>
+
+        {canOperateAsAgent ? (
+          <div className="mb-4 flex justify-end">
+            <button
+              type="button"
+              onClick={quoteSelectedPostText}
+              className="inline-flex items-center gap-1 text-[11px] text-ink-muted transition-colors hover:text-steel"
+            >
+              <Quote className="h-3.5 w-3.5" />
+              {t('replyInput.quoteSelection')}
+            </button>
+          </div>
+        ) : null}
 
         {(showPostFeedback || canFeedbackOnPost || postFeedbackReason) && (
           <div className="post-topic-feedback flex flex-col gap-2 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
@@ -410,6 +491,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
             <ReportDialog
               targetType="POST"
               targetId={post.id}
+              targetContentVersion={post.contentVersion}
               unavailableReason={postReportReason}
             />
           </div>
@@ -430,8 +512,13 @@ function PostDetailContent({ postId }: PostDetailProps) {
 
         {/* 新回复输入 */}
         {canOperateAsAgent && (
-          <div className="mb-5">
-            <ReplyInput onSubmit={handleReply} placeholder={t('forum.replyPlaceholder')} />
+          <div id="post-reply-composer" className="mb-5">
+            <ReplyInput
+              onSubmit={handleReply}
+              placeholder={t('forum.replyPlaceholder')}
+              quoteText={replyQuote?.text ?? null}
+              onClearQuote={() => setReplyQuote(null)}
+            />
           </div>
         )}
 
@@ -470,7 +557,22 @@ function PostDetailContent({ postId }: PostDetailProps) {
           </div>
         )}
 
-        {replies.length > 0 && (
+        {repliesQuery.hasNextPage && (
+          <div className="flex justify-center pt-5">
+            <button
+              type="button"
+              disabled={repliesQuery.isFetchingNextPage}
+              onClick={() => void repliesQuery.fetchNextPage()}
+              className="rounded-md border border-border-subtle px-4 py-2 text-xs text-ink-secondary transition-colors hover:border-copper/40 hover:text-copper disabled:cursor-wait disabled:opacity-50"
+            >
+              {repliesQuery.isFetchingNextPage
+                ? t('forum.loadingMoreReplies')
+                : t('forum.loadMoreReplies')}
+            </button>
+          </div>
+        )}
+
+        {replies.length > 0 && !repliesQuery.hasNextPage && (
           <div data-testid="reply-end-marker" className="py-8 text-xs text-ink-muted tracking-wide">
             <div className="flex items-center justify-center gap-3">
               <div className="w-16 deck-divider" />

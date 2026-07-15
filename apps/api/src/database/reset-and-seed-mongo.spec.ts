@@ -19,6 +19,8 @@ function readPath(document: Record<string, unknown>, fieldPath: string): unknown
 describe('reset-and-seed-mongo', () => {
   let replicaSet: MongoMemoryReplSet;
   let connection: Connection;
+  let mongoUri: string;
+  const scriptPath = path.resolve(__dirname, '../../scripts/reset-and-seed-mongo.mjs');
 
   function registeredModels() {
     return DATABASE_MODEL_DEFINITIONS.map(({ name, schema }) => connection.model(name, schema));
@@ -26,8 +28,7 @@ describe('reset-and-seed-mongo', () => {
 
   beforeAll(async () => {
     replicaSet = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
-    const mongoUri = replicaSet.getUri('skynet');
-    const scriptPath = path.resolve(__dirname, '../../scripts/reset-and-seed-mongo.mjs');
+    mongoUri = replicaSet.getUri('skynet');
 
     await execFileAsync(process.execPath, [scriptPath], {
       env: {
@@ -70,7 +71,9 @@ describe('reset-and-seed-mongo', () => {
       'circles',
       'circle_rule_revisions',
       'posts',
+      'post_revisions',
       'replies',
+      'reply_revisions',
       'feedbacks',
       'interaction_histories',
       'view_histories',
@@ -141,7 +144,7 @@ describe('reset-and-seed-mongo', () => {
     ).toBe(true);
   });
 
-  it('keeps reports, target states, and governance cases aligned by round', async () => {
+  it('keeps reports, target states, and governance cases aligned by content version and round', async () => {
     const database = connection.db;
     if (!database) throw new Error('MongoDB database handle is unavailable');
     const cases = await database.collection('governance_cases').find({}).toArray();
@@ -149,18 +152,20 @@ describe('reset-and-seed-mongo', () => {
       const reports = await database.collection('reports').find({
         targetType: governanceCase.targetType,
         targetId: governanceCase.targetId,
+        targetContentVersion: governanceCase.targetContentVersion,
         round: governanceCase.round,
       }).toArray();
       const state = await database.collection('report_target_states').findOne({
         caseId: String(governanceCase._id),
         targetType: governanceCase.targetType,
         targetId: governanceCase.targetId,
+        targetContentVersion: governanceCase.targetContentVersion,
         round: governanceCase.round,
       });
       expect(reports).toHaveLength(3);
       expect(state).not.toBeNull();
       expect(String(state?.targetKey)).toBe(
-        `${String(governanceCase.targetType)}:${String(governanceCase.targetId)}:round:${String(governanceCase.round)}`,
+        `${String(governanceCase.targetType)}:${String(governanceCase.targetId)}:version:${String(governanceCase.targetContentVersion)}:round:${String(governanceCase.round)}`,
       );
     }
   });
@@ -190,5 +195,29 @@ describe('reset-and-seed-mongo', () => {
         revisionKeys.has(`${String(post?.circleId)}:${String(reply.circleRulesVersion)}`),
       ).toBe(true);
     }
+  });
+
+  it('validates the Agent key pepper before dropping the existing database', async () => {
+    const database = connection.db;
+    if (!database) throw new Error('MongoDB database handle is unavailable');
+    await database.collection('reset_safety_markers').insertOne({ marker: 'must-survive' });
+
+    await expect(
+      execFileAsync(process.execPath, [scriptPath], {
+        env: {
+          ...process.env,
+          NODE_ENV: 'development',
+          MONGODB_URI: mongoUri,
+          SKYNET_CONFIRM_DB_RESET: 'skynet',
+          AGENT_KEY_PEPPER: 'too-short',
+        },
+      }),
+    ).rejects.toMatchObject({
+      stderr: expect.stringContaining('AGENT_KEY_PEPPER must be at least 32 characters'),
+    });
+
+    await expect(
+      database.collection('reset_safety_markers').countDocuments({ marker: 'must-survive' }),
+    ).resolves.toBe(1);
   });
 });

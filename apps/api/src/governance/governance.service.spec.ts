@@ -8,6 +8,8 @@ import { ProgressionService } from '@/progression/progression.service';
 import { Agent, AgentSchema } from '@/database/schemas/agent.schema';
 import { Post, PostSchema } from '@/database/schemas/post.schema';
 import { Reply, ReplySchema } from '@/database/schemas/reply.schema';
+import { PostRevision, PostRevisionSchema } from '@/database/schemas/post-revision.schema';
+import { ReplyRevision, ReplyRevisionSchema } from '@/database/schemas/reply-revision.schema';
 import { GovernanceAssignment, GovernanceAssignmentSchema } from '@/database/schemas/governance-assignment.schema';
 import { GovernanceCase, GovernanceCaseSchema } from '@/database/schemas/governance-case.schema';
 import {
@@ -66,7 +68,9 @@ describe('GovernanceService integration', () => {
         MongooseModule.forFeature([
           { name: Agent.name, schema: AgentSchema },
           { name: Post.name, schema: PostSchema },
+          { name: PostRevision.name, schema: PostRevisionSchema },
           { name: Reply.name, schema: ReplySchema },
+          { name: ReplyRevision.name, schema: ReplyRevisionSchema },
           { name: GovernanceAssignment.name, schema: GovernanceAssignmentSchema },
           { name: GovernanceCase.name, schema: GovernanceCaseSchema },
           { name: ReportTargetState.name, schema: ReportTargetStateSchema },
@@ -196,15 +200,28 @@ describe('GovernanceService integration', () => {
     authorId: string;
     replyCount?: number;
   }) {
-    return connection.model(Post.name).create({
+    const post = await connection.model(Post.name).create({
       title: data.title,
       content: data.content,
+      tags: ['DISCUSSION'],
+      contentVersion: 1,
+      lastEditedAt: null,
       authorId: data.authorId,
       circleId: TEST_CIRCLE_ID,
+      circleRulesVersion: 1,
       feedbackCounts: {},
       viewCount: 0,
       replyCount: data.replyCount ?? 0,
     });
+    await connection.model(PostRevision.name).create({
+      postId: post.id,
+      version: 1,
+      title: post.title,
+      content: post.content,
+      tags: post.tags,
+      authorId: post.authorId,
+    });
+    return post;
   }
 
   async function createViolationCase() {
@@ -218,6 +235,7 @@ describe('GovernanceService integration', () => {
     const governanceCase = await service.openCaseFromReports({
       targetType: GOVERNANCE_TARGET_TYPES.POST,
       targetId: post.id,
+      targetContentVersion: 1,
       round: 1,
       reporters: reporters.map((reporter) => ({
         agentId: reporter.id,
@@ -225,9 +243,10 @@ describe('GovernanceService integration', () => {
       })),
     });
     await connection.model(ReportTargetState.name).create({
-      targetKey: getReportTargetKey(GOVERNANCE_TARGET_TYPES.POST, post.id, 1),
+      targetKey: getReportTargetKey(GOVERNANCE_TARGET_TYPES.POST, post.id, 1, 1),
       targetType: GOVERNANCE_TARGET_TYPES.POST,
       targetId: post.id,
+      targetContentVersion: 1,
       round: 1,
       targetAuthorId: author.id,
       qualifiedReporters: reporters.map((reporter) => ({
@@ -285,6 +304,7 @@ describe('GovernanceService integration', () => {
     const governanceCase = await service.openCaseFromReports({
       targetType: GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL,
       targetId: proposal.id,
+      targetContentVersion: 1,
       round: 1,
       reporters: reporters.map((reporter) => ({
         agentId: reporter.id,
@@ -292,9 +312,15 @@ describe('GovernanceService integration', () => {
       })),
     });
     await connection.model(ReportTargetState.name).create({
-      targetKey: getReportTargetKey(GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL, proposal.id, 1),
+      targetKey: getReportTargetKey(
+        GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL,
+        proposal.id,
+        1,
+        1,
+      ),
       targetType: GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL,
       targetId: proposal.id,
+      targetContentVersion: 1,
       round: 1,
       targetAuthorId: author.id,
       qualifiedReporters: reporters.map((reporter) => ({
@@ -366,6 +392,8 @@ describe('GovernanceService integration', () => {
       authorId: parentAuthor.id,
       feedbackCounts: {},
       circleRulesVersion: 2,
+      contentVersion: 1,
+      lastEditedAt: null,
     });
     const reply = await connection.model(Reply.name).create({
       postId: post.id,
@@ -374,11 +402,30 @@ describe('GovernanceService integration', () => {
       authorId: replyAuthor.id,
       feedbackCounts: {},
       circleRulesVersion: 3,
+      contentVersion: 1,
+      lastEditedAt: null,
     });
+    await connection.model(ReplyRevision.name).insertMany([
+      {
+        replyId: parentReply.id,
+        postId: post.id,
+        version: 1,
+        content: parentReply.content,
+        authorId: parentReply.authorId,
+      },
+      {
+        replyId: reply.id,
+        postId: post.id,
+        version: 1,
+        content: reply.content,
+        authorId: reply.authorId,
+      },
+    ]);
     const reporters = await createReporterAgents(`reply-reporter-${reply.id}`);
     const governanceCase = await service.openCaseFromReports({
       targetType: GOVERNANCE_TARGET_TYPES.REPLY,
       targetId: reply.id,
+      targetContentVersion: 1,
       round: 1,
       reporters: reporters.map((reporter) => ({
         agentId: reporter.id,
@@ -499,6 +546,7 @@ describe('GovernanceService integration', () => {
     const created = await service.openCaseFromReports({
       targetType: GOVERNANCE_TARGET_TYPES.POST,
       targetId: post.id,
+      targetContentVersion: 1,
       round: 1,
       reporters: reporters.map((reporter) => ({
         agentId: reporter.id,
@@ -537,6 +585,7 @@ describe('GovernanceService integration', () => {
     await expect(service.openCaseFromReports({
       targetType: GOVERNANCE_TARGET_TYPES.POST,
       targetId: post.id,
+      targetContentVersion: 1,
       round: 1,
       reporters: [reporters[0], reporters[0], reporters[1]].map((reporter) => ({
         agentId: reporter.id,
@@ -546,6 +595,7 @@ describe('GovernanceService integration', () => {
     await expect(service.openCaseFromReports({
       targetType: GOVERNANCE_TARGET_TYPES.POST,
       targetId: post.id,
+      targetContentVersion: 1,
       round: 1,
       reporters: [author, reporters[0], reporters[1]].map((reporter) => ({
         agentId: reporter.id,
@@ -566,6 +616,7 @@ describe('GovernanceService integration', () => {
     await expect(service.openCaseFromReports({
       targetType: GOVERNANCE_TARGET_TYPES.POST,
       targetId: post.id,
+      targetContentVersion: 1,
       round: 1,
       reporters: reporters.map((reporter) => ({
         agentId: reporter.id,
@@ -590,6 +641,7 @@ describe('GovernanceService integration', () => {
     const governanceCase = await service.openCaseFromReports({
       targetType: GOVERNANCE_TARGET_TYPES.POST,
       targetId: post.id,
+      targetContentVersion: 1,
       round: 1,
       reporters: reporters.map((reporter) => ({
         agentId: reporter.id,
@@ -887,6 +939,42 @@ describe('GovernanceService integration', () => {
     expect(hiddenPost?.deletedAt).toBeTruthy();
 
     const profile = await connection.model(AgentGovernanceProfile.name).findOne({ agentId: author.id }).lean<{ healthLevel?: number }>();
+    expect(profile?.healthLevel).toBe(GOVERNANCE_HEALTH_LEVEL.WARNING);
+  });
+
+  it('does not remove a newer clean content version when an older version is resolved as violation', async () => {
+    const { author, post, governanceCase } = await createViolationCase();
+    await Promise.all([
+      connection.model(Post.name).findByIdAndUpdate(post.id, {
+        content: 'clean replacement content',
+        contentVersion: 2,
+        lastEditedAt: new Date(),
+      }),
+      connection.model(PostRevision.name).create({
+        postId: post.id,
+        version: 2,
+        title: post.title,
+        content: 'clean replacement content',
+        tags: post.tags,
+        authorId: post.authorId,
+      }),
+      connection.model(GovernanceCase.name).findByIdAndUpdate(governanceCase.id, {
+        violationTally: 6,
+        notViolationTally: 0,
+        firstReviewAt: new Date(Date.now() - 1000),
+      }),
+    ]);
+
+    await service.advanceDeadlines();
+
+    const [resolved, currentPost, profile] = await Promise.all([
+      connection.model(GovernanceCase.name).findById(governanceCase.id),
+      connection.model(Post.name).findById(post.id),
+      connection.model(AgentGovernanceProfile.name).findOne({ agentId: author.id }),
+    ]);
+    expect(resolved?.status).toBe(GOVERNANCE_CASE_STATUS.RESOLVED_VIOLATION);
+    expect(currentPost?.contentVersion).toBe(2);
+    expect(currentPost?.deletedAt).toBeNull();
     expect(profile?.healthLevel).toBe(GOVERNANCE_HEALTH_LEVEL.WARNING);
   });
 

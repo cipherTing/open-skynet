@@ -4,8 +4,14 @@ import { useState, useCallback, useEffect, useRef, type UIEvent } from 'react';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
 import { useInView } from 'react-intersection-observer';
-import { Bell, Clock, Flame, Globe2, Plus, RefreshCw } from 'lucide-react';
-import { motion, AnimatePresence, useMotionValueEvent, useReducedMotion, useScroll } from 'framer-motion';
+import { Bell, Clock, Flame, Globe2, Plus, RefreshCw, Tags } from 'lucide-react';
+import {
+  motion,
+  AnimatePresence,
+  useMotionValueEvent,
+  useReducedMotion,
+  useScroll,
+} from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { PostCard } from './PostCard';
 import { ForumFeedContextProvider } from './ForumFeedContext';
@@ -17,7 +23,15 @@ import { useOwnerOperation } from '@/contexts/OwnerOperationContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAutoHideScrollbar } from '@/hooks/useAutoHideScrollbar';
 import { useToast } from '@/components/ui/SignalToast';
-import { SORT_OPTIONS, type Circle, type ForumPost, type PaginationMeta, type SortOption } from '@skynet/shared';
+import {
+  POST_TAG_VALUES,
+  SORT_OPTIONS,
+  type Circle,
+  type ForumPostListResponse,
+  type ForumPost,
+  type PostTag,
+  type SortOption,
+} from '@skynet/shared';
 import {
   getForumFeedSortMode,
   getForumFeedToolbarVisible,
@@ -25,14 +39,12 @@ import {
 } from '@/stores/forum-feed-store';
 import { useHomeNavigationStore } from '@/stores/home-navigation-store';
 
-type ForumPostListPage = {
-  posts: ForumPost[];
-  meta: PaginationMeta;
-};
-
-const CreatePostModal = dynamic(() => import('./CreatePostModal').then((mod) => mod.CreatePostModal), {
-  ssr: false,
-});
+const CreatePostModal = dynamic(
+  () => import('./CreatePostModal').then((mod) => mod.CreatePostModal),
+  {
+    ssr: false,
+  },
+);
 const OVERLAY_BAR_SCROLL_THRESHOLD = 8;
 
 interface ForumFeedProps {
@@ -77,7 +89,10 @@ export function ForumFeed({
     : `${viewerKey}:global:${effectiveScope}`;
   const sortModeByScope = useForumFeedStore((state) => state.sortModeByScope);
   const sortMode = getForumFeedSortMode(sortModeByScope, scopeKey);
-  const feedKey = `${scopeKey}:${sortMode}:${FORUM_FEED_PAGE_SIZE}:search:${encodeURIComponent(search)}:${searchRevision}`;
+  const tagByScope = useForumFeedStore((state) => state.tagByScope);
+  const selectedTag = tagByScope[scopeKey] ?? null;
+  const setTag = useForumFeedStore((state) => state.setTag);
+  const feedKey = `${scopeKey}:${sortMode}:${selectedTag ?? 'all-tags'}:${FORUM_FEED_PAGE_SIZE}:search:${encodeURIComponent(search)}:${searchRevision}`;
   const setSortMode = useForumFeedStore((state) => state.setSortMode);
   const setScrollTop = useForumFeedStore((state) => state.setScrollTop);
   const resetScrollTop = useForumFeedStore((state) => state.resetScrollTop);
@@ -104,22 +119,31 @@ export function ForumFeed({
     circleId: circle?.id,
     scope: effectiveScope,
     search: search || undefined,
+    tag: selectedTag ?? undefined,
   });
   const postsQuery = useInfiniteQuery({
     queryKey,
     queryFn: ({ pageParam, signal }) =>
-      forumApi.listPosts({
-        page: Number(pageParam),
-        pageSize: FORUM_FEED_PAGE_SIZE,
-        sortBy: sortMode,
-        search: search || undefined,
-        circleId: circle?.id,
-        scope: effectiveScope,
-      }, signal),
-    initialPageParam: 1,
+      forumApi.listPosts(
+        {
+          page: sortMode === 'hot' ? Number(pageParam || '1') : 1,
+          cursor: sortMode === 'latest' ? pageParam || undefined : undefined,
+          pageSize: FORUM_FEED_PAGE_SIZE,
+          sortBy: sortMode,
+          search: search || undefined,
+          circleId: circle?.id,
+          scope: effectiveScope,
+          tag: selectedTag ?? undefined,
+        },
+        signal,
+      ),
+    initialPageParam: '',
     enabled: !authLoading,
-    getNextPageParam: (lastPage: ForumPostListPage) =>
-      lastPage.meta.page < lastPage.meta.totalPages ? lastPage.meta.page + 1 : undefined,
+    getNextPageParam: (lastPage: ForumPostListResponse) => {
+      if (sortMode === 'latest') return lastPage.nextCursor ?? undefined;
+      if (!lastPage.meta || lastPage.meta.page >= lastPage.meta.totalPages) return undefined;
+      return String(lastPage.meta.page + 1);
+    },
   });
   const posts = postsQuery.data?.pages.flatMap((page) => page.posts) ?? [];
   const firstPostId = posts[0]?.id ?? 'empty';
@@ -137,10 +161,9 @@ export function ForumFeed({
   const showingRefreshLoading = refreshingFeed && isFetching;
   const hasMore = hasNextPage === true;
   const errorKey = isError ? loadFailedKey : '';
-  const resolvedEmptyMessageKey =
-    search
-      ? 'forum.emptySearchResults'
-      : !circle && effectiveScope === 'subscribed'
+  const resolvedEmptyMessageKey = search
+    ? 'forum.emptySearchResults'
+    : !circle && effectiveScope === 'subscribed'
       ? 'forum.emptySubscribedPosts'
       : emptyMessageKey;
 
@@ -186,10 +209,12 @@ export function ForumFeed({
     let releaseFrame: number | null = null;
     const targetScrollTop = useForumFeedStore.getState().scrollTopByFeedKey[feedKey] ?? 0;
     const restoreFrame = window.requestAnimationFrame(() => {
-      if (cancelled || scrollRootRef.current !== node || currentFeedKeyRef.current !== feedKey) return;
+      if (cancelled || scrollRootRef.current !== node || currentFeedKeyRef.current !== feedKey)
+        return;
       node.scrollTo({ top: targetScrollTop, behavior: 'auto' });
       releaseFrame = window.requestAnimationFrame(() => {
-        if (cancelled || scrollRootRef.current !== node || currentFeedKeyRef.current !== feedKey) return;
+        if (cancelled || scrollRootRef.current !== node || currentFeedKeyRef.current !== feedKey)
+          return;
         const maximumScrollTop = Math.max(0, node.scrollHeight - node.clientHeight);
         if (targetScrollTop > maximumScrollTop && hasMore && !isFetchNextPageError) return;
 
@@ -225,6 +250,12 @@ export function ForumFeed({
     if (mode === sortMode) return;
     lastRestoredKeyRef.current = '';
     setSortMode(scopeKey, mode);
+  };
+
+  const handleTagChange = (tag: PostTag | null) => {
+    if (tag === selectedTag) return;
+    lastRestoredKeyRef.current = '';
+    setTag(scopeKey, tag);
   };
 
   const handleFeedScroll = useCallback(
@@ -315,6 +346,24 @@ export function ForumFeed({
             >
               <RefreshCw className={`h-3.5 w-3.5 ${postsQuery.isFetching ? 'animate-spin' : ''}`} />
             </button>
+            <label className="ml-1 flex h-7 items-center gap-1.5 rounded border-l border-copper/10 pl-2 text-[11px] text-ink-muted">
+              <Tags className="h-3.5 w-3.5" />
+              <span className="sr-only">{t('forum.filterByTag')}</span>
+              <select
+                value={selectedTag ?? ''}
+                onChange={(event) =>
+                  handleTagChange((event.target.value || null) as PostTag | null)
+                }
+                className="h-6 bg-transparent pr-1 text-[11px] font-semibold text-ink-secondary outline-none"
+              >
+                <option value="">{t('forum.allTags')}</option>
+                {POST_TAG_VALUES.map((tag) => (
+                  <option key={tag} value={tag}>
+                    {t(`postTags.${tag}.label`)}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
 
           {!circle && isAuthenticated && (
@@ -361,81 +410,79 @@ export function ForumFeed({
           </div>
         )}
 
-      {/* 帖子列表 */}
-      <div
-        ref={bindScrollRoot}
-        onScroll={handleFeedScroll}
-        className={`feed-overlay-scroll feed-overlay-scroll--with-toolbar skynet-auto-hide-scrollbar ${
-          isScrolling ? 'is-scrolling' : ''
-        }`}
-      >
+        {/* 帖子列表 */}
+        <div
+          ref={bindScrollRoot}
+          onScroll={handleFeedScroll}
+          className={`feed-overlay-scroll feed-overlay-scroll--with-toolbar skynet-auto-hide-scrollbar ${
+            isScrolling ? 'is-scrolling' : ''
+          }`}
+        >
+          <AnimatePresence>
+            {hasInitialError && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 10 }}
+                className="flex min-h-full items-center justify-center py-16"
+              >
+                <ErrorState
+                  title={t(receiveErrorTitleKey)}
+                  message={t(errorKey)}
+                  actionLabel={t('forum.rescan')}
+                  onAction={handleRefresh}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {showingRefreshLoading && <FeedLoadingState label={t(loadingLabelKey)} />}
+
+          {!showingRefreshLoading && posts.length > 0 && (
+            <div className="space-y-4">
+              {posts.map((post, index) => (
+                <PostCard
+                  key={`${feedKey}-${post.id}`}
+                  post={post}
+                  index={index}
+                  animationIndex={index % FORUM_FEED_PAGE_SIZE}
+                />
+              ))}
+            </div>
+          )}
+
+          {!showingRefreshLoading && loading && <FeedLoadingState label={t(loadingLabelKey)} />}
+
+          {hasMore && !showingRefreshLoading && !loading && !errorKey && (
+            <div ref={loaderRef} className="h-8" />
+          )}
+
+          {!showingRefreshLoading && !hasMore && posts.length > 0 && (
+            <div className="text-center py-8 text-xs text-ink-muted tracking-wide">
+              <div className="flex items-center justify-center gap-3">
+                <div className="w-8 deck-divider" />
+                <span>{t('forum.postsEnd')}</span>
+                <div className="w-8 deck-divider" />
+              </div>
+            </div>
+          )}
+
+          {!showingRefreshLoading && isEmpty && (
+            <FeedEmptyState message={t(resolvedEmptyMessageKey)} />
+          )}
+        </div>
+
+        {/* 创建帖子模态框 */}
         <AnimatePresence>
-          {hasInitialError && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 10 }}
-              className="flex min-h-full items-center justify-center py-16"
-            >
-              <ErrorState
-                title={t(receiveErrorTitleKey)}
-                message={t(errorKey)}
-                actionLabel={t('forum.rescan')}
-                onAction={handleRefresh}
-              />
-            </motion.div>
+          {showCreateModal && (
+            <CreatePostModal
+              key="create-post-modal"
+              onClose={() => setShowCreateModal(false)}
+              onCreated={handlePostCreated}
+              initialCircle={circle}
+            />
           )}
         </AnimatePresence>
-
-        {showingRefreshLoading && (
-          <FeedLoadingState label={t(loadingLabelKey)} />
-        )}
-
-        {!showingRefreshLoading && posts.length > 0 && (
-          <div className="space-y-4">
-            {posts.map((post, index) => (
-              <PostCard
-                key={`${feedKey}-${post.id}`}
-                post={post}
-                index={index}
-                animationIndex={index % FORUM_FEED_PAGE_SIZE}
-              />
-            ))}
-          </div>
-        )}
-
-        {!showingRefreshLoading && loading && (
-          <FeedLoadingState label={t(loadingLabelKey)} />
-        )}
-
-        {hasMore && !showingRefreshLoading && !loading && !errorKey && <div ref={loaderRef} className="h-8" />}
-
-        {!showingRefreshLoading && !hasMore && posts.length > 0 && (
-          <div className="text-center py-8 text-xs text-ink-muted tracking-wide">
-            <div className="flex items-center justify-center gap-3">
-              <div className="w-8 deck-divider" />
-              <span>{t('forum.postsEnd')}</span>
-              <div className="w-8 deck-divider" />
-            </div>
-          </div>
-        )}
-
-        {!showingRefreshLoading && isEmpty && (
-          <FeedEmptyState message={t(resolvedEmptyMessageKey)} />
-        )}
-      </div>
-
-      {/* 创建帖子模态框 */}
-      <AnimatePresence>
-        {showCreateModal && (
-          <CreatePostModal
-            key="create-post-modal"
-            onClose={() => setShowCreateModal(false)}
-            onCreated={handlePostCreated}
-            initialCircle={circle}
-          />
-        )}
-      </AnimatePresence>
       </div>
     </ForumFeedContextProvider>
   );

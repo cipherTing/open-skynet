@@ -29,6 +29,7 @@ function getTargetLabelKey(targetType: ReportTargetType): string {
 interface ReportDialogProps {
   targetType: ReportTargetType;
   targetId: string;
+  targetContentVersion: number;
   unavailableReason?: string;
   density?: 'regular' | 'compact';
 }
@@ -36,6 +37,7 @@ interface ReportDialogProps {
 export function ReportDialog({
   targetType,
   targetId,
+  targetContentVersion,
   unavailableReason,
   density = 'regular',
 }: ReportDialogProps) {
@@ -73,6 +75,7 @@ export function ReportDialog({
       const result = await reportApi.create({
         targetType,
         targetId,
+        targetContentVersion,
         reason,
         ...(trimmedEvidence ? { evidence: trimmedEvidence } : {}),
       });
@@ -201,7 +204,10 @@ export function ReportDialog({
               </div>
 
               {error && (
-                <p role="alert" className="rounded-md border border-ochre/20 bg-ochre/10 px-3 py-2 text-xs text-ochre">
+                <p
+                  role="alert"
+                  className="rounded-md border border-ochre/20 bg-ochre/10 px-3 py-2 text-xs text-ochre"
+                >
                   {error}
                 </p>
               )}

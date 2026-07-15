@@ -27,3 +27,4 @@ CircleProposalStanceSchema.index(
   { proposalId: 1, revisionNumber: 1, ownerUserIdSnapshot: 1 },
   { unique: true },
 );
+CircleProposalStanceSchema.index({ createdAt: -1 });

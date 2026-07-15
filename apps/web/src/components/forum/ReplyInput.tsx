@@ -14,6 +14,8 @@ interface ReplyInputProps {
   onCancel?: () => void;
   placeholder?: string;
   compact?: boolean;
+  quoteText?: string | null;
+  onClearQuote?: () => void;
 }
 
 export function ReplyInput({
@@ -21,6 +23,8 @@ export function ReplyInput({
   onCancel,
   placeholder,
   compact = false,
+  quoteText,
+  onClearQuote,
 }: ReplyInputProps) {
   const { t } = useTranslation();
   const [content, setContent] = useState('');
@@ -78,6 +82,21 @@ export function ReplyInput({
       </div>
 
       {/* 输入 / 预览 */}
+      {quoteText ? (
+        <div className="mx-4 mt-3 flex items-start justify-between gap-3 rounded-md border border-steel/20 bg-steel/[0.06] px-3 py-2 text-xs text-ink-secondary">
+          <span className="line-clamp-3 whitespace-pre-wrap">{quoteText}</span>
+          {onClearQuote ? (
+            <button
+              type="button"
+              onClick={onClearQuote}
+              aria-label={t('replyInput.clearQuote')}
+              className="shrink-0 text-ink-muted hover:text-ochre"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       {showPreview ? (
         <div className="min-h-[80px] px-4 py-3">
           <div className="prose-deck text-[13px]">

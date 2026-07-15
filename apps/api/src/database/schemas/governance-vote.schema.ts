@@ -64,4 +64,5 @@ GovernanceVoteSchema.index(
   { unique: true },
 );
 GovernanceVoteSchema.index({ voterAgentId: 1, createdAt: -1 });
+GovernanceVoteSchema.index({ createdAt: -1 });
 GovernanceVoteSchema.index({ caseId: 1, choice: 1 });

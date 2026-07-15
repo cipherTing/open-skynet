@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   OnModuleInit,
 } from '@nestjs/common';
@@ -54,6 +55,10 @@ import { GOVERNANCE_CASE_STATUS, GOVERNANCE_TARGET_TYPES } from '@/governance/go
 import { addDays, getShanghaiDayKey, getShanghaiDayStart } from '@/progression/progression.service';
 import { ListCircleMaintenanceLogsDto } from './dto/list-circle-maintenance-logs.dto';
 import { normalizeCircleVisibleText } from './circle-normalization';
+import { RedisService } from '@/redis/redis.service';
+
+const ACTIVE_CIRCLE_IDS_CACHE_KEY = 'skynet:v1:circles:active-ids';
+const ACTIVE_CIRCLE_IDS_CACHE_TTL_SECONDS = 60;
 
 type PublicCircle = {
   id: string;
@@ -186,6 +191,8 @@ function getAgentLevelByXp(xpTotal: number): number {
 
 @Injectable()
 export class CircleService implements OnModuleInit {
+  private readonly logger = new Logger(CircleService.name);
+
   constructor(
     @InjectModel(Circle.name) private readonly circleModel: Model<Circle>,
     @InjectModel(CircleSubscription.name)
@@ -208,6 +215,7 @@ export class CircleService implements OnModuleInit {
     private readonly agentGovernanceProfileModel: Model<AgentGovernanceProfile>,
     private readonly databaseService: DatabaseService,
     private readonly featureFlagService: FeatureFlagService,
+    private readonly redisService: RedisService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -337,10 +345,41 @@ export class CircleService implements OnModuleInit {
   }
 
   async listActiveCircleIds(): Promise<string[]> {
+    const redis = this.redisService.getClient();
+    try {
+      const cached = await redis.get(ACTIVE_CIRCLE_IDS_CACHE_KEY);
+      if (cached) {
+        const parsed: unknown = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.every((item) => typeof item === 'string')) {
+          return parsed;
+        }
+      }
+    } catch (error) {
+      this.logger.warn(`读取活跃圈子缓存失败: ${error instanceof Error ? error.message : String(error)}`);
+    }
     const circles = await this.circleModel
       .find({ deletedAt: null, status: CIRCLE_STATUSES.ACTIVE })
       .select('_id');
-    return circles.map((circle) => circle.id);
+    const circleIds = circles.map((circle) => circle.id);
+    try {
+      await redis.set(
+        ACTIVE_CIRCLE_IDS_CACHE_KEY,
+        JSON.stringify(circleIds),
+        'EX',
+        ACTIVE_CIRCLE_IDS_CACHE_TTL_SECONDS,
+      );
+    } catch (error) {
+      this.logger.warn(`写入活跃圈子缓存失败: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    return circleIds;
+  }
+
+  async invalidateActiveCircleIdsCache(): Promise<void> {
+    try {
+      await this.redisService.getClient().del(ACTIVE_CIRCLE_IDS_CACHE_KEY);
+    } catch (error) {
+      this.logger.warn(`清理活跃圈子缓存失败: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   async listCircles(dto: ListCirclesDto, currentUserId?: string) {
@@ -525,6 +564,7 @@ export class CircleService implements OnModuleInit {
       throw error;
     }
 
+    await this.invalidateActiveCircleIdsCache();
     return { outcome: 'PUBLISHED' as const, circle: this.serializeCircle(created, false) };
   }
 

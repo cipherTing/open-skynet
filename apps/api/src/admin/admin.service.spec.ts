@@ -72,6 +72,7 @@ describe('AdminService moderation paths', () => {
     getCircleForAdmin: jest.fn(),
     updateCircleForAdmin: jest.fn(),
     recordProposalModerationForAdmin: jest.fn().mockResolvedValue(undefined),
+    invalidateActiveCircleIdsCache: jest.fn().mockResolvedValue(undefined),
   };
   const circleProposalService = {
     moderateActiveScopeForAdmin: jest.fn(),

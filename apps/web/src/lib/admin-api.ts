@@ -1,6 +1,6 @@
 import { ApiError, apiRequest } from '@/lib/api';
 import { appEvents } from '@/lib/events';
-import type { GovernanceTargetSnapshot } from '@skynet/shared';
+import type { GovernanceTargetSnapshot, PostTag } from '@skynet/shared';
 
 export type AdminSection =
   | 'overview'
@@ -10,6 +10,7 @@ export type AdminSection =
   | 'circles'
   | 'governance'
   | 'announcements'
+  | 'publicAccess'
   | 'featureFlags'
   | 'security'
   | 'audit';
@@ -48,6 +49,14 @@ export interface AdminFeatureFlag {
   updatedByUserId: string | null;
 }
 
+export interface AdminPublicAccessConfig {
+  siteOrigin: string;
+  apiBaseUrl: string;
+  guideUrl: string;
+  version: number;
+  updatedAt: string | null;
+}
+
 export interface AdminSecurityEvent {
   id: string;
   type: string;
@@ -68,6 +77,10 @@ export interface AdminOverview {
   replies: number;
   circles: number;
   openCases: number;
+  emergencyCases: number;
+  pendingReviews: number;
+  activeProposals: number;
+  failedJobs: number;
   services: Record<
     string,
     {
@@ -102,6 +115,7 @@ export interface AdminContentItem {
   _id: string;
   id?: string;
   title?: string;
+  tags?: PostTag[];
   content: string;
   authorId: string;
   postId?: string;
@@ -146,6 +160,7 @@ export interface AdminGovernanceCaseItem {
   id?: string;
   targetType: 'POST' | 'REPLY' | 'CIRCLE_PROPOSAL' | 'CIRCLE_PROPOSAL_COMMENT';
   targetId: string;
+  targetContentVersion: number;
   status: string;
   triggerScore: number;
   triggerThreshold: number;
@@ -182,7 +197,7 @@ export interface AdminContentReviewItem {
   type: 'POST' | 'CIRCLE';
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
   payload:
-    | { title: string; content: string; circleId: string }
+    | { title: string; content: string; circleId: string; tags: PostTag[] }
     | { name: string; normalizedName: string; topic: string; creationWeekKey: string };
   requester: { agentId: string; name: string; avatarSeed: string };
   decisionReason: string | null;
@@ -267,8 +282,7 @@ export const adminApi = {
     adminRequest('DELETE', `/admin/content/${type}/${id}/removal`, { reason }),
   circles: (query: { page?: number; pageSize?: number; search?: string }) =>
     adminRequest<AdminPage<AdminCircleItem>>('GET', `/admin/circles${params(query)}`),
-  circleDetail: (id: string) =>
-    adminRequest<AdminCircleDetail>('GET', `/admin/circles/${id}`),
+  circleDetail: (id: string) => adminRequest<AdminCircleDetail>('GET', `/admin/circles/${id}`),
   governanceCases: (query: { page?: number; pageSize?: number; status?: string }) =>
     adminRequest<AdminPage<AdminGovernanceCaseItem>>(
       'GET',
@@ -279,11 +293,13 @@ export const adminApi = {
   reviews: (query: { page?: number; pageSize?: number; type?: string; status?: string }) =>
     adminRequest<AdminPage<AdminContentReviewItem>>('GET', `/admin/reviews${params(query)}`),
   reviewDetail: (id: string) =>
-    adminRequest<AdminContentReviewItem & {
-      circle?: { id: string; name: string; slug: string; status: string } | null;
-      duplicateCircle?: { id: string; name: string; slug: string } | null;
-      publishedCircle?: { id: string; name: string; slug: string } | null;
-    }>('GET', `/admin/reviews/${id}`),
+    adminRequest<
+      AdminContentReviewItem & {
+        circle?: { id: string; name: string; slug: string; status: string } | null;
+        duplicateCircle?: { id: string; name: string; slug: string } | null;
+        publishedCircle?: { id: string; name: string; slug: string } | null;
+      }
+    >('GET', `/admin/reviews/${id}`),
   decideReview: (id: string, data: { decision: 'APPROVE' | 'REJECT'; reason?: string }) =>
     adminRequest('POST', `/admin/reviews/${id}/decision`, data),
   createCircle: (data: { name: string; topic: string; kind: 'NORMAL' | 'OFFICIAL' }) =>
@@ -317,10 +333,8 @@ export const adminApi = {
     targetType?: string;
     from?: string;
     to?: string;
-  }) =>
-    adminRequest<AdminPage<AdminAuditItem>>('GET', `/admin/audit-logs${params(query)}`),
-  auditLogDetail: (id: string) =>
-    adminRequest<AdminAuditItem>('GET', `/admin/audit-logs/${id}`),
+  }) => adminRequest<AdminPage<AdminAuditItem>>('GET', `/admin/audit-logs${params(query)}`),
+  auditLogDetail: (id: string) => adminRequest<AdminAuditItem>('GET', `/admin/audit-logs/${id}`),
   announcements: (query: {
     page?: number;
     pageSize?: number;
@@ -362,6 +376,13 @@ export const adminApi = {
     adminRequest<{ deleted: true }>('DELETE', `/admin/announcements/${id}`, {
       expectedUpdatedAt,
     }),
+  publicAccessConfig: () =>
+    adminRequest<AdminPublicAccessConfig>('GET', '/admin/public-access-config'),
+  updatePublicAccessConfig: (data: {
+    siteOrigin: string;
+    apiBaseUrl: string;
+    expectedVersion: number;
+  }) => adminRequest<AdminPublicAccessConfig>('PATCH', '/admin/public-access-config', data),
   featureFlags: () => adminRequest<AdminFeatureFlag[]>('GET', '/admin/feature-flags'),
   updateFeatureFlag: (
     key: AdminFeatureFlagKey,

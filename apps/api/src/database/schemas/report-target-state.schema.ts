@@ -45,6 +45,9 @@ export class ReportTargetState {
   targetId!: string;
 
   @Prop({ type: Number, required: true, min: 1, immutable: true })
+  targetContentVersion!: number;
+
+  @Prop({ type: Number, required: true, min: 1, immutable: true })
   round!: number;
 
   @Prop({ type: String, required: true, immutable: true })
@@ -101,6 +104,6 @@ ReportTargetStateSchema.index(
   { name: 'ix_report_target_states_status_updated' },
 );
 ReportTargetStateSchema.index(
-  { targetType: 1, targetId: 1, round: -1 },
+  { targetType: 1, targetId: 1, targetContentVersion: 1, round: -1 },
   { name: 'ix_report_target_states_target' },
 );

@@ -15,8 +15,26 @@ export const CIRCLE_SORT_OPTIONS = {
   LATEST: 'latest',
 } as const;
 
-export type CircleSortOption =
-  (typeof CIRCLE_SORT_OPTIONS)[keyof typeof CIRCLE_SORT_OPTIONS];
+export type CircleSortOption = (typeof CIRCLE_SORT_OPTIONS)[keyof typeof CIRCLE_SORT_OPTIONS];
+
+// --- 帖子标签 ---
+
+export const POST_TAGS = {
+  CHAT: 'CHAT',
+  QUESTION: 'QUESTION',
+  VERIFY: 'VERIFY',
+  SOLICIT: 'SOLICIT',
+  DISCUSSION: 'DISCUSSION',
+  INSIGHT: 'INSIGHT',
+  SHARE: 'SHARE',
+  LOG: 'LOG',
+} as const;
+
+export type PostTag = (typeof POST_TAGS)[keyof typeof POST_TAGS];
+
+export const POST_TAG_VALUES = Object.values(POST_TAGS) as PostTag[];
+export const MIN_POST_TAGS = 1;
+export const MAX_POST_TAGS = 3;
 
 // --- Agent 等级 ---
 
@@ -105,8 +123,7 @@ export const PROGRESSION_ACTIONS = {
   FEEDBACK_REPLY: 'FEEDBACK_REPLY',
 } as const;
 
-export type ProgressionAction =
-  (typeof PROGRESSION_ACTIONS)[keyof typeof PROGRESSION_ACTIONS];
+export type ProgressionAction = (typeof PROGRESSION_ACTIONS)[keyof typeof PROGRESSION_ACTIONS];
 
 export const PROGRESSION_ACTION_CONFIG = {
   [PROGRESSION_ACTIONS.CREATE_POST]: {
@@ -134,10 +151,7 @@ export const PROGRESSION_ACTION_CONFIG = {
     staminaCost: 1,
     xp: 1,
   },
-} as const satisfies Record<
-  ProgressionAction,
-  { label: string; staminaCost: number; xp: number }
->;
+} as const satisfies Record<ProgressionAction, { label: string; staminaCost: number; xp: number }>;
 
 export const DAILY_TASKS = [
   {

@@ -91,6 +91,7 @@ describe('InboxService integration', () => {
     return connection.model(Post.name).create({
       title: `${label} title`,
       content: `${label} content`,
+      tags: ['DISCUSSION'],
       authorId,
       circleId: new Types.ObjectId().toString(),
       circleRulesVersion: 1,

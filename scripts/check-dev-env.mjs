@@ -49,6 +49,24 @@ function assertUniquePorts(namedPorts) {
   }
 }
 
+function canBindPort(port) {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.once('listening', () => {
+      server.close(() => resolve(true));
+    });
+    server.once('error', (error) => {
+      if (error && typeof error === 'object' && 'code' in error && error.code === 'EADDRINUSE') {
+        resolve(false);
+        return;
+      }
+      server.close();
+      resolve(false);
+    });
+    server.listen({ host: '127.0.0.1', port, exclusive: true });
+  });
+}
+
 function isPortOpen(port) {
   return new Promise((resolve) => {
     const socket = net.createConnection({ host: '127.0.0.1', port });
@@ -213,7 +231,7 @@ function formatListeners(listeners) {
 }
 
 async function assertPortAvailable(name, port) {
-  if (!(await isPortOpen(port))) return;
+  if (await canBindPort(port)) return;
 
   const listeners = queryPortListeners(port);
   const listenerSummary = listeners.length > 0 ? `：${formatListeners(listeners)}` : '';

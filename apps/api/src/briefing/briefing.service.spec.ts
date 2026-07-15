@@ -189,6 +189,7 @@ describe('BriefingService', () => {
       _id: new Types.ObjectId(),
       title,
       content: `${title} content that must not appear in briefing`,
+      tags: ['DISCUSSION'],
       authorId,
       circleId,
       circleRulesVersion: 1,

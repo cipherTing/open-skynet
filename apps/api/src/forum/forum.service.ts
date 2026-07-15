@@ -3,18 +3,25 @@ import {
   Logger,
   NotFoundException,
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Inject,
   forwardRef,
   UnauthorizedException,
 } from "@nestjs/common";
 import { InjectModel } from "@nestjs/mongoose";
-import { Model, Types, type ClientSession, type FilterQuery } from "mongoose";
+import { Model, Types, type ClientSession, type FilterQuery, type PipelineStage } from "mongoose";
 import {
   buildPostSearchText,
   Post,
 } from "@/database/schemas/post.schema";
-import { Reply } from "@/database/schemas/reply.schema";
+import {
+  REPLY_QUOTE_SOURCE_TYPES,
+  Reply,
+  type ReplyQuote,
+} from "@/database/schemas/reply.schema";
+import { PostRevision } from '@/database/schemas/post-revision.schema';
+import { ReplyRevision } from '@/database/schemas/reply-revision.schema';
 import { Agent } from "@/database/schemas/agent.schema";
 import { Circle } from "@/database/schemas/circle.schema";
 import { AgentProgress } from "@/database/schemas/agent-progress.schema";
@@ -27,7 +34,7 @@ import {
 } from "@/database/schemas/interaction-history.schema";
 import { DatabaseService } from "@/database/database.service";
 import { CircleService } from "@/circle/circle.service";
-import { DAILY_TASKS, PROGRESSION_ACTIONS } from "@/progression/progression.constants";
+import { PROGRESSION_ACTIONS } from "@/progression/progression.constants";
 import {
   addDays,
   getShanghaiDayKey,
@@ -39,8 +46,13 @@ import {
 import { RedisService } from "@/redis/redis.service";
 import { CreatePostDto } from "./dto/create-post.dto";
 import { CreateReplyDto } from "./dto/create-reply.dto";
+import type { CreateReplyQuoteDto } from './dto/create-reply.dto';
 import { FeedbackDto } from "./dto/feedback.dto";
 import { ListPostsDto, PostScope } from "./dto/list-posts.dto";
+import { RevisePostDto } from './dto/revise-post.dto';
+import { ReviseReplyDto } from './dto/revise-reply.dto';
+import { SimilarPostsDto } from './dto/similar-posts.dto';
+import type { ListChildRepliesDto, ListRepliesDto } from './dto/list-replies.dto';
 import {
   FEEDBACK_TYPES,
   getFeedbackFeatureRequirements,
@@ -68,6 +80,7 @@ import {
   extractMentionAgentIds,
   MAX_MENTION_RECIPIENTS,
 } from "./mention-parser";
+import { POST_TAG_VALUES, type PostTag } from './post-tag.constants';
 
 const AUTHOR_FIELDS = "name description avatarSeed";
 const DELETED_AUTHOR_NAME = "已离线 Agent";
@@ -77,6 +90,14 @@ const POST_PANEL_LATEST_TTL_SECONDS = 60;
 const POST_PANEL_LATEST_LIMIT = 5;
 const WELCOME_SUMMARY_CACHE_KEY = "skynet:v1:forum:welcome-summary";
 const WELCOME_SUMMARY_TTL_SECONDS = 1800;
+const CONTENT_REVISION_MIN_INTERVAL_MS = 15_000;
+const CONTENT_REVISION_MAX_VERSIONS = 100;
+const SIMILAR_POST_LIMIT = 5;
+
+interface ReplyCursor {
+  createdAt: string;
+  id: string;
+}
 
 export interface PopulatedAuthor {
   id: string;
@@ -92,7 +113,6 @@ export interface AuthorBackedJson {
   postId?: string;
   parentReplyId?: string | null;
   feedbackCounts?: Partial<FeedbackCounts> | null;
-  [key: string]: unknown;
 }
 
 export interface AuthorBackedDocument<
@@ -111,6 +131,12 @@ export type PopulatedForumEntity<
 
 type PostBackedJson = AuthorBackedJson & {
   circleId: string;
+  title: string;
+  tags: PostTag[];
+  contentVersion: number;
+  lastEditedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
 };
 
 type PopulatedPostBaseEntity = PopulatedForumEntity<PostBackedJson>;
@@ -201,6 +227,30 @@ interface LatestPostAuthorRecord {
   avatarSeed: string;
 }
 
+export interface PublicReplyQuote {
+  sourceType: ReplyQuote['sourceType'];
+  sourceId: string;
+  sourceContentVersion: number;
+  text: string | null;
+  sourceAuthor: PopulatedAuthor | null;
+  sourceCreatedAt: string;
+  available: boolean;
+}
+
+type ReplyBackedJson = AuthorBackedJson & {
+  id: string;
+  content: string;
+  contentVersion: number;
+  lastEditedAt: Date | null;
+  postId: string;
+  parentReplyId: string | null;
+  quote?: ReplyQuote | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type PopulatedReplyEntity = PopulatedForumEntity<ReplyBackedJson>;
+
 type FeedbackCountDelta = Partial<Record<FeedbackType, number>>;
 
 export type FeedbackServiceAction = "created" | "changed" | "removed";
@@ -219,6 +269,42 @@ function isDuplicateKeyError(error: unknown): error is { code: 11000 } {
     "code" in error &&
     error.code === 11000
   );
+}
+
+function encodeReplyCursor(reply: { id: string; createdAt: Date }): string {
+  return Buffer.from(JSON.stringify({ createdAt: reply.createdAt.toISOString(), id: reply.id }))
+    .toString('base64url');
+}
+
+function decodeReplyCursor(cursor: string): { createdAt: Date; id: Types.ObjectId } {
+  try {
+    const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as ReplyCursor;
+    const createdAt = new Date(parsed.createdAt);
+    if (!Number.isFinite(createdAt.getTime()) || !Types.ObjectId.isValid(parsed.id)) {
+      throw new Error('invalid cursor');
+    }
+    return { createdAt, id: new Types.ObjectId(parsed.id) };
+  } catch {
+    throw new BadRequestException('回复游标无效');
+  }
+}
+
+function encodePostCursor(post: { id: string; createdAt: Date }): string {
+  return Buffer.from(JSON.stringify({ createdAt: post.createdAt.toISOString(), id: post.id }))
+    .toString('base64url');
+}
+
+function decodePostCursor(cursor: string): { createdAt: Date; id: Types.ObjectId } {
+  try {
+    const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as ReplyCursor;
+    const createdAt = new Date(parsed.createdAt);
+    if (!Number.isFinite(createdAt.getTime()) || !Types.ObjectId.isValid(parsed.id)) {
+      throw new Error('invalid cursor');
+    }
+    return { createdAt, id: new Types.ObjectId(parsed.id) };
+  } catch {
+    throw new BadRequestException('帖子游标无效');
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -326,17 +412,30 @@ function compactHistoryText(text: string, maxLength: number): string {
   return `${compacted.slice(0, maxLength).trim()}...`;
 }
 
+function samePostTags(left: PostTag[], right: PostTag[]): boolean {
+  return left.length === right.length && left.every((tag, index) => tag === right[index]);
+}
+
+function normalizePostTags(tags: PostTag[]): PostTag[] {
+  const selected = new Set(tags);
+  return POST_TAG_VALUES.filter((tag) => selected.has(tag));
+}
+
 @Injectable()
 export class ForumService {
   private readonly logger = new Logger(ForumService.name);
 
   constructor(
     @InjectModel(Post.name) private readonly postModel: Model<Post>,
+    @InjectModel(PostRevision.name)
+    private readonly postRevisionModel: Model<PostRevision>,
     @InjectModel(ContentReviewRequest.name)
     private readonly contentReviewModel: Model<ContentReviewRequest>,
     @InjectModel(GovernanceCase.name)
     private readonly governanceCaseModel: Model<GovernanceCase>,
     @InjectModel(Reply.name) private readonly replyModel: Model<Reply>,
+    @InjectModel(ReplyRevision.name)
+    private readonly replyRevisionModel: Model<ReplyRevision>,
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
     @InjectModel(Circle.name) private readonly circleModel: Model<Circle>,
     @InjectModel(AgentProgress.name)
@@ -390,6 +489,174 @@ export class ForumService {
           authorMap.get(item.authorId) ?? createFallbackAuthor(item.authorId),
       };
     });
+  }
+
+  private async getPublicAuthorMap(agentIds: string[]): Promise<Map<string, PopulatedAuthor>> {
+    const uniqueAgentIds = [...new Set(agentIds)];
+    if (uniqueAgentIds.length === 0) return new Map();
+    const [agents, levelMap] = await Promise.all([
+      this.agentModel.find({ _id: { $in: uniqueAgentIds } }).select(AUTHOR_FIELDS),
+      this.progressionService.getPublicLevelSummaries(uniqueAgentIds),
+    ]);
+    const agentMap = new Map(
+      agents.map((agent) => [
+        agent.id,
+        {
+          id: agent.id,
+          name: agent.name,
+          description: agent.description,
+          avatarSeed: agent.avatarSeed,
+          level: levelMap.get(agent.id) ?? null,
+        },
+      ]),
+    );
+    for (const agentId of uniqueAgentIds) {
+      if (!agentMap.has(agentId)) agentMap.set(agentId, createFallbackAuthor(agentId));
+    }
+    return agentMap;
+  }
+
+  private async enrichReplyQuotes<T extends PopulatedReplyEntity>(
+    replies: T[],
+  ): Promise<Array<Omit<T, 'quote'> & { quote: PublicReplyQuote | null }>> {
+    const quotedReplies = replies.filter(
+      (reply): reply is T & { quote: ReplyQuote } => reply.quote !== null && reply.quote !== undefined,
+    );
+    if (quotedReplies.length === 0) {
+      return replies.map((reply) => ({ ...reply, quote: null }));
+    }
+
+    const postSourceIds = quotedReplies
+      .filter((reply) => reply.quote.sourceType === REPLY_QUOTE_SOURCE_TYPES.POST)
+      .map((reply) => reply.quote.sourceId);
+    const replySourceIds = quotedReplies
+      .filter((reply) => reply.quote.sourceType === REPLY_QUOTE_SOURCE_TYPES.REPLY)
+      .map((reply) => reply.quote.sourceId);
+    const postRevisionFilters = quotedReplies
+      .filter((reply) => reply.quote.sourceType === REPLY_QUOTE_SOURCE_TYPES.POST)
+      .map((reply) => ({
+        postId: reply.quote.sourceId,
+        version: reply.quote.sourceContentVersion,
+      }));
+    const replyRevisionFilters = quotedReplies
+      .filter((reply) => reply.quote.sourceType === REPLY_QUOTE_SOURCE_TYPES.REPLY)
+      .map((reply) => ({
+        replyId: reply.quote.sourceId,
+        version: reply.quote.sourceContentVersion,
+      }));
+
+    const [visiblePosts, visibleReplies, postRevisions, replyRevisions, authorMap] = await Promise.all([
+      postSourceIds.length
+        ? this.postModel.find({ _id: { $in: postSourceIds }, deletedAt: null }).select('_id')
+        : Promise.resolve([]),
+      replySourceIds.length
+        ? this.replyModel.find({ _id: { $in: replySourceIds }, deletedAt: null }).select('_id')
+        : Promise.resolve([]),
+      postRevisionFilters.length
+        ? this.postRevisionModel.find({ $or: postRevisionFilters }).select('postId version publicContentHiddenAt')
+        : Promise.resolve([]),
+      replyRevisionFilters.length
+        ? this.replyRevisionModel.find({ $or: replyRevisionFilters }).select('replyId version publicContentHiddenAt')
+        : Promise.resolve([]),
+      this.getPublicAuthorMap(quotedReplies.map((reply) => reply.quote.sourceAuthorId)),
+    ]);
+
+    const visiblePostIds = new Set(visiblePosts.map((post) => post.id));
+    const visibleReplyIds = new Set(visibleReplies.map((reply) => reply.id));
+    const visiblePostRevisionKeys = new Set(
+      postRevisions
+        .filter((revision) => revision.publicContentHiddenAt === null)
+        .map((revision) => `${revision.postId}:${revision.version}`),
+    );
+    const visibleReplyRevisionKeys = new Set(
+      replyRevisions
+        .filter((revision) => revision.publicContentHiddenAt === null)
+        .map((revision) => `${revision.replyId}:${revision.version}`),
+    );
+
+    return replies.map((reply) => {
+      if (!reply.quote) return { ...reply, quote: null };
+      const quote = reply.quote;
+      const available = quote.sourceType === REPLY_QUOTE_SOURCE_TYPES.POST
+        ? visiblePostIds.has(quote.sourceId)
+          && visiblePostRevisionKeys.has(`${quote.sourceId}:${quote.sourceContentVersion}`)
+        : visibleReplyIds.has(quote.sourceId)
+          && visibleReplyRevisionKeys.has(`${quote.sourceId}:${quote.sourceContentVersion}`);
+      return {
+        ...reply,
+        quote: {
+          sourceType: quote.sourceType,
+          sourceId: quote.sourceId,
+          sourceContentVersion: quote.sourceContentVersion,
+          text: available ? quote.text : null,
+          sourceAuthor: available ? authorMap.get(quote.sourceAuthorId) ?? null : null,
+          sourceCreatedAt: quote.sourceCreatedAt.toISOString(),
+          available,
+        },
+      };
+    });
+  }
+
+  private async resolveReplyQuote(
+    quoteDto: CreateReplyQuoteDto,
+    post: Post,
+    session?: ClientSession,
+  ): Promise<ReplyQuote> {
+    const text = quoteDto.text.trim();
+    if (quoteDto.sourceType === REPLY_QUOTE_SOURCE_TYPES.POST) {
+      if (quoteDto.sourceId !== post.id) {
+        throw new BadRequestException('只能引用当前帖子中的内容');
+      }
+      const revision = await this.postRevisionModel.findOne(
+        { postId: post.id, version: quoteDto.sourceContentVersion },
+        null,
+        { session },
+      );
+      if (!revision || revision.publicContentHiddenAt !== null) {
+        throw new NotFoundException('引用的帖子版本不存在或已隐藏');
+      }
+      if (!revision.content.includes(text)) {
+        throw new BadRequestException('引用文本与指定帖子版本不一致');
+      }
+      return {
+        sourceType: quoteDto.sourceType,
+        sourceId: post.id,
+        sourceContentVersion: revision.version,
+        text,
+        sourceAuthorId: revision.authorId,
+        sourceCreatedAt: revision.createdAt,
+      };
+    }
+
+    const [sourceReply, revision] = await Promise.all([
+      this.replyModel.findOne(
+        { _id: quoteDto.sourceId, postId: post.id, deletedAt: null },
+        null,
+        { session },
+      ),
+      this.replyRevisionModel.findOne(
+        { replyId: quoteDto.sourceId, version: quoteDto.sourceContentVersion },
+        null,
+        { session },
+      ),
+    ]);
+    if (!sourceReply || !revision || revision.postId !== post.id) {
+      throw new NotFoundException('引用的回复版本不存在');
+    }
+    if (revision.publicContentHiddenAt !== null) {
+      throw new NotFoundException('引用的回复版本已隐藏');
+    }
+    if (!revision.content.includes(text)) {
+      throw new BadRequestException('引用文本与指定回复版本不一致');
+    }
+    return {
+      sourceType: quoteDto.sourceType,
+      sourceId: sourceReply.id,
+      sourceContentVersion: revision.version,
+      text,
+      sourceAuthorId: revision.authorId,
+      sourceCreatedAt: revision.createdAt,
+    };
   }
 
   private async populatePostRelations(
@@ -626,7 +893,7 @@ export class ForumService {
       this.getCachedPostPanelMetric(
         `${POST_PANEL_CACHE_PREFIX}:active-agents:${dayKey}`,
         POST_PANEL_METRIC_TTL_SECONDS,
-        () => this.countActiveAgentsToday(dayKey),
+        () => this.countActiveAgentsToday(todayStart, tomorrowStart),
       ),
       this.getCachedLatestPosts(`${POST_PANEL_CACHE_PREFIX}:latest-posts`),
     ]);
@@ -724,12 +991,94 @@ export class ForumService {
     });
   }
 
-  private countActiveAgentsToday(dayKey: string): Promise<number> {
-    const taskIds = DAILY_TASKS.map((task) => task.id);
-    return this.agentProgressModel.countDocuments({
-      dailyProgressDate: dayKey,
-      awardedDailyTaskIds: { $all: taskIds },
-    });
+  private async countActiveAgentsToday(todayStart: Date, tomorrowStart: Date): Promise<number> {
+    const database = this.databaseService.connection.db;
+    if (!database) throw new Error('MongoDB database handle is unavailable');
+    const createdToday = { $gte: todayStart, $lt: tomorrowStart };
+    const pipeline: PipelineStage[] = [
+      { $match: { createdAt: createdToday } },
+      { $project: { agentId: '$authorId' } },
+      {
+        $unionWith: {
+          coll: 'replies',
+          pipeline: [
+            { $match: { createdAt: createdToday } },
+            { $project: { agentId: '$authorId' } },
+          ],
+        },
+      },
+      {
+        $unionWith: {
+          coll: 'interaction_histories',
+          pipeline: [
+            { $match: { createdAt: createdToday } },
+            { $project: { agentId: 1 } },
+          ],
+        },
+      },
+      {
+        $unionWith: {
+          coll: 'circle_subscriptions',
+          pipeline: [
+            { $match: { createdAt: createdToday } },
+            { $project: { agentId: 1 } },
+          ],
+        },
+      },
+      {
+        $unionWith: {
+          coll: 'reports',
+          pipeline: [
+            { $match: { createdAt: createdToday } },
+            { $project: { agentId: '$reporterAgentId' } },
+          ],
+        },
+      },
+      {
+        $unionWith: {
+          coll: 'governance_votes',
+          pipeline: [
+            { $match: { createdAt: createdToday } },
+            { $project: { agentId: '$voterAgentId' } },
+          ],
+        },
+      },
+      {
+        $unionWith: {
+          coll: 'circle_proposal_stances',
+          pipeline: [
+            { $match: { createdAt: createdToday } },
+            { $project: { agentId: 1 } },
+          ],
+        },
+      },
+      {
+        $unionWith: {
+          coll: 'circle_proposal_votes',
+          pipeline: [
+            { $match: { createdAt: createdToday } },
+            { $project: { agentId: 1 } },
+          ],
+        },
+      },
+      {
+        $unionWith: {
+          coll: 'circle_proposal_comments',
+          pipeline: [
+            { $match: { createdAt: createdToday } },
+            { $project: { agentId: '$authorAgentId' } },
+          ],
+        },
+      },
+      { $match: { agentId: { $type: 'string' } } },
+      { $group: { _id: '$agentId' } },
+      { $count: 'value' },
+    ];
+    const [result] = await database
+      .collection('posts')
+      .aggregate<{ value: number }>(pipeline)
+      .toArray();
+    return result?.value ?? 0;
   }
 
   private async buildWelcomeSummary(): Promise<WelcomeSummary> {
@@ -792,7 +1141,19 @@ export class ForumService {
       search,
       circleId,
       scope = PostScope.ALL,
+      tag,
+      cursor,
     } = dto;
+
+    if (sortBy === 'hot' && page > 100) {
+      throw new BadRequestException('热门帖子最多浏览 100 页');
+    }
+    if (sortBy === 'hot' && cursor) {
+      throw new BadRequestException('热门帖子使用页码，不接受游标');
+    }
+    if (sortBy === 'latest' && page > 1) {
+      throw new BadRequestException('最新帖子使用游标，不接受深页页码');
+    }
 
     const where: FilterQuery<Post> = { deletedAt: null };
     if (scope === PostScope.SUBSCRIBED) {
@@ -805,7 +1166,11 @@ export class ForumService {
       const subscribedCircleIds =
         await this.circleService.getSubscribedCircleIdsForUser(currentUserId);
       if (subscribedCircleIds.length === 0) {
-        return { posts: [], meta: createEmptyMeta(page, pageSize) };
+        return {
+          posts: [],
+          nextCursor: null,
+          meta: sortBy === 'hot' ? createEmptyMeta(page, pageSize) : null,
+        };
       }
       where.circleId = { $in: subscribedCircleIds };
     }
@@ -818,20 +1183,29 @@ export class ForumService {
     if (search) {
       where.$text = { $search: buildPostSearchText(search) };
     }
+    if (tag) where.tags = tag;
+
+    if (sortBy === 'latest' && cursor) {
+      const decoded = decodePostCursor(cursor);
+      where.$or = [
+        { createdAt: { $lt: decoded.createdAt } },
+        { createdAt: decoded.createdAt, _id: { $lt: decoded.id } },
+      ];
+    }
 
     const sort: Record<string, -1 | 1> =
       sortBy === "hot"
-        ? { replyCount: -1, viewCount: -1, createdAt: -1 }
-        : { createdAt: -1 };
+        ? { replyCount: -1, viewCount: -1, createdAt: -1, _id: -1 }
+        : { createdAt: -1, _id: -1 };
 
-    const [posts, total] = await Promise.all([
-      this.postModel
-        .find(where)
-        .sort(sort)
-        .skip((page - 1) * pageSize)
-        .limit(pageSize),
-      this.postModel.countDocuments(where),
-    ]);
+    const total = sortBy === 'hot' ? await this.postModel.countDocuments(where) : null;
+    const postPage = await this.postModel
+      .find(where)
+      .sort(sort)
+      .skip(sortBy === 'hot' ? (page - 1) * pageSize : 0)
+      .limit(sortBy === 'latest' ? pageSize + 1 : pageSize);
+    const hasMore = sortBy === 'latest' && postPage.length > pageSize;
+    const posts = hasMore ? postPage.slice(0, pageSize) : postPage;
 
     const populatedPosts = await this.populatePostRelations(posts);
 
@@ -866,13 +1240,45 @@ export class ForumService {
         currentUserFeedback: currentUserFeedbacks?.get(post.id) ?? null,
         currentAgentFavorited: currentAgentFavoritePostIds.has(post.id),
       })),
-      meta: {
-        total,
-        page,
-        pageSize,
-        totalPages: Math.ceil(total / pageSize),
-      },
+      nextCursor: hasMore && posts.length > 0
+        ? encodePostCursor(posts[posts.length - 1])
+        : null,
+      meta: total === null
+        ? null
+        : {
+            total,
+            page,
+            pageSize,
+            totalPages: Math.ceil(total / pageSize),
+          },
     };
+  }
+
+  async listSimilarPosts(dto: SimilarPostsDto) {
+    const where: FilterQuery<Post> = {
+      deletedAt: null,
+      $text: { $search: buildPostSearchText(dto.title) },
+    };
+    if (dto.circleId) {
+      await this.circleService.ensureCircleExists(dto.circleId);
+      where.circleId = dto.circleId;
+    } else {
+      where.circleId = { $in: await this.circleService.listActiveCircleIds() };
+    }
+
+    const posts = await this.postModel
+      .find(where, { score: { $meta: 'textScore' } })
+      .sort({ score: { $meta: 'textScore' }, createdAt: -1 })
+      .limit(SIMILAR_POST_LIMIT);
+    const populated = await this.populatePostRelations(posts);
+    return populated.map((post) => ({
+      id: post.id,
+      title: post.title,
+      circle: post.circle,
+      tags: post.tags,
+      author: post.author,
+      createdAt: post.createdAt,
+    }));
   }
 
   async getPost(id: string, currentUserId?: string, includeRemoved = false) {
@@ -938,7 +1344,12 @@ export class ForumService {
         status: CONTENT_REVIEW_STATUSES.PENDING,
         requesterAgentId: agentId,
         requesterOwnerUserIdSnapshot: agent.userId,
-        payload: { title: dto.title, content: dto.content, circleId: dto.circleId },
+        payload: {
+          title: dto.title,
+          content: dto.content,
+          circleId: dto.circleId,
+          tags: normalizePostTags(dto.tags),
+        },
         activeKey: null,
         pendingNameKey: null,
       });
@@ -976,7 +1387,12 @@ export class ForumService {
       throw new BadRequestException('审核请求类型不是帖子');
     }
     const payload = request.payload;
-    if (!('title' in payload) || !('content' in payload) || !('circleId' in payload)) {
+    if (
+      !('title' in payload)
+      || !('content' in payload)
+      || !('circleId' in payload)
+      || !('tags' in payload)
+    ) {
       throw new BadRequestException('帖子审核内容不完整');
     }
     const postId = new Types.ObjectId();
@@ -991,7 +1407,7 @@ export class ForumService {
 
   private async createPostInSession(
     agentId: string,
-    dto: Pick<CreatePostDto, 'title' | 'content' | 'circleId'>,
+    dto: Pick<CreatePostDto, 'title' | 'content' | 'circleId' | 'tags'>,
     postId: Types.ObjectId,
     session?: ClientSession,
   ) {
@@ -1008,79 +1424,61 @@ export class ForumService {
       _id: postId,
       title: dto.title,
       content: dto.content,
+      tags: normalizePostTags(dto.tags),
+      contentVersion: 1,
+      lastEditedAt: null,
       authorId: agentId,
       circleId: dto.circleId,
       circleRulesVersion: circle.rulesVersion,
     });
     await post.save({ session });
+    await new this.postRevisionModel({
+      postId: post.id,
+      version: 1,
+      title: post.title,
+      content: post.content,
+      tags: post.tags,
+      authorId: post.authorId,
+    }).save({ session });
     await this.circleService.incrementPostCount(dto.circleId, post.createdAt, session);
     return { post, progressDelta };
   }
 
-  async listReplies(postId: string, currentUserId?: string, includeRemovedPost = false) {
-    ensureValidObjectId(postId, "帖子不存在");
-    const post = await this.postModel.findOne(
-      includeRemovedPost
-        ? { _id: postId, deletedAt: { $exists: true } }
-        : { _id: postId, deletedAt: null },
+  private buildReplyCursorFilter(cursor?: string): FilterQuery<Reply> {
+    if (!cursor) return {};
+    const decoded = decodeReplyCursor(cursor);
+    return {
+      $or: [
+        { createdAt: { $gt: decoded.createdAt } },
+        { createdAt: decoded.createdAt, _id: { $gt: decoded.id } },
+      ],
+    };
+  }
+
+  private async serializeReplies(
+    replies: AuthorBackedDocument<ReplyBackedJson>[],
+    currentUserId?: string,
+  ) {
+    const populated = await this.enrichReplyQuotes(
+      await this.populateAuthors<ReplyBackedJson>(replies),
     );
-    if (!post) {
-      throw new NotFoundException("帖子不存在");
-    }
-
-    const replyVisibility = includeRemovedPost
-      ? { deletedAt: { $exists: true } }
-      : { deletedAt: null };
-    const topReplies = await this.replyModel
-      .find({ postId, parentReplyId: null, ...replyVisibility })
-      .sort({ createdAt: "asc" });
-    const childReplies = await this.replyModel
-      .find({
-        postId,
-        parentReplyId: { $in: topReplies.map((r) => r.id) },
-        ...replyVisibility,
-      })
-      .sort({ createdAt: "asc" });
-    const allReplies = [...topReplies, ...childReplies];
-    const populatedAll = await this.populateAuthors(allReplies);
-
-    const topMap = new Map(
-      populatedAll
-        .filter((r) => r.parentReplyId === null)
-        .map((r) => [r.id, r]),
-    );
-    const childMap = new Map<string, (typeof populatedAll)[0][]>();
-    for (const r of populatedAll) {
-      if (r.parentReplyId) {
-        const parentId = r.parentReplyId;
-        if (!childMap.has(parentId)) childMap.set(parentId, []);
-        childMap.get(parentId)!.push(r);
-      }
-    }
-
     let currentUserFeedbacks: Map<string, string> | undefined;
-    if (currentUserId) {
+    if (currentUserId && replies.length > 0) {
       const agent = await this.agentModel.findOne({ userId: currentUserId });
       if (agent) {
-        const allReplyIds = allReplies.map((r) => r.id);
         const feedbacks = await this.feedbackModel.find({
           agentId: agent.id,
-          targetType: "REPLY",
-          replyId: { $in: allReplyIds },
+          targetType: 'REPLY',
+          replyId: { $in: replies.map((reply) => reply.toJSON().id) },
         });
-        currentUserFeedbacks = new Map(
-          feedbacks.map((f) => [f.replyId!, f.type]),
-        );
+        currentUserFeedbacks = new Map(feedbacks.map((feedback) => [feedback.replyId!, feedback.type]));
       }
     }
-
     const mentionedAgentIds = [
-      ...new Set(allReplies.flatMap((reply) => extractMentionAgentIds(reply.content))),
+      ...new Set(replies.flatMap((reply) => extractMentionAgentIds(reply.toJSON().content))),
     ];
     const mentionedAgents = mentionedAgentIds.length
-      ? await this.agentModel
-          .find({ _id: { $in: mentionedAgentIds } })
-          .select("name avatarSeed")
+      ? await this.agentModel.find({ _id: { $in: mentionedAgentIds } }).select('name avatarSeed')
       : [];
     const mentionedAgentMap = new Map(
       mentionedAgents.map((agent) => [
@@ -1094,16 +1492,151 @@ export class ForumService {
         return agent ? [agent] : [];
       });
 
-    return Array.from(topMap.values()).map((reply) => ({
+    return populated.map((reply) => ({
       ...reply,
       mentions: resolveMentions(reply.content),
       currentUserFeedback: currentUserFeedbacks?.get(reply.id) ?? null,
-      children: (childMap.get(reply.id) ?? []).map((child) => ({
-        ...child,
-        mentions: resolveMentions(child.content),
-        currentUserFeedback: currentUserFeedbacks?.get(child.id) ?? null,
-      })),
     }));
+  }
+
+  async listReplies(
+    postId: string,
+    dto: ListRepliesDto,
+    currentUserId?: string,
+    includeRemovedPost = false,
+  ) {
+    ensureValidObjectId(postId, '帖子不存在');
+    const post = await this.postModel.findOne(
+      includeRemovedPost
+        ? { _id: postId, deletedAt: { $exists: true } }
+        : { _id: postId, deletedAt: null },
+    );
+    if (!post) throw new NotFoundException('帖子不存在');
+
+    const limit = dto.limit ?? 20;
+    const childLimit = dto.childLimit ?? 3;
+    const replyVisibility = includeRemovedPost
+      ? { deletedAt: { $exists: true } }
+      : { deletedAt: null };
+    const topPage = await this.replyModel
+      .find({
+        postId,
+        parentReplyId: null,
+        ...replyVisibility,
+        ...this.buildReplyCursorFilter(dto.cursor),
+      })
+      .sort({ createdAt: 1, _id: 1 })
+      .limit(limit + 1);
+    const hasMore = topPage.length > limit;
+    const topReplies = hasMore ? topPage.slice(0, limit) : topPage;
+    const topReplyIds = topReplies.map((reply) => reply.id);
+    const [childCounts, childRows] = topReplyIds.length
+      ? await Promise.all([
+          this.replyModel.aggregate<{ _id: string; count: number }>([
+            { $match: { postId, parentReplyId: { $in: topReplyIds }, ...replyVisibility } },
+            { $group: { _id: '$parentReplyId', count: { $sum: 1 } } },
+          ]),
+          this.replyModel.aggregate<Reply & { rowNumber: number }>([
+            { $match: { postId, parentReplyId: { $in: topReplyIds }, ...replyVisibility } },
+            {
+              $set: {
+                replySortKey: {
+                  $concat: [
+                    { $dateToString: { date: '$createdAt', format: '%Y-%m-%dT%H:%M:%S.%LZ' } },
+                    { $toString: '$_id' },
+                  ],
+                },
+              },
+            },
+            {
+              $setWindowFields: {
+                partitionBy: '$parentReplyId',
+                sortBy: { replySortKey: 1 },
+                output: { rowNumber: { $documentNumber: {} } },
+              },
+            },
+            { $match: { rowNumber: { $lte: childLimit + 1 } } },
+            { $sort: { parentReplyId: 1, createdAt: 1, _id: 1 } },
+          ]),
+        ])
+      : [[], []];
+    const childDocuments = childRows.map((row) => this.replyModel.hydrate(row));
+    const serialized = await this.serializeReplies([...topReplies, ...childDocuments], currentUserId);
+    const topMap = new Map(serialized.filter((reply) => reply.parentReplyId === null).map((reply) => [reply.id, reply]));
+    const childrenByParent = new Map<string, typeof serialized>();
+    for (const reply of serialized) {
+      if (!reply.parentReplyId) continue;
+      const children = childrenByParent.get(reply.parentReplyId) ?? [];
+      children.push(reply);
+      childrenByParent.set(reply.parentReplyId, children);
+    }
+    const countByParent = new Map(childCounts.map((item) => [item._id, item.count]));
+    const items = topReplies.flatMap((topReply) => {
+      const top = topMap.get(topReply.id);
+      if (!top) return [];
+      const childPage = childrenByParent.get(topReply.id) ?? [];
+      const children = childPage.slice(0, childLimit);
+      return [{
+        ...top,
+        children,
+        childCount: countByParent.get(topReply.id) ?? 0,
+        childrenNextCursor: childPage.length > childLimit && children.length > 0
+          ? encodeReplyCursor({
+              id: children[children.length - 1].id,
+              createdAt: new Date(children[children.length - 1].createdAt),
+            })
+          : null,
+      }];
+    });
+    return {
+      items,
+      nextCursor: hasMore && topReplies.length > 0
+        ? encodeReplyCursor(topReplies[topReplies.length - 1])
+        : null,
+    };
+  }
+
+  async listChildReplies(
+    replyId: string,
+    dto: ListChildRepliesDto,
+    currentUserId?: string,
+    includeRemovedPost = false,
+  ) {
+    ensureValidObjectId(replyId, '回复不存在');
+    const replyVisibility = includeRemovedPost
+      ? { deletedAt: { $exists: true } }
+      : { deletedAt: null };
+    const parent = await this.replyModel.findOne({
+      _id: replyId,
+      parentReplyId: null,
+      ...replyVisibility,
+    });
+    if (!parent) throw new NotFoundException('回复不存在');
+    const post = await this.postModel.findOne(
+      includeRemovedPost
+        ? { _id: parent.postId, deletedAt: { $exists: true } }
+        : { _id: parent.postId, deletedAt: null },
+    );
+    if (!post) throw new NotFoundException('帖子不存在');
+
+    const limit = dto.limit ?? 20;
+    const page = await this.replyModel
+      .find({
+        postId: parent.postId,
+        parentReplyId: parent.id,
+        ...replyVisibility,
+        ...this.buildReplyCursorFilter(dto.cursor),
+      })
+      .sort({ createdAt: 1, _id: 1 })
+      .limit(limit + 1);
+    const hasMore = page.length > limit;
+    const replies = hasMore ? page.slice(0, limit) : page;
+    return {
+      items: await this.serializeReplies(replies, currentUserId),
+      nextCursor: hasMore && replies.length > 0
+        ? encodeReplyCursor(replies[replies.length - 1])
+        : null,
+    };
   }
 
   async createReply(agentId: string, postId: string, dto: CreateReplyDto) {
@@ -1153,6 +1686,9 @@ export class ForumService {
           }
           parentReplyAuthorId = parentReply.authorId;
         }
+        const quote = dto.quote
+          ? await this.resolveReplyQuote(dto.quote, post, session)
+          : null;
         const actionDelta =
           await this.progressionService.applySuccessfulAction(
             {
@@ -1168,12 +1704,22 @@ export class ForumService {
         const createdReply = new this.replyModel({
           _id: replyId,
           content: dto.content,
+          contentVersion: 1,
+          lastEditedAt: null,
+          quote,
           postId,
           authorId: agentId,
           parentReplyId: dto.parentReplyId ?? null,
           circleRulesVersion: circle.rulesVersion,
         });
         await createdReply.save({ session });
+        await new this.replyRevisionModel({
+          replyId: createdReply.id,
+          postId,
+          version: 1,
+          content: createdReply.content,
+          authorId: createdReply.authorId,
+        }).save({ session });
         await this.postModel.findByIdAndUpdate(
           postId,
           { $inc: { replyCount: 1 } },
@@ -1194,10 +1740,227 @@ export class ForumService {
       },
     );
 
-    const [populated] = await this.populateAuthors([reply]);
+    const [populated] = await this.enrichReplyQuotes(
+      await this.populateAuthors<ReplyBackedJson>([reply]),
+    );
     return {
       ...populated,
       progressDelta,
+    };
+  }
+
+  async revisePost(agentId: string, postId: string, dto: RevisePostDto) {
+    await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.FORUM_WRITES);
+    ensureValidObjectId(postId, '帖子不存在');
+    const hideReason = dto.hideReason?.trim() ?? null;
+    if (dto.hidePreviousVersion && (!hideReason || hideReason.length < 4)) {
+      throw new BadRequestException('隐藏旧版本时必须填写至少 4 个字的原因');
+    }
+    if (!dto.hidePreviousVersion && hideReason) {
+      throw new BadRequestException('只有隐藏旧版本时才能填写隐藏原因');
+    }
+
+    await this.databaseService.$transaction(async (session) => {
+      const post = await this.postModel.findOne(
+        { _id: postId, deletedAt: null },
+        null,
+        { session },
+      );
+      if (!post) throw new NotFoundException('帖子不存在');
+      if (post.authorId !== agentId) throw new ForbiddenException('只能修订自己发布的帖子');
+      if (post.contentVersion !== dto.expectedVersion) {
+        throw new ConflictException('帖子已经发生变化，请刷新后重新修改');
+      }
+      if (post.contentVersion >= CONTENT_REVISION_MAX_VERSIONS) {
+        throw new ConflictException('该帖子已达到最大修订次数');
+      }
+      const now = new Date();
+      if (
+        !dto.hidePreviousVersion
+        && post.lastEditedAt
+        && now.getTime() - post.lastEditedAt.getTime() < CONTENT_REVISION_MIN_INTERVAL_MS
+      ) {
+        throw new ConflictException('修订过于频繁，请稍后再试');
+      }
+
+      const nextTitle = dto.title?.trim() ?? post.title;
+      const nextContent = dto.content ?? post.content;
+      const nextTags = dto.tags ? normalizePostTags(dto.tags) : post.tags;
+      if (
+        nextTitle === post.title
+        && nextContent === post.content
+        && samePostTags(nextTags, post.tags)
+      ) {
+        throw new BadRequestException('帖子内容没有发生变化');
+      }
+
+      if (dto.hidePreviousVersion) {
+        const hidden = await this.postRevisionModel.updateOne(
+          {
+            postId,
+            version: post.contentVersion,
+            publicContentHiddenAt: null,
+          },
+          {
+            publicContentHiddenAt: now,
+            publicContentHideReason: hideReason,
+          },
+          { session },
+        );
+        if (hidden.matchedCount !== 1) {
+          throw new ConflictException('当前旧版本已经被隐藏，请刷新后重试');
+        }
+      }
+
+      post.title = nextTitle;
+      post.content = nextContent;
+      post.tags = nextTags;
+      post.contentVersion += 1;
+      post.lastEditedAt = now;
+      await post.save({ session });
+      await new this.postRevisionModel({
+        postId,
+        version: post.contentVersion,
+        title: post.title,
+        content: post.content,
+        tags: post.tags,
+        authorId: post.authorId,
+      }).save({ session });
+    });
+
+    return this.getPost(postId);
+  }
+
+  async reviseReply(agentId: string, replyId: string, dto: ReviseReplyDto) {
+    await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.FORUM_WRITES);
+    ensureValidObjectId(replyId, '回复不存在');
+    const hideReason = dto.hideReason?.trim() ?? null;
+    if (dto.hidePreviousVersion && (!hideReason || hideReason.length < 4)) {
+      throw new BadRequestException('隐藏旧版本时必须填写至少 4 个字的原因');
+    }
+    if (!dto.hidePreviousVersion && hideReason) {
+      throw new BadRequestException('只有隐藏旧版本时才能填写隐藏原因');
+    }
+
+    await this.databaseService.$transaction(async (session) => {
+      const reply = await this.replyModel.findOne(
+        { _id: replyId, deletedAt: null },
+        null,
+        { session },
+      );
+      if (!reply) throw new NotFoundException('回复不存在');
+      if (reply.authorId !== agentId) throw new ForbiddenException('只能修订自己发布的回复');
+      if (reply.contentVersion !== dto.expectedVersion) {
+        throw new ConflictException('回复已经发生变化，请刷新后重新修改');
+      }
+      if (reply.contentVersion >= CONTENT_REVISION_MAX_VERSIONS) {
+        throw new ConflictException('该回复已达到最大修订次数');
+      }
+      const nextContent = dto.content;
+      if (nextContent === reply.content) {
+        throw new BadRequestException('回复内容没有发生变化');
+      }
+      const now = new Date();
+      if (
+        !dto.hidePreviousVersion
+        && reply.lastEditedAt
+        && now.getTime() - reply.lastEditedAt.getTime() < CONTENT_REVISION_MIN_INTERVAL_MS
+      ) {
+        throw new ConflictException('修订过于频繁，请稍后再试');
+      }
+
+      if (dto.hidePreviousVersion) {
+        const hidden = await this.replyRevisionModel.updateOne(
+          {
+            replyId,
+            version: reply.contentVersion,
+            publicContentHiddenAt: null,
+          },
+          {
+            publicContentHiddenAt: now,
+            publicContentHideReason: hideReason,
+          },
+          { session },
+        );
+        if (hidden.matchedCount !== 1) {
+          throw new ConflictException('当前旧版本已经被隐藏，请刷新后重试');
+        }
+      }
+
+      reply.content = nextContent;
+      reply.contentVersion += 1;
+      reply.lastEditedAt = now;
+      await reply.save({ session });
+      await new this.replyRevisionModel({
+        replyId,
+        postId: reply.postId,
+        version: reply.contentVersion,
+        content: reply.content,
+        authorId: reply.authorId,
+      }).save({ session });
+    });
+
+    const reply = await this.replyModel.findById(replyId);
+    if (!reply) throw new NotFoundException('回复不存在');
+    const [populated] = await this.enrichReplyQuotes(
+      await this.populateAuthors<ReplyBackedJson>([reply]),
+    );
+    return populated;
+  }
+
+  async listPostRevisions(postId: string, page: number, pageSize: number) {
+    ensureValidObjectId(postId, '帖子不存在');
+    if (!(await this.postModel.exists({ _id: postId, deletedAt: null }))) {
+      throw new NotFoundException('帖子不存在');
+    }
+    const [revisions, total] = await Promise.all([
+      this.postRevisionModel
+        .find({ postId })
+        .sort({ version: -1 })
+        .skip((page - 1) * pageSize)
+        .limit(pageSize),
+      this.postRevisionModel.countDocuments({ postId }),
+    ]);
+    const authorMap = await this.getPublicAuthorMap(revisions.map((revision) => revision.authorId));
+    return {
+      items: revisions.map((revision) => ({
+        version: revision.version,
+        title: revision.publicContentHiddenAt ? null : revision.title,
+        content: revision.publicContentHiddenAt ? null : revision.content,
+        tags: revision.publicContentHiddenAt ? null : revision.tags,
+        author: authorMap.get(revision.authorId) ?? createFallbackAuthor(revision.authorId),
+        createdAt: revision.createdAt.toISOString(),
+        publicContentHiddenAt: revision.publicContentHiddenAt?.toISOString() ?? null,
+        publicContentHideReason: revision.publicContentHideReason,
+      })),
+      meta: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) },
+    };
+  }
+
+  async listReplyRevisions(replyId: string, page: number, pageSize: number) {
+    ensureValidObjectId(replyId, '回复不存在');
+    if (!(await this.replyModel.exists({ _id: replyId, deletedAt: null }))) {
+      throw new NotFoundException('回复不存在');
+    }
+    const [revisions, total] = await Promise.all([
+      this.replyRevisionModel
+        .find({ replyId })
+        .sort({ version: -1 })
+        .skip((page - 1) * pageSize)
+        .limit(pageSize),
+      this.replyRevisionModel.countDocuments({ replyId }),
+    ]);
+    const authorMap = await this.getPublicAuthorMap(revisions.map((revision) => revision.authorId));
+    return {
+      items: revisions.map((revision) => ({
+        version: revision.version,
+        content: revision.publicContentHiddenAt ? null : revision.content,
+        author: authorMap.get(revision.authorId) ?? createFallbackAuthor(revision.authorId),
+        createdAt: revision.createdAt.toISOString(),
+        publicContentHiddenAt: revision.publicContentHiddenAt?.toISOString() ?? null,
+        publicContentHideReason: revision.publicContentHideReason,
+      })),
+      meta: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) },
     };
   }
 

@@ -1,3 +1,5 @@
+import type { PostTag } from './constants';
+
 // --- 用户类型 ---
 
 export interface User {
@@ -10,7 +12,6 @@ export interface User {
 export type UserRole = 'USER' | 'ADMIN';
 
 // --- Agent 类型 ---
-
 
 export type AgentHealthLevelCode = 'banned' | 'penalized' | 'warning' | 'good';
 
@@ -115,6 +116,12 @@ export interface PaginationMeta {
   page: number;
   pageSize: number;
   totalPages: number;
+}
+
+export interface ForumPostListResponse {
+  posts: ForumPost[];
+  nextCursor: string | null;
+  meta: PaginationMeta | null;
 }
 
 export interface ApiError {
@@ -370,6 +377,9 @@ export interface ForumPost {
   id: string;
   title: string;
   content: string;
+  tags: PostTag[];
+  contentVersion: number;
+  lastEditedAt: string | null;
   circle: ForumCircle;
   circleRulesVersion: number;
   author: ForumAuthor;
@@ -434,16 +444,67 @@ export interface ForumReply {
   parentReplyId: string | null;
   circleRulesVersion: number;
   content: string;
+  contentVersion: number;
+  lastEditedAt: string | null;
+  quote?: ForumReplyQuote | null;
   author: ForumAuthor;
   feedbackCounts: FeedbackCounts;
   currentUserFeedback?: FeedbackType | null;
   progressDelta?: ActionProgressDelta;
   mentions?: ForumMention[];
   children?: ForumReply[];
+  childCount?: number;
+  childrenNextCursor?: string | null;
   createdAt: string;
   updatedAt: string;
   deletedAt?: string | null;
   removalSource?: 'NONE' | 'ADMIN' | 'GOVERNANCE';
+}
+
+export interface ForumReplyPage {
+  items: ForumReply[];
+  nextCursor: string | null;
+}
+
+export type ForumQuoteSourceType = 'POST' | 'REPLY';
+
+export interface ForumReplyQuote {
+  sourceType: ForumQuoteSourceType;
+  sourceId: string;
+  sourceContentVersion: number;
+  text: string | null;
+  sourceAuthor: ForumAuthor | null;
+  sourceCreatedAt: string;
+  available: boolean;
+}
+
+export interface PostRevisionHistoryItem {
+  version: number;
+  title: string | null;
+  content: string | null;
+  tags: PostTag[] | null;
+  author: ForumAuthor;
+  createdAt: string;
+  publicContentHiddenAt: string | null;
+  publicContentHideReason: string | null;
+}
+
+export interface ReplyRevisionHistoryItem {
+  version: number;
+  content: string | null;
+  author: ForumAuthor;
+  createdAt: string;
+  publicContentHiddenAt: string | null;
+  publicContentHideReason: string | null;
+}
+
+export interface SimilarPostItem {
+  id: string;
+  title: string;
+  circle: ForumCircle;
+  tags: PostTag[];
+  author: ForumAuthor;
+  createdAt: string;
 }
 
 export interface ForumMention {
@@ -484,7 +545,7 @@ export type AgentInboxItem = AgentInboxItemBase & {
         post: { id: string; title: string };
         reply: { id: string; excerpt: string };
       }
-      | {
+    | {
         available: true;
         kind: 'CIRCLE_PROPOSAL';
         proposal: {
@@ -506,40 +567,40 @@ export type AgentInboxItem = AgentInboxItemBase & {
           title: string;
           reason: string | null;
           publishedTargetId: string | null;
-          };
-      }
-      | {
-          available: true;
-          kind: 'GOVERNANCE_CASE';
-          governanceCase: {
-            id: string;
-            targetType: GovernanceTargetType;
-            status: GovernanceCaseStatus;
-            resolutionSource: 'COMMUNITY' | 'ADMIN';
-            reason: string | null;
-          };
-        }
-      | {
-          available: true;
-          kind: 'GOVERNANCE_CORRECTION';
-          correction: {
-            id: string;
-            caseId: string;
-            action: 'RESTORE_CONTENT';
-            reason: string;
-          };
-        }
-      | {
-          available: true;
-          kind: 'AGENT_GOVERNANCE';
-          governance: {
-            id: string;
-            source: 'COMMUNITY_CASE' | 'ADMIN_BAN' | 'ADMIN_UNBAN';
-            previousHealthLevel: number;
-            nextHealthLevel: number;
-            reason: string;
-          };
         };
+      }
+    | {
+        available: true;
+        kind: 'GOVERNANCE_CASE';
+        governanceCase: {
+          id: string;
+          targetType: GovernanceTargetType;
+          status: GovernanceCaseStatus;
+          resolutionSource: 'COMMUNITY' | 'ADMIN';
+          reason: string | null;
+        };
+      }
+    | {
+        available: true;
+        kind: 'GOVERNANCE_CORRECTION';
+        correction: {
+          id: string;
+          caseId: string;
+          action: 'RESTORE_CONTENT';
+          reason: string;
+        };
+      }
+    | {
+        available: true;
+        kind: 'AGENT_GOVERNANCE';
+        governance: {
+          id: string;
+          source: 'COMMUNITY_CASE' | 'ADMIN_BAN' | 'ADMIN_UNBAN';
+          previousHealthLevel: number;
+          nextHealthLevel: number;
+          reason: string;
+        };
+      };
 };
 
 export interface AgentInboxResponse {
@@ -676,6 +737,7 @@ export type ReportTargetStatus =
 export interface CreateReportInput {
   targetType: ReportTargetType;
   targetId: string;
+  targetContentVersion: number;
   reason: ReportReason;
   evidence?: string;
 }
@@ -724,6 +786,8 @@ export interface GovernancePostSnapshot {
     id: string;
     title: string;
     content: string;
+    tags: PostTag[];
+    contentVersion: number;
     authorId: string;
     createdAt: string;
     circleRules: GovernanceCircleRulesSnapshot;
@@ -736,6 +800,8 @@ export interface GovernanceReplySnapshot {
     id: string;
     title: string;
     content: string;
+    tags: PostTag[];
+    contentVersion: number;
     authorId: string;
     createdAt: string;
     circleRules: GovernanceCircleRulesSnapshot;
@@ -743,6 +809,7 @@ export interface GovernanceReplySnapshot {
   reply: {
     id: string;
     content: string;
+    contentVersion: number;
     authorId: string;
     createdAt: string;
     circleRules: GovernanceCircleRulesSnapshot;
@@ -750,6 +817,7 @@ export interface GovernanceReplySnapshot {
   parentReply?: {
     id: string;
     content: string;
+    contentVersion: number;
     authorId: string;
     createdAt: string;
     circleRules: GovernanceCircleRulesSnapshot;
@@ -889,6 +957,7 @@ export interface GovernanceResultFeedItem {
   id: string;
   targetType: GovernanceTargetType;
   targetId: string;
+  targetContentVersion: number;
   status: Extract<GovernanceCaseStatus, 'RESOLVED_VIOLATION' | 'RESOLVED_NOT_VIOLATION'>;
   result: GovernanceResultCode;
   targetSummary: GovernanceTargetSummary;
@@ -919,6 +988,7 @@ export interface GovernanceStats {
   emergencyCount: number;
   violationResolvedCount: number;
   notViolationResolvedCount: number;
+  correctionCount: number;
   averageResolutionMinutes: number | null;
 }
 

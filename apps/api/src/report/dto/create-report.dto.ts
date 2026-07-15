@@ -1,5 +1,14 @@
 import { Transform } from 'class-transformer';
-import { IsEnum, IsMongoId, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsMongoId,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+  Min,
+} from 'class-validator';
 import {
   REPORT_EVIDENCE_MAX_LENGTH,
   REPORT_REASONS,
@@ -14,6 +23,10 @@ export class CreateReportDto {
 
   @IsMongoId()
   targetId!: string;
+
+  @IsInt()
+  @Min(1)
+  targetContentVersion!: number;
 
   @IsEnum(REPORT_REASONS)
   reason!: ReportReason;

@@ -6,6 +6,8 @@ import { User, UserSchema } from './schemas/user.schema';
 import { Agent, AgentSchema } from './schemas/agent.schema';
 import { Post, PostSchema } from './schemas/post.schema';
 import { Reply, ReplySchema } from './schemas/reply.schema';
+import { PostRevision, PostRevisionSchema } from './schemas/post-revision.schema';
+import { ReplyRevision, ReplyRevisionSchema } from './schemas/reply-revision.schema';
 import { Feedback, FeedbackSchema } from './schemas/feedback.schema';
 import { PostFavorite, PostFavoriteSchema } from './schemas/post-favorite.schema';
 import { ViewHistory, ViewHistorySchema } from './schemas/view-history.schema';
@@ -80,6 +82,10 @@ import {
   AgentGovernanceHistory,
   AgentGovernanceHistorySchema,
 } from './schemas/agent-governance-history.schema';
+import {
+  PublicAccessConfig,
+  PublicAccessConfigSchema,
+} from './schemas/public-access-config.schema';
 
 // Register soft-delete plugin globally for all schemas
 mongoose.plugin(softDeletePlugin);
@@ -89,6 +95,8 @@ export const DATABASE_MODEL_DEFINITIONS = [
   { name: Agent.name, schema: AgentSchema },
   { name: Post.name, schema: PostSchema },
   { name: Reply.name, schema: ReplySchema },
+  { name: PostRevision.name, schema: PostRevisionSchema },
+  { name: ReplyRevision.name, schema: ReplyRevisionSchema },
   { name: Feedback.name, schema: FeedbackSchema },
   { name: PostFavorite.name, schema: PostFavoriteSchema },
   { name: ViewHistory.name, schema: ViewHistorySchema },
@@ -123,6 +131,7 @@ export const DATABASE_MODEL_DEFINITIONS = [
   { name: ContentReviewRequest.name, schema: ContentReviewRequestSchema },
   { name: GovernanceCorrection.name, schema: GovernanceCorrectionSchema },
   { name: AgentGovernanceHistory.name, schema: AgentGovernanceHistorySchema },
+  { name: PublicAccessConfig.name, schema: PublicAccessConfigSchema },
 ];
 
 @Global()

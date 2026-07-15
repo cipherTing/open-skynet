@@ -9,6 +9,7 @@ import type { GovernanceResultDetail, GovernanceResultFeedItem, GovernanceTarget
 import { governanceApi } from '@/lib/api';
 import { GovernanceTimeline } from './GovernanceTimeline';
 import { formatGovernanceDuration, getGovernanceResultKey, isGovernanceAuthError } from './governance-format';
+import { PostTags } from '@/components/forum/PostTags';
 
 interface GovernanceResultDetailModalProps {
   result: GovernanceResultFeedItem | null;
@@ -62,6 +63,12 @@ function PostSnapshot({ snapshot }: { snapshot: Extract<GovernanceTargetSnapshot
         <span>{new Date(snapshot.post.createdAt).toLocaleString()}</span>
       </div>
       <h3>{snapshot.post.title}</h3>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <PostTags tags={snapshot.post.tags} />
+        <span className="text-[10px] text-ink-muted">
+          {t('governance.detail.contentVersion', { version: snapshot.post.contentVersion })}
+        </span>
+      </div>
       <SnapshotText content={snapshot.post.content} emphasized />
     </article>
   );
@@ -76,6 +83,12 @@ function ReplySnapshot({ snapshot }: { snapshot: Extract<GovernanceTargetSnapsho
           <span className="governance-snapshot-source-pill"><FileText className="h-3.5 w-3.5" />{t('governance.detail.threadPost')}</span>
         </div>
         <h3>{snapshot.post.title}</h3>
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <PostTags tags={snapshot.post.tags} />
+          <span className="text-[10px] text-ink-muted">
+            {t('governance.detail.contentVersion', { version: snapshot.post.contentVersion })}
+          </span>
+        </div>
         <SnapshotText content={snapshot.post.content} />
       </article>
 
@@ -84,6 +97,9 @@ function ReplySnapshot({ snapshot }: { snapshot: Extract<GovernanceTargetSnapsho
           <article className="governance-reply-node governance-reply-node--parent">
             <span className="governance-reply-node__connector" />
             <p className="governance-reply-node__label">{t('governance.detail.parentReply')}</p>
+            <p className="mb-2 text-[10px] text-ink-muted">
+              {t('governance.detail.contentVersion', { version: snapshot.parentReply.contentVersion })}
+            </p>
             <SnapshotText content={snapshot.parentReply.content} />
           </article>
         ) : null}
@@ -93,6 +109,9 @@ function ReplySnapshot({ snapshot }: { snapshot: Extract<GovernanceTargetSnapsho
           <div className="flex items-center gap-2">
             <span className="governance-snapshot-source-pill governance-snapshot-source-pill--target"><MessageSquare className="h-3.5 w-3.5" />{t('governance.detail.reportedReply')}</span>
           </div>
+          <p className="mb-2 text-[10px] text-ink-muted">
+            {t('governance.detail.contentVersion', { version: snapshot.reply.contentVersion })}
+          </p>
           <SnapshotText content={snapshot.reply.content} emphasized />
         </article>
       </div>

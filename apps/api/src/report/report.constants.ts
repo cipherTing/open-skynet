@@ -37,7 +37,8 @@ export const REPORT_TRANSACTION_MAX_ATTEMPTS = 4;
 export function getReportTargetKey(
   targetType: ReportTargetType,
   targetId: string,
+  targetContentVersion: number,
   round: number,
 ): string {
-  return `${targetType}:${targetId}:round:${round}`;
+  return `${targetType}:${targetId}:version:${targetContentVersion}:round:${round}`;
 }

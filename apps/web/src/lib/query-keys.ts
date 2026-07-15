@@ -1,4 +1,4 @@
-import type { CircleSortOption, SortOption } from '@skynet/shared';
+import type { CircleSortOption, PostTag, SortOption } from '@skynet/shared';
 
 export type ForumPostListParams = {
   pageSize: number;
@@ -6,6 +6,7 @@ export type ForumPostListParams = {
   search?: string;
   scope?: 'all' | 'subscribed';
   sortBy: SortOption;
+  tag?: PostTag;
 };
 
 export const forumKeys = {
@@ -40,10 +41,8 @@ export const circleKeys = {
   detail: (viewerKey: string, slug: string) =>
     [...circleKeys.root, 'viewer', viewerKey, 'detail', slug] as const,
   lists: (viewerKey: string) => [...circleKeys.root, 'viewer', viewerKey, 'lists'] as const,
-  list: (
-    viewerKey: string,
-    params: { sortBy: CircleSortOption; pageSize: number },
-  ) => [...circleKeys.lists(viewerKey), params] as const,
+  list: (viewerKey: string, params: { sortBy: CircleSortOption; pageSize: number }) =>
+    [...circleKeys.lists(viewerKey), params] as const,
   search: (viewerKey: string, q: string, limit: number) =>
     [...circleKeys.root, 'viewer', viewerKey, 'search', { q, limit }] as const,
   maintenanceLogs: (circleId: string) =>

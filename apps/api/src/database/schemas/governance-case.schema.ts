@@ -8,6 +8,7 @@ import {
   type GovernanceTargetType,
 } from '@/governance/governance.constants';
 import type { CircleRuleItem } from './circle.schema';
+import type { PostTag } from '@/forum/post-tag.constants';
 
 export type GovernanceCaseDocument = HydratedDocument<GovernanceCase>;
 
@@ -23,6 +24,8 @@ export interface GovernancePostSnapshot {
     id: string;
     title: string;
     content: string;
+    tags: PostTag[];
+    contentVersion: number;
     authorId: string;
     createdAt: Date;
     circleRules: GovernanceCircleRulesSnapshot;
@@ -35,6 +38,8 @@ export interface GovernanceReplySnapshot {
     id: string;
     title: string;
     content: string;
+    tags: PostTag[];
+    contentVersion: number;
     authorId: string;
     createdAt: Date;
     circleRules: GovernanceCircleRulesSnapshot;
@@ -42,6 +47,7 @@ export interface GovernanceReplySnapshot {
   reply: {
     id: string;
     content: string;
+    contentVersion: number;
     authorId: string;
     createdAt: Date;
     circleRules: GovernanceCircleRulesSnapshot;
@@ -49,6 +55,7 @@ export interface GovernanceReplySnapshot {
   parentReply?: {
     id: string;
     content: string;
+    contentVersion: number;
     authorId: string;
     createdAt: Date;
     circleRules: GovernanceCircleRulesSnapshot;
@@ -114,6 +121,9 @@ export class GovernanceCase {
 
   @Prop({ type: String, required: true })
   targetId!: string;
+
+  @Prop({ type: Number, required: true, min: 1, immutable: true })
+  targetContentVersion!: number;
 
   @Prop({ type: Number, required: true, min: 1, immutable: true })
   round!: number;
@@ -212,7 +222,7 @@ GovernanceCaseSchema.index(
   { activeKey: 1 },
   { unique: true, partialFilterExpression: { activeKey: { $type: 'string' } } },
 );
-GovernanceCaseSchema.index({ targetType: 1, targetId: 1, round: -1 });
+GovernanceCaseSchema.index({ targetType: 1, targetId: 1, targetContentVersion: 1, round: -1 });
 GovernanceCaseSchema.index({ status: 1, normalDeadlineAt: 1, emergencyDeadlineAt: 1, openedAt: 1 });
 GovernanceCaseSchema.index({ targetAuthorId: 1, status: 1 });
 GovernanceCaseSchema.index({ status: 1, resolvedAt: -1, _id: -1 });

@@ -9,6 +9,7 @@ import {
   type CircleKind,
   type CircleStatus,
 } from '@/circle/circle.constants';
+import { buildSearchText } from '@/database/search-text';
 
 export type CircleDocument = HydratedDocument<Circle>;
 
@@ -58,6 +59,9 @@ export class Circle {
 
   @Prop({ type: String, required: true })
   topic!: string;
+
+  @Prop({ type: String, required: true, select: false, transform: () => undefined })
+  searchText!: string;
 
   @Prop({ type: String, required: true, enum: Object.values(CIRCLE_CREATED_BY_TYPES) })
   createdByType!: CircleCreatedByType;
@@ -129,8 +133,18 @@ export class Circle {
 
 export const CircleSchema = SchemaFactory.createForClass(Circle);
 
+CircleSchema.pre('validate', function populateSearchText() {
+  if (this.isModified('name') || this.isModified('slug') || this.isModified('topic')) {
+    this.searchText = buildSearchText(`${this.name} ${this.slug} ${this.topic}`);
+  }
+});
+
 CircleSchema.index({ slug: 1 }, { unique: true });
 CircleSchema.index({ normalizedName: 1 }, { unique: true });
+CircleSchema.index(
+  { searchText: 'text' },
+  { name: 'circle_search_text', default_language: 'none' },
+);
 CircleSchema.index({ deletedAt: 1 });
 CircleSchema.index({ status: 1, kind: 1, createdAt: -1 });
 CircleSchema.index({ createdAt: -1 }, { partialFilterExpression: { deletedAt: null } });

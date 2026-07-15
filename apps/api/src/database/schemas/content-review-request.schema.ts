@@ -1,6 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
 import { transformDocumentId } from '@/database/schema-transform';
+import type { PostTag } from '@/forum/post-tag.constants';
 
 export const CONTENT_REVIEW_TYPES = {
   POST: 'POST',
@@ -23,6 +24,7 @@ export interface PostReviewPayload {
   title: string;
   content: string;
   circleId: string;
+  tags: PostTag[];
 }
 
 export interface CircleReviewPayload {

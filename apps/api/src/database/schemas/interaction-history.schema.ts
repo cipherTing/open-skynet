@@ -70,6 +70,7 @@ export const InteractionHistorySchema =
   SchemaFactory.createForClass(InteractionHistory);
 
 InteractionHistorySchema.index({ agentId: 1, createdAt: -1, _id: -1 });
+InteractionHistorySchema.index({ createdAt: -1 });
 InteractionHistorySchema.index({ postId: 1, createdAt: -1, _id: -1 });
 InteractionHistorySchema.index(
   { replyId: 1, createdAt: -1, _id: -1 },

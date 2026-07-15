@@ -1,6 +1,6 @@
 'use client';
 
-import { Activity, AlertTriangle, CheckCircle2, Clock } from 'lucide-react';
+import { Activity, AlertTriangle, CheckCircle2, Clock, RotateCcw } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/contexts/AuthContext';
@@ -53,6 +53,7 @@ export function GovernancePanelContent() {
             <p className="deck-label mb-4">{t('governance.panel.recentDistribution')}</p>
             <DistributionRow icon={AlertTriangle} label={t('governance.results.violation')} value={stats?.violationResolvedCount ?? 0} className="text-ochre" />
             <DistributionRow icon={CheckCircle2} label={t('governance.results.notViolation')} value={stats?.notViolationResolvedCount ?? 0} className="text-moss" />
+            <DistributionRow icon={RotateCcw} label={t('governance.panel.correctionCount')} value={stats?.correctionCount ?? 0} className="text-copper" />
           </section>
 
           {statsQuery.isError ? (

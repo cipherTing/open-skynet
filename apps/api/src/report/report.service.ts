@@ -12,8 +12,11 @@ import { Feedback } from '@/database/schemas/feedback.schema';
 import { GovernanceCase } from '@/database/schemas/governance-case.schema';
 import { Post } from '@/database/schemas/post.schema';
 import { Reply } from '@/database/schemas/reply.schema';
+import { PostRevision } from '@/database/schemas/post-revision.schema';
+import { ReplyRevision } from '@/database/schemas/reply-revision.schema';
 import { CircleProposal } from '@/database/schemas/circle-proposal.schema';
 import { CircleProposalComment } from '@/database/schemas/circle-proposal-comment.schema';
+import { CircleProposalRevision } from '@/database/schemas/circle-proposal-revision.schema';
 import { Report } from '@/database/schemas/report.schema';
 import {
   ReportTargetState,
@@ -74,7 +77,13 @@ function isExpectedReportRace(error: unknown): boolean {
   return (
     keys.includes('activeKey') ||
     keys.includes('targetKey') ||
-    (keys.includes('reporterAgentId') && keys.includes('targetType') && keys.includes('targetId') && keys.includes('round'))
+    (
+      keys.includes('reporterAgentId')
+      && keys.includes('targetType')
+      && keys.includes('targetId')
+      && keys.includes('targetContentVersion')
+      && keys.includes('round')
+    )
   );
 }
 
@@ -115,12 +124,18 @@ export class ReportService implements OnModuleInit {
     private readonly governanceCaseModel: Model<GovernanceCase>,
     @InjectModel(Post.name)
     private readonly postModel: Model<Post>,
+    @InjectModel(PostRevision.name)
+    private readonly postRevisionModel: Model<PostRevision>,
     @InjectModel(Reply.name)
     private readonly replyModel: Model<Reply>,
+    @InjectModel(ReplyRevision.name)
+    private readonly replyRevisionModel: Model<ReplyRevision>,
     @InjectModel(CircleProposal.name)
     private readonly proposalModel: Model<CircleProposal>,
     @InjectModel(CircleProposalComment.name)
     private readonly proposalCommentModel: Model<CircleProposalComment>,
+    @InjectModel(CircleProposalRevision.name)
+    private readonly proposalRevisionModel: Model<CircleProposalRevision>,
     @InjectModel(Agent.name)
     private readonly agentModel: Model<Agent>,
     private readonly databaseService: DatabaseService,
@@ -132,6 +147,7 @@ export class ReportService implements OnModuleInit {
     const [
       legacyViolationFeedback,
       legacyCase,
+      legacyVersionedReportData,
       inconsistentCaseState,
       inconsistentOrOrphanState,
       inconsistentStateFacts,
@@ -146,9 +162,14 @@ export class ReportService implements OnModuleInit {
           { reporterOwnerUserIds: { $exists: false } },
           { 'reporterOwnerUserIds.2': { $exists: false } },
           { targetAuthorOwnerUserId: { $exists: false } },
+          { targetContentVersion: { $exists: false } },
           { round: { $exists: false } },
         ],
       }),
+      Promise.all([
+        this.reportModel.exists({ targetContentVersion: { $exists: false } }),
+        this.targetStateModel.exists({ targetContentVersion: { $exists: false } }),
+      ]).then((items) => items.some(Boolean)),
       this.governanceCaseModel.aggregate<{ _id: unknown }>([
         {
           $lookup: {
@@ -157,11 +178,20 @@ export class ReportService implements OnModuleInit {
               caseId: { $toString: '$_id' },
               caseTargetType: '$targetType',
               caseTargetId: '$targetId',
+              caseTargetContentVersion: '$targetContentVersion',
               caseTargetAuthorId: '$targetAuthorId',
               caseRound: '$round',
               caseActiveKey: '$activeKey',
               canonicalTargetKey: {
-                $concat: ['$targetType', ':', '$targetId', ':round:', { $toString: '$round' }],
+                $concat: [
+                  '$targetType',
+                  ':',
+                  '$targetId',
+                  ':version:',
+                  { $toString: '$targetContentVersion' },
+                  ':round:',
+                  { $toString: '$round' },
+                ],
               },
               expectedStateStatus: {
                 $switch: {
@@ -194,6 +224,7 @@ export class ReportService implements OnModuleInit {
                     { $eq: ['$caseId', '$$caseId'] },
                     { $eq: ['$targetType', '$$caseTargetType'] },
                     { $eq: ['$targetId', '$$caseTargetId'] },
+                    { $eq: ['$targetContentVersion', '$$caseTargetContentVersion'] },
                     { $eq: ['$targetAuthorId', '$$caseTargetAuthorId'] },
                     { $eq: ['$round', '$$caseRound'] },
                     { $eq: ['$targetKey', '$$caseActiveKey'] },
@@ -209,13 +240,19 @@ export class ReportService implements OnModuleInit {
         {
           $lookup: {
             from: 'reports',
-            let: { caseTargetType: '$targetType', caseTargetId: '$targetId', caseRound: '$round' },
+            let: {
+              caseTargetType: '$targetType',
+              caseTargetId: '$targetId',
+              caseTargetContentVersion: '$targetContentVersion',
+              caseRound: '$round',
+            },
             pipeline: [{
               $match: {
                 $expr: {
                   $and: [
                     { $eq: ['$targetType', '$$caseTargetType'] },
                     { $eq: ['$targetId', '$$caseTargetId'] },
+                    { $eq: ['$targetContentVersion', '$$caseTargetContentVersion'] },
                     { $eq: ['$round', '$$caseRound'] },
                   ],
                 },
@@ -416,6 +453,7 @@ export class ReportService implements OnModuleInit {
                           { $eq: ['$targetType', REPORT_TARGET_TYPES.POST] },
                           { $eq: ['$targetSnapshot.kind', REPORT_TARGET_TYPES.POST] },
                           { $eq: ['$targetSnapshot.post.id', '$targetId'] },
+                          { $eq: ['$targetSnapshot.post.contentVersion', '$targetContentVersion'] },
                           { $eq: ['$targetSnapshot.post.authorId', '$targetAuthorId'] },
                           { $eq: [{ $size: '$postTargets' }, 1] },
                         ],
@@ -425,6 +463,7 @@ export class ReportService implements OnModuleInit {
                           { $eq: ['$targetType', REPORT_TARGET_TYPES.REPLY] },
                           { $eq: ['$targetSnapshot.kind', REPORT_TARGET_TYPES.REPLY] },
                           { $eq: ['$targetSnapshot.reply.id', '$targetId'] },
+                          { $eq: ['$targetSnapshot.reply.contentVersion', '$targetContentVersion'] },
                           { $eq: ['$targetSnapshot.reply.authorId', '$targetAuthorId'] },
                           { $eq: [{ $size: '$replyTargets' }, 1] },
                         ],
@@ -434,6 +473,7 @@ export class ReportService implements OnModuleInit {
                           { $eq: ['$targetType', REPORT_TARGET_TYPES.CIRCLE_PROPOSAL] },
                           { $eq: ['$targetSnapshot.kind', REPORT_TARGET_TYPES.CIRCLE_PROPOSAL] },
                           { $eq: ['$targetSnapshot.proposal.id', '$targetId'] },
+                          { $eq: ['$targetSnapshot.proposal.revisionNumber', '$targetContentVersion'] },
                           { $eq: ['$targetSnapshot.proposal.authorId', '$targetAuthorId'] },
                           { $eq: [{ $size: '$proposalTargets' }, 1] },
                         ],
@@ -443,6 +483,7 @@ export class ReportService implements OnModuleInit {
                           { $eq: ['$targetType', REPORT_TARGET_TYPES.CIRCLE_PROPOSAL_COMMENT] },
                           { $eq: ['$targetSnapshot.kind', REPORT_TARGET_TYPES.CIRCLE_PROPOSAL_COMMENT] },
                           { $eq: ['$targetSnapshot.comment.id', '$targetId'] },
+                          { $eq: ['$targetContentVersion', 1] },
                           { $eq: ['$targetSnapshot.comment.authorId', '$targetAuthorId'] },
                           { $eq: [{ $size: '$proposalCommentTargets' }, 1] },
                         ],
@@ -496,6 +537,7 @@ export class ReportService implements OnModuleInit {
               stateCaseId: '$caseId',
               stateTargetType: '$targetType',
               stateTargetId: '$targetId',
+              stateTargetContentVersion: '$targetContentVersion',
               stateTargetAuthorId: '$targetAuthorId',
               stateRound: '$round',
               stateTargetKey: '$targetKey',
@@ -526,6 +568,7 @@ export class ReportService implements OnModuleInit {
                     { $eq: [{ $toString: '$_id' }, '$$stateCaseId'] },
                     { $eq: ['$targetType', '$$stateTargetType'] },
                     { $eq: ['$targetId', '$$stateTargetId'] },
+                    { $eq: ['$targetContentVersion', '$$stateTargetContentVersion'] },
                     { $eq: ['$targetAuthorId', '$$stateTargetAuthorId'] },
                     { $eq: ['$round', '$$stateRound'] },
                     { $eq: ['$activeKey', '$$stateTargetKey'] },
@@ -545,7 +588,17 @@ export class ReportService implements OnModuleInit {
                   {
                     $eq: [
                       '$targetKey',
-                      { $concat: ['$targetType', ':', '$targetId', ':round:', { $toString: '$round' }] },
+                      {
+                        $concat: [
+                          '$targetType',
+                          ':',
+                          '$targetId',
+                          ':version:',
+                          { $toString: '$targetContentVersion' },
+                          ':round:',
+                          { $toString: '$round' },
+                        ],
+                      },
                     ],
                   },
                   {
@@ -593,13 +646,19 @@ export class ReportService implements OnModuleInit {
         {
           $lookup: {
             from: 'reports',
-            let: { stateTargetType: '$targetType', stateTargetId: '$targetId', stateRound: '$round' },
+            let: {
+              stateTargetType: '$targetType',
+              stateTargetId: '$targetId',
+              stateTargetContentVersion: '$targetContentVersion',
+              stateRound: '$round',
+            },
             pipeline: [{
               $match: {
                 $expr: {
                   $and: [
                     { $eq: ['$targetType', '$$stateTargetType'] },
                     { $eq: ['$targetId', '$$stateTargetId'] },
+                    { $eq: ['$targetContentVersion', '$$stateTargetContentVersion'] },
                     { $eq: ['$round', '$$stateRound'] },
                   ],
                 },
@@ -818,7 +877,12 @@ export class ReportService implements OnModuleInit {
       this.reportModel.aggregate<{ _id: unknown }>([
         {
           $group: {
-            _id: { targetType: '$targetType', targetId: '$targetId', round: '$round' },
+            _id: {
+              targetType: '$targetType',
+              targetId: '$targetId',
+              targetContentVersion: '$targetContentVersion',
+              round: '$round',
+            },
           },
         },
         {
@@ -827,6 +891,7 @@ export class ReportService implements OnModuleInit {
             let: {
               reportTargetType: '$_id.targetType',
               reportTargetId: '$_id.targetId',
+              reportTargetContentVersion: '$_id.targetContentVersion',
               reportRound: '$_id.round',
             },
             pipeline: [{
@@ -835,6 +900,7 @@ export class ReportService implements OnModuleInit {
                   $and: [
                     { $eq: ['$targetType', '$$reportTargetType'] },
                     { $eq: ['$targetId', '$$reportTargetId'] },
+                    { $eq: ['$targetContentVersion', '$$reportTargetContentVersion'] },
                     { $eq: ['$round', '$$reportRound'] },
                   ],
                 },
@@ -857,6 +923,7 @@ export class ReportService implements OnModuleInit {
     if (
       legacyViolationFeedback ||
       legacyCase ||
+      legacyVersionedReportData ||
       inconsistentCaseState.length > 0 ||
       inconsistentOrOrphanState.length > 0 ||
       inconsistentStateFacts.length > 0 ||
@@ -901,15 +968,29 @@ export class ReportService implements OnModuleInit {
     session?: ClientSession,
   ): Promise<CreateReportResult> {
     const latestTargetState = await this.targetStateModel
-      .findOne({ targetType: dto.targetType, targetId: dto.targetId }, null, { session })
+      .findOne(
+        {
+          targetType: dto.targetType,
+          targetId: dto.targetId,
+          targetContentVersion: dto.targetContentVersion,
+        },
+        null,
+        { session },
+      )
       .sort({ round: -1 });
     const round = latestTargetState?.round ?? 1;
-    const targetKey = getReportTargetKey(dto.targetType, dto.targetId, round);
+    const targetKey = getReportTargetKey(
+      dto.targetType,
+      dto.targetId,
+      dto.targetContentVersion,
+      round,
+    );
     const existingReport = await this.reportModel.findOne(
       {
         reporterAgentId,
         targetType: dto.targetType,
         targetId: dto.targetId,
+        targetContentVersion: dto.targetContentVersion,
         round,
       },
       null,
@@ -922,7 +1003,12 @@ export class ReportService implements OnModuleInit {
       { session },
     );
     const reportFacts = await this.reportModel.find(
-      { targetType: dto.targetType, targetId: dto.targetId, round },
+      {
+        targetType: dto.targetType,
+        targetId: dto.targetId,
+        targetContentVersion: dto.targetContentVersion,
+        round,
+      },
       'reporterAgentId reporterOwnerUserId',
       { session },
     );
@@ -949,6 +1035,7 @@ export class ReportService implements OnModuleInit {
     const targetAuthorId = await this.getVisibleTargetAuthorId(
       dto.targetType,
       dto.targetId,
+      dto.targetContentVersion,
       session,
     );
     const targetAuthor = await this.agentModel.findById(
@@ -973,6 +1060,7 @@ export class ReportService implements OnModuleInit {
         reporterOwnerUserId,
         targetType: dto.targetType,
         targetId: dto.targetId,
+        targetContentVersion: dto.targetContentVersion,
         round,
         reason: dto.reason,
         evidence: dto.evidence ?? null,
@@ -986,6 +1074,7 @@ export class ReportService implements OnModuleInit {
       targetKey,
       targetType: dto.targetType,
       targetId: dto.targetId,
+      targetContentVersion: dto.targetContentVersion,
       round,
       targetAuthorId,
       qualifiedReporters: [],
@@ -1003,6 +1092,7 @@ export class ReportService implements OnModuleInit {
       const governanceCase = await this.governanceService.openCaseFromReports({
         targetType: dto.targetType,
         targetId: dto.targetId,
+        targetContentVersion: dto.targetContentVersion,
         round,
         reporters: state.qualifiedReporters.map((item) => ({
           agentId: item.agentId,
@@ -1032,30 +1122,54 @@ export class ReportService implements OnModuleInit {
   private async getVisibleTargetAuthorId(
     targetType: ReportTargetType,
     targetId: string,
+    targetContentVersion: number,
     session?: ClientSession,
   ): Promise<string> {
     if (targetType === REPORT_TARGET_TYPES.POST) {
-      const post = await this.postModel.findOne(
-        { _id: targetId, deletedAt: null },
-        'authorId',
-        { session },
-      );
-      if (!post) throw new NotFoundException('帖子不存在');
-      return post.authorId;
+      const [post, revision] = await Promise.all([
+        this.postModel.findOne(
+          { _id: targetId, deletedAt: null },
+          'authorId',
+          { session },
+        ),
+        this.postRevisionModel.findOne(
+          {
+            postId: targetId,
+            version: targetContentVersion,
+            publicContentHiddenAt: null,
+          },
+          'authorId',
+          { session },
+        ),
+      ]);
+      if (!post || !revision || post.authorId !== revision.authorId) {
+        throw new NotFoundException('帖子版本不存在或已隐藏');
+      }
+      return revision.authorId;
     }
     if (targetType === REPORT_TARGET_TYPES.CIRCLE_PROPOSAL) {
-      const proposal = await this.proposalModel.findOne(
-        {
-          _id: targetId,
-          status: { $in: ['DISCUSSION', 'VOTING'] },
-        },
-        'creatorAgentId',
-        { session },
-      );
-      if (!proposal) throw new NotFoundException('圈子提案不存在或已结束');
+      const [proposal, revision] = await Promise.all([
+        this.proposalModel.findOne(
+          {
+            _id: targetId,
+            status: { $in: ['DISCUSSION', 'VOTING'] },
+          },
+          'creatorAgentId',
+          { session },
+        ),
+        this.proposalRevisionModel.findOne(
+          { proposalId: targetId, revisionNumber: targetContentVersion },
+          '_id',
+          { session },
+        ),
+      ]);
+      if (!proposal || !revision) throw new NotFoundException('圈子提案版本不存在或已结束');
       return proposal.creatorAgentId;
     }
     if (targetType === REPORT_TARGET_TYPES.CIRCLE_PROPOSAL_COMMENT) {
+      if (targetContentVersion !== 1) {
+        throw new NotFoundException('提案评论版本不存在');
+      }
       const comment = await this.proposalCommentModel.findOne(
         { _id: targetId, hiddenAt: null },
         'authorAgentId',
@@ -1064,13 +1178,26 @@ export class ReportService implements OnModuleInit {
       if (!comment) throw new NotFoundException('提案评论不存在或已隐藏');
       return comment.authorAgentId;
     }
-    const reply = await this.replyModel.findOne(
-      { _id: targetId, deletedAt: null },
-      'authorId',
-      { session },
-    );
-    if (!reply) throw new NotFoundException('回复不存在');
-    return reply.authorId;
+    const [reply, revision] = await Promise.all([
+      this.replyModel.findOne(
+        { _id: targetId, deletedAt: null },
+        'authorId',
+        { session },
+      ),
+      this.replyRevisionModel.findOne(
+        {
+          replyId: targetId,
+          version: targetContentVersion,
+          publicContentHiddenAt: null,
+        },
+        'authorId',
+        { session },
+      ),
+    ]);
+    if (!reply || !revision || reply.authorId !== revision.authorId) {
+      throw new NotFoundException('回复版本不存在或已隐藏');
+    }
+    return revision.authorId;
   }
 
   private serializeResult(

@@ -119,6 +119,9 @@ function AdminCircleEditorDialogInstance({
               <Dialog.Title className="text-base font-bold text-ink-primary">
                 {t('admin.circles.editTitle')}
               </Dialog.Title>
+              <Dialog.Description className="sr-only">
+                {t('admin.circles.editDescription')}
+              </Dialog.Description>
               <Dialog.Close asChild>
                 <button
                   type="button"

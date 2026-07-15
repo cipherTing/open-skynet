@@ -6,17 +6,18 @@ import {
   CONTENT_REMOVAL_SOURCES,
   type ContentRemovalSource,
 } from '@/database/schemas/content-removal';
+import {
+  MAX_POST_TAGS,
+  MIN_POST_TAGS,
+  POST_TAG_VALUES,
+  type PostTag,
+} from '@/forum/post-tag.constants';
+import { buildSearchText } from '@/database/search-text';
 
 export type PostDocument = HydratedDocument<Post>;
 
-const POST_SEARCH_SEGMENTER = new Intl.Segmenter('zh-Hans', { granularity: 'word' });
-
 export function buildPostSearchText(value: string): string {
-  const normalized = value.normalize('NFKC').toLocaleLowerCase('zh-CN');
-  return Array.from(POST_SEARCH_SEGMENTER.segment(normalized))
-    .filter((segment) => segment.isWordLike)
-    .map((segment) => segment.segment)
-    .join(' ');
+  return buildSearchText(value);
 }
 
 @Schema({
@@ -39,6 +40,26 @@ export class Post {
 
   @Prop({ required: true })
   content!: string;
+
+  @Prop({
+    type: [String],
+    required: true,
+    enum: POST_TAG_VALUES,
+    validate: {
+      validator: (tags: PostTag[]) =>
+        tags.length >= MIN_POST_TAGS
+        && tags.length <= MAX_POST_TAGS
+        && new Set(tags).size === tags.length,
+      message: `帖子标签必须选择 ${MIN_POST_TAGS}-${MAX_POST_TAGS} 个且不能重复`,
+    },
+  })
+  tags!: PostTag[];
+
+  @Prop({ type: Number, required: true, default: 1, min: 1 })
+  contentVersion!: number;
+
+  @Prop({ type: Date, default: null })
+  lastEditedAt!: Date | null;
 
   @Prop({ type: String, required: true, select: false, transform: () => undefined })
   searchTitle!: string;
@@ -86,14 +107,19 @@ PostSchema.pre('validate', function populateSearchText() {
 });
 
 PostSchema.index(
-  { replyCount: -1, viewCount: -1, createdAt: -1 },
+  { replyCount: -1, viewCount: -1, createdAt: -1, _id: -1 },
   { partialFilterExpression: { deletedAt: null } },
 );
-PostSchema.index({ createdAt: -1 }, { partialFilterExpression: { deletedAt: null } });
+PostSchema.index({ createdAt: -1, _id: -1 }, { partialFilterExpression: { deletedAt: null } });
 PostSchema.index({ authorId: 1, createdAt: -1 }, { partialFilterExpression: { deletedAt: null } });
-PostSchema.index({ circleId: 1, createdAt: -1 }, { partialFilterExpression: { deletedAt: null } });
+PostSchema.index({ circleId: 1, createdAt: -1, _id: -1 }, { partialFilterExpression: { deletedAt: null } });
+PostSchema.index({ tags: 1, createdAt: -1, _id: -1 }, { partialFilterExpression: { deletedAt: null } });
 PostSchema.index(
-  { circleId: 1, replyCount: -1, viewCount: -1, createdAt: -1 },
+  { circleId: 1, tags: 1, createdAt: -1, _id: -1 },
+  { partialFilterExpression: { deletedAt: null } },
+);
+PostSchema.index(
+  { circleId: 1, replyCount: -1, viewCount: -1, createdAt: -1, _id: -1 },
   { partialFilterExpression: { deletedAt: null } },
 );
 PostSchema.index({ deletedAt: 1 });

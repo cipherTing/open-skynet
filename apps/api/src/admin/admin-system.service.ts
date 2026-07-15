@@ -27,6 +27,14 @@ import type { VersionedAnnouncementDto } from './dto/versioned-announcement.dto'
 import type { UpdateFeatureFlagDto } from './dto/update-feature-flag.dto';
 import type { ListAnnouncementsDto } from './dto/list-announcements.dto';
 import type { ListSecurityEventsDto } from './dto/list-security-events.dto';
+import {
+  DEFAULT_PUBLIC_API_BASE_URL,
+  DEFAULT_PUBLIC_SITE_ORIGIN,
+  PUBLIC_ACCESS_CONFIG_KEY,
+  PublicAccessConfig,
+} from '@/database/schemas/public-access-config.schema';
+import { PublicAccessService } from '@/system/public-access.service';
+import type { UpdatePublicAccessConfigDto } from './dto/update-public-access-config.dto';
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -56,11 +64,74 @@ export class AdminSystemService {
     private readonly announcementModel: Model<Announcement>,
     @InjectModel(FeatureFlag.name)
     private readonly featureFlagModel: Model<FeatureFlag>,
+    @InjectModel(PublicAccessConfig.name)
+    private readonly publicAccessConfigModel: Model<PublicAccessConfig>,
     private readonly databaseService: DatabaseService,
     private readonly auditService: AdminAuditService,
     private readonly featureFlagService: FeatureFlagService,
     private readonly securityEventService: SecurityEventService,
+    private readonly publicAccessService: PublicAccessService,
   ) {}
+
+  getPublicAccessConfig() {
+    return this.publicAccessService.getPublicConfig();
+  }
+
+  async updatePublicAccessConfig(
+    admin: AdminPrincipal,
+    dto: UpdatePublicAccessConfigDto,
+  ) {
+    const siteOrigin = this.publicAccessService.normalizeSiteOrigin(dto.siteOrigin);
+    const apiBaseUrl = this.publicAccessService.normalizeApiBaseUrl(dto.apiBaseUrl);
+    const result = await this.databaseService.$transaction(async (session) => {
+      const config = await this.publicAccessConfigModel.findOne(
+        { key: PUBLIC_ACCESS_CONFIG_KEY },
+        null,
+        { session },
+      );
+      const currentVersion = config?.version ?? 0;
+      if (currentVersion !== dto.expectedVersion) {
+        throw new ConflictException('公开访问地址已经发生变化，请刷新后重新修改');
+      }
+      const previous = {
+        siteOrigin: config?.siteOrigin ?? DEFAULT_PUBLIC_SITE_ORIGIN,
+        apiBaseUrl: config?.apiBaseUrl ?? DEFAULT_PUBLIC_API_BASE_URL,
+        version: currentVersion,
+      };
+      if (previous.siteOrigin === siteOrigin && previous.apiBaseUrl === apiBaseUrl) {
+        throw new BadRequestException('公开访问地址没有发生变化');
+      }
+
+      const nextConfig = config ?? new this.publicAccessConfigModel({ key: PUBLIC_ACCESS_CONFIG_KEY });
+      nextConfig.siteOrigin = siteOrigin;
+      nextConfig.apiBaseUrl = apiBaseUrl;
+      nextConfig.version = currentVersion + 1;
+      nextConfig.updatedByUserId = admin.userId;
+      await nextConfig.save({ session });
+      await this.auditService.record({
+        actorUserId: admin.userId,
+        action: ADMIN_AUDIT_ACTIONS.PUBLIC_ACCESS_CONFIG_UPDATED,
+        targetType: 'PUBLIC_ACCESS_CONFIG',
+        targetId: PUBLIC_ACCESS_CONFIG_KEY,
+        reason: null,
+        changes: {
+          before: previous,
+          after: {
+            siteOrigin,
+            apiBaseUrl,
+            version: nextConfig.version,
+          },
+        },
+        session,
+      });
+      return {
+        config: this.publicAccessService.serialize(nextConfig),
+        previousVersion: currentVersion,
+      };
+    });
+    await this.publicAccessService.invalidateGuideCache(result.previousVersion);
+    return result.config;
+  }
 
   async listAnnouncements(dto: ListAnnouncementsDto) {
     const page = dto.page ?? 1;

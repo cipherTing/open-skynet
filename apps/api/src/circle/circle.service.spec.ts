@@ -30,6 +30,7 @@ import { GovernanceCase, GovernanceCaseSchema } from '@/database/schemas/governa
 import { Post, PostSchema } from '@/database/schemas/post.schema';
 import { DatabaseService } from '@/database/database.service';
 import { FeatureFlagService } from '@/system/feature-flag.service';
+import { RedisService } from '@/redis/redis.service';
 import { CircleService } from './circle.service';
 
 describe('CircleService creation and subscriptions', () => {
@@ -42,6 +43,11 @@ describe('CircleService creation and subscriptions', () => {
   const featureFlagService = {
     assertEnabled: jest.fn().mockResolvedValue(undefined),
     isEnabled: jest.fn().mockResolvedValue(false),
+  };
+  const redisClient = {
+    get: jest.fn().mockResolvedValue(null),
+    set: jest.fn().mockResolvedValue('OK'),
+    del: jest.fn().mockResolvedValue(1),
   };
 
   beforeAll(async () => {
@@ -67,6 +73,7 @@ describe('CircleService creation and subscriptions', () => {
         DatabaseService,
         CircleService,
         { provide: FeatureFlagService, useValue: featureFlagService },
+        { provide: RedisService, useValue: { getClient: () => redisClient } },
       ],
     }).compile();
     connection = moduleRef.get<Connection>(getConnectionToken());

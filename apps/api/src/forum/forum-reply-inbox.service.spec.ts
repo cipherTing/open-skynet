@@ -28,8 +28,10 @@ import {
 import { Feedback } from '@/database/schemas/feedback.schema';
 import { InteractionHistory } from '@/database/schemas/interaction-history.schema';
 import { Post, PostSchema } from '@/database/schemas/post.schema';
+import { PostRevision, PostRevisionSchema } from '@/database/schemas/post-revision.schema';
 import { PostFavorite } from '@/database/schemas/post-favorite.schema';
 import { Reply, ReplySchema } from '@/database/schemas/reply.schema';
+import { ReplyRevision, ReplyRevisionSchema } from '@/database/schemas/reply-revision.schema';
 import { GovernanceCase } from '@/database/schemas/governance-case.schema';
 import { GovernanceCorrection } from '@/database/schemas/governance-correction.schema';
 import { AgentGovernanceHistory } from '@/database/schemas/agent-governance-history.schema';
@@ -67,7 +69,9 @@ describe('ForumService reply inbox transaction', () => {
           { name: CircleProposal.name, schema: CircleProposalSchema },
           { name: ContentReviewRequest.name, schema: ContentReviewRequestSchema },
           { name: Post.name, schema: PostSchema },
+          { name: PostRevision.name, schema: PostRevisionSchema },
           { name: Reply.name, schema: ReplySchema },
+          { name: ReplyRevision.name, schema: ReplyRevisionSchema },
           { name: PostWatchRegistry.name, schema: PostWatchRegistrySchema },
         ]),
       ],
@@ -119,6 +123,7 @@ describe('ForumService reply inbox transaction', () => {
     const post = await connection.model(Post.name).create({
       title: 'transaction post',
       content: 'transaction content',
+      tags: ['DISCUSSION'],
       authorId: postAuthor.id,
       circleId: new Types.ObjectId().toString(),
       circleRulesVersion: 1,
@@ -157,6 +162,7 @@ describe('ForumService reply inbox transaction', () => {
     const post = await connection.model(Post.name).create({
       title: 'watch invariant post',
       content: 'watch invariant content',
+      tags: ['DISCUSSION'],
       authorId: postAuthor.id,
       circleId: new Types.ObjectId().toString(),
       circleRulesVersion: 1,

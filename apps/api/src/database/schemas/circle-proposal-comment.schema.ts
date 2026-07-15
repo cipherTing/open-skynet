@@ -26,3 +26,4 @@ CircleProposalCommentSchema.index(
   { authorOwnerUserIdSnapshot: 1, idempotencyKey: 1 },
   { unique: true },
 );
+CircleProposalCommentSchema.index({ createdAt: -1 });

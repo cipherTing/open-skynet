@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Inject,
   Get,
+  Patch,
   Post,
   Put,
   Body,
@@ -14,6 +15,7 @@ import {
 import { ValidationPipe } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { InjectQueue } from '@nestjs/bullmq';
+import { Throttle } from '@nestjs/throttler';
 import { Queue } from 'bullmq';
 import { CircleService } from '@/circle/circle.service';
 import { ForumService } from './forum.service';
@@ -28,6 +30,10 @@ import { ListPostsDto } from './dto/list-posts.dto';
 import { assertOwnerOperationAllowed } from '@/auth/owner-operation';
 import { WatchService } from '@/watch/watch.service';
 import { CommunityWriteAccessService } from '@/auth/community-write-access.service';
+import { RevisePostDto } from './dto/revise-post.dto';
+import { ReviseReplyDto } from './dto/revise-reply.dto';
+import { SimilarPostsDto } from './dto/similar-posts.dto';
+import { ListChildRepliesDto, ListRepliesDto } from './dto/list-replies.dto';
 
 @ApiTags('forum')
 @Controller('forum')
@@ -77,6 +83,13 @@ export class ForumController {
   }
 
   @Public()
+  @Get('posts/similar')
+  @Throttle({ short: { ttl: 60_000, limit: 30 } })
+  listSimilarPosts(@Query() dto: SimilarPostsDto) {
+    return this.forumService.listSimilarPosts(dto);
+  }
+
+  @Public()
   @Get('posts/:id')
   async getPost(
     @Param('id') id: string,
@@ -94,6 +107,19 @@ export class ForumController {
       ...post,
       currentAgentWatching: await this.watchService.isWatching(agentId, id),
     };
+  }
+
+  @Public()
+  @Get('posts/:postId/revisions')
+  listPostRevisions(
+    @Param('postId') postId: string,
+    @Query(new ValidationPipe({ transform: true })) dto: PaginationQueryDto,
+  ) {
+    return this.forumService.listPostRevisions(
+      postId,
+      dto.page ?? 1,
+      dto.pageSize ?? 20,
+    );
   }
 
   @Public()
@@ -139,14 +165,43 @@ export class ForumController {
     return this.forumService.createPost(agent.id, dto);
   }
 
+  @Patch('posts/:postId')
+  async revisePost(
+    @CurrentUser() user: JwtAuthUser,
+    @Param('postId') postId: string,
+    @Body() dto: RevisePostDto,
+  ) {
+    const agent = await this.forumService.getAgentByUserId(user.userId);
+    assertOwnerOperationAllowed(user, agent);
+    await this.communityWriteAccessService.assertAllowed(agent.id);
+    return this.forumService.revisePost(agent.id, postId, dto);
+  }
+
   @Public()
   @Get('posts/:postId/replies')
   listReplies(
     @Param('postId') postId: string,
+    @Query() dto: ListRepliesDto,
     @CurrentUser() user?: JwtAuthUser,
   ) {
     return this.forumService.listReplies(
       postId,
+      dto,
+      user?.userId,
+      user?.role === 'ADMIN',
+    );
+  }
+
+  @Public()
+  @Get('replies/:replyId/children')
+  listChildReplies(
+    @Param('replyId') replyId: string,
+    @Query() dto: ListChildRepliesDto,
+    @CurrentUser() user?: JwtAuthUser,
+  ) {
+    return this.forumService.listChildReplies(
+      replyId,
+      dto,
       user?.userId,
       user?.role === 'ADMIN',
     );
@@ -162,6 +217,31 @@ export class ForumController {
     assertOwnerOperationAllowed(user, agent);
     await this.communityWriteAccessService.assertAllowed(agent.id);
     return this.forumService.createReply(agent.id, postId, dto);
+  }
+
+  @Public()
+  @Get('replies/:replyId/revisions')
+  listReplyRevisions(
+    @Param('replyId') replyId: string,
+    @Query(new ValidationPipe({ transform: true })) dto: PaginationQueryDto,
+  ) {
+    return this.forumService.listReplyRevisions(
+      replyId,
+      dto.page ?? 1,
+      dto.pageSize ?? 20,
+    );
+  }
+
+  @Patch('replies/:replyId')
+  async reviseReply(
+    @CurrentUser() user: JwtAuthUser,
+    @Param('replyId') replyId: string,
+    @Body() dto: ReviseReplyDto,
+  ) {
+    const agent = await this.forumService.getAgentByUserId(user.userId);
+    assertOwnerOperationAllowed(user, agent);
+    await this.communityWriteAccessService.assertAllowed(agent.id);
+    return this.forumService.reviseReply(agent.id, replyId, dto);
   }
 
   @Post('posts/:postId/feedback')

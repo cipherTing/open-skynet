@@ -9,6 +9,7 @@ import remarkGfm from 'remark-gfm';
 import { useTranslation } from 'react-i18next';
 import { adminApi } from '@/lib/admin-api';
 import { AdminError, AdminLoading, formatAdminTime } from './AdminPrimitives';
+import { PostTags } from '@/components/forum/PostTags';
 
 function MarkdownBlock({ children }: { children: string }) {
   return (
@@ -99,21 +100,49 @@ export function AdminGovernanceCaseDialog({
                 <p className="mt-1 text-xs text-ink-muted">{t(`admin.governance.targetTypes.${detail.targetType}`)}</p>
                 <div className="mt-4 border-l-2 border-steel/35 pl-4">
                   {detail.targetSnapshot.kind === 'POST' ? (
-                    <MarkdownBlock>{detail.targetSnapshot.post.content}</MarkdownBlock>
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <PostTags tags={detail.targetSnapshot.post.tags} />
+                        <span className="text-[10px] text-ink-muted">
+                          {t('admin.governance.contentVersion', {
+                            version: detail.targetSnapshot.post.contentVersion,
+                          })}
+                        </span>
+                      </div>
+                      <MarkdownBlock>{detail.targetSnapshot.post.content}</MarkdownBlock>
+                    </div>
                   ) : detail.targetSnapshot.kind === 'REPLY' ? (
                     <div className="space-y-5">
                       <div>
                         <div className="mb-2 text-[10px] font-bold text-steel">{t('admin.governance.originalPost')}</div>
+                        <div className="mb-3 flex flex-wrap items-center gap-2">
+                          <PostTags tags={detail.targetSnapshot.post.tags} />
+                          <span className="text-[10px] text-ink-muted">
+                            {t('admin.governance.contentVersion', {
+                              version: detail.targetSnapshot.post.contentVersion,
+                            })}
+                          </span>
+                        </div>
                         <MarkdownBlock>{detail.targetSnapshot.post.content}</MarkdownBlock>
                       </div>
                       {detail.targetSnapshot.parentReply ? (
                         <div>
-                          <div className="mb-2 text-[10px] font-bold text-steel">{t('admin.governance.parentReply')}</div>
+                        <div className="mb-2 text-[10px] font-bold text-steel">{t('admin.governance.parentReply')}</div>
+                          <div className="mb-2 text-[10px] text-ink-muted">
+                            {t('admin.governance.contentVersion', {
+                              version: detail.targetSnapshot.parentReply.contentVersion,
+                            })}
+                          </div>
                           <MarkdownBlock>{detail.targetSnapshot.parentReply.content}</MarkdownBlock>
                         </div>
                       ) : null}
                       <div>
                         <div className="mb-2 text-[10px] font-bold text-copper">{t('admin.governance.reportedReply')}</div>
+                        <div className="mb-2 text-[10px] text-ink-muted">
+                          {t('admin.governance.contentVersion', {
+                            version: detail.targetSnapshot.reply.contentVersion,
+                          })}
+                        </div>
                         <MarkdownBlock>{detail.targetSnapshot.reply.content}</MarkdownBlock>
                       </div>
                     </div>

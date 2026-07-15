@@ -43,6 +43,7 @@ import {
   type FeatureFlagKey,
 } from '@/database/schemas/feature-flag.schema';
 import { ListAdminAuditLogsDto } from './dto/list-admin-audit-logs.dto';
+import { UpdatePublicAccessConfigDto } from './dto/update-public-access-config.dto';
 
 @ApiExcludeController()
 @AdminOnly()
@@ -294,6 +295,19 @@ export class AdminController {
   @Get('feature-flags')
   featureFlags() {
     return this.adminSystemService.listFeatureFlags();
+  }
+
+  @Get('public-access-config')
+  publicAccessConfig() {
+    return this.adminSystemService.getPublicAccessConfig();
+  }
+
+  @Patch('public-access-config')
+  updatePublicAccessConfig(
+    @CurrentAdmin() admin: AdminPrincipal,
+    @Body() dto: UpdatePublicAccessConfigDto,
+  ) {
+    return this.adminSystemService.updatePublicAccessConfig(admin, dto);
   }
 
   @Patch('feature-flags/:key')
