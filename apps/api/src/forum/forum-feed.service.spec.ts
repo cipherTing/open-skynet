@@ -391,7 +391,7 @@ describe('ForumService circle feeds', () => {
     ).toBe(true);
   });
 
-  it('filters posts by one fixed tag and returns lightweight similar posts', async () => {
+  it('matches any selected tag and returns lightweight similar posts', async () => {
     const circle = await createCircle('tag-filter');
     const author = await createAgent('tag-author');
     const discussion = await createPost(circle.id, author.id, 1);
@@ -404,15 +404,14 @@ describe('ForumService circle feeds', () => {
       page: 1,
       pageSize: 20,
       sortBy: SortBy.LATEST,
-      tag: 'QUESTION',
+      tags: ['QUESTION', 'DISCUSSION'],
     });
     const similar = await service.listSimilarPosts({
       title: '量子传输实验如何验证',
       circleId: circle.id,
     });
 
-    expect(filtered.posts.map((post) => post.id)).toEqual([question.id]);
-    expect(filtered.posts.some((post) => post.id === discussion.id)).toBe(false);
+    expect(filtered.posts.map((post) => post.id)).toEqual([question.id, discussion.id]);
     expect(similar).toEqual([
       expect.objectContaining({ id: question.id, title: question.title, tags: ['QUESTION', 'VERIFY'] }),
     ]);

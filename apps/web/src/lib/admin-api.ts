@@ -12,6 +12,8 @@ export type AdminSection =
   | 'announcements'
   | 'publicAccess'
   | 'featureFlags'
+  | 'authPolicy'
+  | 'invitations'
   | 'security'
   | 'audit';
 
@@ -55,6 +57,38 @@ export interface AdminPublicAccessConfig {
   guideUrl: string;
   version: number;
   updatedAt: string | null;
+}
+
+export interface AdminAuthPolicy {
+  inviteRequired: boolean;
+  turnstileEnabled: boolean;
+  turnstileSiteKey: string;
+  turnstileSecretConfigured: boolean;
+  turnstileVerifiedAt: string | null;
+  smtpHost: string;
+  smtpPort: number;
+  smtpSecurity: 'NONE' | 'SSL_TLS' | 'STARTTLS';
+  smtpSkipTlsVerify: boolean;
+  smtpForceAuthLogin: boolean;
+  smtpUsername: string;
+  smtpFromAddress: string;
+  smtpPasswordConfigured: boolean;
+  smtpVerifiedAt: string | null;
+  version: number;
+  updatedAt: string;
+}
+
+export interface AdminInvitationCode {
+  id: string;
+  prefix: string;
+  maskedCode: string;
+  code?: string;
+  status: 'AVAILABLE' | 'USED' | 'EXPIRED' | 'REVOKED';
+  expiresAt: string | null;
+  usedAt: string | null;
+  usedByUserId: string | null;
+  usedByAgentId?: string | null;
+  createdAt: string;
 }
 
 export interface AdminSecurityEvent {
@@ -393,4 +427,27 @@ export const adminApi = {
   ) => adminRequest<AdminFeatureFlag>('PATCH', `/admin/feature-flags/${key}`, data),
   securityEvents: (query: { page?: number; pageSize?: number; type?: string; severity?: string }) =>
     adminRequest<AdminPage<AdminSecurityEvent>>('GET', `/admin/security-events${params(query)}`),
+  authPolicy: () => adminRequest<AdminAuthPolicy>('GET', '/admin/auth-policy'),
+  updateAuthPolicy: (data: {
+    expectedVersion: number;
+    inviteRequired: boolean;
+    turnstileEnabled: boolean;
+    turnstileSiteKey: string;
+    turnstileSecret?: string;
+    smtpHost: string;
+    smtpPort: number;
+    smtpSecurity: AdminAuthPolicy['smtpSecurity'];
+    smtpSkipTlsVerify: boolean;
+    smtpForceAuthLogin: boolean;
+    smtpUsername: string;
+    smtpFromAddress: string;
+    smtpPassword?: string;
+  }) =>
+    adminRequest<AdminAuthPolicy>('PATCH', '/admin/auth-policy', data),
+  testSmtp: (email: string) => adminRequest<{ verified: true }>('POST', '/admin/auth-policy/smtp-test', { email }),
+  testTurnstile: (token: string) => adminRequest<{ verified: true }>('POST', '/admin/auth-policy/turnstile-test', { token }),
+  invitationCodes: (query: { page?: number; pageSize?: number; status?: string }) =>
+    adminRequest<AdminPage<AdminInvitationCode>>('GET', `/admin/invitation-codes${params(query)}`),
+  createInvitationCode: (expiresAt?: string) => adminRequest<AdminInvitationCode>('POST', '/admin/invitation-codes', { expiresAt }),
+  revokeInvitationCode: (id: string) => adminRequest<AdminInvitationCode>('DELETE', `/admin/invitation-codes/${id}`),
 };

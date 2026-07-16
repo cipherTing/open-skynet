@@ -5,11 +5,19 @@ import { Model } from 'mongoose';
 import { Agent } from '@/database/schemas/agent.schema';
 import { digestAgentKey } from '@/auth/auth-security';
 import { UpdateAgentDto } from './dto/update-agent.dto';
+import { encryptSecret } from '@/common/security/encrypted-secret';
+import { AuthService } from '@/auth/auth.service';
+import { RedisService } from '@/redis/redis.service';
+import { hashOpaqueToken } from '@/auth/auth-security';
+import { PublicAccessService } from '@/system/public-access.service';
 
 @Injectable()
 export class UserService {
   constructor(
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
+    private readonly authService: AuthService,
+    private readonly redisService: RedisService,
+    private readonly publicAccessService: PublicAccessService,
   ) {}
 
   async updateAgent(agentId: string, dto: UpdateAgentDto) {
@@ -51,7 +59,8 @@ export class UserService {
     };
   }
 
-  async regenerateKey(agentId: string) {
+  async regenerateKey(agentId: string, userId: string, currentPassword: string) {
+    await this.authService.verifyCurrentPassword(userId, currentPassword);
     const agent = await this.agentModel.findById(agentId);
     if (!agent) {
       throw new NotFoundException('Agent 不存在');
@@ -63,12 +72,23 @@ export class UserService {
     const lastFour = secretKey.slice(-4);
     const digest = digestAgentKey(secretKey);
 
-    await this.agentModel.findByIdAndUpdate(agentId, {
-      secretKeyDigest: digest,
-      secretKeyPrefix: prefix,
-      secretKeyLastFour: lastFour,
-      secretKeyCreatedAt: new Date(),
-    });
+    const updated = await this.agentModel.findOneAndUpdate(
+      { _id: agentId, secretKeyVersion: agent.secretKeyVersion ?? null },
+      {
+        $set: {
+          secretKeyDigest: digest,
+          secretKeyPrefix: prefix,
+          secretKeyLastFour: lastFour,
+          secretKeyCreatedAt: new Date(),
+          secretKeyCiphertext: encryptSecret(secretKey, 'agent-key', agent.id),
+          secretKeyVersion: (agent.secretKeyVersion ?? 0) + 1,
+        },
+      },
+      { new: true },
+    );
+    if (!updated) {
+      throw new ConflictException('Agent Key 已被其他操作更新，请重试');
+    }
 
     return { secretKey };
   }
@@ -88,6 +108,35 @@ export class UserService {
       prefix: agent.secretKeyPrefix,
       lastFour: agent.secretKeyLastFour,
       createdAt: agent.secretKeyCreatedAt?.toISOString() ?? null,
+    };
+  }
+
+  async createGuideLink(agentId: string, userId: string, currentPassword: string) {
+    await this.authService.verifyCurrentPassword(userId, currentPassword);
+    const agent = await this.agentModel
+      .findById(agentId)
+      .select('+secretKeyCiphertext secretKeyVersion');
+    if (!agent) throw new NotFoundException('Agent 不存在');
+    if (!agent.secretKeyCiphertext || !agent.secretKeyVersion) {
+      throw new ConflictException('请先生成 Agent Key');
+    }
+    const token = crypto.randomBytes(32).toString('base64url');
+    const redisKey = `agent-guide-bootstrap:${hashOpaqueToken(token)}`;
+    const config = await this.publicAccessService.getPublicConfig();
+    await this.redisService.getClient().set(
+      redisKey,
+      JSON.stringify({
+        agentId: agent.id,
+        keyVersion: agent.secretKeyVersion,
+        publicAccessVersion: config.version,
+      }),
+      'EX',
+      300,
+      'NX',
+    );
+    return {
+      url: `${config.guideUrl}?bootstrap=${encodeURIComponent(token)}`,
+      expiresAt: new Date(Date.now() + 300_000).toISOString(),
     };
   }
 }

@@ -10,6 +10,7 @@ import { CircleModule } from '@/circle/circle.module';
 import { ForumModule } from '@/forum/forum.module';
 import { InboxModule } from '@/inbox/inbox.module';
 import { GovernanceModule } from '@/governance/governance.module';
+import { AuthModule } from '@/auth/auth.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { GovernanceModule } from '@/governance/governance.module';
     ForumModule,
     InboxModule,
     GovernanceModule,
+    AuthModule,
   ],
   controllers: [AdminController],
   providers: [

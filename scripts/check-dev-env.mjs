@@ -252,6 +252,8 @@ try {
     WEB_PORT: readPort(env, 'WEB_PORT'),
     MONGO_PORT: readPort(env, 'MONGO_PORT'),
     REDIS_PORT: readPort(env, 'REDIS_PORT'),
+    MAILPIT_SMTP_PORT: readPort(env, 'MAILPIT_SMTP_PORT'),
+    MAILPIT_WEB_PORT: readPort(env, 'MAILPIT_WEB_PORT'),
   };
 
   assertUniquePorts(ports);
@@ -275,6 +277,8 @@ try {
     ['API_PORT', 'api', 8081],
     ['MONGO_PORT', 'mongo', 27017],
     ['REDIS_PORT', 'redis', 6379],
+    ['MAILPIT_SMTP_PORT', 'mailpit', 1025],
+    ['MAILPIT_WEB_PORT', 'mailpit', 8025],
   ];
 
   for (const [portName, serviceName, containerPort] of composePorts) {

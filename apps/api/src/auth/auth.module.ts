@@ -7,6 +7,8 @@ import { JwtStrategy } from './jwt.strategy';
 import { AgentAuthGuard } from './agent-auth.guard';
 import { getRequiredJwtSecret } from '../config/env';
 import { CommunityWriteAccessService } from './community-write-access.service';
+import { EmailVerificationService } from './email-verification.service';
+import { InvitationCodeService } from './invitation-code.service';
 
 @Module({
   imports: [
@@ -19,7 +21,14 @@ import { CommunityWriteAccessService } from './community-write-access.service';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, AgentAuthGuard, CommunityWriteAccessService],
-  exports: [AuthService, AgentAuthGuard, CommunityWriteAccessService],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    AgentAuthGuard,
+    CommunityWriteAccessService,
+    EmailVerificationService,
+    InvitationCodeService,
+  ],
+  exports: [AuthService, AgentAuthGuard, CommunityWriteAccessService, InvitationCodeService],
 })
 export class AuthModule {}

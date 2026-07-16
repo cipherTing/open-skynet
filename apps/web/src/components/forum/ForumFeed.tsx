@@ -4,7 +4,17 @@ import { useState, useCallback, useEffect, useRef, type UIEvent } from 'react';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
 import { useInView } from 'react-intersection-observer';
-import { Bell, Clock, Flame, Globe2, Plus, RefreshCw, Tags } from 'lucide-react';
+import {
+  Bell,
+  Clock,
+  Columns2,
+  Columns3,
+  Flame,
+  Globe2,
+  List,
+  Plus,
+  RefreshCw,
+} from 'lucide-react';
 import {
   motion,
   AnimatePresence,
@@ -24,7 +34,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useAutoHideScrollbar } from '@/hooks/useAutoHideScrollbar';
 import { useToast } from '@/components/ui/SignalToast';
 import {
-  POST_TAG_VALUES,
   SORT_OPTIONS,
   type Circle,
   type ForumPostListResponse,
@@ -38,6 +47,9 @@ import {
   useForumFeedStore,
 } from '@/stores/forum-feed-store';
 import { useHomeNavigationStore } from '@/stores/home-navigation-store';
+import { PostTagFilter } from './PostTagFilter';
+import { MasonryPostGrid } from './MasonryPostGrid';
+import { useForumLayoutStore, type ForumLayoutMode } from '@/stores/forum-layout-store';
 
 const CreatePostModal = dynamic(
   () => import('./CreatePostModal').then((mod) => mod.CreatePostModal),
@@ -89,10 +101,12 @@ export function ForumFeed({
     : `${viewerKey}:global:${effectiveScope}`;
   const sortModeByScope = useForumFeedStore((state) => state.sortModeByScope);
   const sortMode = getForumFeedSortMode(sortModeByScope, scopeKey);
-  const tagByScope = useForumFeedStore((state) => state.tagByScope);
-  const selectedTag = tagByScope[scopeKey] ?? null;
-  const setTag = useForumFeedStore((state) => state.setTag);
-  const feedKey = `${scopeKey}:${sortMode}:${selectedTag ?? 'all-tags'}:${FORUM_FEED_PAGE_SIZE}:search:${encodeURIComponent(search)}:${searchRevision}`;
+  const tagsByScope = useForumFeedStore((state) => state.tagsByScope);
+  const selectedTags = tagsByScope[scopeKey] ?? [];
+  const setTags = useForumFeedStore((state) => state.setTags);
+  const layout = useForumLayoutStore((state) => state.layout);
+  const setLayout = useForumLayoutStore((state) => state.setLayout);
+  const feedKey = `${scopeKey}:${sortMode}:${selectedTags.join(',') || 'all-tags'}:layout:${layout}:${FORUM_FEED_PAGE_SIZE}:search:${encodeURIComponent(search)}:${searchRevision}`;
   const setSortMode = useForumFeedStore((state) => state.setSortMode);
   const setScrollTop = useForumFeedStore((state) => state.setScrollTop);
   const resetScrollTop = useForumFeedStore((state) => state.resetScrollTop);
@@ -119,7 +133,7 @@ export function ForumFeed({
     circleId: circle?.id,
     scope: effectiveScope,
     search: search || undefined,
-    tag: selectedTag ?? undefined,
+    tags: selectedTags.length ? selectedTags : undefined,
   });
   const postsQuery = useInfiniteQuery({
     queryKey,
@@ -133,7 +147,7 @@ export function ForumFeed({
           search: search || undefined,
           circleId: circle?.id,
           scope: effectiveScope,
-          tag: selectedTag ?? undefined,
+          tags: selectedTags.length ? selectedTags : undefined,
         },
         signal,
       ),
@@ -252,10 +266,16 @@ export function ForumFeed({
     setSortMode(scopeKey, mode);
   };
 
-  const handleTagChange = (tag: PostTag | null) => {
-    if (tag === selectedTag) return;
+  const handleTagChange = (tags: PostTag[]) => {
+    if (tags.join(',') === selectedTags.join(',')) return;
     lastRestoredKeyRef.current = '';
-    setTag(scopeKey, tag);
+    setTags(scopeKey, tags);
+  };
+
+  const handleLayoutChange = (next: ForumLayoutMode) => {
+    if (next === layout) return;
+    lastRestoredKeyRef.current = '';
+    setLayout(next);
   };
 
   const handleFeedScroll = useCallback(
@@ -324,69 +344,77 @@ export function ForumFeed({
           }
           transition={{ duration: prefersReducedMotion ? 0 : 0.18, ease: 'easeOut' }}
         >
-          <div className="flex max-w-full flex-wrap items-center gap-0.5 rounded-md border border-copper/10 bg-void-deep/60 p-0.5 backdrop-blur-sm">
-            <SortTab
-              icon={<Flame className="w-3.5 h-3.5" />}
-              label={t('forum.hot')}
-              active={sortMode === SORT_OPTIONS.HOT}
-              onClick={() => handleSortChange(SORT_OPTIONS.HOT)}
-            />
-            <SortTab
-              icon={<Clock className="w-3.5 h-3.5" />}
-              label={t('forum.latest')}
-              active={sortMode === SORT_OPTIONS.LATEST}
-              onClick={() => handleSortChange(SORT_OPTIONS.LATEST)}
-            />
-            <button
-              type="button"
-              aria-label={t('forum.refreshPosts')}
-              disabled={postsQuery.isFetching}
-              onClick={handleRefresh}
-              className="ml-0.5 flex h-7 w-7 items-center justify-center rounded border-l border-copper/10 text-ink-muted transition-all hover:bg-void-hover hover:text-copper disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${postsQuery.isFetching ? 'animate-spin' : ''}`} />
-            </button>
-            <label className="ml-1 flex h-7 items-center gap-1.5 rounded border-l border-copper/10 pl-2 text-[11px] text-ink-muted">
-              <Tags className="h-3.5 w-3.5" />
-              <span className="sr-only">{t('forum.filterByTag')}</span>
-              <select
-                value={selectedTag ?? ''}
-                onChange={(event) =>
-                  handleTagChange((event.target.value || null) as PostTag | null)
-                }
-                className="h-6 bg-transparent pr-1 text-[11px] font-semibold text-ink-secondary outline-none"
+          <div className="forum-toolbar-controls">
+            <div className="flex max-w-full flex-wrap items-center gap-0.5 rounded-md border border-copper/10 bg-void-deep/60 p-0.5 backdrop-blur-sm">
+              <SortTab
+                icon={<Flame className="w-3.5 h-3.5" />}
+                label={t('forum.hot')}
+                active={sortMode === SORT_OPTIONS.HOT}
+                onClick={() => handleSortChange(SORT_OPTIONS.HOT)}
+              />
+              <SortTab
+                icon={<Clock className="w-3.5 h-3.5" />}
+                label={t('forum.latest')}
+                active={sortMode === SORT_OPTIONS.LATEST}
+                onClick={() => handleSortChange(SORT_OPTIONS.LATEST)}
+              />
+              <button
+                type="button"
+                aria-label={t('forum.refreshPosts')}
+                disabled={postsQuery.isFetching}
+                onClick={handleRefresh}
+                className="ml-0.5 flex h-7 w-7 items-center justify-center rounded border-l border-copper/10 text-ink-muted transition-all hover:bg-void-hover hover:text-copper disabled:cursor-not-allowed disabled:opacity-60"
               >
-                <option value="">{t('forum.allTags')}</option>
-                {POST_TAG_VALUES.map((tag) => (
-                  <option key={tag} value={tag}>
-                    {t(`postTags.${tag}.label`)}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          {!circle && isAuthenticated && (
-            <div className="flex max-w-full items-center gap-0.5 rounded-md border border-copper/10 bg-void-deep/60 p-0.5 backdrop-blur-sm">
-              <ScopeTab
-                icon={<Globe2 className="h-3.5 w-3.5" />}
-                label={t('forum.scopeAll')}
-                active={effectiveScope === 'all'}
-                onClick={() => setFeedScope('all')}
-              />
-              <ScopeTab
-                icon={<Bell className="h-3.5 w-3.5" />}
-                label={t('forum.scopeSubscribed')}
-                active={effectiveScope === 'subscribed'}
-                onClick={() => setFeedScope('subscribed')}
-              />
+                <RefreshCw
+                  className={`h-3.5 w-3.5 ${postsQuery.isFetching ? 'animate-spin' : ''}`}
+                />
+              </button>
+              <PostTagFilter value={selectedTags} onConfirm={handleTagChange} />
             </div>
-          )}
+
+            {!circle && isAuthenticated && (
+              <div className="flex max-w-full items-center gap-0.5 rounded-md border border-copper/10 bg-void-deep/60 p-0.5 backdrop-blur-sm">
+                <ScopeTab
+                  icon={<Globe2 className="h-3.5 w-3.5" />}
+                  label={t('forum.scopeAll')}
+                  active={effectiveScope === 'all'}
+                  onClick={() => setFeedScope('all')}
+                />
+                <ScopeTab
+                  icon={<Bell className="h-3.5 w-3.5" />}
+                  label={t('forum.scopeSubscribed')}
+                  active={effectiveScope === 'subscribed'}
+                  onClick={() => setFeedScope('subscribed')}
+                />
+              </div>
+            )}
+
+            <div className="forum-layout-switch" aria-label={t('forum.layoutLabel')}>
+              {(
+                [
+                  [1, List, 'forum.layoutList'],
+                  [2, Columns2, 'forum.layoutTwo'],
+                  [3, Columns3, 'forum.layoutThree'],
+                ] as const
+              ).map(([value, Icon, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => handleLayoutChange(value)}
+                  className={layout === value ? 'is-active' : ''}
+                  aria-label={t(label)}
+                  title={t(label)}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                </button>
+              ))}
+            </div>
+          </div>
 
           <button
             type="button"
             onClick={handleCreateClick}
-            className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs tracking-wide transition-all ${
+            className={`flex shrink-0 items-center gap-1.5 self-start rounded-md border px-2.5 py-1.5 text-xs tracking-wide transition-all ${
               canOperateAsAgent
                 ? 'border-copper/25 text-copper hover:border-copper/40 hover:bg-copper/10'
                 : 'border-copper/10 text-ink-muted hover:border-copper/25 hover:text-copper'
@@ -439,16 +467,16 @@ export function ForumFeed({
           {showingRefreshLoading && <FeedLoadingState label={t(loadingLabelKey)} />}
 
           {!showingRefreshLoading && posts.length > 0 && (
-            <div className="space-y-4">
+            <MasonryPostGrid layout={layout}>
               {posts.map((post, index) => (
                 <PostCard
-                  key={`${feedKey}-${post.id}`}
+                  key={post.id}
                   post={post}
                   index={index}
                   animationIndex={index % FORUM_FEED_PAGE_SIZE}
                 />
               ))}
-            </div>
+            </MasonryPostGrid>
           )}
 
           {!showingRefreshLoading && loading && <FeedLoadingState label={t(loadingLabelKey)} />}

@@ -477,7 +477,7 @@ export class AdminService {
     return this.databaseService.$transaction(async (session) => {
       const result = await this.agentModel.updateOne(
         { _id: agentId },
-        { secretKeyDigest: null, secretKeyPrefix: null, secretKeyLastFour: null, secretKeyCreatedAt: null },
+        { secretKeyDigest: null, secretKeyPrefix: null, secretKeyLastFour: null, secretKeyCreatedAt: null, secretKeyCiphertext: null, secretKeyVersion: null },
         { session },
       );
       if (result.matchedCount === 0) throw new NotFoundException('Agent 不存在');

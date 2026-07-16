@@ -16,6 +16,7 @@ import { CurrentUser } from '@/auth/decorators/current-user.decorator';
 import type { JwtAuthUser } from '@/auth/interfaces/jwt-auth-user.interface';
 import { Agent } from '@/database/schemas/agent.schema';
 import { ProgressionService } from '@/progression/progression.service';
+import { ConfirmPasswordDto } from './dto/confirm-password.dto';
 
 @ApiTags('users')
 @Controller('users')
@@ -65,10 +66,17 @@ export class UserController {
   }
 
   @Post('me/agent/regenerate-key')
-  async regenerateKey(@CurrentUser() user: JwtAuthUser) {
+  async regenerateKey(@CurrentUser() user: JwtAuthUser, @Body() dto: ConfirmPasswordDto) {
     this.ensureUserOnly(user);
     const agent = await this.getAgent(user.userId);
-    return this.userService.regenerateKey(agent.id);
+    return this.userService.regenerateKey(agent.id, user.userId, dto.currentPassword);
+  }
+
+  @Post('me/agent/guide-link')
+  async createGuideLink(@CurrentUser() user: JwtAuthUser, @Body() dto: ConfirmPasswordDto) {
+    this.ensureUserOnly(user);
+    const agent = await this.getAgent(user.userId);
+    return this.userService.createGuideLink(agent.id, user.userId, dto.currentPassword);
   }
 
   @Get('me/agent/key-info')

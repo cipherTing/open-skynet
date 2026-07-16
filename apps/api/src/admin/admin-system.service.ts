@@ -35,6 +35,11 @@ import {
 } from '@/database/schemas/public-access-config.schema';
 import { PublicAccessService } from '@/system/public-access.service';
 import type { UpdatePublicAccessConfigDto } from './dto/update-public-access-config.dto';
+import { AuthPolicyService } from '@/system/auth-policy.service';
+import { TurnstileService } from '@/system/turnstile.service';
+import { MailDeliveryService } from '@/system/mail.service';
+import { InvitationCodeService } from '@/auth/invitation-code.service';
+import type { UpdateAuthPolicyDto } from './dto/auth-policy.dto';
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -71,7 +76,85 @@ export class AdminSystemService {
     private readonly featureFlagService: FeatureFlagService,
     private readonly securityEventService: SecurityEventService,
     private readonly publicAccessService: PublicAccessService,
+    private readonly authPolicyService: AuthPolicyService,
+    private readonly turnstileService: TurnstileService,
+    private readonly mailDeliveryService: MailDeliveryService,
+    private readonly invitationCodeService: InvitationCodeService,
   ) {}
+
+  getAuthPolicy() {
+    return this.authPolicyService.getAdminConfig();
+  }
+
+  async updateAuthPolicy(admin: AdminPrincipal, dto: UpdateAuthPolicyDto) {
+    const before = await this.authPolicyService.getAdminConfig();
+    const after = await this.authPolicyService.update(dto, admin.userId);
+    await this.auditService.record({
+      actorUserId: admin.userId,
+      action: ADMIN_AUDIT_ACTIONS.AUTH_POLICY_UPDATED,
+      targetType: 'AUTH_POLICY',
+      targetId: 'global',
+      reason: null,
+      changes: { before, after },
+    });
+    return after;
+  }
+
+  async testTurnstile(admin: AdminPrincipal, token: string, remoteIp?: string) {
+    await this.turnstileService.testConfiguration(token, remoteIp);
+    await this.auditService.record({
+      actorUserId: admin.userId,
+      action: ADMIN_AUDIT_ACTIONS.TURNSTILE_TESTED,
+      targetType: 'AUTH_POLICY',
+      targetId: 'global',
+      reason: null,
+      changes: { verified: true },
+    });
+    return { verified: true };
+  }
+
+  async testSmtp(admin: AdminPrincipal, email: string) {
+    await this.mailDeliveryService.sendTest(email);
+    await this.auditService.record({
+      actorUserId: admin.userId,
+      action: ADMIN_AUDIT_ACTIONS.SMTP_TESTED,
+      targetType: 'AUTH_POLICY',
+      targetId: 'global',
+      reason: null,
+      changes: { verified: true },
+    });
+    return { verified: true };
+  }
+
+  listInvitationCodes(page?: number, pageSize?: number, status?: string) {
+    return this.invitationCodeService.list(page, pageSize, status);
+  }
+
+  async createInvitationCode(admin: AdminPrincipal, expiresAt?: string) {
+    const item = await this.invitationCodeService.create(admin.userId, expiresAt);
+    await this.auditService.record({
+      actorUserId: admin.userId,
+      action: ADMIN_AUDIT_ACTIONS.INVITATION_CODE_CREATED,
+      targetType: 'INVITATION_CODE',
+      targetId: item.id,
+      reason: null,
+      changes: { prefix: item.prefix, expiresAt: item.expiresAt },
+    });
+    return item;
+  }
+
+  async revokeInvitationCode(admin: AdminPrincipal, id: string) {
+    const item = await this.invitationCodeService.revoke(id);
+    await this.auditService.record({
+      actorUserId: admin.userId,
+      action: ADMIN_AUDIT_ACTIONS.INVITATION_CODE_REVOKED,
+      targetType: 'INVITATION_CODE',
+      targetId: item.id,
+      reason: null,
+      changes: { prefix: item.prefix, status: item.status },
+    });
+    return item;
+  }
 
   getPublicAccessConfig() {
     return this.publicAccessService.getPublicConfig();

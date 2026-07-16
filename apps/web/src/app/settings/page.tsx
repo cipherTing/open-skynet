@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft,
@@ -20,7 +19,6 @@ import {
   Bookmark,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { Sidebar } from '@/components/layout/Sidebar';
 import { TopBar } from '@/components/layout/TopBar';
 import { AgentAvatar } from '@/components/ui/AgentAvatar';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -90,6 +88,7 @@ function SettingsPageContent({
   refreshUser: () => Promise<void>;
 }) {
   const { t, i18n } = useTranslation();
+  const router = useRouter();
   const { ownerOperationEnabled, setOwnerOperationEnabled } = useOwnerOperation();
   const toast = useToast();
 
@@ -105,6 +104,7 @@ function SettingsPageContent({
   const [keyInfoCopied, setKeyInfoCopied] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [regenerateConfirmOpen, setRegenerateConfirmOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
 
   const keyInfoQuery = useQuery({
     queryKey: ['settings', 'agent-key-info', agent.id],
@@ -187,9 +187,10 @@ function SettingsPageContent({
     setRegenerating(true);
     setNewKey('');
     try {
-      const data = await userApi.regenerateKey();
+      const data = await userApi.regenerateKey(currentPassword);
       setNewKey(data.secretKey);
       await reloadKeyInfo();
+      setCurrentPassword('');
       toast.success(t('settings.keyGenerated'));
     } catch (err) {
       if (err instanceof ApiError) {
@@ -204,7 +205,7 @@ function SettingsPageContent({
   };
 
   const handleRegenerateKey = () => {
-    if (!canRegenerateKey) return;
+    if (!canRegenerateKey || !currentPassword) return;
     if (keyInfo) {
       setRegenerateConfirmOpen(true);
       return;
@@ -225,20 +226,20 @@ function SettingsPageContent({
 
   return (
     <div className="relative mx-auto flex h-full min-h-0 w-full max-w-[1440px] overflow-hidden">
-      <Sidebar />
-      <main className="ml-[68px] flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <main className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <TopBar disableScrollFade position="static" />
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-8 py-8">
           {/* 内容容器 — 左对齐，占满空间 */}
           <div className="max-w-[720px]">
             {/* 返回 */}
-            <Link
-              href="/workspace"
+            <button
+              type="button"
+              onClick={() => router.back()}
               className="inline-flex items-center gap-2 text-sm text-ink-secondary hover:text-copper transition-colors mb-8 tracking-wide"
             >
               <ArrowLeft className="w-4 h-4" />
               {t('settings.backHome')}
-            </Link>
+            </button>
 
             {/* 页面标题 */}
             <div className="mb-8">
@@ -482,7 +483,7 @@ function SettingsPageContent({
                     >
                       <div className="flex items-center gap-2 mb-2">
                         <AlertTriangle className="w-4 h-4 text-ochre shrink-0" />
-                        <span className="text-xs text-ochre font-bold">{t('settings.keyWarning')}</span>
+                        <span className="text-xs text-ochre font-bold">{t('settings.keyReady')}</span>
                       </div>
                       <div className="flex items-center gap-2 px-3 py-2 bg-void-mid rounded-md">
                         <code className="flex-1 font-mono text-xs text-moss break-all">
@@ -505,9 +506,10 @@ function SettingsPageContent({
                     </motion.div>
                   )}
 
+                    <label className="block"><span className="mb-1.5 block text-xs text-ink-secondary">{t('settings.confirmPassword')}</span><input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} autoComplete="current-password" className="skynet-input w-full rounded-lg px-3 py-2.5 text-sm" /></label>
                     <button
                       onClick={handleRegenerateKey}
-                    disabled={!canRegenerateKey}
+                    disabled={!canRegenerateKey || !currentPassword}
                     className="flex items-center gap-2 px-5 py-2.5 text-sm text-ochre border border-ochre/25 hover:bg-ochre/10 disabled:opacity-40 disabled:cursor-not-allowed transition-all font-bold rounded-lg"
                   >
                     <RefreshCw className={`w-4 h-4 ${regenerating ? 'animate-spin' : ''}`} />

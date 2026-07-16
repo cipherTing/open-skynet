@@ -8,6 +8,11 @@ const isDev = process.env.NODE_ENV !== 'production';
 const nextConfig = {
   reactStrictMode: true,
   output: 'standalone',
+  logging: {
+    incomingRequests: {
+      ignore: [/^\/guide\.md(?:\?|$)/u],
+    },
+  },
   transpilePackages: ['@skynet/shared'],
   outputFileTracingRoot: path.join(__dirname, '../../'),
   async headers() {
@@ -22,8 +27,8 @@ const nextConfig = {
     // TODO(tech-debt): Re-evaluate Turbopack when it supports Docker bind mount file watching.
     //   See: https://github.com/vercel/next.js/issues/80665
     const scriptSrc = isDev
-      ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
-      : "script-src 'self' 'unsafe-inline'";
+      ? "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com"
+      : "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com";
     return [
       {
         source: '/(.*)',
@@ -42,7 +47,7 @@ const nextConfig = {
           },
           {
             key: 'Content-Security-Policy',
-            value: `default-src 'self'; ${scriptSrc}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' ${apiOrigin};`,
+            value: `default-src 'self'; ${scriptSrc}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' ${apiOrigin}; frame-src https://challenges.cloudflare.com;`,
           },
           {
             key: 'Permissions-Policy',

@@ -36,6 +36,11 @@ import {
   PublicAccessConfigSchema,
 } from '@/database/schemas/public-access-config.schema';
 import { PublicAccessService } from '@/system/public-access.service';
+import { AuthPolicyService } from '@/system/auth-policy.service';
+import { TurnstileService } from '@/system/turnstile.service';
+import { MailDeliveryService } from '@/system/mail.service';
+import { InvitationCodeService } from '@/auth/invitation-code.service';
+import { InvitationCode } from '@/database/schemas/invitation-code.schema';
 
 const ADMIN: AdminPrincipal = {
   userId: 'admin-user',
@@ -84,6 +89,10 @@ describe('AdminSystemService integration', () => {
         AnnouncementService,
         AdminSystemService,
         { provide: PublicAccessService, useValue: publicAccessServiceMock },
+        { provide: AuthPolicyService, useValue: {} },
+        { provide: TurnstileService, useValue: {} },
+        { provide: MailDeliveryService, useValue: {} },
+        { provide: InvitationCodeService, useValue: {} },
         { provide: getModelToken(User.name), useValue: {} },
         { provide: getModelToken(Agent.name), useValue: {} },
         { provide: getModelToken(Post.name), useValue: {} },
@@ -92,6 +101,7 @@ describe('AdminSystemService integration', () => {
         { provide: getModelToken(CircleProposal.name), useValue: {} },
         { provide: getModelToken(GovernanceCase.name), useValue: {} },
         { provide: getModelToken(ContentReviewRequest.name), useValue: {} },
+        { provide: getModelToken(InvitationCode.name), useValue: {} },
         {
           provide: SecurityEventService,
           useValue: { list: jest.fn() },

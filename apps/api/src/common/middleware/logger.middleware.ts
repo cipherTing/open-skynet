@@ -21,7 +21,7 @@ export class LoggerMiddleware implements NestMiddleware {
       if (!shouldLog) return;
 
       const message = this.verbose
-        ? `${method} ${req.originalUrl} ${statusCode} ${res.get('content-length') || '-'} ${duration}ms - ${ip} "${req.get('user-agent') || '-'}"`
+        ? `${method} ${this.redactUrl(req.originalUrl)} ${statusCode} ${res.get('content-length') || '-'} ${duration}ms - ${ip} "${req.get('user-agent') || '-'}"`
         : `${method} ${path} ${statusCode} ${duration}ms - ${ip}`;
 
       if (statusCode >= 500) {
@@ -36,6 +36,10 @@ export class LoggerMiddleware implements NestMiddleware {
     });
 
     next();
+  }
+
+  private redactUrl(originalUrl: string): string {
+    return originalUrl.replace(/([?&]bootstrap=)[^&]*/giu, '$1[REDACTED]');
   }
 
   private readSlowRequestMs(): number {

@@ -29,6 +29,12 @@ export class User {
   username!: string;
 
   @Prop({ required: true })
+  email!: string;
+
+  @Prop({ type: Date, required: true })
+  emailVerifiedAt!: Date;
+
+  @Prop({ required: true })
   passwordHash!: string;
 
   @Prop({ type: String, required: true, enum: Object.values(USER_ROLES), default: USER_ROLES.USER })
@@ -57,3 +63,4 @@ export const UserSchema = SchemaFactory.createForClass(User);
 
 // Partial unique index: only enforce uniqueness for non-deleted users
 UserSchema.index({ username: 1 }, { unique: true, partialFilterExpression: { deletedAt: null } });
+UserSchema.index({ email: 1 }, { unique: true });

@@ -1,62 +1,29 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import { ArrowRight, Check, Copy } from 'lucide-react';
+import { ArrowRight, Bot } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { useToast } from '@/components/ui/SignalToast';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
-import { forumApi, systemApi } from '@/lib/api';
+import { forumApi } from '@/lib/api';
 import { forumKeys } from '@/lib/query-keys';
 import { LogoStarfield } from './LogoStarfield';
+import { useAuth } from '@/contexts/AuthContext';
+import { useAgentConnectStore } from '@/stores/agent-connect-store';
+import { AgentConnectDialog } from '@/components/agent/AgentConnectDialog';
 
 const DEFAULT_WELCOME_SUMMARY_REFRESH_SECONDS = 1800;
 
 export function WelcomeLanding() {
   const { t } = useTranslation();
-  const toast = useToast();
-  const [copied, setCopied] = useState(false);
-  const copiedTimerRef = useRef<number | null>(null);
+  const { isAuthenticated } = useAuth();
+  const setConnectOpen = useAgentConnectStore((state) => state.setOpen);
   const summaryQuery = useQuery({
     queryKey: forumKeys.welcomeSummary(),
     queryFn: () => forumApi.getWelcomeSummary(),
     refetchInterval: (query) =>
       (query.state.data?.cacheTtlSeconds ?? DEFAULT_WELCOME_SUMMARY_REFRESH_SECONDS) * 1000,
   });
-  const publicAccessQuery = useQuery({
-    queryKey: ['system', 'public-access-config'],
-    queryFn: systemApi.publicAccessConfig,
-    staleTime: 60_000,
-  });
-
-  useEffect(() => {
-    return () => {
-      if (copiedTimerRef.current) {
-        window.clearTimeout(copiedTimerRef.current);
-      }
-    };
-  }, []);
-
-  const guideCommand = publicAccessQuery.data
-    ? `curl -s ${publicAccessQuery.data.guideUrl}`
-    : '';
-
-  const copyGuideCommand = async () => {
-    if (!guideCommand) return;
-    try {
-      await navigator.clipboard.writeText(guideCommand);
-      setCopied(true);
-      if (copiedTimerRef.current) {
-        window.clearTimeout(copiedTimerRef.current);
-      }
-      copiedTimerRef.current = window.setTimeout(() => setCopied(false), 1500);
-      toast.success(t('app.copied'));
-    } catch (error) {
-      toast.error(t('landing.copyFailed'));
-      console.error('Failed to copy guide command:', error);
-    }
-  };
 
   return (
     <main className="welcome-landing relative flex min-h-full overflow-x-hidden px-5 py-5 text-ink-primary sm:px-8 lg:px-12">
@@ -81,21 +48,7 @@ export function WelcomeLanding() {
           <div className="welcome-panel mt-10 w-full max-w-3xl overflow-hidden rounded-3xl p-4 text-left backdrop-blur-xl sm:p-5">
             <div className="welcome-panel__accent -mx-4 -mt-4 mb-4 h-px sm:-mx-5 sm:-mt-5" aria-hidden="true" />
             <div className="mb-3 text-sm font-bold text-copper">{t('landing.copyHint')}</div>
-            <div className={`welcome-command flex items-center gap-3 rounded-2xl px-4 py-3 transition-all ${copied ? 'welcome-command--copied' : ''}`}>
-              <span className="font-mono text-sm font-bold text-moss">$</span>
-              <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap font-mono text-sm font-bold text-steel-bright sm:text-lg">
-                {guideCommand || t('landing.commandLoading')}
-              </code>
-              <button
-                type="button"
-                onClick={() => void copyGuideCommand()}
-                disabled={!guideCommand}
-                aria-label={copied ? t('app.copied') : t('landing.copyCommand')}
-                className="welcome-copy-button flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl transition-all hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45"
-              >
-                {copied ? <Check className="h-4 w-4 text-moss" /> : <Copy className="h-4 w-4" />}
-              </button>
-            </div>
+            <div className="welcome-command flex items-center gap-4 rounded-2xl px-4 py-3"><Bot className="h-5 w-5 shrink-0 text-moss" /><p className="min-w-0 flex-1 text-sm font-semibold text-steel-bright sm:text-base">{t('landing.connectDescription')}</p>{isAuthenticated ? <button type="button" onClick={() => setConnectOpen(true)} className="welcome-copy-button shrink-0 rounded-xl px-4 py-2 text-sm font-bold">{t('landing.connectAgent')}</button> : <Link href="/auth?mode=register" className="welcome-copy-button shrink-0 rounded-xl px-4 py-2 text-sm font-bold">{t('landing.registerToConnect')}</Link>}</div>
           </div>
 
           <div className="mt-9">
@@ -133,6 +86,7 @@ export function WelcomeLanding() {
           />
         </footer>
       </div>
+      <AgentConnectDialog />
     </main>
   );
 }

@@ -8,6 +8,7 @@ import {
   Patch,
   Post,
   Query,
+  Req,
 } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
 import { AdminOnly } from './decorators/admin-only.decorator';
@@ -44,6 +45,9 @@ import {
 } from '@/database/schemas/feature-flag.schema';
 import { ListAdminAuditLogsDto } from './dto/list-admin-audit-logs.dto';
 import { UpdatePublicAccessConfigDto } from './dto/update-public-access-config.dto';
+import { UpdateAuthPolicyDto, TestSmtpDto, TestTurnstileDto } from './dto/auth-policy.dto';
+import { CreateInvitationCodeDto, ListInvitationCodesDto } from './dto/invitation-code.dto';
+import type { Request } from 'express';
 
 @ApiExcludeController()
 @AdminOnly()
@@ -322,5 +326,50 @@ export class AdminController {
   @Get('security-events')
   securityEvents(@Query() dto: ListSecurityEventsDto) {
     return this.adminSystemService.listSecurityEvents(dto);
+  }
+
+  @Get('auth-policy')
+  authPolicy() {
+    return this.adminSystemService.getAuthPolicy();
+  }
+
+  @Patch('auth-policy')
+  updateAuthPolicy(
+    @CurrentAdmin() admin: AdminPrincipal,
+    @Body() dto: UpdateAuthPolicyDto,
+  ) {
+    return this.adminSystemService.updateAuthPolicy(admin, dto);
+  }
+
+  @Post('auth-policy/turnstile-test')
+  testTurnstile(
+    @CurrentAdmin() admin: AdminPrincipal,
+    @Req() request: Request,
+    @Body() dto: TestTurnstileDto,
+  ) {
+    return this.adminSystemService.testTurnstile(admin, dto.token, request.ip);
+  }
+
+  @Post('auth-policy/smtp-test')
+  testSmtp(@CurrentAdmin() admin: AdminPrincipal, @Body() dto: TestSmtpDto) {
+    return this.adminSystemService.testSmtp(admin, dto.email);
+  }
+
+  @Get('invitation-codes')
+  invitationCodes(@Query() dto: ListInvitationCodesDto) {
+    return this.adminSystemService.listInvitationCodes(dto.page, dto.pageSize, dto.status);
+  }
+
+  @Post('invitation-codes')
+  createInvitationCode(
+    @CurrentAdmin() admin: AdminPrincipal,
+    @Body() dto: CreateInvitationCodeDto,
+  ) {
+    return this.adminSystemService.createInvitationCode(admin, dto.expiresAt);
+  }
+
+  @Delete('invitation-codes/:id')
+  revokeInvitationCode(@CurrentAdmin() admin: AdminPrincipal, @Param('id') id: string) {
+    return this.adminSystemService.revokeInvitationCode(admin, id);
   }
 }

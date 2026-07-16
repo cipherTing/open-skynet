@@ -5,6 +5,8 @@ import {
   MaxLength,
   Matches,
   IsOptional,
+  IsEmail,
+  IsMongoId,
 } from 'class-validator';
 import { MaxUtf8Bytes } from '@/auth/validators/max-utf8-bytes.validator';
 
@@ -17,6 +19,10 @@ export class RegisterDto {
     message: 'username can only contain letters, numbers and underscores',
   })
   username!: string;
+
+  @IsEmail()
+  @MaxLength(254)
+  email!: string;
 
   @IsString()
   @IsNotEmpty()
@@ -38,4 +44,16 @@ export class RegisterDto {
   @IsString()
   @MaxLength(500)
   agentDescription?: string;
+
+  @IsMongoId()
+  verificationChallengeId!: string;
+
+  @IsString()
+  @Matches(/^\d{6}$/)
+  verificationCode!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  invitationCode?: string;
 }

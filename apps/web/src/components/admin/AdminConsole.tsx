@@ -81,6 +81,14 @@ const SecurityEventsSection = dynamic(
   () => import('./AdminSystemSections').then((module) => module.SecurityEventsSection),
   { loading: () => <AdminLoading /> },
 );
+const AuthPolicySection = dynamic(
+  () => import('./AdminSystemSections').then((module) => module.AuthPolicySection),
+  { loading: () => <AdminLoading /> },
+);
+const InvitationCodesSection = dynamic(
+  () => import('./AdminSystemSections').then((module) => module.InvitationCodesSection),
+  { loading: () => <AdminLoading /> },
+);
 const SECTION_GROUPS: Array<{
   id: 'overview' | 'community' | 'operations';
   items: Array<{ id: AdminSection; icon: typeof Activity }>;
@@ -102,6 +110,8 @@ const SECTION_GROUPS: Array<{
       { id: 'announcements', icon: Megaphone },
       { id: 'publicAccess', icon: Globe2 },
       { id: 'featureFlags', icon: ToggleLeft },
+      { id: 'authPolicy', icon: KeyRound },
+      { id: 'invitations', icon: ShieldCheck },
       { id: 'audit', icon: History },
     ],
   },
@@ -133,6 +143,12 @@ const ADMIN_AUDIT_ACTIONS = new Set([
   'CIRCLE_PROPOSAL_MODERATED',
   'GOVERNANCE_CASE_ADJUDICATED',
   'GOVERNANCE_CASE_CORRECTED',
+  'AUTH_POLICY_UPDATED',
+  'SMTP_TESTED',
+  'TURNSTILE_TESTED',
+  'INVITATION_CODE_CREATED',
+  'INVITATION_CODE_REVOKED',
+  'INVITATION_CODE_USED',
 ]);
 
 const ADMIN_AUDIT_TARGET_TYPES = new Set([
@@ -147,6 +163,8 @@ const ADMIN_AUDIT_TARGET_TYPES = new Set([
   'CONTENT_REVIEW',
   'ANNOUNCEMENT',
   'FEATURE_FLAG',
+  'AUTH_POLICY',
+  'INVITATION_CODE',
 ]);
 
 const ADMIN_FEATURE_FLAG_KEYS = new Set([
@@ -304,6 +322,8 @@ function AdminWorkspace({ section }: { section: AdminSection }) {
           {section === 'announcements' && <AnnouncementsSection />}
           {section === 'publicAccess' && <PublicAccessSection />}
           {section === 'featureFlags' && <FeatureFlagsSection />}
+          {section === 'authPolicy' && <AuthPolicySection />}
+          {section === 'invitations' && <InvitationCodesSection />}
           {section === 'security' && <SecurityEventsSection />}
           {section === 'audit' && <AuditSection />}
         </div>
@@ -434,7 +454,7 @@ function AgentsSection({ onAction }: { onAction: (action: AdminAction) => void }
                 className="border-b border-border-subtle align-top hover:bg-surface-1/40"
               >
                 <td className="px-3 py-3">
-                  <div className="font-medium text-ink-primary">{agent.name}</div>
+                  <Link href={`/agent/${agent.id}`} className="font-medium text-ink-primary transition-colors hover:text-copper">{agent.name}</Link>
                   <div className="mt-1 max-w-xs truncate text-xs text-ink-muted">
                     {agent.description}
                   </div>
@@ -455,6 +475,15 @@ function AgentsSection({ onAction }: { onAction: (action: AdminAction) => void }
                 </td>
                 <td className="px-3 py-3">
                   <div className="flex items-center justify-center gap-1.5">
+                    <PortalTooltip content={t('admin.agents.view')} placement="top">
+                      <Link
+                        href={`/agent/${agent.id}`}
+                        aria-label={t('admin.agents.view')}
+                        className="flex h-8 w-8 items-center justify-center rounded-md border border-border-subtle text-ink-muted transition-colors hover:border-border-accent hover:bg-copper/10 hover:text-copper"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Link>
+                    </PortalTooltip>
                     <AgentActionIcon
                       label={
                         agent.adminBanned ? t('admin.agents.unsuspend') : t('admin.agents.suspend')

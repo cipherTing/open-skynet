@@ -14,6 +14,9 @@ import {
   PlatformInitializationSchema,
 } from '@/database/schemas/platform-initialization.schema';
 import { FeatureFlagService } from '@/system/feature-flag.service';
+import { EmailVerificationService } from './email-verification.service';
+import { InvitationCodeService } from './invitation-code.service';
+import { AuthPolicyService } from '@/system/auth-policy.service';
 
 describe('AuthService administrator initialization', () => {
   jest.setTimeout(120_000);
@@ -44,6 +47,25 @@ describe('AuthService administrator initialization', () => {
         {
           provide: FeatureFlagService,
           useValue: { assertEnabled: jest.fn().mockResolvedValue(undefined) },
+        },
+        {
+          provide: EmailVerificationService,
+          useValue: {
+            normalizeEmail: (email: string) => email.trim().toLowerCase(),
+            assertValid: jest.fn().mockResolvedValue({ digest: 'digest', policyVersion: 0 }),
+            consume: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        { provide: InvitationCodeService, useValue: { consume: jest.fn() } },
+        {
+          provide: AuthPolicyService,
+          useValue: {
+            acquireCurrentPolicy: jest.fn().mockResolvedValue({
+              turnstileEnabled: false,
+              inviteRequired: false,
+              version: 0,
+            }),
+          },
         },
       ],
     }).compile();
@@ -77,6 +99,7 @@ describe('AuthService administrator initialization', () => {
 
     const result = await service.initializeAdministrator({
       username: 'first_admin',
+      email: 'first-admin@example.com',
       initializationKey,
       password: 'Password123',
       agentName: 'FirstAdminAgent',
@@ -88,6 +111,7 @@ describe('AuthService administrator initialization', () => {
     await expect(
       service.initializeAdministrator({
         username: 'second_admin',
+        email: 'second-admin@example.com',
         initializationKey,
         password: 'Password123',
         agentName: 'SecondAdminAgent',
@@ -99,12 +123,14 @@ describe('AuthService administrator initialization', () => {
     const attempts = await Promise.allSettled([
       service.initializeAdministrator({
         username: 'concurrent_admin_a',
+        email: 'concurrent-a@example.com',
         initializationKey,
         password: 'Password123',
         agentName: 'ConcurrentAdminA',
       }),
       service.initializeAdministrator({
         username: 'concurrent_admin_b',
+        email: 'concurrent-b@example.com',
         initializationKey,
         password: 'Password123',
         agentName: 'ConcurrentAdminB',
@@ -129,6 +155,8 @@ describe('AuthService administrator initialization', () => {
   it('treats an existing legacy administrator as initialized without a marker', async () => {
     await connection.model(User.name).create({
       username: 'legacy_admin',
+      email: 'legacy@example.com',
+      emailVerifiedAt: new Date(),
       passwordHash: 'legacy-password-hash',
       role: USER_ROLES.ADMIN,
     });
@@ -137,6 +165,7 @@ describe('AuthService administrator initialization', () => {
     await expect(
       service.initializeAdministrator({
         username: 'replacement_admin',
+        email: 'replacement@example.com',
         initializationKey: 'wrong',
         password: 'Password123',
         agentName: 'ReplacementAdmin',
@@ -147,6 +176,8 @@ describe('AuthService administrator initialization', () => {
   it('keeps initialization empty when the username or Agent name is occupied', async () => {
     const existingUser = await connection.model(User.name).create({
       username: 'occupied_username',
+      email: 'occupied@example.com',
+      emailVerifiedAt: new Date(),
       passwordHash: 'existing-password-hash',
       role: USER_ROLES.USER,
     });
@@ -159,6 +190,7 @@ describe('AuthService administrator initialization', () => {
     await expect(
       service.initializeAdministrator({
         username: 'occupied_username',
+        email: 'different@example.com',
         initializationKey,
         password: 'Password123',
         agentName: 'NewAdminAgent',
@@ -167,6 +199,7 @@ describe('AuthService administrator initialization', () => {
     await expect(
       service.initializeAdministrator({
         username: 'new_admin_username',
+        email: 'new-admin@example.com',
         initializationKey,
         password: 'Password123',
         agentName: 'OccupiedAgent',
@@ -180,8 +213,11 @@ describe('AuthService administrator initialization', () => {
   it('keeps ordinary registration as a USER account with an Agent and browser session', async () => {
     const result = await service.register({
       username: 'ordinary_user',
+      email: 'ordinary@example.com',
       password: 'Password123',
       agentName: 'OrdinaryAgent',
+      verificationChallengeId: '507f1f77bcf86cd799439011',
+      verificationCode: '123456',
     });
 
     expect(result.user).toEqual(expect.objectContaining({ role: 'USER' }));
@@ -194,6 +230,8 @@ describe('AuthService administrator initialization', () => {
   it('allows initialization to reuse soft-deleted usernames and Agent names', async () => {
     const deletedUser = await connection.model(User.name).create({
       username: 'reusable_admin',
+      email: 'deleted@example.com',
+      emailVerifiedAt: new Date(),
       passwordHash: 'deleted-password-hash',
       role: USER_ROLES.USER,
       deletedAt: new Date(),
@@ -207,6 +245,7 @@ describe('AuthService administrator initialization', () => {
 
     const result = await service.initializeAdministrator({
       username: 'reusable_admin',
+      email: 'reusable@example.com',
       initializationKey,
       password: 'Password123',
       agentName: 'ReusableAgent',
@@ -222,6 +261,7 @@ describe('AuthService administrator initialization', () => {
       service.initializeAdministrator({
         initializationKey: 'wrong',
         username: 'blocked_admin',
+        email: 'blocked@example.com',
         password: 'Password123',
         agentName: 'BlockedAdmin',
       }),

@@ -63,6 +63,7 @@ services:
       AGENT_KEY_PEPPER_FILE: /run/secrets/agent_key_pepper
       SECURITY_HMAC_SECRET_FILE: /run/secrets/security_hmac_secret
       INITIALIZATION_KEY_FILE: /run/secrets/initialization_key
+      APP_ENCRYPTION_KEY_FILE: /run/secrets/app_encryption_key
       TRUST_PROXY: ${TRUST_PROXY:-false}
       SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
     depends_on:
@@ -77,6 +78,7 @@ services:
       - agent_key_pepper
       - security_hmac_secret
       - initialization_key
+      - app_encryption_key
     networks:
       frontend:
         gw_priority: 100
@@ -152,3 +154,5 @@ secrets:
     file: ${SECURITY_HMAC_SECRET_FILE_PATH:-./secrets/security_hmac_secret}
   initialization_key:
     file: ${INITIALIZATION_KEY_FILE_PATH:-./secrets/initialization_key}
+  app_encryption_key:
+    file: ${APP_ENCRYPTION_KEY_FILE_PATH:-./secrets/app_encryption_key}

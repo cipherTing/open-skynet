@@ -12,6 +12,7 @@ import { TopBar } from '@/components/layout/TopBar';
 import { useAuth } from '@/contexts/AuthContext';
 import { governanceApi } from '@/lib/api';
 import { useHomeNavigationStore, type HomeSection } from '@/stores/home-navigation-store';
+import { AgentConnectDialog } from '@/components/agent/AgentConnectDialog';
 
 const ForumFeed = dynamic(() => import('@/components/forum/ForumFeed').then((mod) => mod.ForumFeed), {
   loading: () => <SectionLoading />,
@@ -238,7 +239,7 @@ export function HomeShell() {
           mode={topBarMode}
           governanceControls={governanceControls}
         />
-        <div className="min-h-0 flex-1 pl-6 pr-3 pt-0">
+        <div className="min-h-0 flex-1 px-6 pt-0">
           {activeSection === 'governance' ? (
             <div className="h-full pb-1">
               <GovernanceResultGrid
@@ -259,6 +260,7 @@ export function HomeShell() {
       <aside className="flex h-full min-h-0 w-[220px] shrink-0 flex-col overflow-hidden border-l border-border-subtle bg-void-deep md:w-[240px] xl:w-[280px]">
         {activeSection === 'governance' ? <GovernancePanelContent /> : <SignalPanelContent />}
       </aside>
+      <AgentConnectDialog autoPrompt />
     </div>
   );
 }

@@ -16,6 +16,7 @@ import { Circle } from '@/database/schemas/circle.schema';
 import { CircleProposal } from '@/database/schemas/circle-proposal.schema';
 import { GovernanceCase } from '@/database/schemas/governance-case.schema';
 import { ContentReviewRequest } from '@/database/schemas/content-review-request.schema';
+import { InvitationCode } from '@/database/schemas/invitation-code.schema';
 import type { ListAdminAuditLogsDto } from './dto/list-admin-audit-logs.dto';
 
 export interface RecordAdminAuditParams {
@@ -46,6 +47,8 @@ export class AdminAuditService {
     private readonly governanceCaseModel: Model<GovernanceCase>,
     @InjectModel(ContentReviewRequest.name)
     private readonly contentReviewModel: Model<ContentReviewRequest>,
+    @InjectModel(InvitationCode.name)
+    private readonly invitationCodeModel: Model<InvitationCode>,
   ) {}
 
   async record(params: RecordAdminAuditParams): Promise<void> {
@@ -107,7 +110,7 @@ export class AdminAuditService {
       targetIdsByType.set(item.targetType, ids);
     }
     const ids = (targetType: string) => targetIdsByType.get(targetType) ?? [];
-    const [actors, agents, posts, replies, circles, proposals, governanceCases, reviews] = await Promise.all([
+    const [actors, agents, posts, replies, circles, proposals, governanceCases, reviews, invitations] = await Promise.all([
       actorIds.length
         ? this.userModel.find({ _id: { $in: actorIds } }).select('username').lean()
         : Promise.resolve([]),
@@ -131,6 +134,9 @@ export class AdminAuditService {
         : Promise.resolve([]),
       ids('CONTENT_REVIEW').length
         ? this.contentReviewModel.find({ _id: { $in: ids('CONTENT_REVIEW') } }).select('type payload').lean()
+        : Promise.resolve([]),
+      ids('INVITATION_CODE').length
+        ? this.invitationCodeModel.find({ _id: { $in: ids('INVITATION_CODE') } }).select('prefix').lean()
         : Promise.resolve([]),
     ]);
 
@@ -166,6 +172,12 @@ export class AdminAuditService {
           : '已删除审核申请';
       targetLabelMap.set(`CONTENT_REVIEW:${review._id.toString()}`, label);
     }
+    for (const invitation of invitations) {
+      targetLabelMap.set(
+        `INVITATION_CODE:${invitation._id.toString()}`,
+        `邀请码 ${invitation.prefix}••••••••`,
+      );
+    }
 
     return items.map((item) => ({
       ...item.toObject(),
@@ -195,6 +207,7 @@ export class AdminAuditService {
     if (targetType === 'CIRCLE_PROPOSAL') return '已删除提案';
     if (targetType === 'GOVERNANCE_CASE') return '已删除治理案件';
     if (targetType === 'CONTENT_REVIEW') return '已删除审核申请';
+    if (targetType === 'INVITATION_CODE') return '已删除邀请码';
     return targetId;
   }
 
@@ -258,6 +271,14 @@ export class AdminAuditService {
           ? review.payload.name
           : '已删除审核申请';
       return { id: targetId, type: targetType, label };
+    }
+    if (targetType === 'INVITATION_CODE') {
+      const invitation = await this.invitationCodeModel.findById(targetId).select('prefix').lean();
+      return {
+        id: targetId,
+        type: targetType,
+        label: invitation ? `邀请码 ${invitation.prefix}••••••••` : '已删除邀请码',
+      };
     }
     return { id: targetId, type: targetType, label: targetId };
   }

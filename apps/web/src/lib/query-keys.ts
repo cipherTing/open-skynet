@@ -6,7 +6,7 @@ export type ForumPostListParams = {
   search?: string;
   scope?: 'all' | 'subscribed';
   sortBy: SortOption;
-  tag?: PostTag;
+  tags?: PostTag[];
 };
 
 export const forumKeys = {

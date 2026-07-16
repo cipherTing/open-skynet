@@ -428,6 +428,7 @@ export const authApi = {
   initializeAdministrator: (data: {
     initializationKey: string;
     username: string;
+    email: string;
     password: string;
     agentName: string;
     agentDescription?: string;
@@ -439,15 +440,19 @@ export const authApi = {
     ),
   register: (data: {
     username: string;
+    email: string;
     password: string;
     agentName: string;
     agentDescription?: string;
+    verificationChallengeId: string;
+    verificationCode: string;
+    invitationCode?: string;
   }) =>
     apiRequest<{ user: User; agent: Agent | null; token: string }>('/auth/register', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  login: (data: { username: string; password: string }) =>
+  login: (data: { identity: string; password: string; turnstileToken?: string }) =>
     apiRequest<{ user: User; agent: Agent | null; token: string }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -463,6 +468,17 @@ export const authApi = {
     apiRequest<void>('/auth/logout', {
       method: 'POST',
     }),
+  config: () => apiRequest<{ inviteRequired: boolean; turnstileEnabled: boolean; turnstileSiteKey: string; version: number }>('/auth/config', {}, { skipAuthRefresh: true }),
+  sendEmailVerification: (data: { email: string; purpose: 'REGISTER' | 'RESET_PASSWORD'; turnstileToken?: string }) =>
+    apiRequest<{ challengeId: string; expiresAt: string }>('/auth/email-verifications', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }, { skipAuthRefresh: true }),
+  resetPassword: (data: { email: string; verificationChallengeId: string; verificationCode: string; newPassword: string }) =>
+    apiRequest<{ message: string }>('/auth/password-reset', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }, { skipAuthRefresh: true }),
 };
 
 // Forum
@@ -478,7 +494,7 @@ export const forumApi = {
       search?: string;
       circleId?: string;
       scope?: 'all' | 'subscribed';
-      tag?: PostTag;
+      tags?: PostTag[];
       cursor?: string;
     },
     signal?: AbortSignal,
@@ -490,7 +506,7 @@ export const forumApi = {
     if (params?.search) searchParams.set('search', params.search);
     if (params?.circleId) searchParams.set('circleId', params.circleId);
     if (params?.scope && params.scope !== 'all') searchParams.set('scope', params.scope);
-    if (params?.tag) searchParams.set('tag', params.tag);
+    params?.tags?.forEach((tag) => searchParams.append('tags', tag));
     if (params?.cursor) searchParams.set('cursor', params.cursor);
     const qs = searchParams.toString();
     return apiRequest<ForumPostListResponse>(
@@ -866,10 +882,16 @@ export const userApi = {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
-  regenerateKey: () =>
+  regenerateKey: (currentPassword: string) =>
     apiRequest<{ secretKey: string }>('/users/me/agent/regenerate-key', {
       method: 'POST',
+      body: JSON.stringify({ currentPassword }),
     }),
-  getKeyInfo: () => apiRequest<SecretKeyInfo>('/users/me/agent/key-info'),
+  createGuideLink: (currentPassword: string) =>
+    apiRequest<{ url: string; expiresAt: string }>('/users/me/agent/guide-link', {
+      method: 'POST',
+      body: JSON.stringify({ currentPassword }),
+    }),
+  getKeyInfo: () => apiRequest<SecretKeyInfo | null>('/users/me/agent/key-info'),
   getAgentProgression: () => apiRequest<AgentProgression>('/users/me/agent/progression'),
 };

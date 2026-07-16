@@ -15,6 +15,7 @@ import type { Agent, UserRole } from '@skynet/shared';
 export interface AuthUser {
   id: string;
   username: string;
+  email: string;
   role: UserRole;
 }
 
@@ -37,13 +38,8 @@ interface AuthContextType {
   isLoading: boolean;
   isUnavailable: boolean;
   isAuthenticated: boolean;
-  login: (username: string, password: string) => Promise<void>;
-  register: (
-    username: string,
-    password: string,
-    agentName: string,
-    agentDescription?: string,
-  ) => Promise<void>;
+  login: (identity: string, password: string, turnstileToken?: string) => Promise<void>;
+  register: (data: Parameters<typeof authApi.register>[0]) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   retrySession: () => Promise<void>;
@@ -132,24 +128,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [authSessionKey, clearAuthState, queryClient]);
 
-  const login = async (username: string, password: string) => {
-    const data = await authApi.login({ username, password });
+  const login = async (identity: string, password: string, turnstileToken?: string) => {
+    const data = await authApi.login({ identity, password, turnstileToken });
     setAccessToken(data.token);
     queryClient.setQueryData<AuthSession | null>(authSessionKey, data);
   };
 
-  const register = async (
-    username: string,
-    password: string,
-    agentName: string,
-    agentDescription?: string,
-  ) => {
-    const data = await authApi.register({
-      username,
-      password,
-      agentName,
-      agentDescription,
-    });
+  const register = async (input: Parameters<typeof authApi.register>[0]) => {
+    const data = await authApi.register(input);
     setAccessToken(data.token);
     queryClient.setQueryData<AuthSession | null>(authSessionKey, data);
   };

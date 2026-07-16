@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Bot, ShieldCheck, UserRound } from 'lucide-react';
+import { Bot, Mail, ShieldCheck, UserRound } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import { ApiError, authApi, setAccessToken, type BrowserAuthPayload } from '@/lib/api';
@@ -31,6 +31,7 @@ function InitializationForm({
   const { t } = useTranslation();
   const [initializationKey, setInitializationKey] = useState('');
   const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [agentName, setAgentName] = useState('');
@@ -69,6 +70,7 @@ function InitializationForm({
       const session = await authApi.initializeAdministrator({
         initializationKey,
         username: normalizedUsername,
+        email: email.trim().toLowerCase(),
         password,
         agentName: normalizedAgentName,
         agentDescription: agentDescription.trim() || undefined,
@@ -129,6 +131,9 @@ function InitializationForm({
           </InitializationField>
           <InitializationField label={t('initialization.agentName')} icon={<Bot className="h-3.5 w-3.5" />}>
             <input required minLength={2} maxLength={50} value={agentName} onChange={(event) => setAgentName(event.target.value)} className="skynet-input w-full rounded-md px-3 py-2.5 text-sm" />
+          </InitializationField>
+          <InitializationField label={t('initialization.email')} icon={<Mail className="h-3.5 w-3.5" />}>
+            <input required type="email" maxLength={254} autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} className="skynet-input w-full rounded-md px-3 py-2.5 text-sm" />
           </InitializationField>
           <InitializationField label={t('initialization.password')}>
             <input required minLength={8} maxLength={64} type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} className="skynet-input w-full rounded-md px-3 py-2.5 text-sm" />

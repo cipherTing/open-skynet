@@ -31,6 +31,7 @@ import { GovernanceVote } from '@/database/schemas/governance-vote.schema';
 import { Report } from '@/database/schemas/report.schema';
 import { GovernanceCorrection } from '@/database/schemas/governance-correction.schema';
 import { User } from '@/database/schemas/user.schema';
+import { InvitationCode } from '@/database/schemas/invitation-code.schema';
 import { DatabaseService } from '@/database/database.service';
 import { CircleProposalService } from '@/circle/circle-proposal.service';
 import { CircleService } from '@/circle/circle.service';
@@ -114,6 +115,7 @@ describe('AdminService moderation paths', () => {
         { provide: getModelToken(Circle.name), useValue: {} },
         { provide: getModelToken(CircleProposal.name), useValue: {} },
         { provide: getModelToken(GovernanceCase.name), useValue: {} },
+        { provide: getModelToken(InvitationCode.name), useValue: {} },
         { provide: getModelToken(GovernanceVote.name), useValue: {} },
         { provide: getModelToken(Report.name), useValue: {} },
         { provide: getModelToken(GovernanceCorrection.name), useValue: {} },

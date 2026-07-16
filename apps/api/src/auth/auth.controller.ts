@@ -15,6 +15,10 @@ import { isProduction } from '@/config/env';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { InitializeAdministratorDto } from './dto/initialize-administrator.dto';
+import { EmailVerificationService } from './email-verification.service';
+import { SendEmailVerificationDto, ResetPasswordDto } from './dto/email-verification.dto';
+import { TurnstileService } from '@/system/turnstile.service';
+import { AuthPolicyService } from '@/system/auth-policy.service';
 import { LoginDto } from './dto/login.dto';
 import { Public } from './decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
@@ -34,6 +38,7 @@ type BrowserAuthResult = {
   user: {
     id: string;
     username: string;
+    email: string;
     role: UserRole;
     createdAt: string;
   };
@@ -76,7 +81,31 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly securityEventService: SecurityEventService,
+    private readonly emailVerificationService: EmailVerificationService,
+    private readonly turnstileService: TurnstileService,
+    private readonly authPolicyService: AuthPolicyService,
   ) {}
+
+  @Public()
+  @Get('config')
+  authConfig() {
+    return this.authPolicyService.getPublicConfig();
+  }
+
+  @Public()
+  @Post('email-verifications')
+  @Throttle({ short: { ttl: 60000, limit: 5 }, medium: { ttl: 3600000, limit: 30 } })
+  sendEmailVerification(@Req() request: Request, @Body() dto: SendEmailVerificationDto) {
+    return this.emailVerificationService.send(dto.email, dto.purpose, dto.turnstileToken, request.ip);
+  }
+
+  @Public()
+  @Post('password-reset')
+  @Throttle({ short: { ttl: 60000, limit: 5 }, medium: { ttl: 3600000, limit: 20 } })
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    await this.authService.resetPassword(dto);
+    return { message: '密码已重置，请重新登录' };
+  }
 
   @Public()
   @Get('initialization')
@@ -112,6 +141,7 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ) {
     try {
+      await this.turnstileService.verifyIfEnabled(dto.turnstileToken, 'login', request.ip);
       const result = await this.authService.login(dto);
       return this.createBrowserAuthResponse(response, result);
     } catch (error) {
@@ -160,6 +190,7 @@ export class AuthController {
       user: {
         id: fullUser.id,
         username: fullUser.username,
+        email: fullUser.email,
         role: fullUser.role,
         createdAt: fullUser.createdAt?.toISOString?.() || fullUser.createdAt || '',
       },

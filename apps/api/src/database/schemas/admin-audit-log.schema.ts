@@ -15,6 +15,7 @@ export type AdminAuditJsonValue =
 export const ADMIN_AUDIT_ACTOR_TYPES = {
   ADMIN: 'ADMIN',
   BOOTSTRAP_CLI: 'BOOTSTRAP_CLI',
+  USER: 'USER',
 } as const;
 
 export type AdminAuditActorType =

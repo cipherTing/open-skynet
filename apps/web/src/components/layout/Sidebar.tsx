@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Inbox, LogIn, Orbit, Radio, Scale, Shield } from 'lucide-react';
+import { Bot, Inbox, LogIn, Orbit, Radio, Scale, Shield } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/contexts/AuthContext';
 import { PortalTooltip } from '@/components/ui/FloatingPortal';
@@ -15,6 +15,7 @@ import { useToast } from '@/components/ui/SignalToast';
 import { useHomeNavigationStore, type HomeSection } from '@/stores/home-navigation-store';
 import { inboxApi } from '@/lib/api';
 import { inboxKeys } from '@/lib/query-keys';
+import { useAgentConnectStore } from '@/stores/agent-connect-store';
 
 export type SidebarSection = HomeSection;
 
@@ -42,6 +43,7 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
   const [logoutBusy, setLogoutBusy] = useState(false);
   const { isAuthenticated, isLoading, agent, logout } = useAuth();
   const setHomeActiveSection = useHomeNavigationStore((state) => state.setActiveSection);
+  const setAgentConnectOpen = useAgentConnectStore((state) => state.setOpen);
   const unreadQuery = useQuery({
     queryKey: inboxKeys.summary(agent?.id ?? 'none'),
     queryFn: ({ signal }) => inboxApi.list({ limit: 1, unreadOnly: true }, signal),
@@ -91,29 +93,9 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
         <div className="absolute inset-0 border-r border-border-subtle bg-void-deep" />
 
         <div className="relative flex h-full min-h-0 w-full flex-col items-center px-0">
-          {onSectionChange ? (
-            <button
-              type="button"
-              className="group mb-4 flex-none"
-              aria-label={t('sidebar.feed')}
-              onClick={() => onSectionChange('feed')}
-            >
-              <div className="brand-logo-tile flex h-[46px] w-[46px] items-center justify-center rounded-lg border p-1">
-                <Image src="/logo.png" alt="" width={42} height={42} loading="eager" className="h-full w-full rounded-md object-contain" />
-              </div>
-            </button>
-          ) : (
-            <Link
-              href="/workspace"
-              className="group mb-4 flex-none"
-              aria-label={t('sidebar.feed')}
-              onClick={() => setHomeActiveSection('feed')}
-            >
-              <div className="brand-logo-tile flex h-[46px] w-[46px] items-center justify-center rounded-lg border p-1">
-                <Image src="/logo.png" alt="" width={42} height={42} loading="eager" className="h-full w-full rounded-md object-contain" />
-              </div>
-            </Link>
-          )}
+          <Link href="/" className="group mb-4 flex-none" aria-label={t('sidebar.backWelcome')}>
+            <div className="brand-logo-tile flex h-[46px] w-[46px] items-center justify-center rounded-lg border p-1"><Image src="/logo.png" alt="" width={42} height={42} loading="eager" className="h-full w-full rounded-md object-contain" /></div>
+          </Link>
 
           <div className="deck-divider mb-3 w-10 flex-none" />
 
@@ -201,7 +183,10 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
             )}
 
             {isAuthenticated && agent ? (
-              <UserDropdown agent={agent} onLogout={() => setShowLogoutConfirm(true)} />
+              <>
+                <button type="button" onClick={() => setAgentConnectOpen(true)} className="flex w-full flex-col items-center justify-center gap-1 rounded-lg bg-copper/10 py-2.5 text-copper transition-colors hover:bg-copper/15" aria-label={t('sidebar.connectAgent')}><Bot className="h-5 w-5" /><span className="text-[10px] font-bold">{t('sidebar.connectAgent')}</span></button>
+                <UserDropdown agent={agent} onLogout={() => setShowLogoutConfirm(true)} />
+              </>
             ) : (
               <PortalTooltip content={t('sidebar.login')} placement="right">
                 <span className="block w-full">

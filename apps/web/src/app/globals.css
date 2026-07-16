@@ -507,6 +507,8 @@
     pointer-events: none;
     perspective: 820px;
     perspective-origin: 50% 45%;
+    -webkit-mask-image: radial-gradient(ellipse 62% 44% at 50% 38%, transparent 0 54%, #000 100%);
+    mask-image: radial-gradient(ellipse 62% 44% at 50% 38%, transparent 0 54%, #000 100%);
   }
 
   .logo-starfield::before {
@@ -917,12 +919,18 @@
     flex: 1 1 auto;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: 8px 12px 24px 0;
+    padding: 8px 0 24px;
     scrollbar-gutter: stable;
   }
 
   .feed-overlay-scroll--with-toolbar {
     padding-top: 62px;
+  }
+
+  @media (max-width: 700px) {
+    .feed-overlay-scroll--with-toolbar {
+      padding-top: 102px;
+    }
   }
 
   .home-feed-toolbar {
@@ -931,13 +939,13 @@
     left: 0;
     z-index: 20;
     display: flex;
-    max-width: min(100%, 520px);
+    width: 100%;
+    max-width: 100%;
     flex: none;
-    flex-wrap: wrap;
     align-items: center;
-    justify-content: flex-start;
+    justify-content: space-between;
     gap: 8px;
-    overflow: hidden;
+    overflow: visible;
     border: 1px solid rgba(148, 163, 184, 0.022);
     border-radius: 14px;
     background: rgba(16, 20, 29, 0.88);
@@ -947,6 +955,54 @@
     transform-origin: top left;
     backdrop-filter: blur(10px);
     will-change: opacity, transform;
+  }
+
+  .forum-toolbar-controls {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 auto;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .forum-filter-trigger {
+    @apply ml-1 flex h-7 items-center gap-1.5 rounded border-l border-copper/10 px-2 text-[11px] font-semibold text-ink-secondary transition-colors hover:bg-void-hover hover:text-copper;
+  }
+
+  .forum-tag-popover {
+    @apply z-[90] w-72 rounded-lg border border-copper/20 bg-void-deep p-3 shadow-2xl outline-none;
+  }
+
+  .forum-tag-option {
+    @apply flex items-center gap-2 rounded px-2 py-1.5 text-left text-[11px] text-ink-secondary transition-colors hover:bg-void-hover hover:text-copper;
+  }
+
+  .forum-tag-option.is-selected { @apply bg-copper/10 text-copper; }
+  .forum-filter-secondary { @apply rounded px-2 py-1 text-[11px] text-ink-muted transition-colors hover:text-ink-primary; }
+  .forum-filter-confirm { @apply rounded bg-copper px-3 py-1 text-[11px] font-semibold text-white transition-colors hover:bg-copper-bright; }
+
+  .forum-layout-switch {
+    @apply flex items-center gap-0.5 rounded-md border border-copper/10 bg-void-deep/60 p-0.5 backdrop-blur-sm;
+  }
+
+  .forum-layout-switch button { @apply flex h-7 w-7 items-center justify-center rounded text-ink-muted transition-colors hover:bg-void-hover hover:text-copper; }
+  .forum-layout-switch button.is-active { @apply bg-copper/10 text-copper; }
+
+  .post-masonry-grid {
+    display: grid;
+    grid-auto-rows: 8px;
+    gap: 16px;
+  }
+
+  .post-masonry-grid--one { grid-template-columns: minmax(0, 1fr); }
+  .post-masonry-grid--two { grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); }
+  .post-masonry-grid--three { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+  .post-masonry-item { min-width: 0; }
+
+  @media (max-width: 760px) {
+    .post-masonry-grid--two,
+    .post-masonry-grid--three { grid-template-columns: minmax(0, 1fr); }
   }
 
   .governance-result-masonry {

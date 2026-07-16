@@ -14,7 +14,15 @@ function formatCaseTime(value: string): string {
   }).format(new Date(value));
 }
 
-export function GovernanceCaseStamp({ caseId }: { caseId: string }) {
+export function GovernanceCaseStamp({
+  caseId,
+  title,
+  status,
+}: {
+  caseId: string;
+  title?: string;
+  status?: string;
+}) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const query = useQuery({
@@ -22,17 +30,33 @@ export function GovernanceCaseStamp({ caseId }: { caseId: string }) {
     queryFn: () => governanceApi.caseSummary(caseId),
     enabled: open,
   });
+  const currentStatus = query.data?.status ?? status;
 
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Trigger asChild>
-        <button
-          type="button"
-          onClick={(event) => event.stopPropagation()}
-          className="absolute right-4 top-14 z-10 rotate-[-8deg] border-2 border-rose-600/75 px-2.5 py-1 font-mono text-[11px] font-black tracking-deck-normal text-rose-600 shadow-[inset_0_0_0_1px_rgba(225,29,72,0.2)] transition-transform hover:rotate-[-4deg] dark:border-rose-400/80 dark:text-rose-300"
-        >
-          {t('governance.inReview.stamp')}
-        </button>
+        {title ? (
+          <button
+            type="button"
+            className="flex w-full items-start justify-between gap-3 rounded py-1 text-left text-xs transition-colors hover:bg-rose-500/5"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <span className="line-clamp-2 text-ink-secondary">{title}</span>
+            <span className="shrink-0 text-rose-500">
+              {currentStatus
+                ? t(`governance.inReview.statuses.${currentStatus}`)
+                : t('governance.inReview.stamp')}
+            </span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={(event) => event.stopPropagation()}
+            className="absolute right-4 top-14 z-10 rotate-[-8deg] border-2 border-rose-600/75 px-2.5 py-1 font-mono text-[11px] font-black tracking-deck-normal text-rose-600 shadow-[inset_0_0_0_1px_rgba(225,29,72,0.2)] transition-transform hover:rotate-[-4deg] dark:border-rose-400/80 dark:text-rose-300"
+          >
+            {t('governance.inReview.stamp')}
+          </button>
+        )}
       </Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-[190] bg-void/45 backdrop-blur-[2px]" />
@@ -51,7 +75,11 @@ export function GovernanceCaseStamp({ caseId }: { caseId: string }) {
               </Dialog.Description>
             </div>
             <Dialog.Close asChild>
-              <button type="button" aria-label={t('app.close')} className="flex h-8 w-8 items-center justify-center rounded-md text-ink-muted hover:bg-surface-2 hover:text-ink-primary">
+              <button
+                type="button"
+                aria-label={t('app.close')}
+                className="flex h-8 w-8 items-center justify-center rounded-md text-ink-muted hover:bg-surface-2 hover:text-ink-primary"
+              >
                 <X className="h-4 w-4" />
               </button>
             </Dialog.Close>
@@ -63,14 +91,36 @@ export function GovernanceCaseStamp({ caseId }: { caseId: string }) {
           ) : query.data ? (
             <div className="mt-5 space-y-4 border-t border-border-subtle pt-4">
               <div>
-                <p className="text-sm font-bold text-ink-primary">{query.data.targetSummary.title}</p>
-                <p className="mt-1 text-sm leading-6 text-ink-secondary">{query.data.targetSummary.excerpt}</p>
+                <p className="text-sm font-bold text-ink-primary">
+                  {query.data.targetSummary.title}
+                </p>
+                <p className="mt-1 text-sm leading-6 text-ink-secondary">
+                  {query.data.targetSummary.excerpt}
+                </p>
               </div>
               <dl className="grid grid-cols-2 gap-x-5 gap-y-3 text-xs">
-                <div><dt className="text-ink-muted">{t('governance.inReview.status')}</dt><dd className="mt-1 font-medium text-rose-500">{t(`governance.inReview.statuses.${query.data.status}`)}</dd></div>
-                <div><dt className="text-ink-muted">{t('governance.inReview.trigger')}</dt><dd className="mt-1 font-mono text-ink-secondary">{query.data.triggerScore}/{query.data.triggerThreshold}</dd></div>
-                <div><dt className="text-ink-muted">{t('governance.inReview.openedAt')}</dt><dd className="mt-1 text-ink-secondary">{formatCaseTime(query.data.openedAt)}</dd></div>
-                <div><dt className="text-ink-muted">{t('governance.inReview.deadline')}</dt><dd className="mt-1 text-ink-secondary">{formatCaseTime(query.data.deadlineAt)}</dd></div>
+                <div>
+                  <dt className="text-ink-muted">{t('governance.inReview.status')}</dt>
+                  <dd className="mt-1 font-medium text-rose-500">
+                    {t(`governance.inReview.statuses.${query.data.status}`)}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-ink-muted">{t('governance.inReview.trigger')}</dt>
+                  <dd className="mt-1 font-mono text-ink-secondary">
+                    {query.data.triggerScore}/{query.data.triggerThreshold}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-ink-muted">{t('governance.inReview.openedAt')}</dt>
+                  <dd className="mt-1 text-ink-secondary">{formatCaseTime(query.data.openedAt)}</dd>
+                </div>
+                <div>
+                  <dt className="text-ink-muted">{t('governance.inReview.deadline')}</dt>
+                  <dd className="mt-1 text-ink-secondary">
+                    {formatCaseTime(query.data.deadlineAt)}
+                  </dd>
+                </div>
               </dl>
             </div>
           ) : null}

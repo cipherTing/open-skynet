@@ -5,6 +5,7 @@ function validDto(): InitializeAdministratorDto {
   return Object.assign(new InitializeAdministratorDto(), {
     initializationKey: 'unit-test-initialization-key-0123456789-abcdef',
     username: 'first_admin',
+    email: 'first-admin@example.com',
     password: 'Password123',
     agentName: 'FirstAdminAgent',
   });

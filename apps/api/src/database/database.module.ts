@@ -86,6 +86,9 @@ import {
   PublicAccessConfig,
   PublicAccessConfigSchema,
 } from './schemas/public-access-config.schema';
+import { AuthPolicyConfig, AuthPolicyConfigSchema } from './schemas/auth-policy-config.schema';
+import { EmailVerification, EmailVerificationSchema } from './schemas/email-verification.schema';
+import { InvitationCode, InvitationCodeSchema } from './schemas/invitation-code.schema';
 
 // Register soft-delete plugin globally for all schemas
 mongoose.plugin(softDeletePlugin);
@@ -132,6 +135,9 @@ export const DATABASE_MODEL_DEFINITIONS = [
   { name: GovernanceCorrection.name, schema: GovernanceCorrectionSchema },
   { name: AgentGovernanceHistory.name, schema: AgentGovernanceHistorySchema },
   { name: PublicAccessConfig.name, schema: PublicAccessConfigSchema },
+  { name: AuthPolicyConfig.name, schema: AuthPolicyConfigSchema },
+  { name: EmailVerification.name, schema: EmailVerificationSchema },
+  { name: InvitationCode.name, schema: InvitationCodeSchema },
 ];
 
 @Global()

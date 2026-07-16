@@ -1,4 +1,10 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  GoneException,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { createHash } from 'crypto';
 import { readFileSync } from 'fs';
@@ -12,6 +18,9 @@ import {
 } from '@/database/schemas/public-access-config.schema';
 import { isProduction } from '@/config/env';
 import { RedisService } from '@/redis/redis.service';
+import { Agent } from '@/database/schemas/agent.schema';
+import { decryptSecret } from '@/common/security/encrypted-secret';
+import { hashOpaqueToken } from '@/auth/auth-security';
 
 const GUIDE_CACHE_TTL_SECONDS = 3600;
 const GUIDE_CACHE_PREFIX = 'skynet:v1:agent-guide';
@@ -44,6 +53,7 @@ export class PublicAccessService {
     @InjectModel(PublicAccessConfig.name)
     private readonly configModel: Model<PublicAccessConfig>,
     private readonly redisService: RedisService,
+    @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
   ) {
     this.guideTemplate = readFileSync(resolve(__dirname, 'guide.template.md'), 'utf8');
     this.templateHash = createHash('sha256').update(this.guideTemplate).digest('hex');
@@ -76,13 +86,15 @@ export class PublicAccessService {
   normalizeSiteOrigin(value: string): string {
     const normalized = this.parseHttpUrl(value, '公开站点地址');
     if (
-      normalized.pathname !== '/'
-      || normalized.search
-      || normalized.hash
-      || normalized.username
-      || normalized.password
+      normalized.pathname !== '/' ||
+      normalized.search ||
+      normalized.hash ||
+      normalized.username ||
+      normalized.password
     ) {
-      throw new BadRequestException('公开站点地址必须是根 Origin，不能包含路径、账号、查询参数或片段');
+      throw new BadRequestException(
+        '公开站点地址必须是根 Origin，不能包含路径、账号、查询参数或片段',
+      );
     }
     this.assertProductionHttps(normalized, '公开站点地址');
     return normalized.origin;
@@ -120,6 +132,35 @@ export class PublicAccessService {
     return this.buildRenderedGuide(content);
   }
 
+  renderGuideForAuthenticatedAgent(): Promise<RenderedAgentGuide> {
+    return this.renderAgentGuide();
+  }
+
+  async consumeBootstrap(token: string): Promise<RenderedAgentGuide> {
+    const redisKey = `agent-guide-bootstrap:${hashOpaqueToken(token)}`;
+    const raw = await this.redisService.getClient().getdel(redisKey);
+    if (!raw) throw new GoneException('接入链接已过期或已经使用');
+    const record = this.parseBootstrapRecord(raw);
+    const publicAccessConfig = await this.getPublicConfig();
+    if (publicAccessConfig.version !== record.publicAccessVersion) {
+      throw new GoneException('站点接入地址已经变化，请重新生成接入链接');
+    }
+    const agent = await this.agentModel
+      .findById(record.agentId)
+      .select('+secretKeyCiphertext secretKeyVersion');
+    if (
+      !agent ||
+      !agent.secretKeyCiphertext ||
+      !agent.secretKeyVersion ||
+      agent.secretKeyVersion !== record.keyVersion
+    ) {
+      throw new GoneException('Agent Key 已变化，请重新生成接入链接');
+    }
+    const agentKey = decryptSecret(agent.secretKeyCiphertext, 'agent-key', agent.id);
+    const guide = await this.renderAgentGuide();
+    return this.buildPersonalizedGuide(guide.content, publicAccessConfig, agentKey);
+  }
+
   async invalidateGuideCache(version: number): Promise<void> {
     try {
       await this.redisService.getClient().del(this.getGuideCacheKey(version));
@@ -137,7 +178,63 @@ export class PublicAccessService {
     return {
       content,
       etag,
-      cacheControl: 'public, max-age=60, stale-while-revalidate=300',
+      cacheControl: 'private, max-age=60, must-revalidate',
+    };
+  }
+
+  private buildPersonalizedGuide(
+    content: string,
+    config: PublicAccessConfigView,
+    agentKey: string,
+  ): RenderedAgentGuide {
+    const personalized = [
+      '# 当前 Agent 接入参数',
+      '',
+      '把下面的值保存到 Agent 宿主环境的秘密配置中，不要发布到帖子、回复或日志。',
+      '',
+      '```bash',
+      `SKYNET_ORIGIN=${config.siteOrigin}`,
+      `SKYNET_API_BASE=${config.apiBaseUrl}`,
+      `SKYNET_GUIDE_URL=${config.guideUrl}`,
+      `SKYNET_API_KEY=${agentKey}`,
+      '```',
+      '',
+      content,
+    ].join('\n');
+    return {
+      content: personalized,
+      etag: `"${createHash('sha256').update(content).digest('hex')}"`,
+      cacheControl: 'private, no-store',
+    };
+  }
+
+  private parseBootstrapRecord(raw: string): {
+    agentId: string;
+    keyVersion: number;
+    publicAccessVersion: number;
+  } {
+    let value: unknown;
+    try {
+      value = JSON.parse(raw);
+    } catch {
+      throw new UnauthorizedException('接入链接无效');
+    }
+    if (
+      typeof value !== 'object' ||
+      value === null ||
+      !('agentId' in value) ||
+      !('keyVersion' in value) ||
+      !('publicAccessVersion' in value) ||
+      typeof value.agentId !== 'string' ||
+      typeof value.keyVersion !== 'number' ||
+      typeof value.publicAccessVersion !== 'number'
+    ) {
+      throw new UnauthorizedException('接入链接无效');
+    }
+    return {
+      agentId: value.agentId,
+      keyVersion: value.keyVersion,
+      publicAccessVersion: value.publicAccessVersion,
     };
   }
 

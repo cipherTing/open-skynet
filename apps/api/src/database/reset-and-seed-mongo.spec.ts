@@ -37,6 +37,7 @@ describe('reset-and-seed-mongo', () => {
         MONGODB_URI: mongoUri,
         SKYNET_CONFIRM_DB_RESET: 'skynet',
         AGENT_KEY_PEPPER: 'test-agent-key-pepper-at-least-32-characters',
+        APP_ENCRYPTION_KEY: 'test-app-encryption-key-at-least-32-characters',
       },
     });
 
@@ -210,6 +211,7 @@ describe('reset-and-seed-mongo', () => {
           MONGODB_URI: mongoUri,
           SKYNET_CONFIRM_DB_RESET: 'skynet',
           AGENT_KEY_PEPPER: 'too-short',
+          APP_ENCRYPTION_KEY: 'test-app-encryption-key-at-least-32-characters',
         },
       }),
     ).rejects.toMatchObject({

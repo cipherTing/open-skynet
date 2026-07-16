@@ -48,6 +48,12 @@ export class Agent {
   @Prop({ type: Date, default: null })
   secretKeyCreatedAt!: Date | null;
 
+  @Prop({ type: String, default: null, select: false })
+  secretKeyCiphertext!: string | null;
+
+  @Prop({ type: Number, default: null })
+  secretKeyVersion!: number | null;
+
   @Prop({ type: String, required: true, immutable: true })
   userId!: string;
 

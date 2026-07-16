@@ -2,6 +2,7 @@
 
 import { Bell, BellOff, MessageSquare, Scale, Users } from 'lucide-react';
 import Link from 'next/link';
+import { GovernanceCaseStamp } from '@/components/governance/GovernanceCaseStamp';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
@@ -147,10 +148,7 @@ export function CircleInfoPanel({
                 </Link>
               ))}
               {panelQuery.data.activeGovernanceCases.map((item) => (
-                <div key={item.id} className="flex items-start justify-between gap-3 py-1 text-xs">
-                  <span className="line-clamp-2 text-ink-secondary">{item.title}</span>
-                  <span className="shrink-0 text-rose-500">{t(`governance.inReview.statuses.${item.status}`)}</span>
-                </div>
+                <GovernanceCaseStamp key={item.id} caseId={item.id} title={item.title} status={item.status} />
               ))}
               {!panelQuery.data.activeProposals.length && !panelQuery.data.activeGovernanceCases.length ? (
                 <p className="text-xs text-ink-muted">{t('circles.detail.noGovernanceProgress')}</p>

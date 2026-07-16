@@ -3,6 +3,8 @@
 import { useDeferredValue, useEffect, useRef, useState } from 'react';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import * as Dialog from '@radix-ui/react-dialog';
+import { Turnstile } from '@marsidev/react-turnstile';
+import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Archive,
@@ -15,6 +17,10 @@ import {
   ToggleRight,
   Trash2,
   X,
+  Check,
+  Copy,
+  KeyRound,
+  Mail,
 } from 'lucide-react';
 import { AnnouncementMarkdown } from '@/components/system/AnnouncementMarkdown';
 import { ComposerTextarea } from '@/components/ui/ComposerTextarea';
@@ -27,6 +33,7 @@ import {
   type AdminAnnouncementKind,
   type AdminFeatureFlag,
   type AdminPublicAccessConfig,
+  type AdminAuthPolicy,
 } from '@/lib/admin-api';
 import {
   ActionButton,
@@ -786,6 +793,89 @@ export function SecurityEventsSection() {
       )}
     </section>
   );
+}
+
+export function AuthPolicySection() {
+  const { t } = useTranslation();
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const query = useQuery({ queryKey: ['admin', 'authPolicy'], queryFn: adminApi.authPolicy });
+  const [overrides, setOverrides] = useState<Partial<AdminAuthPolicy>>({});
+  const [turnstileSecret, setTurnstileSecret] = useState('');
+  const [smtpPassword, setSmtpPassword] = useState('');
+  const [testEmail, setTestEmail] = useState('');
+  const [turnstileToken, setTurnstileToken] = useState('');
+  const form = query.data ? { ...query.data, ...overrides } : null;
+  const save = useMutation({
+    mutationFn: async () => {
+      if (!form) throw new Error('missing form');
+      return adminApi.updateAuthPolicy({
+        expectedVersion: form.version,
+        inviteRequired: form.inviteRequired,
+        turnstileEnabled: form.turnstileEnabled,
+        turnstileSiteKey: form.turnstileSiteKey,
+        turnstileSecret: turnstileSecret || undefined,
+        smtpHost: form.smtpHost,
+        smtpPort: form.smtpPort,
+        smtpSecurity: form.smtpSecurity,
+        smtpSkipTlsVerify: form.smtpSkipTlsVerify,
+        smtpForceAuthLogin: form.smtpForceAuthLogin,
+        smtpUsername: form.smtpUsername,
+        smtpFromAddress: form.smtpFromAddress,
+        smtpPassword: smtpPassword || undefined,
+      });
+    },
+    onSuccess: (data) => { queryClient.setQueryData(['admin', 'authPolicy'], data); setOverrides({}); setTurnstileSecret(''); setSmtpPassword(''); toast.success(t('admin.authPolicy.saved')); },
+    onError: (error) => toast.error(error instanceof ApiError ? error.message : t('admin.authPolicy.saveFailed')),
+  });
+  const testSmtp = useMutation({ mutationFn: () => adminApi.testSmtp(testEmail), onSuccess: () => { toast.success(t('admin.authPolicy.smtpTested')); void query.refetch(); }, onError: (error) => toast.error(error instanceof ApiError ? error.message : t('admin.authPolicy.testFailed')) });
+  const testTurnstile = useMutation({ mutationFn: () => adminApi.testTurnstile(turnstileToken), onSuccess: () => { toast.success(t('admin.authPolicy.turnstileTested')); setTurnstileToken(''); void query.refetch(); }, onError: (error) => toast.error(error instanceof ApiError ? error.message : t('admin.authPolicy.testFailed')) });
+  if (query.isPending || !form) return <AdminLoading />;
+  if (query.isError) return <AdminError retry={() => void query.refetch()} />;
+  const update = <K extends keyof AdminAuthPolicy>(key: K, value: AdminAuthPolicy[K]) => setOverrides((current) => ({ ...current, [key]: value }));
+  const hasUnsavedChanges = Object.keys(overrides).length > 0 || Boolean(turnstileSecret || smtpPassword);
+  const turnstileConfigDirty = 'turnstileSiteKey' in overrides || Boolean(turnstileSecret);
+  return (
+    <section className="space-y-8">
+      <div><div className="flex items-center gap-2"><KeyRound className="h-4 w-4 text-copper" /><h2 className="text-sm font-bold text-ink-primary">{t('admin.authPolicy.title')}</h2></div><p className="mt-1 text-xs text-ink-muted">{t('admin.authPolicy.description')}</p></div>
+      <div className="grid gap-5 lg:grid-cols-2">
+        <div className="space-y-4 border-t border-border-subtle pt-4">
+          <h3 className="text-sm font-bold text-ink-primary">{t('admin.authPolicy.smtp')}</h3>
+          <AdminField label={t('admin.authPolicy.smtpHost')}><input className="skynet-input w-full rounded px-3 py-2" value={form.smtpHost} onChange={(event) => update('smtpHost', event.target.value)} /></AdminField>
+          <div className="grid grid-cols-2 gap-3"><AdminField label={t('admin.authPolicy.smtpPort')}><input type="number" className="skynet-input w-full rounded px-3 py-2" value={form.smtpPort} onChange={(event) => update('smtpPort', Number(event.target.value))} /></AdminField><AdminField label={t('admin.authPolicy.smtpSecurity')}><AdminSelect value={form.smtpSecurity} ariaLabel={t('admin.authPolicy.smtpSecurity')} options={['NONE','SSL_TLS','STARTTLS'].map((value) => ({ value, label: t(`admin.authPolicy.smtpModes.${value}`) }))} onValueChange={(value) => update('smtpSecurity', value as AdminAuthPolicy['smtpSecurity'])} /></AdminField></div>
+          <AdminField label={t('admin.authPolicy.smtpUsername')}><input className="skynet-input w-full rounded px-3 py-2" value={form.smtpUsername} onChange={(event) => update('smtpUsername', event.target.value)} /></AdminField>
+          <AdminField label={t('admin.authPolicy.smtpFrom')}><input type="email" className="skynet-input w-full rounded px-3 py-2" value={form.smtpFromAddress} onChange={(event) => update('smtpFromAddress', event.target.value)} /></AdminField>
+          <AdminField label={t('admin.authPolicy.smtpPassword')}><input type="password" className="skynet-input w-full rounded px-3 py-2" value={smtpPassword} onChange={(event) => setSmtpPassword(event.target.value)} placeholder={form.smtpPasswordConfigured ? t('admin.authPolicy.keepSecret') : ''} /></AdminField>
+          <label className="flex items-center gap-2 text-xs text-ink-secondary"><input type="checkbox" checked={form.smtpSkipTlsVerify} onChange={(event) => update('smtpSkipTlsVerify', event.target.checked)} />{t('admin.authPolicy.skipTls')}</label>
+          <label className="flex items-center gap-2 text-xs text-ink-secondary"><input type="checkbox" checked={form.smtpForceAuthLogin} onChange={(event) => update('smtpForceAuthLogin', event.target.checked)} />{t('admin.authPolicy.forceLogin')}</label>
+          <div className="flex gap-2"><input type="email" className="skynet-input min-w-0 flex-1 rounded px-3 py-2 text-sm" value={testEmail} onChange={(event) => setTestEmail(event.target.value)} placeholder={t('admin.authPolicy.testEmail')} /><button type="button" disabled={!testEmail || testSmtp.isPending || hasUnsavedChanges} title={hasUnsavedChanges ? t('admin.authPolicy.saveBeforeTest') : undefined} onClick={() => testSmtp.mutate()} className="rounded border border-copper/25 px-3 text-xs text-copper disabled:cursor-not-allowed disabled:opacity-40"><Mail className="mr-1 inline h-3.5 w-3.5" />{t('admin.authPolicy.sendTest')}</button></div>
+        </div>
+        <div className="space-y-4 border-t border-border-subtle pt-4">
+          <h3 className="text-sm font-bold text-ink-primary">{t('admin.authPolicy.turnstile')}</h3>
+          <AdminField label={t('admin.authPolicy.siteKey')}><input className="skynet-input w-full rounded px-3 py-2" value={form.turnstileSiteKey} onChange={(event) => update('turnstileSiteKey', event.target.value)} /></AdminField>
+          <AdminField label={t('admin.authPolicy.secretKey')}><input type="password" className="skynet-input w-full rounded px-3 py-2" value={turnstileSecret} onChange={(event) => setTurnstileSecret(event.target.value)} placeholder={form.turnstileSecretConfigured ? t('admin.authPolicy.keepSecret') : ''} /></AdminField>
+          {form.turnstileSiteKey && <div className="rounded border border-border-subtle p-2"><Turnstile siteKey={form.turnstileSiteKey} onSuccess={setTurnstileToken} onExpire={() => setTurnstileToken('')} options={{ action: 'admin-test', theme: 'auto' }} /></div>}
+          <button type="button" disabled={!turnstileToken || testTurnstile.isPending || hasUnsavedChanges} title={hasUnsavedChanges ? t('admin.authPolicy.saveBeforeTest') : undefined} onClick={() => testTurnstile.mutate()} className="rounded border border-copper/25 px-3 py-2 text-xs text-copper disabled:cursor-not-allowed disabled:opacity-40">{t('admin.authPolicy.verifyTurnstile')}</button>
+          <label className="flex items-center justify-between gap-4 rounded border border-border-subtle px-3 py-3 text-sm text-ink-secondary"><span>{t('admin.authPolicy.enableTurnstile')}</span><input type="checkbox" checked={form.turnstileEnabled} disabled={!form.turnstileEnabled && (!form.turnstileVerifiedAt || turnstileConfigDirty)} title={!form.turnstileVerifiedAt || turnstileConfigDirty ? t('admin.authPolicy.verifyBeforeEnable') : undefined} onChange={(event) => update('turnstileEnabled', event.target.checked)} /></label>
+          <label className="flex items-center justify-between gap-4 rounded border border-border-subtle px-3 py-3 text-sm text-ink-secondary"><span>{t('admin.authPolicy.requireInvite')}</span><input type="checkbox" checked={form.inviteRequired} onChange={(event) => update('inviteRequired', event.target.checked)} /></label>
+        </div>
+      </div>
+      <button type="button" disabled={save.isPending || !hasUnsavedChanges} onClick={() => save.mutate()} className="rounded bg-copper px-5 py-2.5 text-sm font-bold text-void disabled:cursor-not-allowed disabled:opacity-40">{save.isPending ? t('app.loading') : t('app.save')}</button>
+    </section>
+  );
+}
+
+export function InvitationCodesSection() {
+  const { t } = useTranslation();
+  const toast = useToast();
+  const [page, setPage] = useState(1);
+  const [status, setStatus] = useState('');
+  const [expiresAt, setExpiresAt] = useState('');
+  const [createdCode, setCreatedCode] = useState('');
+  const query = useQuery({ queryKey: ['admin', 'invitations', page, status], queryFn: () => adminApi.invitationCodes({ page, pageSize: 20, status }) });
+  const create = useMutation({ mutationFn: () => adminApi.createInvitationCode(expiresAt ? new Date(expiresAt).toISOString() : undefined), onSuccess: (item) => { setCreatedCode(item.code ?? ''); setExpiresAt(''); toast.success(t('admin.invitations.created')); void query.refetch(); }, onError: (error) => toast.error(error instanceof ApiError ? error.message : t('admin.invitations.failed')) });
+  const revoke = useMutation({ mutationFn: adminApi.revokeInvitationCode, onSuccess: () => void query.refetch(), onError: (error) => toast.error(error instanceof ApiError ? error.message : t('admin.invitations.failed')) });
+  return <section><div className="mb-5 flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-sm font-bold text-ink-primary">{t('admin.invitations.title')}</h2><p className="mt-1 text-xs text-ink-muted">{t('admin.invitations.description')}</p></div><div className="flex gap-2"><input type="datetime-local" value={expiresAt} onChange={(event) => setExpiresAt(event.target.value)} className="skynet-input rounded px-3 py-2 text-xs" /><button type="button" onClick={() => create.mutate()} disabled={create.isPending} className="rounded bg-copper px-3 py-2 text-xs font-bold text-void"><Plus className="mr-1 inline h-3.5 w-3.5" />{t('admin.invitations.create')}</button></div></div>{createdCode && <div className="mb-4 flex items-center gap-3 rounded border border-moss/20 bg-moss/5 p-3"><code className="min-w-0 flex-1 break-all text-sm text-moss">{createdCode}</code><button type="button" onClick={() => void navigator.clipboard.writeText(createdCode)} className="text-moss"><Copy className="h-4 w-4" /></button><button type="button" onClick={() => setCreatedCode('')}><X className="h-4 w-4" /></button></div>}<div className="mb-3"><AdminSelect value={status} ariaLabel={t('admin.invitations.status')} options={[{value:'',label:t('admin.invitations.all')},...['AVAILABLE','USED','EXPIRED','REVOKED'].map((value)=>({value,label:t(`admin.invitations.statuses.${value}`)}))]} onValueChange={(value)=>{setStatus(value);setPage(1);}} /></div>{query.isPending ? <AdminLoading /> : query.isError ? <AdminError retry={() => void query.refetch()} /> : <><AdminTable headers={[t('admin.invitations.code'),t('admin.invitations.status'),t('admin.invitations.expires'),t('admin.invitations.usedBy'),t('admin.invitations.actions')]} centeredColumns={[4]}>{query.data.items.map((item)=><tr key={item.id} className="border-b border-border-subtle"><td className="px-3 py-3 font-mono text-xs text-ink-secondary">{item.maskedCode}</td><td className="px-3 py-3 text-xs text-ink-secondary">{t(`admin.invitations.statuses.${item.status}`)}</td><td className="px-3 py-3 text-xs text-ink-muted">{item.expiresAt ? formatAdminTime(item.expiresAt) : t('admin.invitations.never')}</td><td className="px-3 py-3 text-xs">{item.usedByAgentId ? <Link href={`/agent/${item.usedByAgentId}`} className="text-steel hover:text-copper">{t('admin.invitations.viewAgent')}</Link> : '—'}</td><td className="px-3 py-3 text-center">{item.status === 'AVAILABLE' && <button type="button" onClick={() => revoke.mutate(item.id)} className="text-xs text-ochre hover:text-copper">{t('admin.invitations.revoke')}</button>}</td></tr>)}</AdminTable><AdminPagination meta={query.data.meta} onPageChange={setPage} /></>}</section>;
 }
 
 function AdminField({ label, children }: { label: string; children: React.ReactNode }) {

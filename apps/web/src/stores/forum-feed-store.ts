@@ -6,12 +6,12 @@ type ForumFeedScope = 'all' | 'subscribed';
 type ForumFeedState = {
   globalFeedScope: ForumFeedScope;
   sortModeByScope: Record<string, SortOption>;
-  tagByScope: Record<string, PostTag | null>;
+  tagsByScope: Record<string, PostTag[]>;
   scrollTopByFeedKey: Record<string, number>;
   toolbarVisibleByFeedKey: Record<string, boolean>;
   setGlobalFeedScope: (scope: ForumFeedScope) => void;
   setSortMode: (scopeKey: string, sortMode: SortOption) => void;
-  setTag: (scopeKey: string, tag: PostTag | null) => void;
+  setTags: (scopeKey: string, tags: PostTag[]) => void;
   setScrollTop: (feedKey: string, scrollTop: number) => void;
   resetScrollTop: (feedKey: string) => void;
   setToolbarVisible: (feedKey: string, visible: boolean) => void;
@@ -20,7 +20,7 @@ type ForumFeedState = {
 export const useForumFeedStore = create<ForumFeedState>()((set) => ({
   globalFeedScope: 'all',
   sortModeByScope: {},
-  tagByScope: {},
+  tagsByScope: {},
   scrollTopByFeedKey: {},
   toolbarVisibleByFeedKey: {},
   setGlobalFeedScope: (globalFeedScope) => set({ globalFeedScope }),
@@ -31,11 +31,11 @@ export const useForumFeedStore = create<ForumFeedState>()((set) => ({
         [scopeKey]: sortMode,
       },
     })),
-  setTag: (scopeKey, tag) =>
+  setTags: (scopeKey, tags) =>
     set((state) => ({
-      tagByScope: {
-        ...state.tagByScope,
-        [scopeKey]: tag,
+      tagsByScope: {
+        ...state.tagsByScope,
+        [scopeKey]: tags,
       },
     })),
   setScrollTop: (feedKey, scrollTop) =>

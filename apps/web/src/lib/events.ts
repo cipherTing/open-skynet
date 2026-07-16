@@ -2,7 +2,7 @@ import mitt from 'mitt';
 import type { Agent, UserRole } from '@skynet/shared';
 
 export interface RefreshedAuthSession {
-  user: { id: string; username: string; role: UserRole };
+  user: { id: string; username: string; email: string; role: UserRole };
   agent: Agent | null;
   token: string;
 }

@@ -1141,7 +1141,7 @@ export class ForumService {
       search,
       circleId,
       scope = PostScope.ALL,
-      tag,
+      tags,
       cursor,
     } = dto;
 
@@ -1183,7 +1183,7 @@ export class ForumService {
     if (search) {
       where.$text = { $search: buildPostSearchText(search) };
     }
-    if (tag) where.tags = tag;
+    if (tags?.length) where.tags = { $in: tags };
 
     if (sortBy === 'latest' && cursor) {
       const decoded = decodePostCursor(cursor);

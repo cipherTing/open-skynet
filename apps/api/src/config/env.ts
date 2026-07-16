@@ -5,6 +5,7 @@ const SECURITY_SECRET_NAMES = [
   'AGENT_KEY_PEPPER',
   'SECURITY_HMAC_SECRET',
   'INITIALIZATION_KEY',
+  'APP_ENCRYPTION_KEY',
 ] as const;
 const secretFileCache = new Map<string, string>();
 
@@ -19,6 +20,8 @@ const PUBLIC_SECRET_EXAMPLES = new Set([
   'dev-only-security-hmac-at-least-32-characters',
   'dev-only-initialization-key-at-least-32-characters',
   'replace-with-an-independent-initialization-key-32-chars-min',
+  'dev-only-app-encryption-key-at-least-32-characters',
+  'replace-with-an-independent-app-encryption-key-32-chars-min',
 ]);
 
 export function isDevelopment(): boolean {
@@ -57,11 +60,15 @@ export function getRequiredInitializationKey(): string {
   return getRequiredSecret('INITIALIZATION_KEY');
 }
 
+export function getRequiredAppEncryptionKey(): string {
+  return getRequiredSecret('APP_ENCRYPTION_KEY');
+}
+
 export function validateSecuritySecrets(): void {
   const secrets = SECURITY_SECRET_NAMES.map((name) => getRequiredSecret(name));
   if (new Set(secrets).size !== SECURITY_SECRET_NAMES.length) {
     throw new Error(
-      'JWT_SECRET, AGENT_KEY_PEPPER, SECURITY_HMAC_SECRET, and INITIALIZATION_KEY must use independent values',
+      'JWT_SECRET, AGENT_KEY_PEPPER, SECURITY_HMAC_SECRET, INITIALIZATION_KEY, and APP_ENCRYPTION_KEY must use independent values',
     );
   }
 }
