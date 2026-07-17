@@ -25,19 +25,20 @@ import type { FeedbackType, ForumMention, ForumReply, ForumReplyQuote } from '@s
 
 interface ReplyThreadProps {
   reply: ForumReply;
-  index: number;
   postId: string;
   highlightedReplyId: string | null;
+  domIdPrefix?: 'reply' | 'selected-reply';
   onReplyCreated: () => void | Promise<void>;
   onReplyUpdated: () => void | Promise<void>;
 }
 
 interface ChildReplyItemProps {
   child: ForumReply;
-  childIndex: number;
+  postId: string;
   parentAuthorName?: string;
   onReplyUpdated: () => void | Promise<void>;
   highlightedReplyId: string | null;
+  domIdPrefix: 'reply' | 'selected-reply';
 }
 
 interface ReplyQuoteDraft {
@@ -47,7 +48,13 @@ interface ReplyQuoteDraft {
   text: string;
 }
 
-function ReplyQuoteBlock({ quote }: { quote: ForumReplyQuote | null | undefined }) {
+function ReplyQuoteBlock({
+  quote,
+  postId,
+}: {
+  quote: ForumReplyQuote | null | undefined;
+  postId: string;
+}) {
   const { t } = useTranslation();
   if (!quote) return null;
   if (!quote.available || !quote.text) {
@@ -57,7 +64,10 @@ function ReplyQuoteBlock({ quote }: { quote: ForumReplyQuote | null | undefined 
       </div>
     );
   }
-  const href = quote.sourceType === 'POST' ? '#post-content' : `#reply-${quote.sourceId}`;
+  const href =
+    quote.sourceType === 'POST'
+      ? '#post-content'
+      : `/post/${encodeURIComponent(postId)}?replyId=${encodeURIComponent(quote.sourceId)}`;
   return (
     <Link
       href={href}
@@ -151,15 +161,14 @@ function getReportUnavailableReason(
 
 export function ReplyThread({
   reply,
-  index,
   postId,
   highlightedReplyId,
+  domIdPrefix = 'reply',
   onReplyCreated,
   onReplyUpdated,
 }: ReplyThreadProps) {
   const { t } = useTranslation();
   const router = useRouter();
-  const entryNum = String(index + 1).padStart(2, '0');
   const { ownerOperationEnabled, canOperateAsAgent } = useOwnerOperation();
   const { agent, isAuthenticated } = useAuth();
   const toast = useToast();
@@ -178,13 +187,14 @@ export function ReplyThread({
   const replyContentRef = useRef<HTMLDivElement | null>(null);
   const isReplyInputVisible = canOperateAsAgent && showReplyInput;
   const initialChildren = reply.children ?? [];
-  const effectivePaging = childPaging.sourceCursor === (reply.childrenNextCursor ?? null)
-    ? childPaging
-    : {
-        sourceCursor: reply.childrenNextCursor ?? null,
-        nextCursor: reply.childrenNextCursor ?? null,
-        items: [],
-      };
+  const effectivePaging =
+    childPaging.sourceCursor === (reply.childrenNextCursor ?? null)
+      ? childPaging
+      : {
+          sourceCursor: reply.childrenNextCursor ?? null,
+          nextCursor: reply.childrenNextCursor ?? null,
+          items: [],
+        };
   const initialChildIds = new Set(initialChildren.map((item) => item.id));
   const children = [
     ...initialChildren,
@@ -275,9 +285,8 @@ export function ReplyThread({
         limit: 20,
       });
       setChildPaging((current) => {
-        const currentItems = current.sourceCursor === (reply.childrenNextCursor ?? null)
-          ? current.items
-          : [];
+        const currentItems =
+          current.sourceCursor === (reply.childrenNextCursor ?? null) ? current.items : [];
         const existingIds = new Set([
           ...initialChildren.map((item) => item.id),
           ...currentItems.map((item) => item.id),
@@ -335,13 +344,12 @@ export function ReplyThread({
 
   return (
     <div
-      id={`reply-${reply.id}`}
-      data-testid={`reply-${reply.id}`}
+      id={`${domIdPrefix}-${reply.id}`}
+      data-testid={`${domIdPrefix}-${reply.id}`}
       className={`relative scroll-mt-28 rounded-lg transition-shadow ${highlighted ? 'ring-2 ring-ochre ring-offset-2 ring-offset-void' : ''}`}
     >
       <div className="skynet-reply-card rounded-lg px-3.5 py-3">
         <div className="mb-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-          <span className="font-mono text-[11px] tabular-nums text-ink-muted">R-{entryNum}</span>
           <button
             type="button"
             className="group/author flex min-w-0 items-center gap-2 text-left"
@@ -374,7 +382,7 @@ export function ReplyThread({
           ) : null}
         </div>
 
-        <ReplyQuoteBlock quote={reply.quote} />
+        <ReplyQuoteBlock quote={reply.quote} postId={postId} />
 
         <div ref={replyContentRef} className="prose-deck mb-2.5 text-[13px] leading-relaxed">
           <ReactMarkdown
@@ -454,14 +462,15 @@ export function ReplyThread({
 
       {children.length > 0 && (
         <div className="skynet-reply-branch-line ml-3 mt-2 space-y-2 border-l pl-3 sm:ml-6 sm:pl-4">
-          {children.map((child: ForumReply, childIndex: number) => (
+          {children.map((child: ForumReply) => (
             <ChildReplyItem
               key={child.id}
               child={child}
-              childIndex={childIndex}
+              postId={postId}
               parentAuthorName={reply.author?.name}
               onReplyUpdated={onReplyUpdated}
               highlightedReplyId={highlightedReplyId}
+              domIdPrefix={domIdPrefix}
             />
           ))}
           {effectivePaging.nextCursor && (
@@ -486,17 +495,17 @@ export function ReplyThread({
 
 function ChildReplyItem({
   child,
-  childIndex,
+  postId,
   parentAuthorName,
   onReplyUpdated,
   highlightedReplyId,
+  domIdPrefix,
 }: ChildReplyItemProps) {
   const { t } = useTranslation();
   const router = useRouter();
   const { ownerOperationEnabled, canOperateAsAgent } = useOwnerOperation();
   const { agent, isAuthenticated } = useAuth();
   const toast = useToast();
-  const childNum = String(childIndex + 1).padStart(2, '0');
   const processedContent = highlightMentions(child.content, child.mentions);
   const removed = Boolean(child.deletedAt);
   const highlighted = highlightedReplyId === child.id;
@@ -546,20 +555,12 @@ function ChildReplyItem({
 
   return (
     <div
-      id={`reply-${child.id}`}
-      data-testid={`reply-${child.id}`}
+      id={`${domIdPrefix}-${child.id}`}
+      data-testid={`${domIdPrefix}-${child.id}`}
       className={`skynet-reply-branch-card relative scroll-mt-28 rounded-md px-3 py-2.5 transition-shadow ${highlighted ? 'ring-2 ring-ochre ring-offset-2 ring-offset-void' : ''}`}
     >
       <div className="skynet-reply-branch-connector absolute -left-[17px] top-4 hidden h-px w-4 sm:block" />
       <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
-        <span className="font-mono tabular-nums text-steel/80">
-          {t('replyThread.branch', { num: childNum })}
-        </span>
-        {parentAuthorName && (
-          <span className="text-ink-muted">
-            {t('replyThread.replyTo', { name: parentAuthorName })}
-          </span>
-        )}
         <button
           type="button"
           className="group/author flex min-w-0 items-center gap-1.5 text-left"
@@ -575,6 +576,11 @@ function ChildReplyItem({
           </span>
           <AgentLevelBadge level={child.author?.level} compact />
         </button>
+        {parentAuthorName && (
+          <span className="text-ink-muted">
+            {t('replyThread.replyTo', { name: parentAuthorName })}
+          </span>
+        )}
         <span className="ml-auto text-ink-muted">{getRelativeTime(child.createdAt)}</span>
         {(child.contentVersion > 1 || isOwnReply) && (
           <ReplyRevisionActions
@@ -588,7 +594,7 @@ function ChildReplyItem({
         ) : null}
       </div>
 
-      <ReplyQuoteBlock quote={child.quote} />
+      <ReplyQuoteBlock quote={child.quote} postId={postId} />
 
       <div className="prose-deck mb-2 text-[12px] leading-relaxed">
         <ReactMarkdown

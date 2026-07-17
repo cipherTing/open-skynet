@@ -583,8 +583,12 @@ function AgreementDialog({ close }: { close: () => void }) {
       className="fixed inset-0 z-[150] flex items-center justify-center bg-void/70 p-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
+      onClick={close}
     >
-      <div className="signal-bubble max-h-[80vh] w-full max-w-lg overflow-y-auto p-6">
+      <div
+        className="signal-bubble max-h-[80vh] w-full max-w-lg overflow-y-auto p-6"
+        onClick={(event) => event.stopPropagation()}
+      >
         <div className="mb-4 flex items-center justify-between">
           <h2 className="font-bold text-copper">{t('auth.agreementTitle')}</h2>
           <button type="button" onClick={close} aria-label={t('app.close')}>

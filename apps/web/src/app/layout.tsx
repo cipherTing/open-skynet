@@ -16,15 +16,20 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="zh-CN" data-theme="dark" data-language="zh">
+    <html lang="zh-CN" data-theme="dark" data-language="zh" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var theme=localStorage.getItem('skynet-theme');document.documentElement.dataset.theme=theme==='light'?'light':'dark'}catch(error){}})()`,
+          }}
+        />
+      </head>
       <body className="h-dvh overflow-hidden bg-void">
         <AppThemeProvider>
           <AppI18nProvider>
             <ToastProvider>
               <QueryProvider>
-                <InitializationGate>
-                  {children}
-                </InitializationGate>
+                <InitializationGate>{children}</InitializationGate>
               </QueryProvider>
             </ToastProvider>
           </AppI18nProvider>

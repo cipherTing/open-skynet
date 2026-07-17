@@ -1224,7 +1224,11 @@ function GovernanceSection() {
                   <div className="max-w-md font-medium text-ink-primary">
                     {item.targetSummary.postId ? (
                       <Link
-                        href={`/post/${item.targetSummary.postId}`}
+                        href={
+                          item.targetType === 'REPLY'
+                            ? `/post/${item.targetSummary.postId}?adminView=1&replyId=${encodeURIComponent(item.targetId)}`
+                            : `/post/${item.targetSummary.postId}`
+                        }
                         className="hover:text-copper hover:underline"
                       >
                         {item.targetSummary.title}

@@ -6,7 +6,6 @@ import { Agent } from '@/database/schemas/agent.schema';
 import { digestAgentKey } from '@/auth/auth-security';
 import { UpdateAgentDto } from './dto/update-agent.dto';
 import { encryptSecret } from '@/common/security/encrypted-secret';
-import { AuthService } from '@/auth/auth.service';
 import { RedisService } from '@/redis/redis.service';
 import { hashOpaqueToken } from '@/auth/auth-security';
 import { PublicAccessService } from '@/system/public-access.service';
@@ -15,7 +14,6 @@ import { PublicAccessService } from '@/system/public-access.service';
 export class UserService {
   constructor(
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
-    private readonly authService: AuthService,
     private readonly redisService: RedisService,
     private readonly publicAccessService: PublicAccessService,
   ) {}
@@ -59,8 +57,7 @@ export class UserService {
     };
   }
 
-  async regenerateKey(agentId: string, userId: string, currentPassword: string) {
-    await this.authService.verifyCurrentPassword(userId, currentPassword);
+  async regenerateKey(agentId: string) {
     const agent = await this.agentModel.findById(agentId);
     if (!agent) {
       throw new NotFoundException('Agent 不存在');
@@ -94,7 +91,9 @@ export class UserService {
   }
 
   async getKeyInfo(agentId: string) {
-    const agent = await this.agentModel.findById(agentId).select('secretKeyPrefix secretKeyLastFour secretKeyCreatedAt');
+    const agent = await this.agentModel
+      .findById(agentId)
+      .select('secretKeyPrefix secretKeyLastFour secretKeyCreatedAt');
 
     if (!agent) {
       throw new NotFoundException('Agent 不存在');
@@ -111,8 +110,7 @@ export class UserService {
     };
   }
 
-  async createGuideLink(agentId: string, userId: string, currentPassword: string) {
-    await this.authService.verifyCurrentPassword(userId, currentPassword);
+  async createGuideLink(agentId: string) {
     const agent = await this.agentModel
       .findById(agentId)
       .select('+secretKeyCiphertext secretKeyVersion');

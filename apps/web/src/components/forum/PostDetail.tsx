@@ -11,9 +11,10 @@ import {
   Eye,
   MessageSquare,
   Quote,
+  X,
 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeSanitize from 'rehype-sanitize';
@@ -58,6 +59,10 @@ function PostDetailContent({ postId }: PostDetailProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const highlightedReplyId = searchParams.get('replyId');
+  const selectedReplyId = highlightedReplyId ?? '';
+  const selectionKey = highlightedReplyId ? `${postId}:${highlightedReplyId}` : null;
+  const [dismissedSelectionKey, setDismissedSelectionKey] = useState<string | null>(null);
+  const reducedMotion = useReducedMotion() === true;
   const [favoriteBusy, setFavoriteBusy] = useState(false);
   const [watchBusy, setWatchBusy] = useState(false);
   const activePostIdRef = useRef(postId);
@@ -76,14 +81,20 @@ function PostDetailContent({ postId }: PostDetailProps) {
   });
   const repliesQuery = useInfiniteQuery({
     queryKey: forumKeys.replies(viewerKey, postId),
-    queryFn: ({ pageParam }) => forumApi.listReplies(postId, {
-      cursor: pageParam || undefined,
-      limit: 20,
-      childLimit: 3,
-    }),
+    queryFn: ({ pageParam }) =>
+      forumApi.listReplies(postId, {
+        cursor: pageParam || undefined,
+        limit: 20,
+        childLimit: 3,
+      }),
     initialPageParam: '',
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     enabled: !authLoading,
+  });
+  const selectedReplyQuery = useQuery({
+    queryKey: forumKeys.replySelection(viewerKey, postId, selectedReplyId),
+    queryFn: () => forumApi.getReplySelection(postId, selectedReplyId),
+    enabled: !authLoading && selectedReplyId.length > 0,
   });
   const post = postQuery.data ?? null;
   const replies = repliesQuery.data?.pages.flatMap((page) => page.items) ?? [];
@@ -102,20 +113,6 @@ function PostDetailContent({ postId }: PostDetailProps) {
       });
     }
   }, [postId]);
-
-  useEffect(() => {
-    if (!repliesQuery.isSuccess) return;
-    const targetId = highlightedReplyId
-      ? `reply-${highlightedReplyId}`
-      : window.location.hash.startsWith('#reply-')
-        ? window.location.hash.slice(1)
-        : null;
-    if (!targetId) return;
-    const frame = window.requestAnimationFrame(() => {
-      document.getElementById(targetId)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [highlightedReplyId, postId, repliesQuery.dataUpdatedAt, repliesQuery.isSuccess]);
 
   const refreshPostData = async () => {
     await Promise.all([
@@ -500,14 +497,11 @@ function PostDetailContent({ postId }: PostDetailProps) {
 
       {/* 回复区域 */}
       <section>
-        <div className="flex items-center justify-between mb-5 px-1">
-          <div className="flex items-center gap-2">
-            <MessageSquare className="w-4 h-4 text-copper-dim" />
-            <span className="text-[12px] text-copper font-bold tracking-deck-normal uppercase">
-              {t('forum.repliesTitle')}
-            </span>
-          </div>
-          <span className="text-ink-muted text-xs font-mono">{formatNumber(replies.length)}</span>
+        <div className="mb-5 flex items-center gap-2 px-1">
+          <MessageSquare className="h-4 w-4 text-copper-dim" />
+          <span className="text-[12px] font-bold tracking-wide text-copper">
+            {t('forum.repliesTitle', { count: formatNumber(post.replyCount || 0) })}
+          </span>
         </div>
 
         {/* 新回复输入 */}
@@ -522,6 +516,58 @@ function PostDetailContent({ postId }: PostDetailProps) {
           </div>
         )}
 
+        <AnimatePresence initial={false}>
+          {selectionKey && dismissedSelectionKey !== selectionKey ? (
+            <motion.div
+              key={selectionKey}
+              initial={reducedMotion ? false : { height: 0, opacity: 0, y: -8 }}
+              animate={{ height: 'auto', opacity: 1, y: 0 }}
+              exit={
+                reducedMotion
+                  ? { display: 'none' }
+                  : { height: 0, marginBottom: 0, opacity: 0, y: -8 }
+              }
+              transition={{ duration: reducedMotion ? 0 : 0.28, ease: [0.22, 1, 0.36, 1] }}
+              className="sticky top-2 z-20 mb-3 overflow-hidden"
+            >
+              <div
+                className={`selected-reply-shell rounded-lg border p-2.5 shadow-lg backdrop-blur-md ${selectedReplyQuery.data ? 'selected-reply-pulse' : ''}`}
+              >
+                <div className="mb-2 flex items-center justify-between gap-3 px-1">
+                  <span className="inline-flex items-center rounded border border-copper/30 bg-copper/10 px-2 py-1 text-[11px] font-bold text-copper">
+                    {t('replyThread.selected')}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={t('replyThread.closeSelected')}
+                    title={t('replyThread.closeSelected')}
+                    onClick={() => setDismissedSelectionKey(selectionKey)}
+                    className="flex h-7 w-7 items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-surface-3 hover:text-ink-primary"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                {selectedReplyQuery.isPending ? (
+                  <InlineLoading label={t('app.loading')} />
+                ) : selectedReplyQuery.isError || !selectedReplyQuery.data ? (
+                  <p className="px-2 py-5 text-center text-xs font-semibold text-ochre">
+                    {t('replyThread.selectedLoadFailed')}
+                  </p>
+                ) : (
+                  <ReplyThread
+                    reply={selectedReplyQuery.data.rootReply}
+                    postId={postId}
+                    highlightedReplyId={selectedReplyQuery.data.selectedReplyId}
+                    domIdPrefix="selected-reply"
+                    onReplyCreated={refreshReplyCreatedData}
+                    onReplyUpdated={refreshReplyData}
+                  />
+                )}
+              </div>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+
         <div className="space-y-3">
           {repliesQuery.isPending && <InlineLoading label={t('forum.loadingReplies')} />}
 
@@ -534,7 +580,6 @@ function PostDetailContent({ postId }: PostDetailProps) {
             >
               <ReplyThread
                 reply={reply}
-                index={index}
                 postId={postId}
                 highlightedReplyId={highlightedReplyId}
                 onReplyCreated={refreshReplyCreatedData}
@@ -569,16 +614,6 @@ function PostDetailContent({ postId }: PostDetailProps) {
                 ? t('forum.loadingMoreReplies')
                 : t('forum.loadMoreReplies')}
             </button>
-          </div>
-        )}
-
-        {replies.length > 0 && !repliesQuery.hasNextPage && (
-          <div data-testid="reply-end-marker" className="py-8 text-xs text-ink-muted tracking-wide">
-            <div className="flex items-center justify-center gap-3">
-              <div className="w-16 deck-divider" />
-              <span className="font-mono uppercase">{t('forum.replyEnd')}</span>
-              <div className="w-16 deck-divider" />
-            </div>
           </div>
         )}
 

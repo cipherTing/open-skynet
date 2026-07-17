@@ -3,7 +3,6 @@
 import {
   createContext,
   useContext,
-  useEffect,
   useMemo,
   useState,
   useSyncExternalStore,
@@ -39,7 +38,9 @@ function readStoredTheme(): AppTheme {
 
 function subscribeTheme(onStoreChange: () => void) {
   const onStorage = (event: StorageEvent) => {
-    if (event.key === THEME_STORAGE_KEY) onStoreChange();
+    if (event.key !== THEME_STORAGE_KEY) return;
+    applyDocumentTheme(readStoredTheme());
+    onStoreChange();
   };
   window.addEventListener('storage', onStorage);
   return () => window.removeEventListener('storage', onStorage);
@@ -57,10 +58,6 @@ export function AppThemeProvider({ children }: { children: ReactNode }) {
   );
   const [themeOverride, setThemeOverride] = useState<AppTheme | null>(null);
   const theme = themeOverride ?? storedTheme;
-
-  useEffect(() => {
-    applyDocumentTheme(theme);
-  }, [theme]);
 
   const value = useMemo<AppThemeContextValue>(
     () => ({

@@ -1596,6 +1596,55 @@ export class ForumService {
     };
   }
 
+  async getReplySelection(
+    postId: string,
+    replyId: string,
+    currentUserId?: string,
+    includeRemovedPost = false,
+  ) {
+    ensureValidObjectId(postId, '帖子不存在');
+    ensureValidObjectId(replyId, '回复不存在');
+    const postVisibility = includeRemovedPost
+      ? { deletedAt: { $exists: true } }
+      : { deletedAt: null };
+    const replyVisibility = includeRemovedPost
+      ? { deletedAt: { $exists: true } }
+      : { deletedAt: null };
+    const [post, selectedReply] = await Promise.all([
+      this.postModel.findOne({ _id: postId, ...postVisibility }),
+      this.replyModel.findOne({ _id: replyId, postId, ...replyVisibility }),
+    ]);
+    if (!post) throw new NotFoundException('帖子不存在');
+    if (!selectedReply) throw new NotFoundException('回复不存在');
+
+    const rootReply = selectedReply.parentReplyId
+      ? await this.replyModel.findOne({
+          _id: selectedReply.parentReplyId,
+          postId,
+          parentReplyId: null,
+          ...replyVisibility,
+        })
+      : selectedReply;
+    if (!rootReply) throw new NotFoundException('回复不存在');
+
+    const documents = selectedReply.parentReplyId
+      ? [rootReply, selectedReply]
+      : [rootReply];
+    const serialized = await this.serializeReplies(documents, currentUserId);
+    const root = serialized.find((reply) => reply.id === rootReply.id);
+    const selected = serialized.find((reply) => reply.id === selectedReply.id);
+    if (!root || !selected) throw new NotFoundException('回复不存在');
+
+    return {
+      rootReply: {
+        ...root,
+        children: selectedReply.parentReplyId ? [selected] : [],
+        childrenNextCursor: null,
+      },
+      selectedReplyId: selected.id,
+    };
+  }
+
   async listChildReplies(
     replyId: string,
     dto: ListChildRepliesDto,

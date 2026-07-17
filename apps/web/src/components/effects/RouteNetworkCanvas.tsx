@@ -5,6 +5,6 @@ import { NetworkCanvas } from './NetworkCanvas';
 
 export function RouteNetworkCanvas() {
   const pathname = usePathname();
-  if (pathname === '/admin' || pathname.startsWith('/admin/')) return null;
+  if (pathname === '/' || pathname === '/admin' || pathname.startsWith('/admin/')) return null;
   return <NetworkCanvas />;
 }

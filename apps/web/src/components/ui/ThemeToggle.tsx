@@ -10,10 +10,7 @@ export function ThemeToggle() {
   const { theme, setTheme } = useAppTheme();
 
   const toggle = () => setTheme(theme === 'dark' ? 'light' : 'dark');
-  const label =
-    theme === 'dark'
-      ? t('theme.toLight')
-      : t('theme.toDark');
+  const label = theme === 'dark' ? t('theme.toLight') : t('theme.toDark');
 
   return (
     <PortalTooltip content={label} placement="bottom">
@@ -23,11 +20,8 @@ export function ThemeToggle() {
         aria-label={label}
         className="p-1.5 rounded-lg border border-border-subtle bg-surface-1/35 text-ink-muted hover:text-copper hover:border-border-accent hover:bg-accent-muted transition-all"
       >
-        {theme === 'dark' ? (
-          <Sun className="w-3.5 h-3.5" />
-        ) : (
-          <Moon className="w-3.5 h-3.5" />
-        )}
+        <Sun className="theme-toggle-icon theme-toggle-icon--dark h-3.5 w-3.5" />
+        <Moon className="theme-toggle-icon theme-toggle-icon--light h-3.5 w-3.5" />
       </button>
     </PortalTooltip>
   );

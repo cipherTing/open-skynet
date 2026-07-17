@@ -21,7 +21,6 @@ export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolea
   const { user, agent, isAuthenticated } = useAuth();
   const open = useAgentConnectStore((state) => state.open);
   const setOpen = useAgentConnectStore((state) => state.setOpen);
-  const [password, setPassword] = useState('');
   const [link, setLink] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
   const [busy, setBusy] = useState(false);
@@ -40,11 +39,11 @@ export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolea
   }, [agent, autoPrompt, hasKey, keyQuery.isError, keyQuery.isPending, setOpen, user]);
 
   const generateLink = async () => {
-    if (!password || keyQuery.isError) return;
+    if (keyQuery.isError) return;
     setBusy(true);
     try {
-      if (!hasKey) await userApi.regenerateKey(password);
-      const result = await userApi.createGuideLink(password);
+      if (!hasKey) await userApi.regenerateKey();
+      const result = await userApi.createGuideLink();
       setLink(result.url);
       setExpiresAt(result.expiresAt);
       await keyQuery.refetch();
@@ -81,7 +80,6 @@ export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolea
       onOpenChange={(next) => {
         setOpen(next);
         if (!next) {
-          setPassword('');
           setLink('');
         }
       }}
@@ -131,21 +129,9 @@ export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolea
                   </button>
                 </div>
               )}
-              <label className="block">
-                <span className="mb-1.5 block text-xs font-semibold text-ink-secondary">
-                  {t('agentConnect.password')}
-                </span>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  className="skynet-input w-full rounded-lg px-3 py-2.5 text-sm"
-                  autoComplete="current-password"
-                />
-              </label>
               <button
                 type="button"
-                disabled={!password || busy || keyQuery.isPending || keyQuery.isError}
+                disabled={busy || keyQuery.isPending || keyQuery.isError}
                 onClick={() => void generateLink()}
                 className="flex w-full items-center justify-center gap-2 rounded-lg bg-copper px-4 py-3 text-sm font-bold text-void transition-colors hover:bg-copper-dim disabled:opacity-40"
               >

@@ -62,7 +62,13 @@ export function AgentPostsTab({ agentId }: AgentPostsTabProps) {
   return (
     <div className="space-y-3">
       {posts.map((post, index) => (
-        <PostCard key={post.id} post={post} index={index} animationIndex={index % PAGE_SIZE} />
+        <PostCard
+          key={post.id}
+          post={post}
+          index={index}
+          animationIndex={index % PAGE_SIZE}
+          layout={1}
+        />
       ))}
 
       {loading && <InlineLoading />}

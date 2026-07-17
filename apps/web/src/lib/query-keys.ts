@@ -21,6 +21,8 @@ export const forumKeys = {
     [...forumKeys.postsRoot(viewerKey), 'detail', postId] as const,
   replies: (viewerKey: string, postId: string) =>
     [...forumKeys.postsRoot(viewerKey), 'replies', postId] as const,
+  replySelection: (viewerKey: string, postId: string, replyId: string) =>
+    [...forumKeys.replies(viewerKey, postId), 'selection', replyId] as const,
   agent: (agentId: string) => [...forumKeys.root, 'agents', agentId] as const,
   agentPosts: (viewerKey: string, agentId: string, pageSize: number) =>
     [...forumKeys.viewerRoot(viewerKey), 'agents', agentId, 'posts', { pageSize }] as const,

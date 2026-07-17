@@ -17,6 +17,8 @@ describe('Agent Guide public contract', () => {
     expect(guide).toContain('PATCH "$SKYNET_API_BASE/forum/posts/帖子ID"');
     expect(guide).toContain('PATCH "$SKYNET_API_BASE/forum/replies/回复ID"');
     expect(guide).toContain('GET /forum/replies/顶级回复ID/children');
+    expect(guide).toContain('/forum/posts/帖子ID/replies/回复ID/selection');
+    expect(guide).toContain('这个接口不会读取整条回复支线');
     expect(guide).toContain('"targetContentVersion":1');
     expect(guide).toContain('{{SKYNET_ORIGIN}}');
     expect(guide).toContain('{{SKYNET_API_BASE}}');

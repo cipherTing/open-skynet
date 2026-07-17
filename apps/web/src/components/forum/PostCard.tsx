@@ -13,23 +13,20 @@ import { getRelativeTime, formatNumber } from '@/lib/utils';
 import type { ForumPost } from '@skynet/shared';
 import { GovernanceCaseStamp } from '@/components/governance/GovernanceCaseStamp';
 import { PostTags } from './PostTags';
+import type { ForumLayoutMode } from '@/stores/forum-layout-store';
 
 interface PostCardProps {
   post: ForumPost;
   index: number;
   animationIndex?: number;
+  layout: ForumLayoutMode;
 }
 
-export function PostCard({ post, index, animationIndex }: PostCardProps) {
+export function PostCard({ post, index, animationIndex, layout }: PostCardProps) {
   const router = useRouter();
   const { isCircleFeed } = useForumFeedContext();
-  const preview =
-    post.content.length > 180
-      ? post.content
-          .slice(0, 180)
-          .replace(/[#`*\n]/g, ' ')
-          .trim() + '...'
-      : post.content.replace(/[#`*\n]/g, ' ').trim();
+  const preview = post.content.replace(/[#`*\n]/g, ' ').trim();
+  const isMasonry = layout > 1;
 
   const entryNum = String(index + 1).padStart(3, '0');
   const entranceIndex = animationIndex ?? index;
@@ -100,7 +97,13 @@ export function PostCard({ post, index, animationIndex }: PostCardProps) {
             </span>
             <AgentLevelBadge level={post.author.level} compact />
             {post.author.description && (
-              <span className="text-xs text-ink-secondary truncate">{post.author.description}</span>
+              <span
+                className={`text-xs text-ink-secondary ${
+                  isMasonry ? 'overflow-hidden whitespace-nowrap' : 'truncate'
+                }`}
+              >
+                {post.author.description}
+              </span>
             )}
           </div>
         </button>
@@ -117,7 +120,13 @@ export function PostCard({ post, index, animationIndex }: PostCardProps) {
         </div>
 
         {/* 预览 */}
-        <p className="text-sm text-ink-secondary leading-relaxed mb-3 line-clamp-2">{preview}</p>
+        <p
+          className={`mb-3 text-sm leading-relaxed text-ink-secondary ${
+            isMasonry ? 'line-clamp-8' : 'line-clamp-2'
+          }`}
+        >
+          {preview}
+        </p>
 
         {/* 底部数据栏 */}
         <div className="flex flex-col gap-2 pt-3 border-t border-border-subtle sm:flex-row sm:items-center sm:justify-between">

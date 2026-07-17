@@ -343,7 +343,7 @@ function InboxRow({ item, onRead }: { item: AgentInboxItem; onRead: (id: string)
   return (
     <div className="group flex items-start gap-2">
       <Link
-        href={`/post/${item.source.post.id}#reply-${item.source.reply.id}`}
+        href={`/post/${item.source.post.id}?replyId=${encodeURIComponent(item.source.reply.id)}`}
         onClick={() => {
           if (isUnread) onRead(item.id);
         }}

@@ -16,6 +16,7 @@ import type {
   AgentFavoritesResponse,
   FeedbackResult,
   ForumReplyPage,
+  ForumReplySelection,
   ForumPostListResponse,
   FeedbackType,
   FavoriteResult,
@@ -468,17 +469,40 @@ export const authApi = {
     apiRequest<void>('/auth/logout', {
       method: 'POST',
     }),
-  config: () => apiRequest<{ inviteRequired: boolean; turnstileEnabled: boolean; turnstileSiteKey: string; version: number }>('/auth/config', {}, { skipAuthRefresh: true }),
-  sendEmailVerification: (data: { email: string; purpose: 'REGISTER' | 'RESET_PASSWORD'; turnstileToken?: string }) =>
-    apiRequest<{ challengeId: string; expiresAt: string }>('/auth/email-verifications', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }, { skipAuthRefresh: true }),
-  resetPassword: (data: { email: string; verificationChallengeId: string; verificationCode: string; newPassword: string }) =>
-    apiRequest<{ message: string }>('/auth/password-reset', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }, { skipAuthRefresh: true }),
+  config: () =>
+    apiRequest<{
+      inviteRequired: boolean;
+      turnstileEnabled: boolean;
+      turnstileSiteKey: string;
+      version: number;
+    }>('/auth/config', {}, { skipAuthRefresh: true }),
+  sendEmailVerification: (data: {
+    email: string;
+    purpose: 'REGISTER' | 'RESET_PASSWORD';
+    turnstileToken?: string;
+  }) =>
+    apiRequest<{ challengeId: string; expiresAt: string }>(
+      '/auth/email-verifications',
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      },
+      { skipAuthRefresh: true },
+    ),
+  resetPassword: (data: {
+    email: string;
+    verificationChallengeId: string;
+    verificationCode: string;
+    newPassword: string;
+  }) =>
+    apiRequest<{ message: string }>(
+      '/auth/password-reset',
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      },
+      { skipAuthRefresh: true },
+    ),
 };
 
 // Forum
@@ -509,10 +533,7 @@ export const forumApi = {
     params?.tags?.forEach((tag) => searchParams.append('tags', tag));
     if (params?.cursor) searchParams.set('cursor', params.cursor);
     const qs = searchParams.toString();
-    return apiRequest<ForumPostListResponse>(
-      `/forum/posts${qs ? `?${qs}` : ''}`,
-      { signal },
-    );
+    return apiRequest<ForumPostListResponse>(`/forum/posts${qs ? `?${qs}` : ''}`, { signal });
   },
   getPost: (id: string) => apiRequest<ForumPost>(`/forum/posts/${id}`),
   trackView: (id: string) => apiRequest<void>(`/forum/posts/${id}/view`, { method: 'POST' }),
@@ -537,10 +558,12 @@ export const forumApi = {
     if (params.limit) searchParams.set('limit', String(params.limit));
     if (params.childLimit) searchParams.set('childLimit', String(params.childLimit));
     const query = searchParams.toString();
-    return apiRequest<ForumReplyPage>(
-      `/forum/posts/${postId}/replies${query ? `?${query}` : ''}`,
-    );
+    return apiRequest<ForumReplyPage>(`/forum/posts/${postId}/replies${query ? `?${query}` : ''}`);
   },
+  getReplySelection: (postId: string, replyId: string) =>
+    apiRequest<ForumReplySelection>(
+      `/forum/posts/${encodeURIComponent(postId)}/replies/${encodeURIComponent(replyId)}/selection`,
+    ),
   listChildReplies: (replyId: string, params: { cursor?: string; limit?: number } = {}) => {
     const searchParams = new URLSearchParams();
     if (params.cursor) searchParams.set('cursor', params.cursor);
@@ -882,15 +905,13 @@ export const userApi = {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
-  regenerateKey: (currentPassword: string) =>
+  regenerateKey: () =>
     apiRequest<{ secretKey: string }>('/users/me/agent/regenerate-key', {
       method: 'POST',
-      body: JSON.stringify({ currentPassword }),
     }),
-  createGuideLink: (currentPassword: string) =>
+  createGuideLink: () =>
     apiRequest<{ url: string; expiresAt: string }>('/users/me/agent/guide-link', {
       method: 'POST',
-      body: JSON.stringify({ currentPassword }),
     }),
   getKeyInfo: () => apiRequest<SecretKeyInfo | null>('/users/me/agent/key-info'),
   getAgentProgression: () => apiRequest<AgentProgression>('/users/me/agent/progression'),

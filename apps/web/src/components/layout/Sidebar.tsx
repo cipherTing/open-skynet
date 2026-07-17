@@ -94,7 +94,16 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
 
         <div className="relative flex h-full min-h-0 w-full flex-col items-center px-0">
           <Link href="/" className="group mb-4 flex-none" aria-label={t('sidebar.backWelcome')}>
-            <div className="brand-logo-tile flex h-[46px] w-[46px] items-center justify-center rounded-lg border p-1"><Image src="/logo.png" alt="" width={42} height={42} loading="eager" className="h-full w-full rounded-md object-contain" /></div>
+            <div className="brand-logo-tile flex h-[46px] w-[46px] items-center justify-center rounded-lg border p-1">
+              <Image
+                src="/logo.png"
+                alt=""
+                width={42}
+                height={42}
+                loading="eager"
+                className="h-full w-full rounded-md object-contain"
+              />
+            </div>
           </Link>
 
           <div className="deck-divider mb-3 w-10 flex-none" />
@@ -157,52 +166,60 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
             })}
           </nav>
 
-          <div className="deck-divider mb-3 w-10 flex-none" />
-
           <div className="flex w-full flex-none flex-col items-center gap-2 pb-2">
-            {onSectionChange ? (
-              <button
-                type="button"
-                aria-pressed={isInboxActive}
-                className={navButtonClass(isInboxActive)}
-                onClick={() => onSectionChange('inbox')}
-              >
-                {inboxContent}
-              </button>
-            ) : (
-              <Link
-                href="/workspace"
-                aria-current={isInboxActive ? 'page' : undefined}
-                className={navButtonClass(isInboxActive)}
-                onClick={() => {
-                  setHomeActiveSection('inbox');
-                }}
-              >
-                {inboxContent}
-              </Link>
-            )}
-
             {isAuthenticated && agent ? (
               <>
-                <button type="button" onClick={() => setAgentConnectOpen(true)} className="flex w-full flex-col items-center justify-center gap-1 rounded-lg bg-copper/10 py-2.5 text-copper transition-colors hover:bg-copper/15" aria-label={t('sidebar.connectAgent')}><Bot className="h-5 w-5" /><span className="text-[10px] font-bold">{t('sidebar.connectAgent')}</span></button>
+                {onSectionChange ? (
+                  <button
+                    type="button"
+                    aria-pressed={isInboxActive}
+                    className={navButtonClass(isInboxActive)}
+                    onClick={() => onSectionChange('inbox')}
+                  >
+                    {inboxContent}
+                  </button>
+                ) : (
+                  <Link
+                    href="/workspace"
+                    aria-current={isInboxActive ? 'page' : undefined}
+                    className={navButtonClass(isInboxActive)}
+                    onClick={() => setHomeActiveSection('inbox')}
+                  >
+                    {inboxContent}
+                  </Link>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setAgentConnectOpen(true)}
+                  className="flex w-full flex-col items-center justify-center gap-1 rounded-lg bg-copper/10 py-2.5 text-copper transition-colors hover:bg-copper/15"
+                  aria-label={t('sidebar.connectAgent')}
+                >
+                  <Bot className="h-5 w-5" />
+                  <span className="text-[10px] font-bold">{t('sidebar.connectAgent')}</span>
+                </button>
+                <div className="deck-divider my-1 w-10 flex-none" />
                 <UserDropdown agent={agent} onLogout={() => setShowLogoutConfirm(true)} />
               </>
             ) : (
-              <PortalTooltip content={t('sidebar.login')} placement="right">
-                <span className="block w-full">
-                  <Link
-                    href="/auth"
-                    aria-label={t('sidebar.login')}
-                    className="flex w-full flex-col items-center justify-center gap-1 rounded-lg py-2.5 text-ink-muted transition-all hover:bg-copper/5 hover:text-copper"
-                  >
-                    <LogIn className="h-6 w-6" />
-                    <span className="text-[11px] font-medium tracking-wide">{t('sidebar.login')}</span>
-                  </Link>
-                </span>
-              </PortalTooltip>
+              <>
+                <div className="deck-divider my-1 w-10 flex-none" />
+                <PortalTooltip content={t('sidebar.login')} placement="right">
+                  <span className="block w-full">
+                    <Link
+                      href="/auth"
+                      aria-label={t('sidebar.login')}
+                      className="flex w-full flex-col items-center justify-center gap-1 rounded-lg py-2.5 text-ink-muted transition-all hover:bg-copper/5 hover:text-copper"
+                    >
+                      <LogIn className="h-6 w-6" />
+                      <span className="text-[11px] font-medium tracking-wide">
+                        {t('sidebar.login')}
+                      </span>
+                    </Link>
+                  </span>
+                </PortalTooltip>
+              </>
             )}
           </div>
-
         </div>
       </aside>
 
@@ -213,7 +230,6 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[130] flex items-center justify-center bg-void/60 backdrop-blur-sm"
-            onClick={() => setShowLogoutConfirm(false)}
           >
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
@@ -221,18 +237,22 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
               exit={{ scale: 0.95, opacity: 0 }}
               transition={{ type: 'spring', stiffness: 300, damping: 25 }}
               className="signal-bubble w-[340px] p-6"
-              onClick={(e) => e.stopPropagation()}
               role="dialog"
               aria-modal="true"
               aria-labelledby="logout-title"
             >
               <div className="mb-4 flex items-center gap-2">
                 <Shield className="h-5 w-5 text-ochre" />
-                <span id="logout-title" className="text-sm font-bold uppercase tracking-deck-normal text-ochre">
+                <span
+                  id="logout-title"
+                  className="text-sm font-bold uppercase tracking-deck-normal text-ochre"
+                >
                   {t('sidebar.logoutTitle')}
                 </span>
               </div>
-              <p className="mb-6 text-sm leading-relaxed text-ink-secondary">{t('sidebar.logoutQuestion')}</p>
+              <p className="mb-6 text-sm leading-relaxed text-ink-secondary">
+                {t('sidebar.logoutQuestion')}
+              </p>
               <div className="flex gap-3">
                 <button
                   type="button"

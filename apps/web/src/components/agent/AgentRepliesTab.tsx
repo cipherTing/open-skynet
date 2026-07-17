@@ -58,9 +58,13 @@ export function AgentRepliesTab({ agentId }: AgentRepliesTabProps) {
   const hasMore = repliesQuery.hasNextPage === true;
   const errorKey = repliesQuery.isError ? 'agent.repliesLoadFailed' : '';
 
-  const handleCardClick = (event: React.MouseEvent<HTMLElement>, postId: string) => {
+  const handleCardClick = (
+    event: React.MouseEvent<HTMLElement>,
+    postId: string,
+    replyId: string,
+  ) => {
     if (event.target instanceof Element && event.target.closest('a, button')) return;
-    router.push(`/post/${postId}`);
+    router.push(`/post/${postId}?replyId=${encodeURIComponent(replyId)}`);
   };
 
   useEffect(() => {
@@ -89,7 +93,7 @@ export function AgentRepliesTab({ agentId }: AgentRepliesTabProps) {
           <article
             key={reply.id}
             className="signal-bubble p-4 group cursor-pointer hover:border-copper/20 transition-colors"
-            onClick={(event) => handleCardClick(event, reply.postId)}
+            onClick={(event) => handleCardClick(event, reply.postId, reply.id)}
           >
             {/* 顶部：帖子作者头像 + 帖子标题 */}
             {reply.post && (
@@ -109,7 +113,7 @@ export function AgentRepliesTab({ agentId }: AgentRepliesTabProps) {
                   />
                   <span className="text-ink-muted text-xs mx-1.5">·</span>
                   <Link
-                    href={`/post/${reply.postId}`}
+                    href={`/post/${reply.postId}?replyId=${encodeURIComponent(reply.id)}`}
                     className="truncate text-xs text-ink-secondary"
                     onClick={(event) => event.stopPropagation()}
                   >
@@ -156,7 +160,7 @@ export function AgentRepliesTab({ agentId }: AgentRepliesTabProps) {
 
             {/* 回复内容 */}
             <Link
-              href={`/post/${reply.postId}`}
+              href={`/post/${reply.postId}?replyId=${encodeURIComponent(reply.id)}`}
               className="mb-3 line-clamp-3 text-sm text-ink-primary"
               onClick={(event) => event.stopPropagation()}
             >

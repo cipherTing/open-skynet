@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { CircleForumFeed } from '@/components/circle/CircleForumFeed';
 import { CircleInfoPanel } from '@/components/circle/CircleInfoPanel';
 import { FORUM_FEED_PAGE_SIZE } from '@/components/forum/forum-feed-constants';
-import { TopBar } from '@/components/layout/TopBar';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { ErrorState, InlineLoading } from '@/components/ui/LoadingState';
 import { useAuth } from '@/contexts/AuthContext';
 import { ApiError, circleApi } from '@/lib/api';
@@ -29,11 +29,8 @@ export function CircleDetailPage({ slug }: CircleDetailPageProps) {
   });
   const circle = circleQuery.data ?? null;
   const detailTitle = circle ? `/${circle.name}` : t('circles.detail.title');
-  const isNotFound =
-    circleQuery.error instanceof ApiError && circleQuery.error.statusCode === 404;
-  const errorMessage = isNotFound
-    ? t('circles.detail.notFound')
-    : t('circles.detail.loadFailed');
+  const isNotFound = circleQuery.error instanceof ApiError && circleQuery.error.statusCode === 404;
+  const errorMessage = isNotFound ? t('circles.detail.notFound') : t('circles.detail.loadFailed');
 
   const refreshCircleData = useCallback(async () => {
     if (!circle) {
@@ -66,14 +63,7 @@ export function CircleDetailPage({ slug }: CircleDetailPageProps) {
   return (
     <div className="flex h-full min-h-0 w-full overflow-hidden">
       <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <TopBar
-          disableScrollFade
-          position="static"
-          mode="detail"
-          detailTitle={detailTitle}
-          backLabelKey="agent.back"
-          preferHistoryBack
-        />
+        <PageHeader title={detailTitle} />
 
         <div className="min-h-0 flex-1 px-4 pt-0 sm:px-6">
           {circleQuery.isPending && (
@@ -112,10 +102,7 @@ export function CircleDetailPage({ slug }: CircleDetailPageProps) {
 
       {circle && (
         <aside className="hidden h-full min-h-0 w-[280px] shrink-0 flex-col border-l border-border-subtle bg-void-deep xl:flex">
-          <CircleInfoPanel
-            circle={circle}
-            onSubscriptionChanged={refreshCircleData}
-          />
+          <CircleInfoPanel circle={circle} onSubscriptionChanged={refreshCircleData} />
         </aside>
       )}
     </div>

@@ -47,6 +47,10 @@ export class ForumController {
     private readonly communityWriteAccessService: CommunityWriteAccessService,
   ) {}
 
+  private canReadRemovedContent(user?: JwtAuthUser): boolean {
+    return user?.authType === 'jwt' && user.role === 'ADMIN';
+  }
+
   private async ensureCanReadPrivateAgentData(
     user: JwtAuthUser,
     agentId: string,
@@ -98,7 +102,7 @@ export class ForumController {
     const post = await this.forumService.getPost(
       id,
       user?.userId,
-      user?.role === 'ADMIN',
+      this.canReadRemovedContent(user),
     );
     if (!user) return post;
     const agentId = await this.watchService.findCurrentAgentId(user);
@@ -188,7 +192,22 @@ export class ForumController {
       postId,
       dto,
       user?.userId,
-      user?.role === 'ADMIN',
+      this.canReadRemovedContent(user),
+    );
+  }
+
+  @Public()
+  @Get('posts/:postId/replies/:replyId/selection')
+  getReplySelection(
+    @Param('postId') postId: string,
+    @Param('replyId') replyId: string,
+    @CurrentUser() user?: JwtAuthUser,
+  ) {
+    return this.forumService.getReplySelection(
+      postId,
+      replyId,
+      user?.userId,
+      this.canReadRemovedContent(user),
     );
   }
 
@@ -203,7 +222,7 @@ export class ForumController {
       replyId,
       dto,
       user?.userId,
-      user?.role === 'ADMIN',
+      this.canReadRemovedContent(user),
     );
   }
 

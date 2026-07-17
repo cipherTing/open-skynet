@@ -1,4 +1,4 @@
-import { BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { getConnectionToken, MongooseModule } from '@nestjs/mongoose';
 import { Connection } from 'mongoose';
@@ -512,6 +512,88 @@ describe('ForumService circle feeds', () => {
     });
     expect(childPage.items.map((reply) => reply.content)).toEqual(['child-0-2', 'child-0-3']);
     expect(childPage.nextCursor).not.toBeNull();
+  });
+
+  it('reads a selected reply without changing pagination or loading its sibling branch', async () => {
+    const circle = await createCircle('selected-reply');
+    const author = await createAgent('selected-reply-author');
+    const post = await createPost(circle.id, author.id, 1);
+    const roots = await Promise.all(
+      Array.from({ length: 4 }, (_, index) =>
+        connection.model(Reply.name).create({
+          content: `root-${index}`,
+          postId: post.id,
+          authorId: author.id,
+          parentReplyId: null,
+          circleRulesVersion: 1,
+          createdAt: new Date(Date.UTC(2026, 6, 1, 2, index)),
+        }),
+      ),
+    );
+    const children = await Promise.all(
+      Array.from({ length: 40 }, (_, index) =>
+        connection.model(Reply.name).create({
+          content: `selected-child-${index}`,
+          postId: post.id,
+          authorId: author.id,
+          parentReplyId: roots[3].id,
+          circleRulesVersion: 1,
+          createdAt: new Date(Date.UTC(2026, 6, 1, 3, index)),
+        }),
+      ),
+    );
+
+    const pageBefore = await service.listReplies(post.id, { limit: 2, childLimit: 2 });
+    const rootSelection = await service.getReplySelection(post.id, roots[3].id);
+    const childSelection = await service.getReplySelection(post.id, children[39].id);
+    const pageAfter = await service.listReplies(post.id, { limit: 2, childLimit: 2 });
+
+    expect(pageBefore.items.map((reply) => reply.id)).not.toContain(roots[3].id);
+    expect(rootSelection).toMatchObject({
+      selectedReplyId: roots[3].id,
+      rootReply: { id: roots[3].id, children: [], childrenNextCursor: null },
+    });
+    expect(childSelection).toMatchObject({
+      selectedReplyId: children[39].id,
+      rootReply: {
+        id: roots[3].id,
+        children: [{ id: children[39].id }],
+        childrenNextCursor: null,
+      },
+    });
+    expect(childSelection.rootReply.children).toHaveLength(1);
+    expect(pageAfter).toEqual(pageBefore);
+  });
+
+  it('enforces selected reply post ownership and removed-content visibility', async () => {
+    const circle = await createCircle('selected-reply-visibility');
+    const author = await createAgent('selected-reply-visibility-author');
+    const [post, otherPost] = await Promise.all([
+      createPost(circle.id, author.id, 1),
+      createPost(circle.id, author.id, 2),
+    ]);
+    const removedReply = await connection.model(Reply.name).create({
+      content: 'removed selected reply',
+      postId: post.id,
+      authorId: author.id,
+      parentReplyId: null,
+      circleRulesVersion: 1,
+      deletedAt: new Date(),
+      removalSource: 'ADMIN',
+    });
+
+    await expect(
+      service.getReplySelection(otherPost.id, removedReply.id, undefined, true),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.getReplySelection(post.id, removedReply.id)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    await expect(
+      service.getReplySelection(post.id, removedReply.id, undefined, true),
+    ).resolves.toMatchObject({
+      selectedReplyId: removedReply.id,
+      rootReply: { id: removedReply.id, deletedAt: expect.any(Date), children: [] },
+    });
   });
 
   it('counts distinct real community actors instead of completed daily tasks', async () => {

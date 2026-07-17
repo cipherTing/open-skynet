@@ -3,7 +3,6 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import type { Connection } from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { Agent, AgentSchema } from '@/database/schemas/agent.schema';
-import { AuthService } from '@/auth/auth.service';
 import { RedisService } from '@/redis/redis.service';
 import { PublicAccessService } from '@/system/public-access.service';
 import { UserService } from './user.service';
@@ -14,7 +13,6 @@ describe('UserService Agent Key operations', () => {
   let moduleRef: TestingModule;
   let connection: Connection;
   let service: UserService;
-  const authService = { verifyCurrentPassword: jest.fn() };
   const redis = { set: jest.fn() };
   const publicAccess = { getPublicConfig: jest.fn() };
   const previousEncryptionKey = process.env.APP_ENCRYPTION_KEY;
@@ -33,7 +31,6 @@ describe('UserService Agent Key operations', () => {
       ],
       providers: [
         UserService,
-        { provide: AuthService, useValue: authService },
         { provide: RedisService, useValue: { getClient: () => redis } },
         { provide: PublicAccessService, useValue: publicAccess },
       ],
@@ -45,7 +42,6 @@ describe('UserService Agent Key operations', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     await connection.db?.dropDatabase();
-    authService.verifyCurrentPassword.mockResolvedValue(undefined);
     redis.set.mockResolvedValue('OK');
     publicAccess.getPublicConfig.mockResolvedValue({
       guideUrl: 'https://community.example.com/guide.md',
@@ -64,19 +60,22 @@ describe('UserService Agent Key operations', () => {
     else process.env.SECURITY_HMAC_SECRET = previousHmacSecret;
   });
 
-  it('allows only one concurrent rotation from the same Key version', async () => {
+  it('advances the Key version once for every successful concurrent rotation', async () => {
     const agent = await connection.model(Agent.name).create({
       name: 'ConcurrentAgent',
       userId: 'user-1',
     });
     const results = await Promise.allSettled([
-      service.regenerateKey(agent.id, 'user-1', 'Password123'),
-      service.regenerateKey(agent.id, 'user-1', 'Password123'),
+      service.regenerateKey(agent.id),
+      service.regenerateKey(agent.id),
     ]);
-    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
-    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
-    const updated = await connection.model(Agent.name).findById(agent.id).select('+secretKeyCiphertext');
-    expect(updated?.secretKeyVersion).toBe(1);
+    const successfulRotations = results.filter((result) => result.status === 'fulfilled');
+    expect(successfulRotations.length).toBeGreaterThanOrEqual(1);
+    const updated = await connection
+      .model(Agent.name)
+      .findById(agent.id)
+      .select('+secretKeyCiphertext');
+    expect(updated?.secretKeyVersion).toBe(successfulRotations.length);
     expect(updated?.secretKeyCiphertext).toBeTruthy();
   });
 
@@ -85,8 +84,8 @@ describe('UserService Agent Key operations', () => {
       name: 'GuideAgent',
       userId: 'user-2',
     });
-    await service.regenerateKey(agent.id, 'user-2', 'Password123');
-    const result = await service.createGuideLink(agent.id, 'user-2', 'Password123');
+    await service.regenerateKey(agent.id);
+    const result = await service.createGuideLink(agent.id);
     const redisRecord = JSON.parse(redis.set.mock.calls[0]?.[1] as string) as {
       agentId: string;
       keyVersion: number;

@@ -33,7 +33,9 @@ export function AgentInteractionCard({
       ? t('feedback.fallbackLabel')
       : t(`feedback.items.${feedback.type}.label`);
   const isReply = item.targetType === 'REPLY';
-  const href = `/post/${item.post.id}`;
+  const href = isReply && item.reply
+    ? `/post/${item.post.id}?replyId=${encodeURIComponent(item.reply.id)}`
+    : `/post/${item.post.id}`;
   const available = item.targetAvailable;
   const Icon = isReply ? MessageCircle : FileText;
 

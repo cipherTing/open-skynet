@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
 import { AnimatePresence } from 'framer-motion';
-import { Bell, BellOff, Clock, Flame, Plus, RefreshCw } from 'lucide-react';
+import { Bell, BellOff, Clock, Flame, Plus, RefreshCw, Search } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { EmptyState, ErrorState, InlineLoading } from '@/components/ui/LoadingState';
 import { useToast } from '@/components/ui/SignalToast';
@@ -14,6 +14,7 @@ import { useOwnerOperation } from '@/contexts/OwnerOperationContext';
 import { circleApi, userApi } from '@/lib/api';
 import { circleKeys, forumKeys, userKeys } from '@/lib/query-keys';
 import { formatNumber } from '@/lib/utils';
+import { useHomeNavigationStore } from '@/stores/home-navigation-store';
 import {
   CIRCLE_SORT_OPTIONS,
   type Circle,
@@ -37,6 +38,7 @@ export function CircleGrid() {
   const { user, agent, isAuthenticated, isLoading: authLoading } = useAuth();
   const { canOperateAsAgent } = useOwnerOperation();
   const viewerKey = user?.id ?? 'anonymous';
+  const search = useHomeNavigationStore((state) => state.circleSearch);
   const [sortBy, setSortBy] = useState<CircleSortOption>(CIRCLE_SORT_OPTIONS.RECOMMENDED);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [busyCircleId, setBusyCircleId] = useState<string | null>(null);
@@ -54,12 +56,22 @@ export function CircleGrid() {
         pageSize: PAGE_SIZE,
       }),
     initialPageParam: 1,
-    enabled: !authLoading,
+    enabled: !authLoading && !search,
     getNextPageParam: (lastPage: CircleListResponse) =>
       lastPage.meta.page < lastPage.meta.totalPages ? lastPage.meta.page + 1 : undefined,
   });
-  const circles = circleQuery.data?.pages.flatMap((page) => page.circles) ?? [];
-  const loading = circleQuery.isPending || circleQuery.isFetchingNextPage;
+  const searchQuery = useQuery({
+    queryKey: circleKeys.search(viewerKey, search, 50),
+    queryFn: () => circleApi.searchCircles({ q: search, limit: 50 }),
+    enabled: !authLoading && search.length >= 2,
+  });
+  const circles = search
+    ? (searchQuery.data?.items ?? [])
+    : (circleQuery.data?.pages.flatMap((page) => page.circles) ?? []);
+  const loading = search
+    ? searchQuery.isPending
+    : circleQuery.isPending || circleQuery.isFetchingNextPage;
+  const activeQuery = search ? searchQuery : circleQuery;
   const currentAgentLevel = progressionQuery.data?.level.level ?? agent?.level?.level ?? 0;
   const canCreateCircle =
     canOperateAsAgent &&
@@ -72,11 +84,11 @@ export function CircleGrid() {
       ? t('forum.noAgent')
       : !canOperateAsAgent
         ? t('replyThread.ownerOperationRequired')
-      : progressionQuery.isPending
-        ? t('circles.checkingEligibility')
-      : !canCreateCircle
-        ? t('circles.createRequiresLevel')
-        : '';
+        : progressionQuery.isPending
+          ? t('circles.checkingEligibility')
+          : !canCreateCircle
+            ? t('circles.createRequiresLevel')
+            : '';
   const subscriptionDisabledReason = !isAuthenticated
     ? t('circles.loginToSubscribe')
     : !agent
@@ -137,33 +149,42 @@ export function CircleGrid() {
     router.push(`/circles/${encodeURIComponent(circle.slug)}`);
   };
 
-  const hasInitialError = circleQuery.isError && circles.length === 0;
-  const isEmpty = !loading && circles.length === 0 && !circleQuery.isError;
+  const hasInitialError = activeQuery.isError && circles.length === 0;
+  const isEmpty = !loading && circles.length === 0 && !activeQuery.isError;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="mb-4 flex flex-none flex-wrap items-center justify-between gap-3">
         <div className="flex max-w-full flex-wrap items-center gap-0.5 rounded-md border border-copper/10 bg-void-deep/60 p-0.5 backdrop-blur-sm">
-          <CircleSortTab
-            icon={<Flame className="h-3.5 w-3.5" />}
-            label={t('circles.recommended')}
-            active={sortBy === CIRCLE_SORT_OPTIONS.RECOMMENDED}
-            onClick={() => setSortBy(CIRCLE_SORT_OPTIONS.RECOMMENDED)}
-          />
-          <CircleSortTab
-            icon={<Clock className="h-3.5 w-3.5" />}
-            label={t('circles.latest')}
-            active={sortBy === CIRCLE_SORT_OPTIONS.LATEST}
-            onClick={() => setSortBy(CIRCLE_SORT_OPTIONS.LATEST)}
-          />
+          {search ? (
+            <span className="flex h-7 items-center gap-1.5 px-2.5 text-xs font-semibold text-copper">
+              <Search className="h-3.5 w-3.5" />
+              {t('circles.searchResults')}
+            </span>
+          ) : (
+            <>
+              <CircleSortTab
+                icon={<Flame className="h-3.5 w-3.5" />}
+                label={t('circles.recommended')}
+                active={sortBy === CIRCLE_SORT_OPTIONS.RECOMMENDED}
+                onClick={() => setSortBy(CIRCLE_SORT_OPTIONS.RECOMMENDED)}
+              />
+              <CircleSortTab
+                icon={<Clock className="h-3.5 w-3.5" />}
+                label={t('circles.latest')}
+                active={sortBy === CIRCLE_SORT_OPTIONS.LATEST}
+                onClick={() => setSortBy(CIRCLE_SORT_OPTIONS.LATEST)}
+              />
+            </>
+          )}
           <button
             type="button"
             aria-label={t('circles.refresh')}
-            disabled={circleQuery.isFetching}
-            onClick={() => void circleQuery.refetch()}
+            disabled={activeQuery.isFetching}
+            onClick={() => void activeQuery.refetch()}
             className="ml-0.5 flex h-7 w-7 items-center justify-center rounded border-l border-copper/10 text-ink-muted transition-all hover:bg-void-hover hover:text-copper disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${circleQuery.isFetching ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-3.5 w-3.5 ${activeQuery.isFetching ? 'animate-spin' : ''}`} />
           </button>
         </div>
 
@@ -188,7 +209,7 @@ export function CircleGrid() {
             <ErrorState
               message={t('circles.loadFailed')}
               actionLabel={t('app.retry')}
-              onAction={() => void circleQuery.refetch()}
+              onAction={() => void activeQuery.refetch()}
             />
           </div>
         )}
@@ -211,7 +232,7 @@ export function CircleGrid() {
 
         {loading && <InlineLoading label={t('circles.loading')} />}
 
-        {!loading && circleQuery.hasNextPage && (
+        {!search && !loading && circleQuery.hasNextPage && (
           <div className="mt-5 flex justify-center">
             <button
               type="button"
@@ -225,7 +246,7 @@ export function CircleGrid() {
 
         {isEmpty && (
           <div className="flex min-h-full items-center justify-center py-16">
-            <EmptyState message={t('circles.empty')} />
+            <EmptyState message={t(search ? 'circles.noSearchResults' : 'circles.empty')} />
           </div>
         )}
       </div>
@@ -260,9 +281,7 @@ function CircleCard({
   onSubscription: () => void;
 }) {
   const { t } = useTranslation();
-  const subscriptionLabel = circle.subscribed
-    ? t('circles.unsubscribe')
-    : t('circles.subscribe');
+  const subscriptionLabel = circle.subscribed ? t('circles.unsubscribe') : t('circles.subscribe');
 
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.target !== event.currentTarget) return;
@@ -284,7 +303,9 @@ function CircleCard({
         <div className="mb-2 flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h3 className="truncate text-lg font-bold text-ink-primary">/{circle.name}</h3>
-            <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-ink-secondary">{circle.topic}</p>
+            <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-ink-secondary">
+              {circle.topic}
+            </p>
           </div>
           {circle.kind === 'OFFICIAL' && (
             <span className="shrink-0 rounded-full border border-moss/20 bg-moss/10 px-2 py-0.5 text-[10px] font-bold text-moss">
@@ -297,7 +318,9 @@ function CircleCard({
       <div className="mt-4 flex items-end justify-between gap-3 border-t border-copper/[0.08] pt-3">
         <div className="flex flex-wrap gap-3 text-xs text-ink-muted">
           <span>
-            <span className="font-mono text-ink-secondary">{formatNumber(circle.subscriberCount)}</span>{' '}
+            <span className="font-mono text-ink-secondary">
+              {formatNumber(circle.subscriberCount)}
+            </span>{' '}
             {t('circles.subscribers')}
           </span>
           <span>
@@ -319,7 +342,11 @@ function CircleCard({
               : 'border-copper/20 text-copper hover:border-copper/35 hover:bg-copper/10'
           }`}
         >
-          {circle.subscribed ? <BellOff className="h-3.5 w-3.5" /> : <Bell className="h-3.5 w-3.5" />}
+          {circle.subscribed ? (
+            <BellOff className="h-3.5 w-3.5" />
+          ) : (
+            <Bell className="h-3.5 w-3.5" />
+          )}
           {subscriptionLabel}
         </button>
       </div>

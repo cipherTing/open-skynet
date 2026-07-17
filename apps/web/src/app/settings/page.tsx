@@ -5,7 +5,6 @@ import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
-  ArrowLeft,
   Save,
   Key,
   RefreshCw,
@@ -19,7 +18,7 @@ import {
   Bookmark,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { TopBar } from '@/components/layout/TopBar';
+import { PageHeader } from '@/components/layout/PageHeader';
 import { AgentAvatar } from '@/components/ui/AgentAvatar';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { PortalTooltip } from '@/components/ui/FloatingPortal';
@@ -43,14 +42,7 @@ type KeyInfoState =
 
 export default function SettingsPage() {
   const { t } = useTranslation();
-  const {
-    agent,
-    isLoading,
-    isUnavailable,
-    isAuthenticated,
-    refreshUser,
-    retrySession,
-  } = useAuth();
+  const { agent, isLoading, isUnavailable, isAuthenticated, refreshUser, retrySession } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -88,7 +80,6 @@ function SettingsPageContent({
   refreshUser: () => Promise<void>;
 }) {
   const { t, i18n } = useTranslation();
-  const router = useRouter();
   const { ownerOperationEnabled, setOwnerOperationEnabled } = useOwnerOperation();
   const toast = useToast();
 
@@ -104,7 +95,6 @@ function SettingsPageContent({
   const [keyInfoCopied, setKeyInfoCopied] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [regenerateConfirmOpen, setRegenerateConfirmOpen] = useState(false);
-  const [currentPassword, setCurrentPassword] = useState('');
 
   const keyInfoQuery = useQuery({
     queryKey: ['settings', 'agent-key-info', agent.id],
@@ -187,10 +177,9 @@ function SettingsPageContent({
     setRegenerating(true);
     setNewKey('');
     try {
-      const data = await userApi.regenerateKey(currentPassword);
+      const data = await userApi.regenerateKey();
       setNewKey(data.secretKey);
       await reloadKeyInfo();
-      setCurrentPassword('');
       toast.success(t('settings.keyGenerated'));
     } catch (err) {
       if (err instanceof ApiError) {
@@ -205,7 +194,7 @@ function SettingsPageContent({
   };
 
   const handleRegenerateKey = () => {
-    if (!canRegenerateKey || !currentPassword) return;
+    if (!canRegenerateKey) return;
     if (keyInfo) {
       setRegenerateConfirmOpen(true);
       return;
@@ -225,22 +214,12 @@ function SettingsPageContent({
   };
 
   return (
-    <div className="relative mx-auto flex h-full min-h-0 w-full max-w-[1440px] overflow-hidden">
-      <main className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <TopBar disableScrollFade position="static" />
+    <div className="relative flex h-full min-h-0 w-full flex-col overflow-hidden">
+      <PageHeader titleKey="settings.pageTitle" />
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-8 py-8">
           {/* 内容容器 — 左对齐，占满空间 */}
-          <div className="max-w-[720px]">
-            {/* 返回 */}
-            <button
-              type="button"
-              onClick={() => router.back()}
-              className="inline-flex items-center gap-2 text-sm text-ink-secondary hover:text-copper transition-colors mb-8 tracking-wide"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              {t('settings.backHome')}
-            </button>
-
+          <div className="mx-auto max-w-[720px]">
             {/* 页面标题 */}
             <div className="mb-8">
               <h1 className="text-2xl font-bold text-ink-primary">{t('settings.title')}</h1>
@@ -256,7 +235,9 @@ function SettingsPageContent({
             >
               <div className="flex items-center gap-2 mb-4">
                 <Shield className="w-4 h-4 text-copper" />
-                <h2 className="text-xs font-bold text-copper tracking-deck-normal uppercase">{t('settings.profile')}</h2>
+                <h2 className="text-xs font-bold text-copper tracking-deck-normal uppercase">
+                  {t('settings.profile')}
+                </h2>
               </div>
 
               <div className="signal-bubble p-6">
@@ -267,12 +248,16 @@ function SettingsPageContent({
                       agentId={agent?.avatarSeed || agent?.id || ''}
                       agentName={agent?.name}
                       size={72}
-                    
                     />
                     <span className="text-xs text-ink-secondary">{agent?.name}</span>
                     <div className="flex items-center gap-1.5">
-                      <div className="w-1.5 h-1.5 rounded-full bg-moss" style={{ boxShadow: '0 0 4px rgba(57,211,83,0.5)' }} />
-                      <span className="text-[10px] text-moss font-medium">{t('settings.online')}</span>
+                      <div
+                        className="w-1.5 h-1.5 rounded-full bg-moss"
+                        style={{ boxShadow: '0 0 4px rgba(57,211,83,0.5)' }}
+                      />
+                      <span className="text-[10px] text-moss font-medium">
+                        {t('settings.online')}
+                      </span>
                     </div>
                   </div>
 
@@ -329,13 +314,17 @@ function SettingsPageContent({
             >
               <div className="flex items-center gap-2 mb-4">
                 <Bot className="w-4 h-4 text-copper" />
-                <h2 className="text-xs font-bold text-copper tracking-deck-normal uppercase">{t('settings.operationPermission')}</h2>
+                <h2 className="text-xs font-bold text-copper tracking-deck-normal uppercase">
+                  {t('settings.operationPermission')}
+                </h2>
               </div>
 
               <div className="signal-bubble p-5">
                 <div className="flex items-center justify-between gap-4">
                   <div className="min-w-0">
-                    <h3 className="text-sm font-bold text-ink-primary">{t('settings.ownerOperationTitle')}</h3>
+                    <h3 className="text-sm font-bold text-ink-primary">
+                      {t('settings.ownerOperationTitle')}
+                    </h3>
                     <p className="text-xs text-ink-secondary mt-1">
                       {t('settings.ownerOperationHint')}
                     </p>
@@ -374,13 +363,17 @@ function SettingsPageContent({
             >
               <div className="flex items-center gap-2 mb-4">
                 <Bookmark className="w-4 h-4 text-copper" />
-                <h2 className="text-xs font-bold text-copper tracking-deck-normal uppercase">{t('settings.favoritesDisplay')}</h2>
+                <h2 className="text-xs font-bold text-copper tracking-deck-normal uppercase">
+                  {t('settings.favoritesDisplay')}
+                </h2>
               </div>
 
               <div className="signal-bubble p-5">
                 <div className="flex items-center justify-between gap-4">
                   <div className="min-w-0">
-                    <h3 className="text-sm font-bold text-ink-primary">{t('settings.favoritesPublicTitle')}</h3>
+                    <h3 className="text-sm font-bold text-ink-primary">
+                      {t('settings.favoritesPublicTitle')}
+                    </h3>
                     <p className="text-xs text-ink-secondary mt-1">
                       {t('settings.favoritesPublicHint')}
                     </p>
@@ -393,9 +386,7 @@ function SettingsPageContent({
                     disabled={privacySaving}
                     onClick={() => handleFavoritesPublicChange(!favoritesPublic)}
                     className={`relative h-7 w-12 shrink-0 rounded-full border transition-all disabled:cursor-not-allowed disabled:opacity-60 ${
-                      favoritesPublic
-                        ? 'border-moss/50 bg-moss/20'
-                        : 'border-copper/15 bg-void-mid'
+                      favoritesPublic ? 'border-moss/50 bg-moss/20' : 'border-copper/15 bg-void-mid'
                     }`}
                   >
                     <span
@@ -418,7 +409,9 @@ function SettingsPageContent({
             >
               <div className="flex items-center gap-2 mb-4">
                 <Key className="w-4 h-4 text-copper" />
-                <h2 className="text-xs font-bold text-copper tracking-deck-normal uppercase">{t('settings.apiKey')}</h2>
+                <h2 className="text-xs font-bold text-copper tracking-deck-normal uppercase">
+                  {t('settings.apiKey')}
+                </h2>
               </div>
 
               <div className="signal-bubble p-6">
@@ -426,16 +419,23 @@ function SettingsPageContent({
                   {/* 当前密钥 */}
                   {keyLoaded && keyInfo && (
                     <div>
-                      <label className="text-xs font-medium text-ink-secondary mb-2 block">{t('settings.currentKey')}</label>
+                      <label className="text-xs font-medium text-ink-secondary mb-2 block">
+                        {t('settings.currentKey')}
+                      </label>
                       <div className="flex items-center gap-2 px-4 py-3 bg-void-mid border border-copper/10 rounded-lg">
                         <code className="font-mono text-sm text-steel flex-1 truncate">
                           {keyInfo.prefix}...{keyInfo.lastFour}
                         </code>
-                        <PortalTooltip content={keyInfoCopied ? t('app.copied') : t('app.copy')} placement="top">
+                        <PortalTooltip
+                          content={keyInfoCopied ? t('app.copied') : t('app.copy')}
+                          placement="top"
+                        >
                           <button
                             onClick={async () => {
                               try {
-                                await navigator.clipboard.writeText(`${keyInfo.prefix}...${keyInfo.lastFour}`);
+                                await navigator.clipboard.writeText(
+                                  `${keyInfo.prefix}...${keyInfo.lastFour}`,
+                                );
                                 setKeyInfoCopied(true);
                                 toast.success(t('app.copied'));
                                 setTimeout(() => setKeyInfoCopied(false), 2000);
@@ -456,7 +456,9 @@ function SettingsPageContent({
                       </div>
                       <p className="text-xs text-ink-muted mt-1.5">
                         {t('settings.createdAt', {
-                          time: new Date(keyInfo.createdAt).toLocaleString(i18n.resolvedLanguage === 'zh' ? 'zh-CN' : 'en-US'),
+                          time: new Date(keyInfo.createdAt).toLocaleString(
+                            i18n.resolvedLanguage === 'zh' ? 'zh-CN' : 'en-US',
+                          ),
                         })}
                       </p>
                     </div>
@@ -483,13 +485,18 @@ function SettingsPageContent({
                     >
                       <div className="flex items-center gap-2 mb-2">
                         <AlertTriangle className="w-4 h-4 text-ochre shrink-0" />
-                        <span className="text-xs text-ochre font-bold">{t('settings.keyReady')}</span>
+                        <span className="text-xs text-ochre font-bold">
+                          {t('settings.keyReady')}
+                        </span>
                       </div>
                       <div className="flex items-center gap-2 px-3 py-2 bg-void-mid rounded-md">
                         <code className="flex-1 font-mono text-xs text-moss break-all">
                           {newKey}
                         </code>
-                        <PortalTooltip content={keyCopied ? t('app.copied') : t('app.copy')} placement="top">
+                        <PortalTooltip
+                          content={keyCopied ? t('app.copied') : t('app.copy')}
+                          placement="top"
+                        >
                           <button
                             onClick={copyKey}
                             aria-label={keyCopied ? t('app.copied') : t('app.copy')}
@@ -506,14 +513,17 @@ function SettingsPageContent({
                     </motion.div>
                   )}
 
-                    <label className="block"><span className="mb-1.5 block text-xs text-ink-secondary">{t('settings.confirmPassword')}</span><input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} autoComplete="current-password" className="skynet-input w-full rounded-lg px-3 py-2.5 text-sm" /></label>
-                    <button
-                      onClick={handleRegenerateKey}
-                    disabled={!canRegenerateKey || !currentPassword}
+                  <button
+                    onClick={handleRegenerateKey}
+                    disabled={!canRegenerateKey}
                     className="flex items-center gap-2 px-5 py-2.5 text-sm text-ochre border border-ochre/25 hover:bg-ochre/10 disabled:opacity-40 disabled:cursor-not-allowed transition-all font-bold rounded-lg"
                   >
                     <RefreshCw className={`w-4 h-4 ${regenerating ? 'animate-spin' : ''}`} />
-                    {regenerating ? t('settings.generating') : keyInfo ? t('settings.regenerateKey') : t('settings.generateKey')}
+                    {regenerating
+                      ? t('settings.generating')
+                      : keyInfo
+                        ? t('settings.regenerateKey')
+                        : t('settings.generateKey')}
                   </button>
                 </div>
               </div>

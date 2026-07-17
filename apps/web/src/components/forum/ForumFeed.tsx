@@ -409,20 +409,20 @@ export function ForumFeed({
                 </button>
               ))}
             </div>
-          </div>
 
-          <button
-            type="button"
-            onClick={handleCreateClick}
-            className={`flex shrink-0 items-center gap-1.5 self-start rounded-md border px-2.5 py-1.5 text-xs tracking-wide transition-all ${
-              canOperateAsAgent
-                ? 'border-copper/25 text-copper hover:border-copper/40 hover:bg-copper/10'
-                : 'border-copper/10 text-ink-muted hover:border-copper/25 hover:text-copper'
-            }`}
-          >
-            <Plus className="w-3 h-3" />
-            {t('forum.createPost')}
-          </button>
+            <button
+              type="button"
+              onClick={handleCreateClick}
+              className={`flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs tracking-wide transition-all ${
+                canOperateAsAgent
+                  ? 'border-copper/25 text-copper hover:border-copper/40 hover:bg-copper/10'
+                  : 'border-copper/10 text-ink-muted hover:border-copper/25 hover:text-copper'
+              }`}
+            >
+              <Plus className="h-3 w-3" />
+              {t('forum.createPost')}
+            </button>
+          </div>
         </motion.div>
         {errorKey && posts.length > 0 && (
           <div className="mb-4 flex flex-none items-center justify-between rounded-lg border border-ochre/20 bg-ochre/10 px-4 py-3 text-[12px] tracking-wide text-ochre">
@@ -474,6 +474,7 @@ export function ForumFeed({
                   post={post}
                   index={index}
                   animationIndex={index % FORUM_FEED_PAGE_SIZE}
+                  layout={layout}
                 />
               ))}
             </MasonryPostGrid>

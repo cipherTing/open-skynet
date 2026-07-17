@@ -467,6 +467,11 @@ export interface ForumReplyPage {
   nextCursor: string | null;
 }
 
+export interface ForumReplySelection {
+  rootReply: ForumReply;
+  selectedReplyId: string;
+}
+
 export type ForumQuoteSourceType = 'POST' | 'REPLY';
 
 export interface ForumReplyQuote {

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, RefreshCw, Search, X } from 'lucide-react';
 import { motion } from 'framer-motion';
+import * as Popover from '@radix-ui/react-popover';
 import { useTranslation } from 'react-i18next';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { LanguageToggle } from '@/components/ui/LanguageToggle';
@@ -70,14 +71,37 @@ export function TopBar({
   const router = useRouter();
   const setHomeActiveSection = useHomeNavigationStore((state) => state.setActiveSection);
   const postSearch = useHomeNavigationStore((state) => state.postSearch);
+  const circleSearch = useHomeNavigationStore((state) => state.circleSearch);
   const setPostSearch = useHomeNavigationStore((state) => state.setPostSearch);
+  const setCircleSearch = useHomeNavigationStore((state) => state.setCircleSearch);
   const [scrolled, setScrolled] = useState(false);
-  const [searchInput, setSearchInput] = useState(postSearch);
+  const isSearchMode = mode === 'feed' || mode === 'circles';
+  const appliedSearch = mode === 'circles' ? circleSearch : postSearch;
+  const setAppliedSearch = mode === 'circles' ? setCircleSearch : setPostSearch;
+  const [searchDraft, setSearchDraft] = useState({
+    mode,
+    value: appliedSearch,
+    error: '',
+  });
+  const searchInput = searchDraft.mode === mode ? searchDraft.value : appliedSearch;
+  const searchError = searchDraft.mode === mode ? searchDraft.error : '';
+  const setSearchInput = (value: string) => {
+    setSearchDraft((current) => ({
+      mode,
+      value,
+      error: current.mode === mode ? current.error : '',
+    }));
+  };
+  const setSearchError = (error: string) => {
+    setSearchDraft((current) => ({
+      mode,
+      value: current.mode === mode ? current.value : appliedSearch,
+      error,
+    }));
+  };
   const [searchOpen, setSearchOpen] = useState(false);
-  const [searchError, setSearchError] = useState('');
   const effectiveScrolled = !disableScrollFade && scrolled;
   const isGovernanceMode = mode === 'governance';
-  const isFeedMode = mode === 'feed';
   const resolvedBackLabel = backLabel ?? (backLabelKey ? t(backLabelKey) : '');
   const hasBackLink = Boolean(resolvedBackLabel && (backHref || preferHistoryBack));
   const backControlClassName =
@@ -100,16 +124,21 @@ export function TopBar({
       setSearchError(t('app.searchMinLength'));
       return;
     }
+    const maximumLength = mode === 'circles' ? 80 : 200;
+    if (normalized.length > maximumLength) {
+      setSearchError(t('app.searchMaxLength', { count: maximumLength }));
+      return;
+    }
     setSearchError('');
     setSearchInput(normalized);
-    setPostSearch(normalized);
+    setAppliedSearch(normalized);
     setSearchOpen(false);
   };
 
   const clearSearch = () => {
     setSearchInput('');
     setSearchError('');
-    setPostSearch('');
+    setAppliedSearch('');
   };
 
   useEffect(() => {
@@ -242,10 +271,11 @@ export function TopBar({
         {/* 右: 搜索 + 主题 + 语言 + 时钟 */}
         <div className="relative flex items-center gap-3 pointer-events-auto">
           {/* 搜索 */}
-          {isFeedMode && (
+          {isSearchMode && (
             <>
               <SearchForm
                 className="hidden xl:flex"
+                errorId="workspace-search-error-desktop"
                 value={searchInput}
                 error={searchError}
                 onChange={(value) => {
@@ -254,36 +284,47 @@ export function TopBar({
                 }}
                 onClear={clearSearch}
                 onSubmit={submitSearch}
-                placeholder={t('app.searchPosts')}
+                placeholder={t(mode === 'circles' ? 'app.searchCircles' : 'app.searchPosts')}
                 clearLabel={t('app.clearSearch')}
+                maxLength={mode === 'circles' ? 80 : 200}
               />
-              <PortalTooltip content={t('app.openSearch')} placement="bottom">
-                <button
-                  type="button"
-                  aria-label={t('app.openSearch')}
-                  aria-expanded={searchOpen}
-                  onClick={() => setSearchOpen((open) => !open)}
-                  className="flex h-8 w-8 items-center justify-center rounded-md border border-border-subtle text-ink-muted transition-colors hover:border-border-accent hover:text-copper xl:hidden"
-                >
-                  {searchOpen ? <X className="h-4 w-4" /> : <Search className="h-4 w-4" />}
-                </button>
-              </PortalTooltip>
-              {searchOpen ? (
-                <SearchForm
-                  className="absolute right-0 top-10 flex xl:hidden"
-                  value={searchInput}
-                  error={searchError}
-                  onChange={(value) => {
-                    setSearchInput(value);
-                    setSearchError('');
-                  }}
-                  onClear={clearSearch}
-                  onSubmit={submitSearch}
-                  placeholder={t('app.searchPosts')}
-                  clearLabel={t('app.clearSearch')}
-                  autoFocus
-                />
-              ) : null}
+              <Popover.Root open={searchOpen} onOpenChange={setSearchOpen}>
+                <PortalTooltip content={t('app.openSearch')} placement="bottom">
+                  <Popover.Trigger asChild>
+                    <button
+                      type="button"
+                      aria-label={t('app.openSearch')}
+                      className="flex h-8 w-8 items-center justify-center rounded-md border border-border-subtle text-ink-muted transition-colors hover:border-border-accent hover:text-copper xl:hidden"
+                    >
+                      {searchOpen ? <X className="h-4 w-4" /> : <Search className="h-4 w-4" />}
+                    </button>
+                  </Popover.Trigger>
+                </PortalTooltip>
+                <Popover.Portal>
+                  <Popover.Content
+                    align="end"
+                    sideOffset={8}
+                    className="skynet-floating-content z-[190] rounded-lg border border-border-subtle bg-surface-1 p-2 shadow-[0_18px_48px_rgba(0,0,0,0.28)] xl:hidden"
+                  >
+                    <SearchForm
+                      className="flex"
+                      errorId="workspace-search-error-mobile"
+                      value={searchInput}
+                      error={searchError}
+                      onChange={(value) => {
+                        setSearchInput(value);
+                        setSearchError('');
+                      }}
+                      onClear={clearSearch}
+                      onSubmit={submitSearch}
+                      placeholder={t(mode === 'circles' ? 'app.searchCircles' : 'app.searchPosts')}
+                      clearLabel={t('app.clearSearch')}
+                      maxLength={mode === 'circles' ? 80 : 200}
+                      autoFocus
+                    />
+                  </Popover.Content>
+                </Popover.Portal>
+              </Popover.Root>
             </>
           )}
 
@@ -310,11 +351,13 @@ export function TopBar({
 
 interface SearchFormProps {
   className: string;
+  errorId: string;
   value: string;
   error: string;
   placeholder: string;
   clearLabel: string;
   autoFocus?: boolean;
+  maxLength: number;
   onChange: (value: string) => void;
   onClear: () => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
@@ -322,11 +365,13 @@ interface SearchFormProps {
 
 function SearchForm({
   className,
+  errorId,
   value,
   error,
   placeholder,
   clearLabel,
   autoFocus = false,
+  maxLength,
   onChange,
   onClear,
   onSubmit,
@@ -338,11 +383,12 @@ function SearchForm({
         type="search"
         value={value}
         autoFocus={autoFocus}
+        maxLength={maxLength}
         aria-invalid={Boolean(error)}
-        aria-describedby={error ? 'post-search-error' : undefined}
+        aria-describedby={error ? errorId : undefined}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="skynet-input w-56 rounded-lg py-2 pl-9 pr-9 font-sans text-sm tracking-wide"
+        className="skynet-input h-8 w-56 rounded-lg py-0 pl-9 pr-9 font-sans text-sm tracking-wide"
       />
       {value ? (
         <button
@@ -356,7 +402,7 @@ function SearchForm({
       ) : null}
       {error ? (
         <span
-          id="post-search-error"
+          id={errorId}
           className="absolute right-0 top-full mt-1 whitespace-nowrap rounded bg-surface-2 px-2 py-1 text-[11px] text-signal-warning"
         >
           {error}
