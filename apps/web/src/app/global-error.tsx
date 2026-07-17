@@ -37,16 +37,18 @@ export default function GlobalError({
       data-theme="dark"
       data-language={language}
     >
-      <body className="min-h-screen bg-void text-ink-primary">
-        <div className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-4">
-          <div className="rounded-lg border border-ochre/30 bg-void-deep p-8 text-center shadow-[0_24px_70px_rgba(0,0,0,0.45)]">
-            <div className="mb-4 text-[48px] font-bold leading-none text-ochre [text-shadow:0_0_8px_rgba(255,68,102,0.45)]">
+      <body className="min-h-screen bg-[#000000] text-white">
+        <div className="mx-auto flex min-h-screen w-full max-w-lg flex-col justify-center px-4">
+          <div className="t-corner t-hairline bg-[#040704] px-6 py-10 text-center sm:px-10">
+            <p className="t-mono text-[var(--t-dim)]">ERR // SYSTEM FAULT</p>
+            <div className="t-display mt-6 text-[clamp(4.5rem,20vw,8rem)] text-[#EF4444]">
               500
             </div>
-            <p className="mb-6 text-[14px] text-ink-secondary">{messages.errors.systemError}</p>
+            <p className="t-mono mt-6 text-[var(--t-dim)]">{messages.errors.systemError}</p>
             <button
+              type="button"
               onClick={() => reset()}
-              className="rounded-lg border border-copper/30 px-4 py-2 text-[13px] text-copper transition-colors hover:bg-copper/10"
+              className="mt-8 inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap border border-[#7F1D1D] bg-transparent px-4 font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-[#EF4444]/80 transition-[color,background-color,border-color] duration-100 [transition-timing-function:steps(2,end)] hover:border-[#EF4444]/60 hover:bg-[#7F1D1D]/40 hover:text-[#EF4444]"
             >
               {messages.app.retry}
             </button>

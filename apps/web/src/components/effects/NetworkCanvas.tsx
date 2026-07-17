@@ -16,19 +16,11 @@ const NODE_COUNT = 34;
 const CONNECTION_DISTANCE = 210;
 const MOUSE_REPEL_RADIUS = 150;
 const MOUSE_REPEL_FORCE = 0.8;
-const THEME_PALETTE = {
-  dark: {
-    node: '255, 153, 85',
-    line: '255, 122, 46',
-    nodeAlpha: 0.92,
-    lineAlpha: 0.22,
-  },
-  light: {
-    node: '3, 105, 161',
-    line: '204, 92, 26',
-    nodeAlpha: 0.72,
-    lineAlpha: 0.18,
-  },
+const PALETTE = {
+  node: '255, 153, 85',
+  line: '255, 122, 46',
+  nodeAlpha: 0.92,
+  lineAlpha: 0.22,
 } as const;
 
 function createNode(width: number, height: number): Node {
@@ -48,7 +40,6 @@ export function NetworkCanvas() {
   const nodesRef = useRef<Node[]>([]);
   const mouseRef = useRef({ x: -1000, y: -1000 });
   const frameRef = useRef(0);
-  const themeRef = useRef<'dark' | 'light'>('dark');
   const reducedMotionRef = useRef(false);
   const visibleRef = useRef(false);
 
@@ -61,10 +52,7 @@ export function NetworkCanvas() {
     const ctx: CanvasRenderingContext2D = canvasContext;
 
     let destroyed = false;
-    const readTheme = () =>
-      document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
     const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-    themeRef.current = readTheme();
     reducedMotionRef.current = motionQuery.matches;
     visibleRef.current = document.visibilityState === 'visible';
 
@@ -78,8 +66,7 @@ export function NetworkCanvas() {
       const width = window.innerWidth;
       const height = window.innerHeight;
       const mouse = mouseRef.current;
-      const isDark = themeRef.current === 'dark';
-      const palette = isDark ? THEME_PALETTE.dark : THEME_PALETTE.light;
+      const palette = PALETTE;
       const nodes = nodesRef.current;
 
       ctx.clearRect(0, 0, width, height);
@@ -109,7 +96,7 @@ export function NetworkCanvas() {
         }
       }
 
-      ctx.lineWidth = isDark ? 0.65 : 0.55;
+      ctx.lineWidth = 0.65;
       for (let firstIndex = 0; firstIndex < nodes.length; firstIndex += 1) {
         for (let secondIndex = firstIndex + 1; secondIndex < nodes.length; secondIndex += 1) {
           const first = nodes[firstIndex];
@@ -211,10 +198,6 @@ export function NetworkCanvas() {
     const handleMouseLeave = () => {
       mouseRef.current = { x: -1000, y: -1000 };
     };
-    const themeObserver = new MutationObserver(() => {
-      themeRef.current = readTheme();
-      if (reducedMotionRef.current) drawStatic();
-    });
 
     resize();
     window.addEventListener('resize', resize);
@@ -222,10 +205,6 @@ export function NetworkCanvas() {
     window.addEventListener('mouseleave', handleMouseLeave);
     motionQuery.addEventListener('change', handleMotionChange);
     document.addEventListener('visibilitychange', handleVisibility);
-    themeObserver.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['data-theme'],
-    });
 
     return () => {
       destroyed = true;
@@ -235,7 +214,6 @@ export function NetworkCanvas() {
       window.removeEventListener('mouseleave', handleMouseLeave);
       motionQuery.removeEventListener('change', handleMotionChange);
       document.removeEventListener('visibilitychange', handleVisibility);
-      themeObserver.disconnect();
     };
   }, []);
 

@@ -7,14 +7,12 @@ import {
   BellRing,
   Bookmark,
   BookmarkCheck,
-  Calendar,
   Eye,
   MessageSquare,
   Quote,
   X,
 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeSanitize from 'rehype-sanitize';
@@ -29,11 +27,12 @@ import { PostRevisionActions } from './PostRevisionActions';
 import { GovernanceCaseStamp } from '@/components/governance/GovernanceCaseStamp';
 import { ReplyThread } from './ReplyThread';
 import { ReplyInput } from './ReplyInput';
-import { EmptyState, ErrorState, InlineLoading } from '@/components/ui/LoadingState';
+import { ErrorState } from '@/components/ui/LoadingState';
+import { TEmpty, TSkeleton, Timecode } from '@/components/ui/terminal';
 import { ApiError, forumApi } from '@/lib/api';
 import { forumKeys, watchKeys } from '@/lib/query-keys';
 import { notifyProgressionUpdated } from '@/lib/progression-events';
-import { getRelativeTime, formatNumber } from '@/lib/utils';
+import { formatNumber } from '@/lib/utils';
 import { useOwnerOperation } from '@/contexts/OwnerOperationContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/components/ui/SignalToast';
@@ -62,7 +61,6 @@ function PostDetailContent({ postId }: PostDetailProps) {
   const selectedReplyId = highlightedReplyId ?? '';
   const selectionKey = highlightedReplyId ? `${postId}:${highlightedReplyId}` : null;
   const [dismissedSelectionKey, setDismissedSelectionKey] = useState<string | null>(null);
-  const reducedMotion = useReducedMotion() === true;
   const [favoriteBusy, setFavoriteBusy] = useState(false);
   const [watchBusy, setWatchBusy] = useState(false);
   const activePostIdRef = useRef(postId);
@@ -310,7 +308,13 @@ function PostDetailContent({ postId }: PostDetailProps) {
   };
 
   if (loading) {
-    return <InlineLoading label={t('forum.loadingPost')} />;
+    return (
+      <div role="status" aria-label={t('forum.loadingPost')} className="flex flex-col gap-6 py-8">
+        <TSkeleton rows={2} />
+        <TSkeleton rows={4} />
+        <TSkeleton rows={3} />
+      </div>
+    );
   }
 
   if (hasPostError || !post) {
@@ -334,16 +338,9 @@ function PostDetailContent({ postId }: PostDetailProps) {
   const postWatching = post.currentAgentWatching === true;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4 }}
-      className="w-full pb-8"
-    >
+    <div className="w-full pb-8">
       {/* 主帖内容 */}
-      <article className="post-topic-card relative mb-7 overflow-visible rounded-lg border px-5 py-5 sm:px-7 sm:py-6">
-        <div className="post-topic-accent-top absolute inset-x-0 top-0 h-1 rounded-t-lg" />
-        <div className="post-topic-accent-side absolute bottom-4 left-0 top-4 w-1 rounded-r-full" />
+      <article className="post-topic-card t-corner relative mb-7 overflow-visible border px-5 py-5 sm:px-7 sm:py-6">
         {post.activeGovernanceCase ? (
           <GovernanceCaseStamp caseId={post.activeGovernanceCase.id} />
         ) : null}
@@ -374,18 +371,15 @@ function PostDetailContent({ postId }: PostDetailProps) {
             </span>
           </button>
 
-          <div className="post-topic-muted flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] sm:justify-end">
-            <span className="font-mono text-steel tracking-wider">{t('forum.dossier')}</span>
+          <div className="post-topic-muted flex flex-wrap items-center gap-x-3 gap-y-1.5 font-mono text-[11px] tabular-nums sm:justify-end">
+            <span className="tracking-wider text-info">{t('forum.dossier')}</span>
             <CircleBadge
               circle={post.circle}
               compact
               href={`/circles/${encodeURIComponent(post.circle.slug)}`}
             />
-            <span className="font-mono">{post.id.slice(0, 8).toUpperCase()}</span>
-            <span className="flex items-center gap-1">
-              <Calendar className="w-3 h-3" />
-              {getRelativeTime(post.createdAt)}
-            </span>
+            <span>{post.id.slice(0, 8).toUpperCase()}</span>
+            <Timecode date={post.createdAt} withDate />
             <span className="flex items-center gap-1">
               <MessageSquare className="w-3 h-3" />
               {formatNumber(post.replyCount || 0)}
@@ -398,10 +392,10 @@ function PostDetailContent({ postId }: PostDetailProps) {
               type="button"
               disabled={favoriteBusy}
               onClick={handleFavorite}
-              className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-bold transition-all disabled:cursor-not-allowed disabled:opacity-60 ${
+              className={`inline-flex items-center gap-1 border px-2.5 py-1 text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                 postFavorited
-                  ? 'border-moss/35 bg-moss/10 text-moss'
-                  : 'border-copper/20 bg-void-mid/60 text-ink-secondary hover:border-copper/35 hover:text-copper'
+                  ? 'border-accent/40 bg-accent-muted text-accent'
+                  : 'border-border text-text-secondary hover:border-border-accent hover:text-accent'
               }`}
             >
               {postFavorited ? (
@@ -416,10 +410,10 @@ function PostDetailContent({ postId }: PostDetailProps) {
               disabled={watchBusy}
               aria-disabled={!canWatchPost || undefined}
               onClick={handleWatch}
-              className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-bold transition-all disabled:cursor-not-allowed disabled:opacity-60 ${
+              className={`inline-flex items-center gap-1 border px-2.5 py-1 text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                 postWatching
-                  ? 'border-steel/40 bg-steel/10 text-steel'
-                  : 'border-copper/20 bg-void-mid/60 text-ink-secondary hover:border-copper/35 hover:text-copper'
+                  ? 'border-info/40 bg-info/10 text-info'
+                  : 'border-border text-text-secondary hover:border-border-accent hover:text-accent'
               }`}
             >
               {postWatching ? (
@@ -453,7 +447,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
         <div
           id="post-content"
           ref={postContentRef}
-          className="prose-deck post-topic-prose post-topic-prose-panel mb-3 max-w-none rounded-lg border px-4 py-3 text-[14px]"
+          className="prose-deck post-topic-prose post-topic-prose-panel mb-3 max-w-none border px-4 py-3"
         >
           <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
             {post.content}
@@ -465,7 +459,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
             <button
               type="button"
               onClick={quoteSelectedPostText}
-              className="inline-flex items-center gap-1 text-[11px] text-ink-muted transition-colors hover:text-steel"
+              className="inline-flex items-center gap-1 font-mono text-[11px] text-text-tertiary transition-colors hover:text-info"
             >
               <Quote className="h-3.5 w-3.5" />
               {t('replyInput.quoteSelection')}
@@ -497,10 +491,15 @@ function PostDetailContent({ postId }: PostDetailProps) {
 
       {/* 回复区域 */}
       <section>
-        <div className="mb-5 flex items-center gap-2 px-1">
-          <MessageSquare className="h-4 w-4 text-copper-dim" />
-          <span className="text-[12px] font-bold tracking-wide text-copper">
-            {t('forum.repliesTitle', { count: formatNumber(post.replyCount || 0) })}
+        <div className="mb-5 flex items-center gap-3 px-1">
+          <span className="font-mono text-[11px] tracking-[0.2em] text-[#ADFF2F]">CH.02</span>
+          <span className="font-mono text-[11px] tracking-[0.2em] text-[#3A5A3A]">{'//'}</span>
+          <span className="text-[13px] font-bold tracking-wide text-text-primary">
+            {t('forum.chapterReplies')}
+          </span>
+          <span aria-hidden className="h-px flex-1 bg-[#1A2E1A]" />
+          <span className="font-mono text-[10px] tracking-[0.15em] text-[#3A5A3A] tabular-nums">
+            {formatNumber(post.replyCount || 0)} REPLIES
           </span>
         </div>
 
@@ -516,86 +515,73 @@ function PostDetailContent({ postId }: PostDetailProps) {
           </div>
         )}
 
-        <AnimatePresence initial={false}>
-          {selectionKey && dismissedSelectionKey !== selectionKey ? (
-            <motion.div
-              key={selectionKey}
-              initial={reducedMotion ? false : { height: 0, opacity: 0, y: -8 }}
-              animate={{ height: 'auto', opacity: 1, y: 0 }}
-              exit={
-                reducedMotion
-                  ? { display: 'none' }
-                  : { height: 0, marginBottom: 0, opacity: 0, y: -8 }
-              }
-              transition={{ duration: reducedMotion ? 0 : 0.28, ease: [0.22, 1, 0.36, 1] }}
-              className="sticky top-2 z-20 mb-3 overflow-hidden"
+        {selectionKey && dismissedSelectionKey !== selectionKey ? (
+          <div className="sticky top-2 z-20 mb-3">
+            <div
+              className={`selected-reply-shell border p-2.5 ${selectedReplyQuery.data ? 'selected-reply-pulse' : ''}`}
             >
-              <div
-                className={`selected-reply-shell rounded-lg border p-2.5 shadow-lg backdrop-blur-md ${selectedReplyQuery.data ? 'selected-reply-pulse' : ''}`}
-              >
-                <div className="mb-2 flex items-center justify-between gap-3 px-1">
-                  <span className="inline-flex items-center rounded border border-copper/30 bg-copper/10 px-2 py-1 text-[11px] font-bold text-copper">
-                    {t('replyThread.selected')}
-                  </span>
-                  <button
-                    type="button"
-                    aria-label={t('replyThread.closeSelected')}
-                    title={t('replyThread.closeSelected')}
-                    onClick={() => setDismissedSelectionKey(selectionKey)}
-                    className="flex h-7 w-7 items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-surface-3 hover:text-ink-primary"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-                {selectedReplyQuery.isPending ? (
-                  <InlineLoading label={t('app.loading')} />
-                ) : selectedReplyQuery.isError || !selectedReplyQuery.data ? (
-                  <p className="px-2 py-5 text-center text-xs font-semibold text-ochre">
-                    {t('replyThread.selectedLoadFailed')}
-                  </p>
-                ) : (
-                  <ReplyThread
-                    reply={selectedReplyQuery.data.rootReply}
-                    postId={postId}
-                    highlightedReplyId={selectedReplyQuery.data.selectedReplyId}
-                    domIdPrefix="selected-reply"
-                    onReplyCreated={refreshReplyCreatedData}
-                    onReplyUpdated={refreshReplyData}
-                  />
-                )}
+              <div className="mb-2 flex items-center justify-between gap-3 px-1">
+                <span className="inline-flex items-center border border-border-accent bg-accent-muted px-2 py-1 font-mono text-[11px] text-accent">
+                  {t('replyThread.selected')}
+                </span>
+                <button
+                  type="button"
+                  aria-label={t('replyThread.closeSelected')}
+                  title={t('replyThread.closeSelected')}
+                  onClick={() => setDismissedSelectionKey(selectionKey)}
+                  className="flex h-7 w-7 items-center justify-center text-text-tertiary transition-colors hover:bg-surface-3 hover:text-text-primary"
+                >
+                  <X className="h-4 w-4" />
+                </button>
               </div>
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
+              {selectedReplyQuery.isPending ? (
+                <div role="status" aria-label={t('app.loading')} className="px-2 py-3">
+                  <TSkeleton rows={3} />
+                </div>
+              ) : selectedReplyQuery.isError || !selectedReplyQuery.data ? (
+                <p className="px-2 py-5 text-center font-mono text-xs font-semibold text-danger">
+                  {t('replyThread.selectedLoadFailed')}
+                </p>
+              ) : (
+                <ReplyThread
+                  reply={selectedReplyQuery.data.rootReply}
+                  postId={postId}
+                  highlightedReplyId={selectedReplyQuery.data.selectedReplyId}
+                  domIdPrefix="selected-reply"
+                  onReplyCreated={refreshReplyCreatedData}
+                  onReplyUpdated={refreshReplyData}
+                />
+              )}
+            </div>
+          </div>
+        ) : null}
 
         <div className="space-y-3">
-          {repliesQuery.isPending && <InlineLoading label={t('forum.loadingReplies')} />}
+          {repliesQuery.isPending && (
+            <div role="status" aria-label={t('forum.loadingReplies')} className="py-2">
+              <TSkeleton rows={4} />
+            </div>
+          )}
 
-          {replies.map((reply, index) => (
-            <motion.div
+          {replies.map((reply) => (
+            <ReplyThread
               key={reply.id}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, delay: Math.min(index * 0.05, 0.3) }}
-            >
-              <ReplyThread
-                reply={reply}
-                postId={postId}
-                highlightedReplyId={highlightedReplyId}
-                onReplyCreated={refreshReplyCreatedData}
-                onReplyUpdated={refreshReplyData}
-              />
-            </motion.div>
+              reply={reply}
+              postId={postId}
+              highlightedReplyId={highlightedReplyId}
+              onReplyCreated={refreshReplyCreatedData}
+              onReplyUpdated={refreshReplyData}
+            />
           ))}
         </div>
 
         {repliesQuery.isError && (
-          <div className="rounded-lg border border-ochre/20 bg-ochre/10 px-4 py-3 text-center text-[12px] tracking-wide text-ochre">
+          <div className="border border-danger/40 border-l-2 border-l-danger bg-danger/10 px-4 py-3 text-center font-mono text-[12px] tracking-wide text-danger">
             <p>{t('forum.repliesLoadFailed')}</p>
             <button
               type="button"
               onClick={() => void repliesQuery.refetch()}
-              className="mt-2 text-copper transition-colors hover:text-copper-bright"
+              className="mt-2 text-accent transition-colors hover:text-accent-dim"
             >
               {t('app.retry')}
             </button>
@@ -608,7 +594,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
               type="button"
               disabled={repliesQuery.isFetchingNextPage}
               onClick={() => void repliesQuery.fetchNextPage()}
-              className="rounded-md border border-border-subtle px-4 py-2 text-xs text-ink-secondary transition-colors hover:border-copper/40 hover:text-copper disabled:cursor-wait disabled:opacity-50"
+              className="t-btn t-btn--ghost"
             >
               {repliesQuery.isFetchingNextPage
                 ? t('forum.loadingMoreReplies')
@@ -619,10 +605,10 @@ function PostDetailContent({ postId }: PostDetailProps) {
 
         {replies.length === 0 && !repliesQuery.isPending && !repliesQuery.isError && (
           <div className="py-4">
-            <EmptyState message={t('forum.replyEmpty')} />
+            <TEmpty message={t('forum.replyEmpty')} />
           </div>
         )}
       </section>
-    </motion.div>
+    </div>
   );
 }

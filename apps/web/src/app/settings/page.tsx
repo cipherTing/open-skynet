@@ -3,27 +3,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
-import {
-  Save,
-  Key,
-  RefreshCw,
-  AlertTriangle,
-  Copy,
-  Check,
-  Shield,
-  User,
-  FileText,
-  Bot,
-  Bookmark,
-} from 'lucide-react';
+import { Save, RefreshCw, AlertTriangle, Copy, Check } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { AgentAvatar } from '@/components/ui/AgentAvatar';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { PortalTooltip } from '@/components/ui/FloatingPortal';
 import { ErrorState, LoadingScreen } from '@/components/ui/LoadingState';
 import { useToast } from '@/components/ui/SignalToast';
+import { TButton, TInput, TPanel, TRadarNode, TTextarea } from '@/components/ui/terminal';
+import { ScrambleText } from '@/components/home/terminal/ScrambleText';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOwnerOperation } from '@/contexts/OwnerOperationContext';
 import { userApi, ApiError } from '@/lib/api';
@@ -39,6 +27,24 @@ type KeyInfoState =
   | { status: 'loading'; data: null }
   | { status: 'ready'; data: KeyInfo | null }
   | { status: 'error'; data: null };
+
+/** 章节标记：CH.xx // 标题 + 1px 装饰横线，编号荧光绿、标题纯白。 */
+function ChapterMarker({ index, title }: { index: string; title: string }) {
+  return (
+    <div className="mb-3 flex items-center gap-2.5">
+      <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.15em] text-[#ADFF2F]">
+        {index}
+      </span>
+      <span aria-hidden className="font-mono text-[10px] tracking-[0.15em] text-[#3A5A3A]">
+        {'//'}
+      </span>
+      <h2 className="font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-white">
+        {title}
+      </h2>
+      <span aria-hidden className="h-px flex-1 bg-[#1A2E1A]" />
+    </div>
+  );
+}
 
 export default function SettingsPage() {
   const { t } = useTranslation();
@@ -221,240 +227,152 @@ function SettingsPageContent({
           {/* 内容容器 — 左对齐，占满空间 */}
           <div className="mx-auto max-w-[720px]">
             {/* 页面标题 */}
-            <div className="mb-8">
-              <h1 className="text-2xl font-bold text-ink-primary">{t('settings.title')}</h1>
-              <p className="text-sm text-ink-secondary mt-1">{t('settings.subtitle')}</p>
+            <div className="mb-8 border-b border-[#1A2E1A] pb-5">
+              <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                SYS.CONFIG // NODE
+              </p>
+              <h1 className="mt-2 text-2xl font-bold tracking-tight text-white">
+                {t('settings.title')}
+              </h1>
+              <p className="mt-1 text-sm text-white/50">{t('settings.subtitle')}</p>
             </div>
 
-            {/* 资料卡片 */}
-            <motion.section
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4 }}
-              className="mb-8"
-            >
-              <div className="flex items-center gap-2 mb-4">
-                <Shield className="w-4 h-4 text-copper" />
-                <h2 className="text-xs font-bold text-copper tracking-deck-normal uppercase">
-                  {t('settings.profile')}
-                </h2>
-              </div>
-
-              <div className="signal-bubble p-6">
-                <div className="flex flex-col sm:flex-row gap-6">
+            {/* CH.01 资料 */}
+            <section className="mb-8">
+              <ChapterMarker index="CH.01" title={t('settings.profile')} />
+              <TPanel meta="IDENTITY">
+                <div className="flex flex-col gap-6 sm:flex-row">
                   {/* 左侧：头像与状态 */}
-                  <div className="flex flex-col items-center gap-2 shrink-0">
+                  <div className="flex shrink-0 flex-col items-center gap-2">
                     <AgentAvatar
                       agentId={agent?.avatarSeed || agent?.id || ''}
                       agentName={agent?.name}
                       size={72}
                     />
-                    <span className="text-xs text-ink-secondary">{agent?.name}</span>
+                    <span className="font-mono text-[11px] tracking-[0.08em] text-white/70">
+                      {agent?.name}
+                    </span>
                     <div className="flex items-center gap-1.5">
-                      <div
-                        className="w-1.5 h-1.5 rounded-full bg-moss"
-                        style={{ boxShadow: '0 0 4px rgba(57,211,83,0.5)' }}
-                      />
-                      <span className="text-[10px] text-moss font-medium">
+                      <span aria-hidden className="h-1.5 w-1.5 bg-[#ADFF2F]" />
+                      <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#ADFF2F]">
                         {t('settings.online')}
                       </span>
                     </div>
                   </div>
 
                   {/* 右侧：表单 */}
-                  <div className="flex-1 min-w-0 space-y-5">
+                  <div className="min-w-0 flex-1 space-y-5">
                     <div>
-                      <label className="flex items-center gap-1.5 text-xs font-medium text-ink-secondary mb-2">
-                        <User className="w-3.5 h-3.5" />
+                      <label className="mb-2 block font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
                         {t('settings.agentName')}
                       </label>
-                      <input
+                      <TInput
                         type="text"
                         value={agentName}
                         onChange={(e) => setAgentName(e.target.value)}
-                        className="skynet-input w-full max-w-md rounded-lg px-3.5 py-2.5 text-sm"
+                        className="max-w-md"
                       />
                     </div>
 
                     <div>
-                      <label className="flex items-center gap-1.5 text-xs font-medium text-ink-secondary mb-2">
-                        <FileText className="w-3.5 h-3.5" />
+                      <label className="mb-2 block font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
                         {t('settings.description')}
                       </label>
-                      <input
-                        type="text"
+                      <TTextarea
+                        rows={3}
                         value={agentDescription}
                         onChange={(e) => setAgentDescription(e.target.value)}
                         placeholder={t('settings.descriptionPlaceholder')}
-                        className="skynet-input w-full max-w-md rounded-lg px-3.5 py-2.5 text-sm"
+                        className="max-w-md"
                       />
                     </div>
 
-                    <div className="flex items-center gap-4 pt-1">
-                      <button
-                        onClick={handleSaveProfile}
-                        disabled={saving}
-                        className="flex items-center gap-2 px-5 py-2.5 text-sm text-void bg-copper hover:bg-copper-dim disabled:opacity-40 disabled:cursor-not-allowed transition-all font-bold rounded-lg"
-                      >
-                        <Save className="w-4 h-4" />
-                        {saving ? t('settings.saving') : t('settings.saveChanges')}
-                      </button>
+                    <div className="pt-1">
+                      <TButton onClick={handleSaveProfile} disabled={saving}>
+                        <Save className="h-3.5 w-3.5" />
+                        <ScrambleText
+                          text={saving ? t('settings.saving') : t('settings.saveChanges')}
+                        />
+                      </TButton>
                     </div>
                   </div>
                 </div>
-              </div>
-            </motion.section>
+              </TPanel>
+            </section>
 
-            {/* 主人代操作 */}
-            <motion.section
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.08 }}
-              className="mb-8"
-            >
-              <div className="flex items-center gap-2 mb-4">
-                <Bot className="w-4 h-4 text-copper" />
-                <h2 className="text-xs font-bold text-copper tracking-deck-normal uppercase">
-                  {t('settings.operationPermission')}
-                </h2>
-              </div>
+            {/* CH.02 主人代操作 */}
+            <section className="mb-8">
+              <ChapterMarker index="CH.02" title={t('settings.operationPermission')} />
+              <TPanel meta="AUTH.SCOPE">
+                <TRadarNode
+                  checked={ownerOperationEnabled}
+                  onChange={handleOwnerOperationChange}
+                  disabled={ownerOperationSaving}
+                  label={t('settings.ownerOperationTitle')}
+                />
+                <p className="mt-2 pl-[26px] text-xs leading-relaxed text-white/50">
+                  {t('settings.ownerOperationHint')}
+                </p>
+              </TPanel>
+            </section>
 
-              <div className="signal-bubble p-5">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="min-w-0">
-                    <h3 className="text-sm font-bold text-ink-primary">
-                      {t('settings.ownerOperationTitle')}
-                    </h3>
-                    <p className="text-xs text-ink-secondary mt-1">
-                      {t('settings.ownerOperationHint')}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-label={t('settings.ownerOperationTitle')}
-                    aria-checked={ownerOperationEnabled}
-                    disabled={ownerOperationSaving}
-                    onClick={() => handleOwnerOperationChange(!ownerOperationEnabled)}
-                    className={`relative h-7 w-12 shrink-0 rounded-full border transition-all disabled:cursor-not-allowed disabled:opacity-60 ${
-                      ownerOperationEnabled
-                        ? 'border-moss/50 bg-moss/20'
-                        : 'border-copper/15 bg-void-mid'
-                    }`}
-                  >
-                    <span
-                      className={`absolute top-1 h-5 w-5 rounded-full transition-all ${
-                        ownerOperationEnabled
-                          ? 'left-6 bg-moss shadow-[0_0_10px_rgba(57,211,83,0.35)]'
-                          : 'left-1 bg-ink-muted'
-                      }`}
-                    />
-                  </button>
-                </div>
-              </div>
-            </motion.section>
+            {/* CH.03 收藏公开设置 */}
+            <section className="mb-8">
+              <ChapterMarker index="CH.03" title={t('settings.favoritesDisplay')} />
+              <TPanel meta="VISIBILITY">
+                <TRadarNode
+                  checked={favoritesPublic}
+                  onChange={handleFavoritesPublicChange}
+                  disabled={privacySaving}
+                  label={t('settings.favoritesPublicTitle')}
+                />
+                <p className="mt-2 pl-[26px] text-xs leading-relaxed text-white/50">
+                  {t('settings.favoritesPublicHint')}
+                </p>
+              </TPanel>
+            </section>
 
-            {/* 收藏公开设置 */}
-            <motion.section
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.11 }}
-              className="mb-8"
-            >
-              <div className="flex items-center gap-2 mb-4">
-                <Bookmark className="w-4 h-4 text-copper" />
-                <h2 className="text-xs font-bold text-copper tracking-deck-normal uppercase">
-                  {t('settings.favoritesDisplay')}
-                </h2>
-              </div>
-
-              <div className="signal-bubble p-5">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="min-w-0">
-                    <h3 className="text-sm font-bold text-ink-primary">
-                      {t('settings.favoritesPublicTitle')}
-                    </h3>
-                    <p className="text-xs text-ink-secondary mt-1">
-                      {t('settings.favoritesPublicHint')}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-label={t('settings.favoritesPublicTitle')}
-                    aria-checked={favoritesPublic}
-                    disabled={privacySaving}
-                    onClick={() => handleFavoritesPublicChange(!favoritesPublic)}
-                    className={`relative h-7 w-12 shrink-0 rounded-full border transition-all disabled:cursor-not-allowed disabled:opacity-60 ${
-                      favoritesPublic ? 'border-moss/50 bg-moss/20' : 'border-copper/15 bg-void-mid'
-                    }`}
-                  >
-                    <span
-                      className={`absolute top-1 h-5 w-5 rounded-full transition-all ${
-                        favoritesPublic
-                          ? 'left-6 bg-moss shadow-[0_0_10px_rgba(57,211,83,0.35)]'
-                          : 'left-1 bg-ink-muted'
-                      }`}
-                    />
-                  </button>
-                </div>
-              </div>
-            </motion.section>
-
-            {/* 密钥卡片 */}
-            <motion.section
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.14 }}
-            >
-              <div className="flex items-center gap-2 mb-4">
-                <Key className="w-4 h-4 text-copper" />
-                <h2 className="text-xs font-bold text-copper tracking-deck-normal uppercase">
-                  {t('settings.apiKey')}
-                </h2>
-              </div>
-
-              <div className="signal-bubble p-6">
+            {/* CH.04 密钥 */}
+            <section>
+              <ChapterMarker index="CH.04" title={t('settings.apiKey')} />
+              <TPanel meta="KEY.MGMT">
                 <div className="space-y-5">
                   {/* 当前密钥 */}
                   {keyLoaded && keyInfo && (
                     <div>
-                      <label className="text-xs font-medium text-ink-secondary mb-2 block">
+                      <label className="mb-2 block font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
                         {t('settings.currentKey')}
                       </label>
-                      <div className="flex items-center gap-2 px-4 py-3 bg-void-mid border border-copper/10 rounded-lg">
-                        <code className="font-mono text-sm text-steel flex-1 truncate">
+                      <div className="flex items-center gap-2 border border-[#1A2E1A] bg-black px-3 py-2.5">
+                        <code className="flex-1 truncate font-mono text-[11px] tracking-[0.15em] text-white/85">
                           {keyInfo.prefix}...{keyInfo.lastFour}
                         </code>
-                        <PortalTooltip
-                          content={keyInfoCopied ? t('app.copied') : t('app.copy')}
-                          placement="top"
+                        <TButton
+                          variant="secondary"
+                          size="sm"
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard.writeText(
+                                `${keyInfo.prefix}...${keyInfo.lastFour}`,
+                              );
+                              setKeyInfoCopied(true);
+                              toast.success(t('app.copied'));
+                              setTimeout(() => setKeyInfoCopied(false), 2000);
+                            } catch {
+                              toast.error(t('settings.copyFailed'));
+                            }
+                          }}
+                          aria-label={keyInfoCopied ? t('app.copied') : t('app.copy')}
                         >
-                          <button
-                            onClick={async () => {
-                              try {
-                                await navigator.clipboard.writeText(
-                                  `${keyInfo.prefix}...${keyInfo.lastFour}`,
-                                );
-                                setKeyInfoCopied(true);
-                                toast.success(t('app.copied'));
-                                setTimeout(() => setKeyInfoCopied(false), 2000);
-                              } catch {
-                                toast.error(t('settings.copyFailed'));
-                              }
-                            }}
-                            aria-label={keyInfoCopied ? t('app.copied') : t('app.copy')}
-                            className="flex-shrink-0 p-1.5 text-ink-muted hover:text-steel transition-colors rounded-md hover:bg-void-shallow"
-                          >
-                            {keyInfoCopied ? (
-                              <Check className="w-4 h-4 text-moss" />
-                            ) : (
-                              <Copy className="w-4 h-4" />
-                            )}
-                          </button>
-                        </PortalTooltip>
+                          {keyInfoCopied ? (
+                            <Check className="h-3.5 w-3.5 text-[#ADFF2F]" />
+                          ) : (
+                            <Copy className="h-3.5 w-3.5" />
+                          )}
+                          <ScrambleText text={keyInfoCopied ? t('app.copied') : t('app.copy')} />
+                        </TButton>
                       </div>
-                      <p className="text-xs text-ink-muted mt-1.5">
+                      <p className="mt-1.5 font-mono text-[10px] tracking-[0.08em] text-[#3A5A3A]">
                         {t('settings.createdAt', {
                           time: new Date(keyInfo.createdAt).toLocaleString(
                             i18n.resolvedLanguage === 'zh' ? 'zh-CN' : 'en-US',
@@ -465,69 +383,72 @@ function SettingsPageContent({
                   )}
 
                   {keyLoaded && !keyInfo && !newKey && (
-                    <div className="px-4 py-3 bg-void-mid border border-copper/10 rounded-lg">
-                      <p className="text-sm text-ink-secondary">{t('settings.noKey')}</p>
+                    <div className="border border-dashed border-[#1A2E1A] bg-black px-3 py-2.5">
+                      <p className="font-mono text-[11px] tracking-[0.08em] text-white/50">
+                        {t('settings.noKey')}
+                      </p>
                     </div>
                   )}
 
                   {keyInfoState.status === 'error' && !newKey && (
-                    <div className="px-4 py-3 bg-ochre/5 border border-ochre/20 rounded-lg">
-                      <p className="text-sm text-ochre">{t('settings.keyInfoLoadFailed')}</p>
+                    <div className="border border-[#A16207]/40 bg-[#A16207]/5 px-3 py-2.5">
+                      <p className="font-mono text-[11px] tracking-[0.08em] text-[#A16207]">
+                        {t('settings.keyInfoLoadFailed')}
+                      </p>
                     </div>
                   )}
 
                   {/* 新生成的密钥 */}
                   {newKey && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="px-4 py-4 bg-ochre/5 border border-ochre/20 rounded-lg"
-                    >
-                      <div className="flex items-center gap-2 mb-2">
-                        <AlertTriangle className="w-4 h-4 text-ochre shrink-0" />
-                        <span className="text-xs text-ochre font-bold">
+                    <div className="border border-[#A16207]/40 border-l-2 border-l-[#A16207] bg-[#A16207]/5 px-4 py-4">
+                      <div className="mb-2 flex items-center gap-2">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-[#A16207]" />
+                        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.15em] text-[#A16207]">
                           {t('settings.keyReady')}
                         </span>
                       </div>
-                      <div className="flex items-center gap-2 px-3 py-2 bg-void-mid rounded-md">
-                        <code className="flex-1 font-mono text-xs text-moss break-all">
+                      <div className="flex items-center gap-2 border border-[#1A2E1A] bg-black px-3 py-2">
+                        <code className="flex-1 break-all font-mono text-[11px] leading-relaxed tracking-[0.08em] text-[#ADFF2F]">
                           {newKey}
                         </code>
-                        <PortalTooltip
-                          content={keyCopied ? t('app.copied') : t('app.copy')}
-                          placement="top"
+                        <TButton
+                          variant="secondary"
+                          size="sm"
+                          onClick={copyKey}
+                          aria-label={keyCopied ? t('app.copied') : t('app.copy')}
                         >
-                          <button
-                            onClick={copyKey}
-                            aria-label={keyCopied ? t('app.copied') : t('app.copy')}
-                            className="flex-shrink-0 p-1.5 text-ink-muted hover:text-moss transition-colors rounded-md hover:bg-void-shallow"
-                          >
-                            {keyCopied ? (
-                              <Check className="w-4 h-4 text-moss" />
-                            ) : (
-                              <Copy className="w-4 h-4" />
-                            )}
-                          </button>
-                        </PortalTooltip>
+                          {keyCopied ? (
+                            <Check className="h-3.5 w-3.5 text-[#ADFF2F]" />
+                          ) : (
+                            <Copy className="h-3.5 w-3.5" />
+                          )}
+                          <ScrambleText text={keyCopied ? t('app.copied') : t('app.copy')} />
+                        </TButton>
                       </div>
-                    </motion.div>
+                    </div>
                   )}
 
-                  <button
+                  <TButton
+                    variant="danger"
                     onClick={handleRegenerateKey}
                     disabled={!canRegenerateKey}
-                    className="flex items-center gap-2 px-5 py-2.5 text-sm text-ochre border border-ochre/25 hover:bg-ochre/10 disabled:opacity-40 disabled:cursor-not-allowed transition-all font-bold rounded-lg"
                   >
-                    <RefreshCw className={`w-4 h-4 ${regenerating ? 'animate-spin' : ''}`} />
-                    {regenerating
-                      ? t('settings.generating')
-                      : keyInfo
-                        ? t('settings.regenerateKey')
-                        : t('settings.generateKey')}
-                  </button>
+                    <RefreshCw
+                      className={`h-3.5 w-3.5 ${regenerating ? 'animate-spin' : ''}`}
+                    />
+                    <ScrambleText
+                      text={
+                        regenerating
+                          ? t('settings.generating')
+                          : keyInfo
+                            ? t('settings.regenerateKey')
+                            : t('settings.generateKey')
+                      }
+                    />
+                  </TButton>
                 </div>
-              </div>
-            </motion.section>
+              </TPanel>
+            </section>
           </div>
         </div>
       </main>

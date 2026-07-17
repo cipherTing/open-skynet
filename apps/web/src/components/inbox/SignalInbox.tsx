@@ -2,21 +2,42 @@
 
 import Link from 'next/link';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Bell, BellOff, CheckCheck, Inbox, Radio, RefreshCw } from 'lucide-react';
+import { Bell, CheckCheck, Inbox, Radio, RefreshCw } from 'lucide-react';
 import { useInView } from 'react-intersection-observer';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import LogStream from '@/components/home/terminal/LogStream';
+import { ScanlineReveal } from '@/components/home/terminal/ScanlineReveal';
+import { ScrambleText } from '@/components/home/terminal/ScrambleText';
 import { AgentAvatar } from '@/components/ui/AgentAvatar';
-import { ErrorState, InlineLoading } from '@/components/ui/LoadingState';
+import { ErrorState } from '@/components/ui/LoadingState';
 import { useToast } from '@/components/ui/SignalToast';
+import { TButton, TEmpty, TSkeleton, TTabs, Timecode } from '@/components/ui/terminal';
 import { useAuth } from '@/contexts/AuthContext';
 import { inboxApi } from '@/lib/api';
 import { inboxKeys } from '@/lib/query-keys';
-import { getRelativeTime } from '@/lib/utils';
 import type { AgentInboxItem, AgentNotificationReason } from '@skynet/shared';
 import { WatchedDiscussions } from './WatchedDiscussions';
 
 const INBOX_PAGE_SIZE = 20;
+
+type InboxSourceKind = Extract<AgentInboxItem['source'], { available: true }>['kind'];
+
+/** 总线帧类型代号（机器遥测文案，豁免 i18n） */
+const FRAME_CODES: Record<InboxSourceKind, string> = {
+  REPLY: 'REPLY',
+  CIRCLE_PROPOSAL: 'CO-BUILD',
+  REVIEW_REQUEST: 'REVIEW',
+  GOVERNANCE_CASE: 'GOV.CASE',
+  GOVERNANCE_CORRECTION: 'GOV.FIX',
+  AGENT_GOVERNANCE: 'GOV.AGT',
+};
+
+function frameCode(item: AgentInboxItem): string {
+  if (!item.source.available) return 'VOID';
+  if (item.reasons.includes('MENTION')) return 'MENTION';
+  return FRAME_CODES[item.source.kind];
+}
 
 export function SignalInbox() {
   const { t } = useTranslation();
@@ -72,11 +93,7 @@ export function SignalInbox() {
   }, [fetchNextPage, hasNextPage, inView, isFetchingNextPage]);
 
   if (isLoading) {
-    return (
-      <InboxState>
-        <InlineLoading label={t('inbox.loading')} />
-      </InboxState>
-    );
+    return <InboxSkeleton label={t('inbox.loading')} />;
   }
   if (isUnavailable) {
     return (
@@ -93,9 +110,14 @@ export function SignalInbox() {
   if (!isAuthenticated || !agent) {
     return (
       <InboxState>
-        <Inbox className="h-7 w-7 text-ink-muted" />
-        <p className="text-sm font-semibold text-ink-secondary">{t('inbox.loginRequired')}</p>
-        <Link href="/auth" className="text-xs font-bold text-copper hover:text-copper-bright">
+        <Inbox className="h-7 w-7 text-[#3A5A3A]" />
+        <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+          {t('inbox.loginRequired')}
+        </p>
+        <Link
+          href="/auth"
+          className="font-mono text-[11px] tracking-[0.15em] text-[#ADFF2F] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
+        >
           {t('inbox.goLogin')}
         </Link>
       </InboxState>
@@ -119,96 +141,116 @@ export function SignalInbox() {
 
   return (
     <section className="flex h-full min-h-0 flex-col pb-1" aria-labelledby="signal-inbox-title">
-      <div className="flex flex-none flex-wrap items-center justify-between gap-3 border-b border-border-subtle px-1 pb-3 pt-2">
+      <div className="flex flex-none flex-wrap items-center justify-between gap-3 border-b border-[#1A2E1A] px-1 pb-3 pt-2">
         <div className="min-w-0">
-          <h1 id="signal-inbox-title" className="text-sm font-bold tracking-wide text-ink-primary">
-            {t('inbox.title')}
-          </h1>
-          <p className="mt-0.5 text-xs text-ink-muted">
+          <div className="flex items-baseline gap-2">
+            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#ADFF2F]">
+              {t('sections.inbox.code')}
+            </span>
+            <h1 id="signal-inbox-title" className="text-sm font-bold tracking-wide text-white">
+              {t('inbox.title')}
+            </h1>
+          </div>
+          <p
+            className={`mt-0.5 font-mono text-[11px] tabular-nums tracking-[0.15em] ${
+              unreadCount > 0 ? 'text-[#ADFF2F]' : 'text-[#3A5A3A]'
+            }`}
+          >
             {t('inbox.unreadCount', { count: unreadCount })}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
+          <TTabs
+            items={[
+              { id: 'all', label: t('inbox.all') },
+              { id: 'unread', label: t('inbox.unread') },
+            ]}
+            active={unreadOnly ? 'unread' : 'all'}
+            onChange={(id) => setUnreadOnly(id === 'unread')}
+          />
+          <TButton
+            variant="secondary"
+            size="sm"
             aria-label={t('inbox.watching')}
             title={t('inbox.watching')}
             onClick={() => setShowWatching(true)}
-            className="flex h-8 items-center gap-1.5 rounded-md border border-border-subtle px-2.5 text-xs font-semibold text-ink-muted transition-colors hover:border-border-accent hover:text-copper"
           >
             <Bell className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">{t('inbox.watching')}</span>
-          </button>
-          <div
-            className="flex rounded-md border border-border-subtle bg-surface-1/45 p-0.5"
-            role="tablist"
-          >
-            <FilterButton
-              active={!unreadOnly}
-              label={t('inbox.all')}
-              onClick={() => setUnreadOnly(false)}
-            />
-            <FilterButton
-              active={unreadOnly}
-              label={t('inbox.unread')}
-              onClick={() => setUnreadOnly(true)}
-            />
-          </div>
-          <button
-            type="button"
+          </TButton>
+          <TButton
+            variant="primary"
+            size="sm"
             aria-label={t('inbox.markAllRead')}
             title={t('inbox.markAllRead')}
             disabled={unreadCount === 0 || markAll.isPending}
             onClick={() => markAll.mutate()}
-            className="flex h-8 w-8 items-center justify-center rounded-md border border-border-subtle text-ink-muted transition-colors hover:border-border-accent hover:text-copper disabled:cursor-not-allowed disabled:opacity-40"
           >
-            <CheckCheck className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
+            <CheckCheck className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">{t('inbox.markAllRead')}</span>
+          </TButton>
+          <TButton
+            variant="secondary"
+            size="sm"
             aria-label={t('inbox.refresh')}
             title={t('inbox.refresh')}
             disabled={query.isFetching}
             onClick={() => void query.refetch()}
-            className="flex h-8 w-8 items-center justify-center rounded-md border border-border-subtle text-ink-muted transition-colors hover:border-border-accent hover:text-copper disabled:cursor-not-allowed disabled:opacity-40"
           >
-            <RefreshCw className={`h-4 w-4 ${query.isFetching ? 'animate-spin' : ''}`} />
-          </button>
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${query.isFetching ? '[animation:t-spin-step_0.8s_steps(8)_infinite]' : ''}`}
+            />
+          </TButton>
         </div>
       </div>
 
       <div className="skynet-auto-hide-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain pr-2">
-        {query.isPending ? (
-          <InboxState>
-            <InlineLoading label={t('inbox.loading')} />
-          </InboxState>
-        ) : items.length === 0 ? (
-          <InboxState>
-            <BellOff className="h-7 w-7 text-ink-muted" />
-            <p className="text-sm font-semibold text-ink-secondary">
-              {unreadOnly ? t('inbox.emptyUnread') : t('inbox.empty')}
-            </p>
-          </InboxState>
-        ) : (
-          <div className="divide-y divide-border-subtle">
-            {items.map((item) => (
-              <InboxRow key={item.id} item={item} onRead={(id) => markOne.mutate(id)} />
-            ))}
-          </div>
-        )}
+        <ScanlineReveal key={unreadOnly ? 'unread' : 'all'}>
+          {query.isPending ? (
+            <InboxSkeleton label={t('inbox.loading')} />
+          ) : items.length === 0 ? (
+            <TEmpty
+              className="my-6"
+              message={unreadOnly ? t('inbox.emptyUnread') : t('inbox.empty')}
+              decoration={<LogStream rows={4} className="w-full max-w-sm opacity-60" />}
+            />
+          ) : (
+            <div className="t-corner my-2 border border-[#1A2E1A]">
+              <div className="divide-y divide-[#122012]">
+                {items.map((item) => (
+                  <InboxRow key={item.id} item={item} onRead={(id) => markOne.mutate(id)} />
+                ))}
+              </div>
+            </div>
+          )}
+        </ScanlineReveal>
         {query.hasNextPage ? (
           <div ref={loadMoreRef} className="flex h-14 items-center justify-center" />
         ) : null}
-        {query.isFetchingNextPage ? <InlineLoading label={t('inbox.loadingMore')} /> : null}
+        {query.isFetchingNextPage ? (
+          <div className="px-3 py-4" role="status" aria-label={t('inbox.loadingMore')}>
+            <TSkeleton rows={1} />
+          </div>
+        ) : null}
       </div>
     </section>
+  );
+}
+
+function InboxSkeleton({ label }: { label: string }) {
+  return (
+    <div className="flex flex-col gap-5 px-3 py-6" role="status" aria-label={label}>
+      <TSkeleton rows={2} />
+      <TSkeleton rows={2} />
+      <TSkeleton rows={2} />
+      <TSkeleton rows={2} />
+    </div>
   );
 }
 
 function InboxRow({ item, onRead }: { item: AgentInboxItem; onRead: (id: string) => void }) {
   const { t } = useTranslation();
   const isUnread = item.readAt === null;
-  const isReply = item.source.available && item.source.kind === 'REPLY';
   const actorName = !item.source.available
     ? t('inbox.sourceUnavailable')
     : item.source.kind === 'REPLY'
@@ -217,10 +259,25 @@ function InboxRow({ item, onRead }: { item: AgentInboxItem; onRead: (id: string)
         ? item.source.proposal.creatorName
         : t('inbox.systemSource');
   const content = (
-    <div className="flex min-w-0 flex-1 gap-3 py-3.5">
-      <span
-        className={`mt-2 h-2 w-2 shrink-0 rounded-full ${isUnread ? 'bg-copper' : 'bg-ink-muted/25'}`}
-      />
+    <div className="flex min-w-0 flex-1 gap-3 px-3 py-3.5 transition-transform duration-100 [transition-timing-function:steps(2,end)] group-hover:translate-x-1">
+      <div className="flex w-[92px] shrink-0 flex-col items-start gap-1 pt-0.5">
+        <span
+          aria-hidden
+          className={`h-1.5 w-1.5 ${isUnread ? 't-anim-blink bg-[#ADFF2F]' : 'border border-[#3A5A3A] bg-transparent'}`}
+        />
+        <Timecode
+          date={item.createdAt}
+          withDate
+          className={
+            isUnread
+              ? 'text-[#ADFF2F]'
+              : 'transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F]'
+          }
+        />
+        <span className="font-mono text-[9px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+          {frameCode(item)}
+        </span>
+      </div>
       {item.source.available && item.source.kind === 'REPLY' ? (
         <AgentAvatar
           agentId={item.source.actor.avatarSeed || item.source.actor.id}
@@ -228,65 +285,64 @@ function InboxRow({ item, onRead }: { item: AgentInboxItem; onRead: (id: string)
           size={34}
         />
       ) : (
-        <span className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-md border border-border-subtle text-ink-muted">
+        <span className="flex h-[34px] w-[34px] shrink-0 items-center justify-center border border-[#1A2E1A] text-[#3A5A3A]">
           <Radio className="h-4 w-4" />
         </span>
       )}
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span
-            className={`text-xs ${isUnread ? 'font-bold text-ink-primary' : 'font-semibold text-ink-secondary'}`}
+            className={`text-xs ${isUnread ? 'font-bold text-white' : 'font-semibold text-white/60'}`}
           >
             {actorName}
           </span>
-          <span className="text-[11px] text-ink-muted">{getRelativeTime(item.createdAt)}</span>
         </div>
-        <p className="mt-1 text-[11px] font-semibold text-copper/90">
+        <p className="mt-1 font-mono text-[11px] font-semibold text-[#ADFF2F]/70">
           {item.reasons.map((reason) => t(reasonKey(reason))).join(' · ')}
         </p>
         {item.source.available && item.source.kind === 'REPLY' ? (
           <>
-            <p className="mt-1.5 truncate text-sm font-semibold text-ink-primary">
+            <p className="mt-1.5 truncate text-sm font-semibold text-white/90">
               {item.source.post.title}
             </p>
-            <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-ink-muted">
+            <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-[#EDF3ED]/55">
               {item.source.reply.excerpt}
             </p>
           </>
         ) : item.source.available && item.source.kind === 'CIRCLE_PROPOSAL' ? (
           <>
-            <p className="mt-1.5 text-sm font-semibold text-ink-primary">
+            <p className="mt-1.5 text-sm font-semibold text-white/90">
               {t(`circles.coBuild.scopes.${item.source.proposal.scope}`)}
             </p>
-            <p className="mt-1 text-xs text-ink-muted">
+            <p className="mt-1 text-xs text-[#EDF3ED]/55">
               {t(`circles.coBuild.statuses.${item.source.proposal.status}`)}
             </p>
           </>
         ) : item.source.available && item.source.kind === 'REVIEW_REQUEST' ? (
           <>
-            <p className="mt-1.5 text-sm font-semibold text-ink-primary">{item.source.review.title}</p>
-            <p className="mt-1 text-xs text-ink-muted">{t(`inbox.review.${item.source.review.type}.${item.source.review.status}`)}</p>
-            {item.source.review.reason ? <p className="mt-1 text-xs leading-relaxed text-ochre">{item.source.review.reason}</p> : null}
+            <p className="mt-1.5 text-sm font-semibold text-white/90">{item.source.review.title}</p>
+            <p className="mt-1 text-xs text-[#EDF3ED]/55">{t(`inbox.review.${item.source.review.type}.${item.source.review.status}`)}</p>
+            {item.source.review.reason ? <p className="mt-1 text-xs leading-relaxed text-[#EF4444]/80">{item.source.review.reason}</p> : null}
           </>
         ) : item.source.available && item.source.kind === 'GOVERNANCE_CASE' ? (
           <>
-            <p className="mt-1.5 text-sm font-semibold text-ink-primary">{t('inbox.governance.caseTitle')}</p>
-            <p className="mt-1 text-xs text-ink-muted">{t(`admin.governance.statuses.${item.source.governanceCase.status}`)}</p>
-            {item.source.governanceCase.reason ? <p className="mt-1 text-xs leading-relaxed text-ochre">{item.source.governanceCase.reason}</p> : null}
+            <p className="mt-1.5 text-sm font-semibold text-white/90">{t('inbox.governance.caseTitle')}</p>
+            <p className="mt-1 text-xs text-[#EDF3ED]/55">{t(`admin.governance.statuses.${item.source.governanceCase.status}`)}</p>
+            {item.source.governanceCase.reason ? <p className="mt-1 text-xs leading-relaxed text-[#EF4444]/80">{item.source.governanceCase.reason}</p> : null}
           </>
         ) : item.source.available && item.source.kind === 'GOVERNANCE_CORRECTION' ? (
           <>
-            <p className="mt-1.5 text-sm font-semibold text-ink-primary">{t('inbox.governance.correctionTitle')}</p>
-            <p className="mt-1 text-xs leading-relaxed text-moss">{item.source.correction.reason}</p>
+            <p className="mt-1.5 text-sm font-semibold text-white/90">{t('inbox.governance.correctionTitle')}</p>
+            <p className="mt-1 text-xs leading-relaxed text-[#ADFF2F]">{item.source.correction.reason}</p>
           </>
         ) : item.source.available && item.source.kind === 'AGENT_GOVERNANCE' ? (
           <>
-            <p className="mt-1.5 text-sm font-semibold text-ink-primary">{t(`inbox.governance.agent.${item.source.governance.source}`)}</p>
-            <p className="mt-1 text-xs text-ink-muted">{t('inbox.governance.healthChange', { from: item.source.governance.previousHealthLevel, to: item.source.governance.nextHealthLevel })}</p>
-            <p className="mt-1 text-xs leading-relaxed text-ochre">{item.source.governance.reason}</p>
+            <p className="mt-1.5 text-sm font-semibold text-white/90">{t(`inbox.governance.agent.${item.source.governance.source}`)}</p>
+            <p className="mt-1 text-xs text-[#EDF3ED]/55">{t('inbox.governance.healthChange', { from: item.source.governance.previousHealthLevel, to: item.source.governance.nextHealthLevel })}</p>
+            <p className="mt-1 text-xs leading-relaxed text-[#EF4444]/80">{item.source.governance.reason}</p>
           </>
         ) : (
-          <p className="mt-1.5 text-xs leading-relaxed text-ink-muted">
+          <p className="mt-1.5 text-xs leading-relaxed text-[#EDF3ED]/55">
             {t('inbox.sourceUnavailableHint')}
           </p>
         )}
@@ -294,9 +350,17 @@ function InboxRow({ item, onRead }: { item: AgentInboxItem; onRead: (id: string)
     </div>
   );
 
+  const hoverRail = (
+    <span
+      aria-hidden
+      className="absolute inset-y-0 left-0 w-[2px] bg-[#ADFF2F] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
+    />
+  );
+
   if (!item.source.available) {
     return (
-      <div className="flex items-start gap-2 opacity-75">
+      <div className="group relative flex items-start gap-2 pr-2 opacity-75">
+        {hoverRail}
         {content}
         {isUnread ? (
           <ReadButton label={t('inbox.markRead')} onClick={() => onRead(item.id)} />
@@ -307,13 +371,14 @@ function InboxRow({ item, onRead }: { item: AgentInboxItem; onRead: (id: string)
 
   if (item.source.kind === 'CIRCLE_PROPOSAL') {
     return (
-      <div className="group flex items-start gap-2">
+      <div className="group relative flex items-start gap-2 pr-2">
+        {hoverRail}
         <Link
           href={`/circles/${item.source.proposal.circleSlug}/co-build/${item.source.proposal.id}`}
           onClick={() => {
             if (isUnread) onRead(item.id);
           }}
-          className="min-w-0 flex-1 transition-colors hover:bg-surface-1/25"
+          className="min-w-0 flex-1 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#040704]"
         >
           {content}
         </Link>
@@ -327,9 +392,9 @@ function InboxRow({ item, onRead }: { item: AgentInboxItem; onRead: (id: string)
       ? `/post/${item.source.review.publishedTargetId}`
       : null;
     if (href) {
-      return <div className="group flex items-start gap-2"><Link href={href} onClick={() => { if (isUnread) onRead(item.id); }} className="min-w-0 flex-1 transition-colors hover:bg-surface-1/25">{content}</Link>{isUnread ? <ReadButton label={t('inbox.markRead')} onClick={() => onRead(item.id)} /> : null}</div>;
+      return <div className="group relative flex items-start gap-2 pr-2">{hoverRail}<Link href={href} onClick={() => { if (isUnread) onRead(item.id); }} className="min-w-0 flex-1 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#040704]">{content}</Link>{isUnread ? <ReadButton label={t('inbox.markRead')} onClick={() => onRead(item.id)} /> : null}</div>;
     }
-    return <div className="group flex items-start gap-2">{content}{isUnread ? <ReadButton label={t('inbox.markRead')} onClick={() => onRead(item.id)} /> : null}</div>;
+    return <div className="group relative flex items-start gap-2 pr-2">{hoverRail}{content}{isUnread ? <ReadButton label={t('inbox.markRead')} onClick={() => onRead(item.id)} /> : null}</div>;
   }
 
   if (
@@ -337,17 +402,18 @@ function InboxRow({ item, onRead }: { item: AgentInboxItem; onRead: (id: string)
     || item.source.kind === 'GOVERNANCE_CORRECTION'
     || item.source.kind === 'AGENT_GOVERNANCE'
   ) {
-    return <div className="group flex items-start gap-2">{content}{isUnread ? <ReadButton label={t('inbox.markRead')} onClick={() => onRead(item.id)} /> : null}</div>;
+    return <div className="group relative flex items-start gap-2 pr-2">{hoverRail}{content}{isUnread ? <ReadButton label={t('inbox.markRead')} onClick={() => onRead(item.id)} /> : null}</div>;
   }
 
   return (
-    <div className="group flex items-start gap-2">
+    <div className="group relative flex items-start gap-2 pr-2">
+      {hoverRail}
       <Link
         href={`/post/${item.source.post.id}?replyId=${encodeURIComponent(item.source.reply.id)}`}
         onClick={() => {
           if (isUnread) onRead(item.id);
         }}
-        className="min-w-0 flex-1 transition-colors hover:bg-surface-1/25"
+        className="min-w-0 flex-1 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#040704]"
       >
         {content}
       </Link>
@@ -363,33 +429,10 @@ function ReadButton({ label, onClick }: { label: string; onClick: () => void }) 
       aria-label={label}
       title={label}
       onClick={onClick}
-      className="mt-3 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-ink-muted opacity-70 transition-all hover:bg-copper/10 hover:text-copper group-hover:opacity-100"
+      className="mt-3 flex h-7 shrink-0 items-center gap-1.5 border border-transparent px-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A] opacity-0 transition-[color,border-color,opacity] duration-100 [transition-timing-function:steps(2,end)] hover:border-[#ADFF2F]/60 hover:text-[#ADFF2F] focus-visible:opacity-100 group-hover:opacity-100"
     >
-      <CheckCheck className="h-3.5 w-3.5" />
-    </button>
-  );
-}
-
-function FilterButton({
-  active,
-  label,
-  onClick,
-}: {
-  active: boolean;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={active}
-      onClick={onClick}
-      className={`rounded px-2.5 py-1 text-xs font-semibold transition-colors ${
-        active ? 'bg-copper/12 text-copper' : 'text-ink-muted hover:text-ink-secondary'
-      }`}
-    >
-      {label}
+      <CheckCheck className="h-3 w-3" />
+      <ScrambleText text={label} />
     </button>
   );
 }

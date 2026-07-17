@@ -14,6 +14,7 @@ import {
 } from 'recharts';
 import type { CoherencePoint } from '@/config/agent-dimensions';
 import { FloatingPortal, FLOATING_Z_INDEX, type FloatingAnchorRect } from '@/components/ui/FloatingPortal';
+import { TelemetryValue } from '@/components/home/terminal/TelemetryValue';
 import { getAgentLevelByXp } from '@skynet/shared';
 
 interface AgentCoherenceChartProps {
@@ -145,6 +146,10 @@ function getChartY(value: number, domain: [number, number], top: number, height:
   return top + height - clampNumber(ratio, 0, 1) * height;
 }
 
+function formatInteger(value: number): string {
+  return Math.round(value).toLocaleString('en-US');
+}
+
 function ScoreCrosshairCursor({
   points,
   left,
@@ -171,7 +176,13 @@ function ScoreCrosshairCursor({
   const y = getChartY(value, yAxisDomain, top, height);
 
   return (
-    <g className="agent-score-crosshair">
+    <g
+      stroke="#ADFF2F"
+      strokeOpacity={0.45}
+      strokeWidth={1}
+      strokeDasharray="4 4"
+      vectorEffect="non-scaling-stroke"
+    >
       <line x1={x} y1={top} x2={x} y2={top + height} />
       <line x1={left} y1={y} x2={left + width} y2={y} />
     </g>
@@ -183,13 +194,13 @@ function renderTodayDot(props: ScoreDotProps, lastPointIndex: number) {
   if (index !== lastPointIndex || !isFiniteNumber(cx) || !isFiniteNumber(cy)) {
     return null;
   }
-  return <circle cx={cx} cy={cy} r={4.5} className="agent-score-today-dot" />;
+  return <circle cx={cx} cy={cy} r={4} fill="#040704" stroke="#ADFF2F" strokeWidth={2} />;
 }
 
 function renderActiveDot(props: ScoreDotProps) {
   const { cx, cy } = props;
   if (!isFiniteNumber(cx) || !isFiniteNumber(cy)) return null;
-  return <circle cx={cx} cy={cy} r={5} className="agent-score-active-dot" />;
+  return <circle cx={cx} cy={cy} r={4.5} fill="#040704" stroke="#ADFF2F" strokeWidth={2} />;
 }
 
 function TooltipBridge({
@@ -239,7 +250,7 @@ export function AgentCoherenceChart({ history }: AgentCoherenceChartProps) {
 
   return (
     <div
-      className="agent-score-chart-panel relative rounded-xl border border-moss/20 flex flex-col min-h-[260px] shadow-sm"
+      className="t-corner relative flex min-h-[260px] flex-col border border-[#1A2E1A] bg-[#040704]"
       role="img"
       aria-label={
         lastPoint
@@ -248,20 +259,22 @@ export function AgentCoherenceChart({ history }: AgentCoherenceChartProps) {
       }
     >
       {/* 标题 */}
-      <div className="flex items-center justify-between px-4 pt-3 pb-1">
+      <div className="flex items-center justify-between border-b border-[#1A2E1A] px-4 py-2.5">
         <div className="flex items-center gap-2">
-          <div className="w-1.5 h-1.5 rounded-full bg-moss shadow-led-moss" />
-          <span className="text-[10px] font-mono font-bold tracking-wider uppercase text-moss">
+          <div className="h-1.5 w-1.5 bg-[#ADFF2F]" />
+          <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-white">
             {t('agent.scoreChartTitle')}
           </span>
         </div>
-        <span className="text-[10px] text-ink-muted">{t('agent.last30Days')}</span>
+        <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+          {t('agent.last30Days')}
+        </span>
       </div>
 
       {/* 图表 */}
       <div
         ref={chartRef}
-        className="w-full flex-1 min-h-[190px] select-none"
+        className="min-h-[190px] w-full flex-1 select-none"
       >
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart
@@ -271,15 +284,15 @@ export function AgentCoherenceChart({ history }: AgentCoherenceChartProps) {
           >
             <defs>
               <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="var(--moss)" stopOpacity={0.2} />
-                <stop offset="95%" stopColor="var(--moss)" stopOpacity={0} />
+                <stop offset="5%" stopColor="#ADFF2F" stopOpacity={0.18} />
+                <stop offset="95%" stopColor="#ADFF2F" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="2 4" stroke="rgba(160, 160, 181, 0.15)" vertical={false} />
+            <CartesianGrid strokeDasharray="2 4" stroke="#122012" vertical={false} />
             <XAxis
               dataKey="date"
-              stroke="var(--ink-muted)"
-              tick={{ fill: 'var(--ink-muted)', fontSize: 9 }}
+              stroke="#1A2E1A"
+              tick={{ fill: '#3A5A3A', fontSize: 9, fontFamily: 'monospace' }}
               tickLine={false}
               axisLine={false}
               interval={4}
@@ -287,8 +300,8 @@ export function AgentCoherenceChart({ history }: AgentCoherenceChartProps) {
             />
             <YAxis
               domain={yAxisDomain}
-              stroke="var(--ink-muted)"
-              tick={{ fill: 'var(--ink-muted)', fontSize: 9 }}
+              stroke="#1A2E1A"
+              tick={{ fill: '#3A5A3A', fontSize: 9, fontFamily: 'monospace' }}
               tickLine={false}
               axisLine={false}
               width={52}
@@ -302,7 +315,7 @@ export function AgentCoherenceChart({ history }: AgentCoherenceChartProps) {
             <Area
               type="monotone"
               dataKey="value"
-              stroke="var(--moss)"
+              stroke="#ADFF2F"
               strokeWidth={1.5}
               fill={`url(#${gradientId})`}
               dot={(props) => renderTodayDot(props, lastPointIndex)}
@@ -320,7 +333,7 @@ export function AgentCoherenceChart({ history }: AgentCoherenceChartProps) {
         align="center"
         offset={10}
         zIndex={FLOATING_Z_INDEX.tooltip}
-        className="pointer-events-none rounded-lg border border-moss/30 bg-void-deep px-3 py-2 text-xs shadow-[0_8px_24px_rgba(0,0,0,0.35)]"
+        className="pointer-events-none border border-[#1A2E1A] bg-[#040704] px-3 py-2 text-xs"
         role="tooltip"
       >
         {tooltip &&
@@ -331,11 +344,13 @@ export function AgentCoherenceChart({ history }: AgentCoherenceChartProps) {
             });
             return (
               <>
-                <div className="text-ink-muted mb-0.5">{tooltip.data.date}</div>
-                <div className="font-mono text-moss font-bold">
+                <div className="mb-0.5 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                  {tooltip.data.date}
+                </div>
+                <div className="font-mono font-bold text-[#ADFF2F]">
                   {t('agent.score', { score: tooltip.data.value })}
                 </div>
-                <div className="mt-0.5 text-[10px] text-ink-muted">
+                <div className="mt-0.5 font-mono text-[10px] text-[#3A5A3A]">
                   Lv{levelMeta.level} · {levelName}
                 </div>
               </>
@@ -344,15 +359,23 @@ export function AgentCoherenceChart({ history }: AgentCoherenceChartProps) {
       </FloatingPortal>
 
       {/* 底部当前值 */}
-      <div className="px-4 pb-3 pt-1 flex items-center gap-2">
+      <div className="flex items-center gap-2 border-t border-[#1A2E1A] px-4 py-2.5">
         {lastPoint ? (
           <>
-            <span className="text-[10px] text-ink-muted">{t('agent.current')}</span>
-            <span className="text-xs font-mono font-bold text-moss">{lastPoint.value}</span>
-            <span className="text-[10px] text-ink-muted">({lastPoint.date})</span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+              {t('agent.current')}
+            </span>
+            <TelemetryValue
+              value={lastPoint.value}
+              format={formatInteger}
+              className="font-mono text-xs font-bold text-[#ADFF2F]"
+            />
+            <span className="font-mono text-[10px] text-[#3A5A3A]">({lastPoint.date})</span>
           </>
         ) : (
-          <span className="text-[10px] text-ink-muted">{t('agent.noData')}</span>
+          <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+            {t('agent.noData')}
+          </span>
         )}
       </div>
     </div>

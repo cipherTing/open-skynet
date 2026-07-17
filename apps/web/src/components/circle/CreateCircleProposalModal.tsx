@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ArrowDown, ArrowUp, Loader2, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Loader2, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useMutation } from '@tanstack/react-query';
 import type {
@@ -12,6 +12,8 @@ import type {
 } from '@skynet/shared';
 import { circleApi } from '@/lib/api';
 import { useToast } from '@/components/ui/SignalToast';
+import { TerminalDialog } from '@/components/ui/TerminalDialog';
+import { TButton, TInput, TRadarNode } from '@/components/ui/terminal';
 import { CoBuildMarkdownComposer } from './CoBuildMarkdownComposer';
 import { TopicChangeDiff } from './CircleChangeDiff';
 
@@ -80,115 +82,86 @@ export function CreateCircleProposalModal({
   const disabled = mutation.isPending || !reason.trim() || unchanged || invalidRules;
 
   return (
-    <div
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-      onClick={onClose}
-    >
-      <div
-        className="flex max-h-[92vh] w-[min(calc(100vw-32px),768px)] min-w-0 flex-col overflow-hidden rounded-lg border border-border-accent bg-void-deep shadow-2xl"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="flex items-center justify-between border-b border-border-subtle px-5 py-4">
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-deck-normal text-copper">
-              {t('circles.coBuild.title')}
-            </p>
-            <h2 className="mt-1 text-base font-bold text-ink-primary">
-              {t(proposal ? 'circles.coBuild.reviseTitle' : 'circles.coBuild.createTitle')}
-            </h2>
-          </div>
-          <button
-            type="button"
-            aria-label={t('app.close')}
-            onClick={onClose}
-            className="text-ink-muted hover:text-ink-primary"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-        <div className="skynet-auto-hide-scrollbar min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5">
-          <div className="grid grid-cols-2 rounded-md border border-border-subtle bg-void p-1">
-            {(['TOPIC', 'RULES'] as const).map((value) => (
-              <button
-                key={value}
-                type="button"
-                disabled={Boolean(proposal)}
-                onClick={() => setScope(value)}
-                className={`h-9 rounded text-xs font-bold transition-colors disabled:cursor-default ${scope === value ? 'bg-surface-2 text-copper' : 'text-ink-muted hover:text-ink-secondary'}`}
-              >
-                {t(`circles.coBuild.scopes.${value}`)}
-              </button>
-            ))}
-          </div>
-
-          {scope === 'TOPIC' ? (
-            <div className="space-y-3">
-              <div>
-                <p className="text-xs font-semibold text-ink-secondary">
-                  {t('circles.coBuild.currentTopic')}
-                </p>
-                <p className="mt-2 rounded-md border border-border-subtle bg-surface-1/40 px-3 py-2.5 text-sm leading-6 text-ink-muted">
-                  {circle.topic}
-                </p>
-              </div>
-              <label className="block text-xs font-semibold text-ink-secondary">
-                {t('circles.coBuild.changeTo')}
-                <input
-                  value={topic}
-                  onChange={(event) => setTopic(event.target.value)}
-                  maxLength={160}
-                  className="skynet-input mt-2 w-full rounded-md px-3 py-2 text-sm"
-                />
-              </label>
-              <TopicChangeDiff before={circle.topic} after={topic.trim() || null} />
-            </div>
-          ) : (
-            <RuleEditor
-              baseRules={circle.rules}
-              rules={rules}
-              removedRules={removedRules}
-              onChange={setRules}
-              onRemovedChange={setRemovedRules}
-            />
-          )}
-
-          <CoBuildMarkdownComposer
-            value={reason}
-            onChange={setReason}
-            label={t('circles.coBuild.reason')}
-            placeholder={t('circles.coBuild.reasonPlaceholder')}
-            editLabel={t('circles.coBuild.edit')}
-            previewLabel={t('circles.coBuild.preview')}
-            emptyPreview={t('circles.coBuild.emptyPreview')}
-          />
-          {mutation.isError ? (
-            <p className="text-xs text-ochre">
-              {t(proposal ? 'circles.coBuild.reviseFailed' : 'circles.coBuild.createFailed')}
-            </p>
-          ) : null}
-        </div>
-        <div className="flex justify-end gap-2 border-t border-border-subtle px-5 py-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="h-9 rounded-md border border-border-subtle px-4 text-xs font-semibold text-ink-secondary"
-          >
+    <TerminalDialog
+      open
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      title={t(proposal ? 'circles.coBuild.reviseTitle' : 'circles.coBuild.createTitle')}
+      code="CIRCLE.PROPOSAL"
+      size="lg"
+      footer={
+        <>
+          <TButton variant="secondary" onClick={onClose}>
             {t('circles.coBuild.cancel')}
-          </button>
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => mutation.mutate()}
-            className="inline-flex h-9 items-center gap-2 rounded-md bg-copper px-4 text-xs font-bold text-void disabled:opacity-40"
-          >
+          </TButton>
+          <TButton variant="primary" disabled={disabled} onClick={() => mutation.mutate()}>
             {mutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
             {t(proposal ? 'circles.coBuild.revise' : 'circles.coBuild.submit')}
-          </button>
+          </TButton>
+        </>
+      }
+    >
+      <div className="space-y-5">
+        <div className="flex items-center gap-8 border border-[#1A2E1A] bg-black px-4 py-3">
+          {(['TOPIC', 'RULES'] as const).map((value) => (
+            <TRadarNode
+              key={value}
+              checked={scope === value}
+              disabled={Boolean(proposal)}
+              onChange={() => setScope(value)}
+              label={t(`circles.coBuild.scopes.${value}`)}
+            />
+          ))}
         </div>
+
+        {scope === 'TOPIC' ? (
+          <div className="space-y-3">
+            <div>
+              <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                {t('circles.coBuild.currentTopic')}
+              </p>
+              <p className="mt-2 border border-[#1A2E1A] bg-black px-3 py-2.5 text-sm leading-6 text-[#EDF3ED]/50">
+                {circle.topic}
+              </p>
+            </div>
+            <label className="block font-mono text-[11px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+              {t('circles.coBuild.changeTo')}
+              <TInput
+                value={topic}
+                onChange={(event) => setTopic(event.target.value)}
+                maxLength={160}
+                className="mt-2"
+              />
+            </label>
+            <TopicChangeDiff before={circle.topic} after={topic.trim() || null} />
+          </div>
+        ) : (
+          <RuleEditor
+            baseRules={circle.rules}
+            rules={rules}
+            removedRules={removedRules}
+            onChange={setRules}
+            onRemovedChange={setRemovedRules}
+          />
+        )}
+
+        <CoBuildMarkdownComposer
+          value={reason}
+          onChange={setReason}
+          label={t('circles.coBuild.reason')}
+          placeholder={t('circles.coBuild.reasonPlaceholder')}
+          editLabel={t('circles.coBuild.edit')}
+          previewLabel={t('circles.coBuild.preview')}
+          emptyPreview={t('circles.coBuild.emptyPreview')}
+        />
+        {mutation.isError ? (
+          <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-[#EF4444]/80">
+            {t(proposal ? 'circles.coBuild.reviseFailed' : 'circles.coBuild.createFailed')}
+          </p>
+        ) : null}
       </div>
-    </div>
+    </TerminalDialog>
   );
 }
 
@@ -238,38 +211,42 @@ function RuleEditor({
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
-        <p className="text-xs font-semibold text-ink-secondary">
+        <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-[#3A5A3A]">
           {t('circles.coBuild.currentRules')}
         </p>
-        <button
-          type="button"
+        <TButton
+          variant="secondary"
+          size="sm"
           disabled={rules.length >= 10}
           onClick={() => {
             const id = crypto.randomUUID();
             onChange([...rules, { id, text: '' }]);
             beginEdit(id);
           }}
-          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border-subtle px-2.5 text-xs font-semibold text-copper disabled:opacity-40"
         >
           <Plus className="h-3.5 w-3.5" />
           {t('circles.coBuild.addRule')}
-        </button>
+        </TButton>
       </div>
       <div className="space-y-2">
         {rules.length === 0 ? (
-          <p className="rounded-md border border-dashed border-border-subtle px-3 py-5 text-center text-xs text-ink-muted">
+          <p className="border border-dashed border-[#1A2E1A] px-3 py-5 text-center font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
             {t('circles.coBuild.noProposedRules')}
           </p>
         ) : null}
         {rules.map((rule, index) => (
-          <div key={rule.id} className="rounded-md border border-border-subtle bg-void/30 p-3">
+          <div key={rule.id} className="border border-[#1A2E1A] bg-black p-3">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
-                <span className="w-5 text-center font-mono text-xs text-ink-muted">
-                  {index + 1}
+                <span className="w-5 text-center font-mono text-xs tabular-nums text-[#3A5A3A]">
+                  {String(index + 1).padStart(2, '0')}
                 </span>
                 <span
-                  className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${originalById.has(rule.id) ? 'border-border-subtle text-ink-muted' : 'border-moss/30 bg-moss/10 text-moss'}`}
+                  className={`border px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.15em] ${
+                    originalById.has(rule.id)
+                      ? 'border-[#1A2E1A] text-[#3A5A3A]'
+                      : 'border-[#ADFF2F]/50 bg-[#ADFF2F]/10 text-[#ADFF2F]'
+                  }`}
                 >
                   {t(
                     originalById.has(rule.id)
@@ -284,7 +261,7 @@ function RuleEditor({
                   title={t('circles.coBuild.moveUp')}
                   onClick={() => move(index, -1)}
                   disabled={index === 0}
-                  className="flex h-8 w-8 items-center justify-center rounded-md border border-border-subtle text-ink-muted hover:text-ink-primary disabled:opacity-35"
+                  className="flex h-8 w-8 items-center justify-center border border-[#1A2E1A] text-[#3A5A3A] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white disabled:opacity-35"
                 >
                   <ArrowUp className="h-3.5 w-3.5" />
                 </button>
@@ -293,7 +270,7 @@ function RuleEditor({
                   title={t('circles.coBuild.moveDown')}
                   onClick={() => move(index, 1)}
                   disabled={index === rules.length - 1}
-                  className="flex h-8 w-8 items-center justify-center rounded-md border border-border-subtle text-ink-muted hover:text-ink-primary disabled:opacity-35"
+                  className="flex h-8 w-8 items-center justify-center border border-[#1A2E1A] text-[#3A5A3A] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white disabled:opacity-35"
                 >
                   <ArrowDown className="h-3.5 w-3.5" />
                 </button>
@@ -301,7 +278,7 @@ function RuleEditor({
                   type="button"
                   title={t('circles.coBuild.editRule')}
                   onClick={() => beginEdit(rule.id)}
-                  className="flex h-8 w-8 items-center justify-center rounded-md border border-border-subtle text-steel hover:bg-steel/10"
+                  className="flex h-8 w-8 items-center justify-center border border-[#1A2E1A] text-[#ADFF2F]/80 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#ADFF2F]/10"
                 >
                   <Pencil className="h-3.5 w-3.5" />
                 </button>
@@ -309,7 +286,7 @@ function RuleEditor({
                   type="button"
                   title={t('circles.coBuild.removeRule')}
                   onClick={() => remove(rule)}
-                  className="flex h-8 w-8 items-center justify-center rounded-md border border-border-subtle text-ochre hover:bg-ochre/10"
+                  className="flex h-8 w-8 items-center justify-center border border-[#1A2E1A] text-[#EF4444]/80 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#7F1D1D]/30"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
@@ -318,17 +295,19 @@ function RuleEditor({
             {editingIds.has(rule.id) ? (
               <div className="mt-3 space-y-2">
                 {originalById.has(rule.id) ? (
-                  <p className="rounded-md border border-border-subtle bg-surface-1/40 px-3 py-2 text-sm text-ink-muted">
+                  <p className="border border-[#1A2E1A] bg-[#040704] px-3 py-2 text-sm text-[#EDF3ED]/50">
                     {t('circles.coBuild.originalRule')}：{originalById.get(rule.id)?.text}
                   </p>
                 ) : (
-                  <p className="text-xs font-semibold text-moss">{t('circles.coBuild.newRule')}</p>
+                  <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-[#ADFF2F]">
+                    {t('circles.coBuild.newRule')}
+                  </p>
                 )}
-                <label className="block text-xs font-semibold text-ink-secondary">
+                <label className="block font-mono text-[11px] uppercase tracking-[0.15em] text-[#3A5A3A]">
                   {originalById.has(rule.id)
                     ? t('circles.coBuild.changeTo')
                     : t('circles.coBuild.ruleContent')}
-                  <input
+                  <TInput
                     autoFocus
                     value={rule.text}
                     maxLength={280}
@@ -339,37 +318,37 @@ function RuleEditor({
                         ),
                       )
                     }
-                    className="skynet-input mt-2 w-full rounded-md px-3 py-2 text-sm"
+                    className="mt-2"
                   />
                 </label>
                 <button
                   type="button"
                   onClick={() => stopEdit(rule.id)}
-                  className="text-xs font-semibold text-copper"
+                  className="font-mono text-[11px] uppercase tracking-[0.15em] text-[#ADFF2F] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
                 >
                   {t('circles.coBuild.finishEditing')}
                 </button>
               </div>
             ) : (
-              <p className="mt-3 text-sm leading-6 text-ink-primary">{rule.text}</p>
+              <p className="mt-3 text-sm leading-6 text-[#EDF3ED]">{rule.text}</p>
             )}
           </div>
         ))}
         {removedRules.map((rule) => (
-          <div key={rule.id} className="rounded-md border border-ochre/25 bg-ochre/5 p-3">
+          <div key={rule.id} className="border border-[#7F1D1D] bg-[#7F1D1D]/10 p-3">
             <div className="flex items-center justify-between gap-3">
-              <span className="rounded-full border border-ochre/30 bg-ochre/10 px-2 py-0.5 text-[10px] font-bold text-ochre">
+              <span className="border border-[#7F1D1D] bg-[#7F1D1D]/20 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.15em] text-[#EF4444]/80">
                 {t('circles.coBuild.ruleDeleted')}
               </span>
               <button
                 type="button"
                 onClick={() => restore(rule)}
-                className="text-xs font-semibold text-copper"
+                className="font-mono text-[11px] uppercase tracking-[0.15em] text-[#ADFF2F] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
               >
                 {t('circles.coBuild.restoreRule')}
               </button>
             </div>
-            <p className="mt-3 text-sm leading-6 text-ink-muted line-through">{rule.text}</p>
+            <p className="mt-3 text-sm leading-6 text-[#EDF3ED]/40 line-through">{rule.text}</p>
           </div>
         ))}
       </div>

@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { AgentHero } from '@/components/agent/AgentHero';
 import { AgentTabs, type AgentTab } from '@/components/agent/AgentTabs';
@@ -15,6 +14,7 @@ import { AgentCirclesTab } from '@/components/agent/AgentCirclesTab';
 import { AgentHistoryTab } from '@/components/agent/AgentHistoryTab';
 import { AgentViewedTab } from '@/components/agent/AgentViewedTab';
 import { ErrorState, LoadingScreen } from '@/components/ui/LoadingState';
+import { ScanlineReveal } from '@/components/home/terminal/ScanlineReveal';
 import { useAuth } from '@/contexts/AuthContext';
 import { MOCK_AGENT } from '@/lib/mock-data';
 import { forumApi } from '@/lib/api';
@@ -76,119 +76,56 @@ export function AgentProfilePage({ agentId }: AgentProfilePageProps) {
 
       <AgentTabs activeTab={visibleActiveTab} isOwnAgent={isOwnAgent} onTabChange={setActiveTab} />
 
-      <div className="px-4 sm:px-6 py-4">
-        <AnimatePresence mode="wait">
+      <div className="px-4 py-4 sm:px-6">
+        {/* key 驱动重挂载：Tab 切换时触发一次 2px 扫描线硬切 */}
+        <ScanlineReveal key={visibleActiveTab}>
           {visibleActiveTab === 'overview' && (
-            <motion.div
-              key="overview"
-              id="tabpanel-overview"
-              role="tabpanel"
-              aria-labelledby="tab-overview"
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12 }}
-              transition={{ duration: 0.25 }}
-              className="space-y-4"
-            >
-              <div className="agent-overview-chart-grid grid grid-cols-1 gap-4">
+            <div id="tabpanel-overview" role="tabpanel" className="space-y-4">
+              <div className="grid grid-cols-1 gap-4">
                 {/* TODO(tech-debt): 旧六维雷达图依赖 mock 维度模型，已暂停维护并暂时屏蔽 UI。 */}
                 <AgentCoherenceChart history={agent.coherenceHistory} />
               </div>
 
               {isOwnAgent && <AgentActivityFeed agentId={agentId} />}
-            </motion.div>
+            </div>
           )}
 
           {visibleActiveTab === 'posts' && (
-            <motion.div
-              key="posts"
-              id="tabpanel-posts"
-              role="tabpanel"
-              aria-labelledby="tab-posts"
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12 }}
-              transition={{ duration: 0.25 }}
-            >
+            <div id="tabpanel-posts" role="tabpanel">
               <AgentPostsTab agentId={agentId} />
-            </motion.div>
+            </div>
           )}
 
           {visibleActiveTab === 'replies' && (
-            <motion.div
-              key="replies"
-              id="tabpanel-replies"
-              role="tabpanel"
-              aria-labelledby="tab-replies"
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12 }}
-              transition={{ duration: 0.25 }}
-            >
+            <div id="tabpanel-replies" role="tabpanel">
               <AgentRepliesTab agentId={agentId} />
-            </motion.div>
+            </div>
           )}
 
           {visibleActiveTab === 'favorites' && (
-            <motion.div
-              key="favorites"
-              id="tabpanel-favorites"
-              role="tabpanel"
-              aria-labelledby="tab-favorites"
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12 }}
-              transition={{ duration: 0.25 }}
-            >
+            <div id="tabpanel-favorites" role="tabpanel">
               <AgentFavoritesTab agentId={agentId} />
-            </motion.div>
+            </div>
           )}
 
           {visibleActiveTab === 'circles' && (
-            <motion.div
-              key="circles"
-              id="tabpanel-circles"
-              role="tabpanel"
-              aria-labelledby="tab-circles"
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12 }}
-              transition={{ duration: 0.25 }}
-            >
+            <div id="tabpanel-circles" role="tabpanel">
               <AgentCirclesTab agentId={agentId} />
-            </motion.div>
+            </div>
           )}
 
           {isOwnAgent && visibleActiveTab === 'history' && (
-            <motion.div
-              key="history"
-              id="tabpanel-history"
-              role="tabpanel"
-              aria-labelledby="tab-history"
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12 }}
-              transition={{ duration: 0.25 }}
-            >
+            <div id="tabpanel-history" role="tabpanel">
               <AgentHistoryTab agentId={agentId} />
-            </motion.div>
+            </div>
           )}
 
           {isOwnAgent && visibleActiveTab === 'viewed' && (
-            <motion.div
-              key="viewed"
-              id="tabpanel-viewed"
-              role="tabpanel"
-              aria-labelledby="tab-viewed"
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -12 }}
-              transition={{ duration: 0.25 }}
-            >
+            <div id="tabpanel-viewed" role="tabpanel">
               <AgentViewedTab agentId={agentId} />
-            </motion.div>
+            </div>
           )}
-        </AnimatePresence>
+        </ScanlineReveal>
       </div>
     </div>
   );

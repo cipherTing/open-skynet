@@ -16,10 +16,10 @@ const KIND_STYLE: Record<
   ActiveAnnouncement['kind'],
   { icon: typeof Info; border: string; text: string }
 > = {
-  INFO: { icon: Info, border: 'border-copper/40', text: 'text-copper' },
-  MAINTENANCE: { icon: Wrench, border: 'border-ochre/45', text: 'text-ochre' },
-  SECURITY: { icon: ShieldAlert, border: 'border-ochre/60', text: 'text-ochre' },
-  INCIDENT: { icon: AlertTriangle, border: 'border-ochre/70', text: 'text-ochre' },
+  INFO: { icon: Info, border: 'border-[#ADFF2F]/40', text: 'text-[#ADFF2F]' },
+  MAINTENANCE: { icon: Wrench, border: 'border-[#A16207]/50', text: 'text-[#A16207]' },
+  SECURITY: { icon: ShieldAlert, border: 'border-[#7F1D1D]', text: 'text-[#EF4444]/80' },
+  INCIDENT: { icon: AlertTriangle, border: 'border-[#7F1D1D]', text: 'text-[#EF4444]' },
 };
 
 function announcementDismissKey(item: ActiveAnnouncement): string {
@@ -103,29 +103,29 @@ export function SystemAnnouncementBar() {
       role="region"
       aria-label={t('announcement.region')}
       aria-live="polite"
-      className={`relative z-30 flex-none border-b ${style.border} bg-void-deep/95 px-4 py-2.5 backdrop-blur-md`}
+      className={`relative z-30 flex-none border-b ${style.border} bg-black/95 px-4 py-2.5 backdrop-blur-md`}
     >
       <div className="mx-auto flex max-w-[1600px] items-start gap-3 sm:items-center">
         <Icon className={`mt-0.5 h-4 w-4 shrink-0 sm:mt-0 ${style.text}`} />
         <div className="min-w-0 flex-1 sm:flex sm:items-baseline sm:gap-3">
-          <div className="text-xs font-bold text-ink-primary">{announcement.title}</div>
-          <div className="mt-1 max-h-10 overflow-hidden text-xs leading-5 text-ink-secondary sm:mt-0 sm:max-h-5">
+          <div className="text-xs font-bold text-white">{announcement.title}</div>
+          <div className="mt-1 max-h-10 overflow-hidden text-xs leading-5 text-white/70 sm:mt-0 sm:max-h-5">
             <AnnouncementMarkdown content={announcement.body} compact />
           </div>
         </div>
         {announcement.linkUrl && (
           announcement.linkUrl.startsWith('/') ? (
-            <Link href={announcement.linkUrl} className={`shrink-0 text-xs font-bold ${style.text} hover:underline`}>
+            <Link href={announcement.linkUrl} className={`shrink-0 font-mono text-[11px] font-bold uppercase tracking-[0.15em] ${style.text} hover:underline`}>
               {t('announcement.open')}
             </Link>
           ) : (
-            <a href={announcement.linkUrl} target="_blank" rel="noreferrer noopener" className={`shrink-0 text-xs font-bold ${style.text} hover:underline`}>
+            <a href={announcement.linkUrl} target="_blank" rel="noreferrer noopener" className={`shrink-0 font-mono text-[11px] font-bold uppercase tracking-[0.15em] ${style.text} hover:underline`}>
               {t('announcement.open')}
             </a>
           )
         )}
         {announcement.dismissible && (
-          <button type="button" onClick={dismiss} aria-label={t('announcement.dismiss')} className="flex h-7 w-7 shrink-0 items-center justify-center text-ink-muted hover:text-ink-primary">
+          <button type="button" onClick={dismiss} aria-label={t('announcement.dismiss')} className="flex h-7 w-7 shrink-0 items-center justify-center text-[#3A5A3A] transition-colors [transition-timing-function:steps(2,end)] hover:text-white">
             <X className="h-4 w-4" />
           </button>
         )}

@@ -1,9 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import * as Dialog from '@radix-ui/react-dialog';
 import { useQuery } from '@tanstack/react-query';
-import { Edit3, History, X } from 'lucide-react';
+import { Edit3, History } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeSanitize from 'rehype-sanitize';
@@ -11,13 +10,16 @@ import { useTranslation } from 'react-i18next';
 import type { ForumReply } from '@skynet/shared';
 import { ApiError, forumApi } from '@/lib/api';
 import { ComposerTextarea } from '@/components/ui/ComposerTextarea';
-import { InlineLoading } from '@/components/ui/LoadingState';
+import { TerminalDialog } from '@/components/ui/TerminalDialog';
+import { TSkeleton, Timecode } from '@/components/ui/terminal';
 
 interface ReplyRevisionActionsProps {
   reply: ForumReply;
   canEdit: boolean;
   onUpdated: () => Promise<void> | void;
 }
+
+const FIELD_LABEL_CLASS = 'font-mono text-[11px] tracking-[0.12em] text-text-secondary';
 
 export function ReplyRevisionActions({ reply, canEdit, onUpdated }: ReplyRevisionActionsProps) {
   const { t } = useTranslation();
@@ -69,7 +71,7 @@ export function ReplyRevisionActions({ reply, canEdit, onUpdated }: ReplyRevisio
         <button
           type="button"
           onClick={() => setHistoryOpen(true)}
-          className="inline-flex items-center gap-1 text-[11px] text-ink-muted hover:text-steel"
+          className="inline-flex items-center gap-1 text-[11px] text-text-tertiary transition-colors hover:text-info"
         >
           <History className="h-3 w-3" />
           {t('revisions.edited')}
@@ -79,172 +81,141 @@ export function ReplyRevisionActions({ reply, canEdit, onUpdated }: ReplyRevisio
         <button
           type="button"
           onClick={openEditor}
-          className="inline-flex items-center gap-1 text-[11px] text-ink-muted hover:text-copper"
+          className="inline-flex items-center gap-1 text-[11px] text-text-tertiary transition-colors hover:text-accent"
         >
           <Edit3 className="h-3 w-3" />
           {t('revisions.editReply')}
         </button>
       ) : null}
 
-      <Dialog.Root
+      <TerminalDialog
         open={editOpen}
         onOpenChange={(open) => {
           if (saving) return;
           if (open) openEditor();
           else setEditOpen(false);
         }}
+        title={t('revisions.editReply')}
+        code="EDIT.REPLY"
+        size="lg"
+        contentClassName="t-corner !fixed"
+        footer={
+          <>
+            <button
+              type="button"
+              onClick={() => setEditOpen(false)}
+              disabled={saving}
+              className="t-btn t-btn--ghost"
+            >
+              {t('app.cancel')}
+            </button>
+            <button
+              type="button"
+              onClick={() => void save()}
+              disabled={
+                saving || !content.trim() || (hidePreviousVersion && hideReason.trim().length < 4)
+              }
+              className="t-btn t-btn--primary"
+            >
+              {saving ? t('revisions.saving') : t('revisions.save')}
+            </button>
+          </>
+        }
       >
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-[190] bg-void/70 backdrop-blur-sm" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 z-[200] max-h-[calc(100dvh-32px)] w-[min(calc(100vw-32px),860px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-border-subtle bg-void-deep p-5 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <Dialog.Title className="text-base font-bold text-ink-primary">
-                {t('revisions.editReply')}
-              </Dialog.Title>
-              <Dialog.Description className="sr-only">
-                {t('revisions.editReplyDescription')}
-              </Dialog.Description>
-              <Dialog.Close
-                className="rounded p-1 text-ink-muted hover:text-ink-primary"
-                aria-label={t('app.close')}
-              >
-                <X className="h-4 w-4" />
-              </Dialog.Close>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div>
+            <p className={`mb-2 ${FIELD_LABEL_CLASS}`}>{t('revisions.newContent')}</p>
+            <ComposerTextarea
+              value={content}
+              onChange={(event) => setContent(event.target.value)}
+              rows={12}
+              variant="framed"
+            />
+          </div>
+          <div>
+            <p className={`mb-2 ${FIELD_LABEL_CLASS}`}>{t('createPost.preview')}</p>
+            <div className="prose-deck min-h-[276px] border border-border bg-surface-3 px-4 py-3 text-sm">
+              <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
+                {content || t('createPost.emptyPreview')}
+              </ReactMarkdown>
             </div>
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <div>
-                <p className="mb-2 text-xs font-bold text-ink-secondary">
-                  {t('revisions.newContent')}
-                </p>
-                <ComposerTextarea
-                  value={content}
-                  onChange={(event) => setContent(event.target.value)}
-                  rows={12}
-                  variant="framed"
-                />
+          </div>
+        </div>
+        <label className="mt-4 flex items-start gap-2 border border-border px-3 py-2.5 text-xs text-text-secondary">
+          <input
+            type="checkbox"
+            checked={hidePreviousVersion}
+            onChange={(event) => setHidePreviousVersion(event.target.checked)}
+            className="mt-0.5"
+          />
+          <span>
+            <strong className="block text-text-primary">{t('revisions.hidePrevious')}</strong>
+            {t('revisions.hidePreviousHint')}
+          </span>
+        </label>
+        {hidePreviousVersion ? (
+          <label className={`mt-4 block ${FIELD_LABEL_CLASS}`}>
+            {t('revisions.hideReason')}
+            <input
+              value={hideReason}
+              onChange={(event) => setHideReason(event.target.value)}
+              maxLength={280}
+              className="skynet-input mt-2 w-full px-3 py-2.5 text-sm"
+            />
+          </label>
+        ) : null}
+        {error ? (
+          <p
+            role="alert"
+            className="mt-4 border border-danger/30 border-l-2 border-l-danger bg-danger/10 px-3 py-2 text-xs text-danger"
+          >
+            {error}
+          </p>
+        ) : null}
+      </TerminalDialog>
+
+      <TerminalDialog
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        title={t('revisions.replyHistory')}
+        code="HISTORY.REPLY"
+        size="lg"
+        contentClassName="t-corner !fixed"
+      >
+        <div className="space-y-3">
+          {historyQuery.isPending ? (
+            <div role="status" aria-label={t('revisions.loading')}>
+              <TSkeleton rows={4} />
+            </div>
+          ) : null}
+          {historyQuery.data?.items.map((revision) => (
+            <article key={revision.version} className="border border-border bg-surface-1 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <strong className="font-mono text-[11px] tracking-[0.12em] text-info">
+                  {t('revisions.version', { version: revision.version })}
+                </strong>
+                <Timecode date={revision.createdAt} withDate />
               </div>
-              <div>
-                <p className="mb-2 text-xs font-bold text-ink-secondary">
-                  {t('createPost.preview')}
+              {revision.content === null ? (
+                <p className="mt-3 border border-danger/25 bg-danger/5 px-3 py-2 text-xs text-danger">
+                  {t('revisions.hiddenContent', {
+                    reason: revision.publicContentHideReason ?? t('revisions.hiddenReasonFallback'),
+                  })}
                 </p>
-                <div className="prose-deck min-h-[276px] rounded-lg border border-border-subtle bg-void/30 px-4 py-3 text-sm">
+              ) : (
+                <div className="prose-deck mt-3 text-sm">
                   <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
-                    {content || t('createPost.emptyPreview')}
+                    {revision.content}
                   </ReactMarkdown>
                 </div>
-              </div>
-            </div>
-            <label className="mt-4 flex items-start gap-2 rounded-lg border border-border-subtle px-3 py-2.5 text-xs text-ink-secondary">
-              <input
-                type="checkbox"
-                checked={hidePreviousVersion}
-                onChange={(event) => setHidePreviousVersion(event.target.checked)}
-                className="mt-0.5"
-              />
-              <span>
-                <strong className="block text-ink-primary">{t('revisions.hidePrevious')}</strong>
-                {t('revisions.hidePreviousHint')}
-              </span>
-            </label>
-            {hidePreviousVersion ? (
-              <label className="mt-4 block text-xs font-bold text-ink-secondary">
-                {t('revisions.hideReason')}
-                <input
-                  value={hideReason}
-                  onChange={(event) => setHideReason(event.target.value)}
-                  maxLength={280}
-                  className="skynet-input mt-2 w-full rounded-md px-3 py-2.5 text-sm"
-                />
-              </label>
-            ) : null}
-            {error ? (
-              <p
-                role="alert"
-                className="mt-4 rounded-md border border-ochre/20 bg-ochre/10 px-3 py-2 text-xs text-ochre"
-              >
-                {error}
-              </p>
-            ) : null}
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setEditOpen(false)}
-                disabled={saving}
-                className="rounded-md border border-border-subtle px-4 py-2 text-sm text-ink-secondary"
-              >
-                {t('app.cancel')}
-              </button>
-              <button
-                type="button"
-                onClick={() => void save()}
-                disabled={
-                  saving || !content.trim() || (hidePreviousVersion && hideReason.trim().length < 4)
-                }
-                className="rounded-md bg-copper px-4 py-2 text-sm font-bold text-void disabled:opacity-40"
-              >
-                {saving ? t('revisions.saving') : t('revisions.save')}
-              </button>
-            </div>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
-
-      <Dialog.Root open={historyOpen} onOpenChange={setHistoryOpen}>
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-[190] bg-void/70 backdrop-blur-sm" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 z-[200] max-h-[calc(100dvh-32px)] w-[min(calc(100vw-32px),680px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-border-subtle bg-void-deep p-5 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <Dialog.Title className="text-base font-bold text-ink-primary">
-                {t('revisions.replyHistory')}
-              </Dialog.Title>
-              <Dialog.Description className="sr-only">
-                {t('revisions.replyHistoryDescription')}
-              </Dialog.Description>
-              <Dialog.Close
-                className="rounded p-1 text-ink-muted hover:text-ink-primary"
-                aria-label={t('app.close')}
-              >
-                <X className="h-4 w-4" />
-              </Dialog.Close>
-            </div>
-            <div className="mt-4 space-y-3">
-              {historyQuery.isPending ? <InlineLoading label={t('revisions.loading')} /> : null}
-              {historyQuery.data?.items.map((revision) => (
-                <article
-                  key={revision.version}
-                  className="rounded-lg border border-border-subtle bg-void/25 p-4"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <strong className="text-xs text-steel">
-                      {t('revisions.version', { version: revision.version })}
-                    </strong>
-                    <span className="text-[11px] text-ink-muted">
-                      {new Date(revision.createdAt).toLocaleString()}
-                    </span>
-                  </div>
-                  {revision.content === null ? (
-                    <p className="mt-3 rounded-md border border-ochre/15 bg-ochre/[0.06] px-3 py-2 text-xs text-ochre">
-                      {t('revisions.hiddenContent', {
-                        reason:
-                          revision.publicContentHideReason ?? t('revisions.hiddenReasonFallback'),
-                      })}
-                    </p>
-                  ) : (
-                    <div className="prose-deck mt-3 text-sm">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
-                        {revision.content}
-                      </ReactMarkdown>
-                    </div>
-                  )}
-                </article>
-              ))}
-              {historyQuery.isError ? (
-                <p className="text-xs text-ochre">{t('revisions.loadFailed')}</p>
-              ) : null}
-            </div>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
+              )}
+            </article>
+          ))}
+          {historyQuery.isError ? (
+            <p className="text-xs text-danger">{t('revisions.loadFailed')}</p>
+          ) : null}
+        </div>
+      </TerminalDialog>
     </div>
   );
 }

@@ -74,10 +74,10 @@ export function AgentPostsTab({ agentId }: AgentPostsTabProps) {
       {loading && <InlineLoading />}
 
       {errorKey && posts.length > 0 && (
-        <div className="text-center py-4">
+        <div className="py-4 text-center">
           <button
             onClick={() => void (hasMore ? postsQuery.fetchNextPage() : postsQuery.refetch())}
-            className="text-xs text-copper hover:text-copper-bright transition-colors"
+            className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#ADFF2F] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
           >
             {t('agent.loadMoreFailed')}
           </button>
@@ -87,11 +87,13 @@ export function AgentPostsTab({ agentId }: AgentPostsTabProps) {
       {hasMore && !loading && !errorKey && <div ref={loaderRef} className="h-8" />}
 
       {!hasMore && posts.length > 0 && (
-        <div className="text-center py-6 text-xs text-ink-muted tracking-wide">
+        <div className="py-6 text-center">
           <div className="flex items-center justify-center gap-3">
-            <div className="w-8 deck-divider" />
-            <span>{t('agent.postsEnd')}</span>
-            <div className="w-8 deck-divider" />
+            <div className="h-px w-8 bg-[#1A2E1A]" />
+            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+              {t('agent.postsEnd')}
+            </span>
+            <div className="h-px w-8 bg-[#1A2E1A]" />
           </div>
         </div>
       )}

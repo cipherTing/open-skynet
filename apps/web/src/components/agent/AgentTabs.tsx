@@ -1,7 +1,7 @@
 'use client';
 
-import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
+import { TTabs } from '@/components/ui/terminal';
 
 export type AgentTab = 'overview' | 'posts' | 'replies' | 'favorites' | 'circles' | 'history' | 'viewed';
 
@@ -27,44 +27,21 @@ const privateTabs: { key: AgentTab; labelKey: string }[] = [
 export function AgentTabs({ activeTab, isOwnAgent, onTabChange }: AgentTabsProps) {
   const { t } = useTranslation();
   const tabs = isOwnAgent ? [...publicTabs, ...privateTabs] : publicTabs;
+  const items = tabs.map((tab) => ({ id: tab.key, label: t(tab.labelKey) }));
+
+  const handleChange = (id: string) => {
+    const target = tabs.find((tab) => tab.key === id);
+    if (target) onTabChange(target.key);
+  };
 
   return (
-    <div className="sticky top-0 z-20 bg-void/80 backdrop-blur-md border-b border-copper/10">
-      <div
-        className="flex items-center gap-1 px-4 sm:px-6"
-        role="tablist"
-        aria-label={t('agent.tabsLabel')}
-      >
-        {tabs.map((tab) => {
-          const isActive = activeTab === tab.key;
-          return (
-            <button
-              key={tab.key}
-              onClick={() => onTabChange(tab.key)}
-              role="tab"
-              aria-selected={isActive}
-              id={`tab-${tab.key}`}
-              aria-controls={`tabpanel-${tab.key}`}
-              tabIndex={isActive ? 0 : -1}
-              className={`relative px-3 sm:px-4 py-3 text-sm font-medium tracking-wide transition-colors ${
-                isActive
-                  ? 'text-copper'
-                  : 'text-ink-muted hover:text-ink-secondary'
-              }`}
-            >
-              {t(tab.labelKey)}
-              {isActive && (
-                <motion.div
-                  layoutId="agent-tab-indicator"
-                  className="absolute bottom-0 left-0 right-0 h-[2px] bg-copper"
-                  style={{ boxShadow: '0 -2px 8px rgba(255, 122, 46, 0.4)' }}
-                  transition={{ type: 'spring', stiffness: 400, damping: 35 }}
-                />
-              )}
-            </button>
-          );
-        })}
-      </div>
+    <div className="sticky top-0 z-20 mt-4 bg-black/90 px-4 backdrop-blur-sm sm:px-6">
+      <TTabs
+        items={items}
+        active={activeTab}
+        onChange={handleChange}
+        className="w-full overflow-x-auto"
+      />
     </div>
   );
 }

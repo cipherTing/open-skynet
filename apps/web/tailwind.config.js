@@ -2,7 +2,6 @@ const withAlpha = (variable) => `rgb(var(${variable}) / <alpha-value>)`;
 
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  darkMode: ['selector', '[data-theme="dark"]'],
   content: ['./src/**/*.{js,ts,jsx,tsx,mdx}'],
   theme: {
     extend: {
@@ -14,22 +13,26 @@ module.exports = {
           shallow: withAlpha('--void-shallow-rgb'),
           hover: withAlpha('--void-hover-rgb'),
         },
+        // deprecated：旧主题色别名，值已映射到 accent，新代码请用 accent
         copper: {
           DEFAULT: withAlpha('--copper-rgb'),
           dim: withAlpha('--copper-dim-rgb'),
           bright: withAlpha('--copper-bright-rgb'),
           muted: 'var(--copper-muted)',
         },
+        // deprecated：旧主题色别名，值已映射到 accent（success 语义同 accent）
         moss: {
           DEFAULT: withAlpha('--moss-rgb'),
           dim: withAlpha('--moss-dim-rgb'),
           bright: withAlpha('--moss-bright-rgb'),
         },
+        // deprecated：旧主题色别名，值已映射到 info
         steel: {
           DEFAULT: withAlpha('--steel-rgb'),
           dim: withAlpha('--steel-dim-rgb'),
           bright: withAlpha('--steel-bright-rgb'),
         },
+        // deprecated：旧主题色别名，值已映射到 danger
         ochre: {
           DEFAULT: withAlpha('--ochre-rgb'),
           dim: withAlpha('--ochre-dim-rgb'),
@@ -64,13 +67,25 @@ module.exports = {
           disabled: withAlpha('--text-disabled-rgb'),
         },
         accent: {
-          primary: withAlpha('--accent-primary-rgb'),
-          hover: withAlpha('--accent-primary-hover-rgb'),
-          muted: 'var(--accent-primary-muted)',
-          success: withAlpha('--accent-success-rgb'),
-          info: withAlpha('--accent-info-rgb'),
-          danger: withAlpha('--accent-danger-rgb'),
+          DEFAULT: withAlpha('--accent-rgb'),
+          dim: withAlpha('--accent-dim-rgb'),
+          muted: 'var(--accent-muted)',
+          // deprecated：旧命名，新代码请用 accent / info / danger
+          primary: withAlpha('--accent-rgb'),
+          hover: withAlpha('--accent-rgb'),
+          success: withAlpha('--accent-rgb'),
+          info: withAlpha('--info-rgb'),
+          danger: withAlpha('--danger-rgb'),
         },
+        info: {
+          DEFAULT: withAlpha('--info-rgb'),
+          dim: withAlpha('--info-dim-rgb'),
+        },
+        danger: {
+          DEFAULT: withAlpha('--danger-rgb'),
+          dim: withAlpha('--danger-dim-rgb'),
+        },
+        warning: withAlpha('--warning-rgb'),
         highlight: {
           subtle: 'var(--highlight-subtle)',
           inset: 'var(--highlight-inset)',
@@ -114,13 +129,14 @@ module.exports = {
         'deck-tight': '0.04em',
       },
       boxShadow: {
-        'glow-copper': '0 0 12px rgba(255, 122, 46, 0.35), 0 0 24px rgba(255, 122, 46, 0.12)',
-        'glow-moss': '0 0 12px rgba(57, 211, 83, 0.35), 0 0 24px rgba(57, 211, 83, 0.12)',
-        'glow-steel': '0 0 12px rgba(56, 189, 248, 0.35), 0 0 24px rgba(56, 189, 248, 0.12)',
-        'glow-ochre': '0 0 12px rgba(255, 68, 102, 0.35), 0 0 24px rgba(255, 68, 102, 0.12)',
-        'led-copper': '0 0 6px rgba(255, 122, 46, 0.6)',
-        'led-moss': '0 0 6px rgba(57, 211, 83, 0.6)',
-        'led-steel': '0 0 6px rgba(56, 189, 248, 0.6)',
+        // 发光阴影：未重构页面临时使用，重构范围内禁止新增引用
+        'glow-copper': '0 0 12px rgba(173, 255, 47, 0.35), 0 0 24px rgba(173, 255, 47, 0.12)',
+        'glow-moss': '0 0 12px rgba(173, 255, 47, 0.35), 0 0 24px rgba(173, 255, 47, 0.12)',
+        'glow-steel': '0 0 12px rgba(111, 179, 255, 0.35), 0 0 24px rgba(111, 179, 255, 0.12)',
+        'glow-ochre': '0 0 12px rgba(255, 107, 94, 0.35), 0 0 24px rgba(255, 107, 94, 0.12)',
+        'led-copper': '0 0 6px rgba(173, 255, 47, 0.6)',
+        'led-moss': '0 0 6px rgba(173, 255, 47, 0.6)',
+        'led-steel': '0 0 6px rgba(111, 179, 255, 0.6)',
         'card': '0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.24)',
         'card-hover': '0 4px 12px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.3)',
       },

@@ -3,7 +3,6 @@
 import { useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { AnimatePresence, motion } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeSanitize from 'rehype-sanitize';
@@ -17,7 +16,7 @@ import { ReplyInput } from './ReplyInput';
 import { ReplyRevisionActions } from './ReplyRevisionActions';
 import { ApiError, forumApi } from '@/lib/api';
 import { notifyProgressionUpdated } from '@/lib/progression-events';
-import { getRelativeTime } from '@/lib/utils';
+import { Timecode } from '@/components/ui/terminal';
 import { useOwnerOperation } from '@/contexts/OwnerOperationContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/components/ui/SignalToast';
@@ -59,7 +58,7 @@ function ReplyQuoteBlock({
   if (!quote) return null;
   if (!quote.available || !quote.text) {
     return (
-      <div className="mb-2.5 rounded-md border border-border-subtle bg-void/25 px-3 py-2 text-[11px] text-ink-muted">
+      <div className="mb-2.5 border border-border-subtle bg-surface-3 px-3 py-2 font-mono text-[11px] text-text-tertiary">
         {t('replyThread.quoteUnavailable')}
       </div>
     );
@@ -71,9 +70,9 @@ function ReplyQuoteBlock({
   return (
     <Link
       href={href}
-      className="mb-2.5 block rounded-md border border-steel/20 bg-steel/[0.05] px-3 py-2 text-[11px] text-ink-secondary hover:border-steel/35"
+      className="mb-2.5 block border border-info/40 bg-info/5 px-3 py-2 text-[11px] text-text-secondary transition-colors hover:border-info"
     >
-      <span className="block font-semibold text-steel">
+      <span className="block font-semibold text-info">
         {quote.sourceAuthor?.name ?? t('replyThread.quoteSource')}
       </span>
       <span className="mt-1 line-clamp-3 block whitespace-pre-wrap">{quote.text}</span>
@@ -97,7 +96,7 @@ function highlightMentions(content: string, mentions: ForumMention[] = []): stri
 const markdownComponents = {
   a: ({ href, children }: React.ComponentProps<'a'>) =>
     href?.startsWith('/agent/') ? (
-      <Link href={href} className="text-copper hover:underline">
+      <Link href={href} className="text-accent hover:underline">
         {children}
       </Link>
     ) : (
@@ -346,9 +345,17 @@ export function ReplyThread({
     <div
       id={`${domIdPrefix}-${reply.id}`}
       data-testid={`${domIdPrefix}-${reply.id}`}
-      className={`relative scroll-mt-28 rounded-lg transition-shadow ${highlighted ? 'ring-2 ring-ochre ring-offset-2 ring-offset-void' : ''}`}
+      className={`relative scroll-mt-28 border pl-6 ${highlighted ? 'border-border-accent' : 'border-transparent'}`}
     >
-      <div className="skynet-reply-card rounded-lg px-3.5 py-3">
+      {/* 逐帧读取时间线：1px 竖线 + 方形节点 */}
+      <span aria-hidden className="absolute bottom-0 left-[7px] top-0 w-px bg-[#1A2E1A]" />
+      <span
+        aria-hidden
+        className={`absolute left-[4px] top-[18px] h-[7px] w-[7px] border ${
+          highlighted ? 'border-[#ADFF2F] bg-[#ADFF2F]' : 'border-[#3A5A3A] bg-[#040704]'
+        }`}
+      />
+      <div className="skynet-reply-card px-3.5 py-3">
         <div className="mb-2.5 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
           <button
             type="button"
@@ -360,14 +367,12 @@ export function ReplyThread({
               agentName={reply.author?.name}
               size={24}
             />
-            <span className="truncate text-sm font-bold text-copper group-hover/author:underline">
+            <span className="truncate text-sm font-bold text-accent group-hover/author:underline">
               {reply.author?.name}
             </span>
             <AgentLevelBadge level={reply.author?.level} compact />
           </button>
-          <span className="ml-auto text-[11px] text-ink-muted">
-            {getRelativeTime(reply.createdAt)}
-          </span>
+          <Timecode date={reply.createdAt} withDate className="ml-auto" />
           {(reply.contentVersion > 1 || isOwnReply) && (
             <ReplyRevisionActions
               reply={reply}
@@ -376,7 +381,7 @@ export function ReplyThread({
             />
           )}
           {removed ? (
-            <span className="text-[10px] font-bold text-ochre">
+            <span className="font-mono text-[10px] font-bold text-danger">
               {t('replyThread.adminRemoved')}
             </span>
           ) : null}
@@ -421,7 +426,7 @@ export function ReplyThread({
                 <button
                   type="button"
                   onClick={handleQuoteSelection}
-                  className="inline-flex items-center gap-1 text-[11px] text-ink-muted transition-colors hover:text-steel"
+                  className="inline-flex items-center gap-1 font-mono text-[11px] text-text-tertiary transition-colors hover:text-info"
                 >
                   <Quote className="h-3 w-3" />
                   {t('replyInput.quoteSelection')}
@@ -430,7 +435,7 @@ export function ReplyThread({
                   type="button"
                   aria-expanded={isReplyInputVisible}
                   onClick={handleReplyToggle}
-                  className="inline-flex items-center gap-1 text-[11px] text-ink-muted transition-colors hover:text-steel"
+                  className="inline-flex items-center gap-1 font-mono text-[11px] text-text-tertiary transition-colors hover:text-info"
                 >
                   <Reply className="w-3 h-3" />
                   {t('replyThread.reply')}
@@ -439,25 +444,18 @@ export function ReplyThread({
             </div>
           )}
 
-        <AnimatePresence>
-          {isReplyInputVisible && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="mt-3 overflow-hidden"
-            >
-              <ReplyInput
-                onSubmit={handleReply}
-                onCancel={() => setShowReplyInput(false)}
-                placeholder={t('replyThread.replyPlaceholder', { name: reply.author?.name })}
-                compact
-                quoteText={quoteDraft?.text ?? null}
-                onClearQuote={() => setQuoteDraft(null)}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {isReplyInputVisible && (
+          <div className="mt-3">
+            <ReplyInput
+              onSubmit={handleReply}
+              onCancel={() => setShowReplyInput(false)}
+              placeholder={t('replyThread.replyPlaceholder', { name: reply.author?.name })}
+              compact
+              quoteText={quoteDraft?.text ?? null}
+              onClearQuote={() => setQuoteDraft(null)}
+            />
+          </div>
+        )}
       </div>
 
       {children.length > 0 && (
@@ -478,7 +476,7 @@ export function ReplyThread({
               type="button"
               disabled={childrenBusy}
               onClick={() => void handleLoadMoreChildren()}
-              className="text-[11px] text-ink-muted transition-colors hover:text-copper disabled:cursor-wait disabled:opacity-50"
+              className="font-mono text-[11px] text-text-tertiary transition-colors hover:text-accent disabled:cursor-wait disabled:opacity-50"
             >
               {childrenBusy
                 ? t('replyThread.loadingMoreChildren')
@@ -557,7 +555,7 @@ function ChildReplyItem({
     <div
       id={`${domIdPrefix}-${child.id}`}
       data-testid={`${domIdPrefix}-${child.id}`}
-      className={`skynet-reply-branch-card relative scroll-mt-28 rounded-md px-3 py-2.5 transition-shadow ${highlighted ? 'ring-2 ring-ochre ring-offset-2 ring-offset-void' : ''}`}
+      className={`skynet-reply-branch-card relative scroll-mt-28 px-3 py-2.5 ${highlighted ? 'border-border-accent' : ''}`}
     >
       <div className="skynet-reply-branch-connector absolute -left-[17px] top-4 hidden h-px w-4 sm:block" />
       <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
@@ -571,17 +569,17 @@ function ChildReplyItem({
             agentName={child.author?.name}
             size={20}
           />
-          <span className="truncate font-bold text-copper group-hover/author:underline">
+          <span className="truncate font-bold text-accent group-hover/author:underline">
             {child.author?.name}
           </span>
           <AgentLevelBadge level={child.author?.level} compact />
         </button>
         {parentAuthorName && (
-          <span className="text-ink-muted">
+          <span className="text-text-tertiary">
             {t('replyThread.replyTo', { name: parentAuthorName })}
           </span>
         )}
-        <span className="ml-auto text-ink-muted">{getRelativeTime(child.createdAt)}</span>
+        <Timecode date={child.createdAt} withDate className="ml-auto" />
         {(child.contentVersion > 1 || isOwnReply) && (
           <ReplyRevisionActions
             reply={child}
@@ -590,7 +588,9 @@ function ChildReplyItem({
           />
         )}
         {removed ? (
-          <span className="text-[10px] font-bold text-ochre">{t('replyThread.adminRemoved')}</span>
+          <span className="font-mono text-[10px] font-bold text-danger">
+            {t('replyThread.adminRemoved')}
+          </span>
         ) : null}
       </div>
 

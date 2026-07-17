@@ -12,10 +12,10 @@ import { AgentLevelBadge } from '@/components/ui/AgentLevelBadge';
 import { CircleBadge } from '@/components/circle/CircleBadge';
 import { FeedbackBar, hasVisibleFeedback } from '@/components/forum/FeedbackBar';
 import { EmptyState, ErrorState, InlineLoading } from '@/components/ui/LoadingState';
+import { Timecode } from '@/components/ui/terminal';
 import { useAuth } from '@/contexts/AuthContext';
 import { forumApi } from '@/lib/api';
 import { forumKeys } from '@/lib/query-keys';
-import { getRelativeTime } from '@/lib/utils';
 import type { AgentReply, PaginationMeta } from '@skynet/shared';
 
 interface AgentRepliesTabProps {
@@ -92,45 +92,50 @@ export function AgentRepliesTab({ agentId }: AgentRepliesTabProps) {
         return (
           <article
             key={reply.id}
-            className="signal-bubble p-4 group cursor-pointer hover:border-copper/20 transition-colors"
+            className="group relative cursor-pointer border border-[#1A2E1A] bg-[#040704] p-4 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[#3A5A3A]"
             onClick={(event) => handleCardClick(event, reply.postId, reply.id)}
           >
+            <span
+              aria-hidden
+              className="absolute bottom-0 left-0 top-0 w-[2px] bg-[#ADFF2F] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
+            />
+
             {/* 顶部：帖子作者头像 + 帖子标题 */}
             {reply.post && (
-              <div className="flex items-center gap-2.5 mb-3 pb-3 border-b border-copper/[0.08]">
+              <div className="mb-3 flex items-center gap-2.5 border-b border-[#1A2E1A] pb-3">
                 <AgentAvatar
                   agentId={reply.post.author?.avatarSeed || reply.post.author?.id || ''}
                   agentName={reply.post.author?.name}
                   size={24}
                 />
-                <div className="flex-1 min-w-0">
-                  <span className="text-copper text-xs font-bold">{reply.post.author?.name}</span>
+                <div className="min-w-0 flex-1">
+                  <span className="text-xs font-bold text-[#ADFF2F]">{reply.post.author?.name}</span>
                   <AgentLevelBadge level={reply.post.author?.level} compact />
                   <CircleBadge
                     circle={reply.post.circle}
                     compact
                     href={`/circles/${encodeURIComponent(reply.post.circle.slug)}`}
                   />
-                  <span className="text-ink-muted text-xs mx-1.5">·</span>
+                  <span className="mx-1.5 text-xs text-[#3A5A3A]">·</span>
                   <Link
                     href={`/post/${reply.postId}?replyId=${encodeURIComponent(reply.id)}`}
-                    className="truncate text-xs text-ink-secondary"
+                    className="truncate text-xs text-[#EDF3ED]/70 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
                     onClick={(event) => event.stopPropagation()}
                   >
                     {reply.post.title}
                   </Link>
                 </div>
-                <MessageSquare className="w-3.5 h-3.5 text-ink-muted/50" />
+                <MessageSquare className="h-3.5 w-3.5 text-[#3A5A3A]" />
               </div>
             )}
 
             {/* 回复对象 */}
-            <div className="flex items-start gap-2 mb-3 rounded-md border border-copper/[0.08] bg-void-mid/35 px-2.5 py-2">
+            <div className="mb-3 flex items-start gap-2 border border-[#1A2E1A] bg-[#122012]/40 px-2.5 py-2">
               {reply.parentReply ? (
                 <>
-                  <CornerDownRight className="w-3.5 h-3.5 text-ink-muted/50 mt-0.5 flex-shrink-0" />
+                  <CornerDownRight className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-[#3A5A3A]" />
                   <div className="min-w-0">
-                    <div className="mb-1 flex min-w-0 items-center gap-1.5 text-[11px] font-mono text-steel">
+                    <div className="mb-1 flex min-w-0 items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
                       <span className="truncate">
                         {t('replyThread.replyTo', {
                           name: reply.parentReply.author?.name || t('agent.unknownAgent'),
@@ -138,19 +143,19 @@ export function AgentRepliesTab({ agentId }: AgentRepliesTabProps) {
                       </span>
                       <AgentLevelBadge level={reply.parentReply.author?.level} compact />
                     </div>
-                    <p className="text-xs text-ink-muted line-clamp-2">
+                    <p className="text-xs text-[#EDF3ED]/60 line-clamp-2">
                       {reply.parentReply.content}
                     </p>
                   </div>
                 </>
               ) : (
                 <>
-                  <CornerDownRight className="w-3.5 h-3.5 text-ink-muted/50 mt-0.5 flex-shrink-0" />
+                  <CornerDownRight className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-[#3A5A3A]" />
                   <div className="min-w-0">
-                    <div className="mb-1 text-[11px] font-mono text-moss">
+                    <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[#ADFF2F]">
                       {t('agent.replyMainPost')}
                     </div>
-                    <p className="text-xs text-ink-muted line-clamp-2">
+                    <p className="text-xs text-[#EDF3ED]/60 line-clamp-2">
                       {postContentPreview || reply.post?.title || t('agent.mainPostUnavailable')}
                     </p>
                   </div>
@@ -161,15 +166,15 @@ export function AgentRepliesTab({ agentId }: AgentRepliesTabProps) {
             {/* 回复内容 */}
             <Link
               href={`/post/${reply.postId}?replyId=${encodeURIComponent(reply.id)}`}
-              className="mb-3 line-clamp-3 text-sm text-ink-primary"
+              className="mb-3 text-sm text-[#EDF3ED] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white line-clamp-3"
               onClick={(event) => event.stopPropagation()}
             >
               {sanitizePreview(reply.content)}
             </Link>
 
             {/* 底部 */}
-            <div className="flex flex-col gap-2 text-xs text-ink-muted sm:flex-row sm:items-center sm:justify-between">
-              <span>{getRelativeTime(reply.createdAt)}</span>
+            <div className="flex flex-col gap-2 text-xs text-[#3A5A3A] sm:flex-row sm:items-center sm:justify-between">
+              <Timecode date={reply.createdAt} withDate />
               {showFeedback && (
                 <FeedbackBar
                   counts={reply.feedbackCounts}
@@ -186,10 +191,10 @@ export function AgentRepliesTab({ agentId }: AgentRepliesTabProps) {
       {loading && <InlineLoading />}
 
       {errorKey && replies.length > 0 && (
-        <div className="text-center py-4">
+        <div className="py-4 text-center">
           <button
             onClick={() => void (hasMore ? repliesQuery.fetchNextPage() : repliesQuery.refetch())}
-            className="text-xs text-copper hover:text-copper-bright transition-colors"
+            className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#ADFF2F] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
           >
             {t('agent.loadMoreFailed')}
           </button>
@@ -199,11 +204,13 @@ export function AgentRepliesTab({ agentId }: AgentRepliesTabProps) {
       {hasMore && !loading && !errorKey && <div ref={loaderRef} className="h-8" />}
 
       {!hasMore && replies.length > 0 && (
-        <div className="text-center py-6 text-xs text-ink-muted tracking-wide">
+        <div className="py-6 text-center">
           <div className="flex items-center justify-center gap-3">
-            <div className="w-8 deck-divider" />
-            <span>{t('agent.repliesEnd')}</span>
-            <div className="w-8 deck-divider" />
+            <div className="h-px w-8 bg-[#1A2E1A]" />
+            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+              {t('agent.repliesEnd')}
+            </span>
+            <div className="h-px w-8 bg-[#1A2E1A]" />
           </div>
         </div>
       )}

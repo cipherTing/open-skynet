@@ -1,16 +1,23 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, RefreshCw, Search, X } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { useQuery } from '@tanstack/react-query';
+import { ArrowLeft, LogIn, Menu, RefreshCw, Search, X } from 'lucide-react';
 import * as Popover from '@radix-ui/react-popover';
 import { useTranslation } from 'react-i18next';
-import { ThemeToggle } from '@/components/ui/ThemeToggle';
 import { LanguageToggle } from '@/components/ui/LanguageToggle';
 import { PortalTooltip } from '@/components/ui/FloatingPortal';
 import { AnnouncementMenu } from '@/components/system/AnnouncementMenu';
+import { TerminalDialog } from '@/components/ui/TerminalDialog';
+import { UserDropdown } from '@/components/ui/UserDropdown';
+import { useToast } from '@/components/ui/SignalToast';
+import { ScrambleText } from '@/components/home/terminal/ScrambleText';
+import { useUtcNow } from '@/components/home/terminal/terminal-hooks';
+import { useAuth } from '@/contexts/AuthContext';
+import { forumApi } from '@/lib/api';
+import { forumKeys } from '@/lib/query-keys';
 import { useHomeNavigationStore, type HomeSection } from '@/stores/home-navigation-store';
 
 export interface TopBarGovernanceControls {
@@ -35,22 +42,22 @@ interface TopBarProps {
   backSection?: HomeSection;
   preferHistoryBack?: boolean;
   governanceControls?: TopBarGovernanceControls;
+  onOpenNav?: () => void;
 }
 
-function useClock() {
-  const [time, setTime] = useState('');
-  const [date, setDate] = useState('');
-  useEffect(() => {
-    const tick = () => {
-      const now = new Date();
-      setTime(now.toLocaleTimeString('en-GB', { hour12: false }));
-      setDate(now.toLocaleDateString('en-CA'));
-    };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, []);
-  return { time, date };
+const SECTION_CODE: Record<NonNullable<TopBarProps['mode']>, string> = {
+  feed: 'SYS.FEED',
+  inbox: 'SYS.INBOX',
+  circles: 'SYS.CIRCLES',
+  governance: 'SYS.GOV',
+  detail: 'SYS.DETAIL',
+};
+
+const TICKER_REFRESH_FALLBACK_SECONDS = 60;
+
+function formatUtcTime(value: Date): string {
+  const pad = (unit: number) => String(unit).padStart(2, '0');
+  return `${pad(value.getUTCHours())}:${pad(value.getUTCMinutes())}:${pad(value.getUTCSeconds())}`;
 }
 
 export function TopBar({
@@ -65,16 +72,22 @@ export function TopBar({
   backSection,
   preferHistoryBack = false,
   governanceControls,
+  onOpenNav,
 }: TopBarProps) {
-  const { time, date } = useClock();
   const { t } = useTranslation();
   const router = useRouter();
+  const toast = useToast();
+  const { isAuthenticated, agent, logout } = useAuth();
   const setHomeActiveSection = useHomeNavigationStore((state) => state.setActiveSection);
   const postSearch = useHomeNavigationStore((state) => state.postSearch);
   const circleSearch = useHomeNavigationStore((state) => state.circleSearch);
   const setPostSearch = useHomeNavigationStore((state) => state.setPostSearch);
   const setCircleSearch = useHomeNavigationStore((state) => state.setCircleSearch);
   const [scrolled, setScrolled] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [logoutBusy, setLogoutBusy] = useState(false);
+  const utcNow = useUtcNow(1000);
+  const utcTimeLabel = utcNow ? formatUtcTime(utcNow) : '--:--:--';
   const isSearchMode = mode === 'feed' || mode === 'circles';
   const appliedSearch = mode === 'circles' ? circleSearch : postSearch;
   const setAppliedSearch = mode === 'circles' ? setCircleSearch : setPostSearch;
@@ -105,8 +118,7 @@ export function TopBar({
   const resolvedBackLabel = backLabel ?? (backLabelKey ? t(backLabelKey) : '');
   const hasBackLink = Boolean(resolvedBackLabel && (backHref || preferHistoryBack));
   const backControlClassName =
-    'inline-flex min-w-0 items-center gap-1.5 rounded-md border border-border-subtle bg-surface-1/45 px-2.5 py-1.5 text-xs font-bold tracking-wide text-ink-secondary transition-all hover:border-border-accent hover:bg-accent-muted hover:text-copper sm:max-w-none';
-  const showsCompactSectionLabel = isGovernanceMode || mode === 'inbox' || mode === 'detail';
+    'inline-flex min-w-0 items-center gap-1.5 border border-[#1A2E1A] bg-black px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A] transition-colors [transition-timing-function:steps(2,end)] hover:border-[#ADFF2F] hover:text-[#ADFF2F] sm:max-w-none';
   const sectionLabel = isGovernanceMode
     ? t('governance.plazaTitle')
     : mode === 'inbox'
@@ -115,7 +127,7 @@ export function TopBar({
         ? t('circles.plazaTitle')
         : mode === 'detail'
           ? (detailTitle ?? (detailTitleKey ? t(detailTitleKey) : t('app.terminal')))
-          : t('app.terminal');
+          : t('sidebar.feed');
 
   const submitSearch = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -141,6 +153,22 @@ export function TopBar({
     setAppliedSearch('');
   };
 
+  const handleLogoutConfirm = () => {
+    void (async () => {
+      setLogoutBusy(true);
+      try {
+        await logout();
+        setShowLogoutConfirm(false);
+        router.replace('/workspace');
+      } catch (error) {
+        console.error('Logout failed:', error);
+        toast.error(t('auth.operationFailed'));
+      } finally {
+        setLogoutBusy(false);
+      }
+    })();
+  };
+
   useEffect(() => {
     if (disableScrollFade) {
       return undefined;
@@ -154,26 +182,31 @@ export function TopBar({
   }, [disableScrollFade]);
 
   return (
-    <motion.header
-      initial={disableScrollFade ? false : { opacity: 0, y: -10 }}
-      animate={{ opacity: effectiveScrolled ? 0 : 1, y: effectiveScrolled ? -10 : 0 }}
-      transition={{ duration: 0.3 }}
-      className={`${position === 'sticky' ? 'sticky top-0' : 'relative flex-none'} z-30 pointer-events-none`}
-    >
-      <div
-        className={
-          isGovernanceMode
-            ? 'flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-6 pb-0 pt-1.5'
-            : 'flex items-center justify-between px-6 pb-0 pt-1.5'
-        }
+    <>
+      <header
+        className={`${position === 'sticky' ? 'sticky top-0' : 'relative flex-none'} pointer-events-none z-30 border-b border-[#1A2E1A] bg-[rgba(0,0,0,0.72)] backdrop-blur-md ${
+          effectiveScrolled ? '-translate-y-2 opacity-0' : ''
+        }`}
       >
-        {/* 左: 区域标识 */}
         <div
-          className={`flex items-center gap-3 pointer-events-auto ${
-            showsCompactSectionLabel ? 'min-w-0' : ''
-          }`}
+          className={
+            isGovernanceMode
+              ? 'flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-1.5 sm:px-6'
+              : 'flex h-12 items-center justify-between gap-3 px-4 sm:px-6'
+          }
         >
-          <div className="flex items-center gap-2">
+          {/* 左: 移动导航开关 + 返回 + 频道标识 */}
+          <div className="flex min-w-0 items-center gap-3 pointer-events-auto">
+            {onOpenNav ? (
+              <button
+                type="button"
+                onClick={onOpenNav}
+                aria-label={t('sidebar.navigation')}
+                className="flex h-8 w-8 flex-none items-center justify-center border border-[#1A2E1A] text-[#3A5A3A] transition-colors [transition-timing-function:steps(2,end)] hover:border-[#ADFF2F] hover:text-[#ADFF2F] md:hidden"
+              >
+                <Menu className="h-4 w-4 stroke-[1.5]" />
+              </button>
+            ) : null}
             {hasBackLink ? (
               preferHistoryBack ? (
                 <button
@@ -184,7 +217,7 @@ export function TopBar({
                   }}
                   className={backControlClassName}
                 >
-                  <ArrowLeft className="h-3.5 w-3.5 shrink-0" />
+                  <ArrowLeft className="h-3.5 w-3.5 shrink-0 stroke-[1.5]" />
                   <span className="max-w-[30vw] truncate sm:max-w-none">{resolvedBackLabel}</span>
                 </button>
               ) : (
@@ -195,157 +228,248 @@ export function TopBar({
                   }}
                   className={backControlClassName}
                 >
-                  <ArrowLeft className="h-3.5 w-3.5 shrink-0" />
+                  <ArrowLeft className="h-3.5 w-3.5 shrink-0 stroke-[1.5]" />
                   <span className="max-w-[30vw] truncate sm:max-w-none">{resolvedBackLabel}</span>
                 </Link>
               )
-            ) : (
-              <span className="text-copper font-display text-base font-bold tracking-deck-wide">
-                SKYNET
+            ) : null}
+            <div
+              className={`${hasBackLink ? 'hidden sm:flex' : 'flex'} min-w-0 items-center gap-2.5`}
+            >
+              <span className="flex-none font-mono text-[10px] uppercase tracking-[0.15em] text-[#ADFF2F]">
+                {SECTION_CODE[mode]}
               </span>
-            )}
+              <span aria-hidden="true" className="h-3 w-px flex-none bg-[#3A5A3A]" />
+              <ScrambleText
+                text={sectionLabel}
+                className="truncate font-mono text-[11px] uppercase tracking-[0.15em] text-white"
+              />
+            </div>
           </div>
+
+          {/* 中: 评审状态 */}
           <div
-            className={`${hasBackLink ? 'hidden sm:block' : 'block'} h-4 w-px bg-border-subtle`}
-          />
-          <span
-            className={`text-xs text-ink-muted tracking-wider uppercase ${
-              showsCompactSectionLabel
-                ? hasBackLink
-                  ? 'hidden min-w-0 truncate sm:inline sm:max-w-none'
-                  : 'min-w-0 max-w-[42vw] truncate sm:max-w-none'
-                : 'hidden sm:inline'
+            className={`min-w-0 items-center gap-4 pointer-events-auto ${
+              isGovernanceMode
+                ? 'order-3 flex w-full justify-start sm:order-none sm:w-auto sm:flex-1 sm:justify-center'
+                : 'hidden'
             }`}
           >
-            {sectionLabel}
-          </span>
-        </div>
-
-        {/* 中: 评审状态 */}
-        <div
-          className={`min-w-0 items-center gap-4 pointer-events-auto ${
-            isGovernanceMode
-              ? 'order-3 flex w-full justify-start sm:order-none sm:w-auto sm:flex-1 sm:justify-center'
-              : 'hidden'
-          }`}
-        >
-          {governanceControls ? (
-            <div className="flex min-w-0 items-center gap-2 rounded-lg border border-border-subtle bg-surface-1/35 px-2 py-1.5 sm:px-2.5">
-              <span className="min-w-0 max-w-[12rem] truncate text-xs text-ink-secondary tracking-wide sm:max-w-48">
-                {governanceControls.statusLabel}
-              </span>
-              <div
-                className={`relative h-1 w-14 shrink-0 overflow-hidden rounded-full bg-ink-muted/15 sm:w-20 ${
-                  governanceControls.isProgressPaused ? 'opacity-45' : ''
-                }`}
-                role="progressbar"
-                aria-label={governanceControls.statusLabel}
-                aria-valuetext={governanceControls.statusLabel}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={Math.round(governanceControls.progressValue * 100)}
-              >
-                <motion.span
-                  className="absolute inset-0 block origin-left rounded-full bg-ink-muted/55"
-                  animate={{ scaleX: governanceControls.progressValue }}
-                  transition={{ duration: 0.18, ease: 'easeOut' }}
+            {governanceControls ? (
+              <div className="flex min-w-0 items-center gap-2 border border-[#1A2E1A] bg-black px-2 py-1.5 sm:px-2.5">
+                <span className="min-w-0 max-w-[12rem] truncate font-mono text-[11px] text-text-secondary sm:max-w-48">
+                  {governanceControls.statusLabel}
+                </span>
+                <progress
+                  value={governanceControls.progressValue}
+                  max={1}
+                  aria-label={governanceControls.statusLabel}
+                  className={`agent-stamina-progress h-1.5 w-14 shrink-0 border border-[#1A2E1A] sm:w-20 ${
+                    governanceControls.isProgressPaused ? 'opacity-45' : ''
+                  }`}
                 />
-              </div>
-              <PortalTooltip content={governanceControls.refreshLabel} placement="bottom">
-                <button
-                  type="button"
-                  aria-label={governanceControls.refreshLabel}
-                  disabled={governanceControls.refreshDisabled}
-                  onClick={governanceControls.onRefresh}
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border-subtle text-ink-muted transition-all hover:border-border-accent hover:bg-accent-muted hover:text-copper disabled:cursor-not-allowed disabled:opacity-45"
-                >
-                  <RefreshCw
-                    className={`h-3.5 w-3.5 ${governanceControls.isRefreshing ? 'animate-spin' : ''}`}
-                  />
-                </button>
-              </PortalTooltip>
-            </div>
-          ) : null}
-        </div>
-
-        {/* 右: 搜索 + 主题 + 语言 + 时钟 */}
-        <div className="relative flex items-center gap-3 pointer-events-auto">
-          {/* 搜索 */}
-          {isSearchMode && (
-            <>
-              <SearchForm
-                className="hidden xl:flex"
-                errorId="workspace-search-error-desktop"
-                value={searchInput}
-                error={searchError}
-                onChange={(value) => {
-                  setSearchInput(value);
-                  setSearchError('');
-                }}
-                onClear={clearSearch}
-                onSubmit={submitSearch}
-                placeholder={t(mode === 'circles' ? 'app.searchCircles' : 'app.searchPosts')}
-                clearLabel={t('app.clearSearch')}
-                maxLength={mode === 'circles' ? 80 : 200}
-              />
-              <Popover.Root open={searchOpen} onOpenChange={setSearchOpen}>
-                <PortalTooltip content={t('app.openSearch')} placement="bottom">
-                  <Popover.Trigger asChild>
-                    <button
-                      type="button"
-                      aria-label={t('app.openSearch')}
-                      className="flex h-8 w-8 items-center justify-center rounded-md border border-border-subtle text-ink-muted transition-colors hover:border-border-accent hover:text-copper xl:hidden"
-                    >
-                      {searchOpen ? <X className="h-4 w-4" /> : <Search className="h-4 w-4" />}
-                    </button>
-                  </Popover.Trigger>
-                </PortalTooltip>
-                <Popover.Portal>
-                  <Popover.Content
-                    align="end"
-                    sideOffset={8}
-                    className="skynet-floating-content z-[190] rounded-lg border border-border-subtle bg-surface-1 p-2 shadow-[0_18px_48px_rgba(0,0,0,0.28)] xl:hidden"
+                <PortalTooltip content={governanceControls.refreshLabel} placement="bottom">
+                  <button
+                    type="button"
+                    aria-label={governanceControls.refreshLabel}
+                    disabled={governanceControls.refreshDisabled}
+                    onClick={governanceControls.onRefresh}
+                    className="flex h-7 w-7 shrink-0 items-center justify-center border border-[#1A2E1A] text-[#3A5A3A] transition-colors [transition-timing-function:steps(2,end)] hover:border-[#ADFF2F] hover:text-[#ADFF2F] disabled:cursor-not-allowed disabled:opacity-45"
                   >
-                    <SearchForm
-                      className="flex"
-                      errorId="workspace-search-error-mobile"
-                      value={searchInput}
-                      error={searchError}
-                      onChange={(value) => {
-                        setSearchInput(value);
-                        setSearchError('');
-                      }}
-                      onClear={clearSearch}
-                      onSubmit={submitSearch}
-                      placeholder={t(mode === 'circles' ? 'app.searchCircles' : 'app.searchPosts')}
-                      clearLabel={t('app.clearSearch')}
-                      maxLength={mode === 'circles' ? 80 : 200}
-                      autoFocus
+                    <RefreshCw
+                      className={`h-3.5 w-3.5 stroke-[1.5] ${governanceControls.isRefreshing ? 'animate-spin' : ''}`}
                     />
-                  </Popover.Content>
-                </Popover.Portal>
-              </Popover.Root>
-            </>
-          )}
+                  </button>
+                </PortalTooltip>
+              </div>
+            ) : null}
+          </div>
 
-          <AnnouncementMenu />
-          <ThemeToggle />
-          <LanguageToggle />
+          {/* 右: 搜索 + 公告 + 语言 + UTC 时钟 + 用户入口 */}
+          <div className="relative flex flex-none items-center gap-2.5 pointer-events-auto">
+            {/* 搜索 */}
+            {isSearchMode && (
+              <>
+                <SearchForm
+                  className="hidden xl:flex"
+                  errorId="workspace-search-error-desktop"
+                  value={searchInput}
+                  error={searchError}
+                  onChange={(value) => {
+                    setSearchInput(value);
+                    setSearchError('');
+                  }}
+                  onClear={clearSearch}
+                  onSubmit={submitSearch}
+                  placeholder={t(mode === 'circles' ? 'app.searchCircles' : 'app.searchPosts')}
+                  clearLabel={t('app.clearSearch')}
+                  maxLength={mode === 'circles' ? 80 : 200}
+                />
+                <Popover.Root open={searchOpen} onOpenChange={setSearchOpen}>
+                  <PortalTooltip content={t('app.openSearch')} placement="bottom">
+                    <Popover.Trigger asChild>
+                      <button
+                        type="button"
+                        aria-label={t('app.openSearch')}
+                        className="flex h-8 w-8 items-center justify-center border border-[#1A2E1A] text-[#3A5A3A] transition-colors [transition-timing-function:steps(2,end)] hover:border-[#ADFF2F] hover:text-[#ADFF2F] xl:hidden"
+                      >
+                        {searchOpen ? (
+                          <X className="h-4 w-4 stroke-[1.5]" />
+                        ) : (
+                          <Search className="h-4 w-4 stroke-[1.5]" />
+                        )}
+                      </button>
+                    </Popover.Trigger>
+                  </PortalTooltip>
+                  <Popover.Portal>
+                    <Popover.Content
+                      align="end"
+                      sideOffset={8}
+                      className="skynet-floating-content z-[100] border border-[#1A2E1A] bg-black p-2 xl:hidden"
+                    >
+                      <SearchForm
+                        className="flex"
+                        errorId="workspace-search-error-mobile"
+                        value={searchInput}
+                        error={searchError}
+                        onChange={(value) => {
+                          setSearchInput(value);
+                          setSearchError('');
+                        }}
+                        onClear={clearSearch}
+                        onSubmit={submitSearch}
+                        placeholder={t(mode === 'circles' ? 'app.searchCircles' : 'app.searchPosts')}
+                        clearLabel={t('app.clearSearch')}
+                        maxLength={mode === 'circles' ? 80 : 200}
+                        autoFocus
+                      />
+                    </Popover.Content>
+                  </Popover.Portal>
+                </Popover.Root>
+              </>
+            )}
 
-          <div className="w-px h-4 bg-border-subtle" />
+            <AnnouncementMenu />
+            <LanguageToggle />
 
-          {/* 时钟 */}
-          <div className="hidden text-right sm:block">
-            <div className="text-moss text-sm font-mono font-bold tracking-wider tabular-nums">
-              {time}
+            <span aria-hidden="true" className="h-3 w-px bg-[#3A5A3A]" />
+
+            {/* UTC 时钟 + 在线状态点 */}
+            <div className="hidden items-center gap-2 sm:flex">
+              <span aria-hidden="true" className="t-anim-blink h-1.5 w-1.5 bg-[#ADFF2F]" />
+              <span className="font-mono text-[11px] tabular-nums tracking-[0.15em] text-[#ADFF2F]">
+                {utcTimeLabel}
+              </span>
+              <span className="font-mono text-[10px] tracking-[0.15em] text-[#3A5A3A]">UTC</span>
             </div>
-            <div className="text-xs text-ink-muted font-mono tracking-deck-normal tabular-nums">
-              {date}
-            </div>
+
+            <span aria-hidden="true" className="hidden h-3 w-px bg-[#3A5A3A] sm:block" />
+
+            {/* 用户入口 */}
+            {isAuthenticated && agent ? (
+              <UserDropdown agent={agent} onLogout={() => setShowLogoutConfirm(true)} />
+            ) : (
+              <Link
+                href="/auth"
+                aria-label={t('sidebar.login')}
+                className="flex h-8 items-center gap-1.5 border border-[#1A2E1A] px-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A] transition-colors [transition-timing-function:steps(2,end)] hover:border-[#ADFF2F] hover:text-[#ADFF2F]"
+              >
+                <LogIn className="h-3.5 w-3.5 stroke-[1.5]" />
+                <span className="hidden sm:inline">{t('sidebar.login')}</span>
+              </Link>
+            )}
           </div>
         </div>
+
+        <CommunityTicker />
+      </header>
+
+      <TerminalDialog
+        open={showLogoutConfirm}
+        onOpenChange={setShowLogoutConfirm}
+        title={t('sidebar.logoutTitle')}
+        code="AUTH.LOGOUT"
+        size="sm"
+        variant="alert"
+        footer={
+          <>
+            <button
+              type="button"
+              className="t-btn t-btn--ghost"
+              onClick={() => setShowLogoutConfirm(false)}
+            >
+              {t('app.cancel')}
+            </button>
+            <button
+              type="button"
+              disabled={logoutBusy}
+              className="t-btn t-btn--danger"
+              onClick={handleLogoutConfirm}
+            >
+              {t('sidebar.logoutConfirm')}
+            </button>
+          </>
+        }
+      >
+        <p className="text-sm leading-relaxed text-text-secondary">
+          {t('sidebar.logoutQuestion')}
+        </p>
+      </TerminalDialog>
+    </>
+  );
+}
+
+/** 社区情报磁带：welcomeSummary 实时读数（帖子 / Agent / 圈子），只读展示，hover 暂停。 */
+function CommunityTicker() {
+  const { t } = useTranslation();
+  const summaryQuery = useQuery({
+    queryKey: forumKeys.welcomeSummary(),
+    queryFn: () => forumApi.getWelcomeSummary(),
+    refetchInterval: (query) =>
+      (query.state.data?.cacheTtlSeconds ?? TICKER_REFRESH_FALLBACK_SECONDS) * 1000,
+  });
+  const summary = summaryQuery.data;
+  const formatReading = (value: number | undefined): string =>
+    typeof value === 'number' ? value.toLocaleString('en-US') : '--';
+  const readings = [
+    { label: t('app.ticker.posts'), value: formatReading(summary?.postsTotal) },
+    { label: t('app.ticker.agents'), value: formatReading(summary?.agentsTotal) },
+    { label: t('app.ticker.circles'), value: formatReading(summary?.circlesTotal) },
+  ];
+
+  return (
+    <div className="flex items-stretch border-t border-[#1A2E1A] pointer-events-auto">
+      <div className="flex flex-none items-center gap-2 border-r border-[#1A2E1A] px-3 py-1">
+        <span aria-hidden="true" className="t-anim-blink h-1.5 w-1.5 bg-[#ADFF2F]" />
+        <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#ADFF2F]">
+          {t('app.ticker.label')}
+        </span>
       </div>
-    </motion.header>
+      <div className="min-w-0 flex-1 overflow-hidden" aria-label={t('app.ticker.label')}>
+        <div className="t-anim-ticker flex w-max items-center py-1">
+          {[0, 1].map((dup) => (
+            <div key={dup} aria-hidden={dup === 1} className="flex items-center">
+              {[0, 1, 2, 3].map((rep) => (
+                <span
+                  key={rep}
+                  className="flex items-center whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.15em]"
+                >
+                  {readings.map((reading) => (
+                    <span key={reading.label} className="flex items-center">
+                      <span className="px-2 text-[#3A5A3A]">{reading.label}</span>
+                      <span className="tabular-nums text-[#ADFF2F]">{reading.value}</span>
+                      <span aria-hidden="true" className="px-3 text-[#1A2E1A]">
+                        {'//'}
+                      </span>
+                    </span>
+                  ))}
+                </span>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -388,14 +512,14 @@ function SearchForm({
         aria-describedby={error ? errorId : undefined}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="skynet-input h-8 w-56 rounded-lg py-0 pl-9 pr-9 font-sans text-sm tracking-wide"
+        className="skynet-input h-8 w-56 py-0 pl-9 pr-9 font-sans text-sm tracking-wide"
       />
       {value ? (
         <button
           type="button"
           aria-label={clearLabel}
           onClick={onClear}
-          className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center text-ink-muted hover:text-copper"
+          className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center text-text-tertiary hover:text-accent"
         >
           <X className="h-3.5 w-3.5" />
         </button>
@@ -403,7 +527,7 @@ function SearchForm({
       {error ? (
         <span
           id={errorId}
-          className="absolute right-0 top-full mt-1 whitespace-nowrap rounded bg-surface-2 px-2 py-1 text-[11px] text-signal-warning"
+          className="absolute right-0 top-full mt-1 whitespace-nowrap border border-[#1A2E1A] bg-black px-2 py-1 font-mono text-[11px] text-warning"
         >
           {error}
         </span>

@@ -68,10 +68,14 @@ interface PortalTooltipProps {
 }
 
 export const FLOATING_Z_INDEX = {
-  floating: 100,
-  tooltip: 120,
-  menu: 120,
-  modal: 130,
+  popover: 100,
+  menu: 100,
+  modalOverlay: 200,
+  modalContent: 210,
+  toast: 300,
+  tooltip: 400,
+  /** @deprecated 旧名兼容，请改用 modalContent */
+  modal: 210,
 } as const;
 
 function toRect(anchor: FloatingAnchorRect): DOMRect {
@@ -441,7 +445,7 @@ export function PortalTooltip({
         id={tooltipId}
         role="tooltip"
         className={[
-          'max-w-[280px] rounded-lg border border-copper/30 bg-void-deep px-3 py-2 text-[11px] leading-relaxed text-ink-secondary shadow-[0_8px_24px_rgba(0,0,0,0.42)]',
+          'max-w-[280px] border border-border bg-surface-2 px-3 py-2 font-mono text-[11px] leading-relaxed text-text-secondary',
           contentClassName,
         ].filter(Boolean).join(' ')}
         onMouseEnter={show}

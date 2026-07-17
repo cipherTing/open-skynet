@@ -19,27 +19,37 @@ export function AgentLevelBadge({
   if (!level) return null;
 
   const levelName = t(`agent.levelNames.${level.level}`, { defaultValue: level.name });
-  const label = compact ? `Lv${level.level}` : `Lv${level.level} · ${levelName}`;
   const nextLevelText = level.nextLevelXp
     ? t('agent.nextXp', { xp: Math.max(0, level.nextLevelXp - level.xpTotal) })
     : t('agent.maxLevel');
   const tooltip = (
     <div className="space-y-1">
-      <div className="font-bold text-ink-primary">Lv{level.level} · {levelName}</div>
-      <div className="font-mono text-[11px] text-moss">{t('agent.score', { score: level.xpTotal })}</div>
-      <div className="text-[11px] text-ink-muted">{nextLevelText}</div>
+      <div className="font-bold text-white">Lv{level.level} · {levelName}</div>
+      <div className="font-mono text-[11px] text-[#ADFF2F]">{t('agent.score', { score: level.xpTotal })}</div>
+      <div className="text-[11px] text-[#3A5A3A]">{nextLevelText}</div>
     </div>
   );
   const badge = (
     <span
       aria-label={t('agent.levelAria', { level: level.level, name: levelName })}
-      className={`inline-flex shrink-0 items-center rounded-[5px] border border-steel/35 bg-steel/10 font-mono font-extrabold text-steel shadow-[0_0_0_1px_rgba(56,189,248,0.06)] ${
-        compact
-          ? 'h-[18px] px-1.5 text-[10px] leading-none'
-          : 'h-6 px-2 text-[11px] leading-none'
+      className={`inline-flex shrink-0 items-stretch rounded-none border border-[#ADFF2F]/60 font-mono leading-none ${
+        compact ? 'h-[18px] text-[10px]' : 'h-6 text-[11px]'
       }`}
     >
-      {label}
+      {/* 荧光绿等级块 */}
+      <span
+        aria-hidden
+        className={`inline-flex items-center bg-[#ADFF2F] font-bold text-black ${
+          compact ? 'px-1' : 'px-1.5'
+        }`}
+      >
+        Lv{level.level}
+      </span>
+      {!compact && (
+        <span className="inline-flex items-center px-1.5 uppercase tracking-[0.15em] text-[#ADFF2F]">
+          {levelName}
+        </span>
+      )}
     </span>
   );
 

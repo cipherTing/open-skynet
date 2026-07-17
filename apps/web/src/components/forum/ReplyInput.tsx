@@ -4,10 +4,9 @@ import { useState, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Eye, Send, X } from 'lucide-react';
-import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { ApiError } from '@/lib/api';
-import { ComposerTextarea } from '@/components/ui/ComposerTextarea';
+import { TTextarea } from '@/components/ui/terminal';
 
 interface ReplyInputProps {
   onSubmit: (content: string) => Promise<void>;
@@ -53,27 +52,25 @@ export function ReplyInput({
   const inputPlaceholder = placeholder ?? t('forum.replyPlaceholder');
 
   return (
-    <div className="signal-bubble skynet-reply-composer overflow-visible">
+    <div className="skynet-reply-composer t-corner relative overflow-visible">
       {/* 错误提示 */}
       {error && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="px-4 py-2 border-b border-ochre/15 bg-ochre/10 text-ochre text-[11px]"
-        >
+        <div className="border-b border-danger/40 bg-danger/10 px-4 py-2 font-mono text-[11px] text-danger">
           {error}
-        </motion.div>
+        </div>
       )}
 
       {/* 工具栏 */}
       <div className="skynet-reply-divider flex items-center justify-between border-b px-4 py-2">
-        <span className="text-xs text-copper-dim tracking-deck-normal uppercase font-bold">
+        <span className="font-mono text-[11px] font-bold uppercase tracking-deck-normal text-accent-dim">
           {t('replyInput.label')}
         </span>
         <button
           onClick={() => setShowPreview(!showPreview)}
-          className={`flex items-center gap-1 text-xs tracking-wide transition-colors ${
-            showPreview ? 'text-steel' : 'text-ink-muted hover:text-steel'
+          className={`flex items-center gap-1 border px-2 py-1 font-mono text-[11px] tracking-wide transition-colors ${
+            showPreview
+              ? 'border-info/40 bg-info/10 text-info'
+              : 'border-transparent text-text-tertiary hover:text-info'
           }`}
         >
           <Eye className="w-3 h-3" />
@@ -83,14 +80,14 @@ export function ReplyInput({
 
       {/* 输入 / 预览 */}
       {quoteText ? (
-        <div className="mx-4 mt-3 flex items-start justify-between gap-3 rounded-md border border-steel/20 bg-steel/[0.06] px-3 py-2 text-xs text-ink-secondary">
+        <div className="mx-4 mt-3 flex items-start justify-between gap-3 border border-info/40 bg-info/5 px-3 py-2 text-xs text-text-secondary">
           <span className="line-clamp-3 whitespace-pre-wrap">{quoteText}</span>
           {onClearQuote ? (
             <button
               type="button"
               onClick={onClearQuote}
               aria-label={t('replyInput.clearQuote')}
-              className="shrink-0 text-ink-muted hover:text-ochre"
+              className="shrink-0 text-text-tertiary transition-colors hover:text-danger"
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -106,24 +103,22 @@ export function ReplyInput({
           </div>
         </div>
       ) : (
-        <ComposerTextarea
-          aria-label={t('replyInput.label')}
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          placeholder={inputPlaceholder}
-          rows={compact ? 3 : 4}
-          variant="bare"
-          className={compact ? '!min-h-[76px]' : undefined}
-        />
+        <div className="px-4 py-3">
+          <TTextarea
+            aria-label={t('replyInput.label')}
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            placeholder={inputPlaceholder}
+            rows={compact ? 3 : 4}
+            className={compact ? 'min-h-[76px]' : 'min-h-[96px]'}
+          />
+        </div>
       )}
 
       {/* 操作按钮 */}
       <div className="skynet-reply-divider flex items-center justify-end gap-2 border-t px-4 py-2">
         {onCancel && (
-          <button
-            onClick={onCancel}
-            className="flex items-center gap-1 px-3 py-1.5 text-[11px] text-ink-muted hover:text-ink-secondary transition-colors tracking-wide"
-          >
+          <button onClick={onCancel} className="t-btn t-btn--ghost">
             <X className="w-3 h-3" />
             {t('app.cancel')}
           </button>
@@ -131,7 +126,7 @@ export function ReplyInput({
         <button
           onClick={handleSubmit}
           disabled={submitting || !content.trim()}
-          className="flex items-center gap-1 px-4 py-1.5 text-[11px] text-void bg-copper hover:bg-copper-dim disabled:opacity-40 disabled:cursor-not-allowed transition-all tracking-wide font-bold rounded-md"
+          className="t-btn t-btn--primary"
         >
           <Send className="w-3 h-3" />
           {submitting ? t('replyInput.sending') : t('replyInput.send')}

@@ -5,7 +5,7 @@ import { CircleSlash, ExternalLink, FileText, MessageCircle } from 'lucide-react
 import { useTranslation } from 'react-i18next';
 import { AgentAvatar } from '@/components/ui/AgentAvatar';
 import { FEEDBACK_ITEMS } from '@/components/forum/FeedbackBar';
-import { getRelativeTime } from '@/lib/utils';
+import { TTag, Timecode } from '@/components/ui/terminal';
 import type { AgentInteractionHistoryItem } from '@skynet/shared';
 
 interface AgentInteractionCardProps {
@@ -20,6 +20,16 @@ const FALLBACK_FEEDBACK = {
 
 function getFeedbackMeta(type: AgentInteractionHistoryItem['feedbackType']) {
   return FEEDBACK_ITEMS.find((item) => item.type === type) ?? FALLBACK_FEEDBACK;
+}
+
+/** 行 hover 荧光边条：2px 荧光绿 steps 切入。 */
+function HoverRail() {
+  return (
+    <span
+      aria-hidden
+      className="absolute bottom-0 left-0 top-0 w-[2px] bg-[#ADFF2F] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
+    />
+  );
 }
 
 export function AgentInteractionCard({
@@ -42,11 +52,13 @@ export function AgentInteractionCard({
   const content = (
     <div
       className={[
-        'group flex gap-3 rounded-lg border border-copper/[0.12] bg-void-mid/55 transition-all',
-        available ? 'hover:border-copper/30 hover:bg-void-hover' : 'opacity-75',
+        'group relative flex gap-3 border border-[#1A2E1A] bg-[#040704] transition-colors duration-100 [transition-timing-function:steps(2,end)]',
+        available ? 'hover:border-[#3A5A3A]' : 'opacity-75',
         compact ? 'px-3 py-2.5' : 'px-4 py-3.5',
       ].join(' ')}
     >
+      {available && <HoverRail />}
+
       <div className="flex-shrink-0 pt-0.5">
         <AgentAvatar
           agentId={item.targetAuthor.avatarSeed || item.targetAuthor.id}
@@ -57,29 +69,27 @@ export function AgentInteractionCard({
 
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex items-center gap-1 rounded-full border border-copper/20 bg-copper/[0.08] px-2 py-0.5 text-[11px] font-bold text-copper">
-            <span aria-hidden="true">{feedback.emoji}</span>
+          <TTag color="accent">
+            <span aria-hidden="true" className="mr-1">{feedback.emoji}</span>
             {feedbackLabel}
-          </span>
-          <span className="inline-flex items-center gap-1 text-[11px] text-ink-muted">
+          </TTag>
+          <span className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
             <Icon className="h-3 w-3" />
             {isReply ? t('feedback.replyFeedback') : t('feedback.postFeedback')}
           </span>
-          <span className="text-[11px] text-ink-muted">
-            {getRelativeTime(item.createdAt)}
-          </span>
+          <Timecode date={item.createdAt} withDate />
           {!available && (
-            <span className="inline-flex items-center gap-1 rounded-full border border-ochre/20 bg-ochre/10 px-2 py-0.5 text-[10px] text-ochre">
-              <CircleSlash className="h-3 w-3" />
+            <TTag color="amber">
+              <CircleSlash className="mr-1 h-3 w-3" />
               {t('feedback.targetOffline')}
-            </span>
+            </TTag>
           )}
         </div>
 
         <p
           className={[
-            'mt-2 text-ink-primary transition-colors',
-            available ? 'group-hover:text-copper' : '',
+            'mt-2 text-[#EDF3ED] transition-colors duration-100 [transition-timing-function:steps(2,end)]',
+            available ? 'group-hover:text-white' : '',
             compact ? 'text-xs' : 'text-sm',
           ].join(' ')}
         >
@@ -87,18 +97,18 @@ export function AgentInteractionCard({
             name: item.targetAuthor.name,
             target: isReply ? t('forum.replyTarget') : t('forum.postTarget'),
           })}{' '}
-          <span className="font-bold text-copper">
+          <span className="font-bold text-[#ADFF2F]">
             {feedback.emoji} {feedbackLabel}
           </span>
         </p>
 
         <div className="mt-1.5 min-w-0">
-          <div className="flex items-center gap-1.5 text-[12px] text-ink-secondary">
+          <div className="flex items-center gap-1.5 text-[12px] text-[#EDF3ED]/70">
             <span className="truncate">「{item.post.title}」</span>
-            {available && <ExternalLink className="h-3 w-3 flex-shrink-0 opacity-0 transition-opacity group-hover:opacity-70" />}
+            {available && <ExternalLink className="h-3 w-3 flex-shrink-0 opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-70" />}
           </div>
           {item.reply && (
-            <p className="mt-1 rounded-md border-l border-steel/25 bg-steel/[0.05] px-2 py-1.5 text-[12px] leading-relaxed text-ink-muted line-clamp-2">
+            <p className="mt-1 border-l border-[#3A5A3A] bg-[#122012]/40 px-2 py-1.5 text-[12px] leading-relaxed text-[#EDF3ED]/60 line-clamp-2">
               {item.reply.excerpt}
             </p>
           )}

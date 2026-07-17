@@ -1,14 +1,16 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import * as Dialog from '@radix-ui/react-dialog';
-import { Bot, Check, Copy, KeyRound, X } from 'lucide-react';
+import Link from 'next/link';
+import { Bot, Check, Copy, KeyRound } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { userApi, ApiError } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/components/ui/SignalToast';
 import { useAgentConnectStore } from '@/stores/agent-connect-store';
+import { TerminalDialog } from '@/components/ui/TerminalDialog';
+import { ScrambleText } from '@/components/home/terminal/ScrambleText';
 
 function localDateKey(): string {
   const now = new Date();
@@ -75,7 +77,7 @@ export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolea
   };
 
   return (
-    <Dialog.Root
+    <TerminalDialog
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
@@ -83,98 +85,91 @@ export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolea
           setLink('');
         }
       }}
+      title={t('circleDialogs.agentConnectTitle')}
+      code="AGENT.LINK"
+      size="md"
+      contentClassName="t-corner !fixed"
     >
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-[140] bg-void/50 backdrop-blur-[1px]" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-[141] w-[min(92vw,560px)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-copper/20 bg-void-deep p-6 shadow-2xl outline-none">
-          <div className="mb-5 flex items-start justify-between gap-4">
-            <div className="flex gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-copper/10 text-copper">
-                <Bot className="h-5 w-5" />
-              </div>
-              <div>
-                <Dialog.Title className="font-display text-lg font-bold text-ink-primary">
-                  {t('agentConnect.title')}
-                </Dialog.Title>
-                <Dialog.Description className="mt-1 text-sm text-ink-secondary">
-                  {t('agentConnect.description')}
-                </Dialog.Description>
-              </div>
-            </div>
-            <Dialog.Close
-              className="rounded p-1 text-ink-muted hover:bg-void-hover hover:text-ink-primary"
-              aria-label={t('app.close')}
-            >
-              <X className="h-5 w-5" />
-            </Dialog.Close>
-          </div>
+      <div className="flex gap-3">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center border border-[#ADFF2F]/40 bg-accent-muted text-accent">
+          <Bot className="h-5 w-5 stroke-[1.5]" />
+        </div>
+        <p className="text-sm leading-6 text-text-secondary">{t('agentConnect.description')}</p>
+      </div>
 
-          <ol className="mb-5 space-y-2 border-l border-copper/20 pl-4 text-sm text-ink-secondary">
-            <li>{t('agentConnect.stepKey')}</li>
-            <li>{t('agentConnect.stepLink')}</li>
-            <li>{t('agentConnect.stepAgent')}</li>
-          </ol>
+      <ol className="mt-5 space-y-2 border-l border-[#1A2E1A] pl-4 font-mono text-xs leading-5 text-text-secondary">
+        <li>{t('agentConnect.stepKey')}</li>
+        <li>{t('agentConnect.stepLink')}</li>
+        <li>{t('agentConnect.stepAgent')}</li>
+      </ol>
 
-          {!link ? (
-            <div className="space-y-3">
-              {keyQuery.isError && (
-                <div className="flex items-center justify-between gap-3 rounded-lg border border-ochre/20 bg-ochre/5 px-3 py-2 text-xs text-ochre">
-                  <span>{t('agentConnect.keyStatusFailed')}</span>
-                  <button
-                    type="button"
-                    onClick={() => void keyQuery.refetch()}
-                    className="font-bold hover:text-copper"
-                  >
-                    {t('app.retry')}
-                  </button>
-                </div>
-              )}
+      {!link ? (
+        <div className="mt-5 space-y-3">
+          {keyQuery.isError && (
+            <div className="flex items-center justify-between gap-3 border border-danger/30 bg-danger/10 px-3 py-2 font-mono text-xs text-danger">
+              <span>{t('agentConnect.keyStatusFailed')}</span>
               <button
                 type="button"
-                disabled={busy || keyQuery.isPending || keyQuery.isError}
-                onClick={() => void generateLink()}
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-copper px-4 py-3 text-sm font-bold text-void transition-colors hover:bg-copper-dim disabled:opacity-40"
+                onClick={() => void keyQuery.refetch()}
+                className="font-bold hover:text-accent"
               >
-                <KeyRound className="h-4 w-4" />
-                {busy
-                  ? t('agentConnect.generating')
-                  : hasKey
-                    ? t('agentConnect.generateLink')
-                    : t('agentConnect.createKeyAndLink')}
-              </button>
-              {!hasKey && (
-                <button
-                  type="button"
-                  onClick={hideToday}
-                  className="w-full text-center text-xs text-ink-muted hover:text-copper"
-                >
-                  {t('agentConnect.hideToday')}
-                </button>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="rounded-lg border border-moss/20 bg-moss/5 p-3">
-                <div className="mb-2 text-xs font-semibold text-moss">
-                  {t('agentConnect.linkReady')}
-                </div>
-                <code className="block break-all text-xs leading-5 text-steel-bright">{link}</code>
-              </div>
-              <p className="text-xs text-ink-muted">
-                {t('agentConnect.expiresAt', { time: new Date(expiresAt).toLocaleTimeString() })}
-              </p>
-              <button
-                type="button"
-                onClick={() => void copy()}
-                className="flex w-full items-center justify-center gap-2 rounded-lg border border-copper/25 px-4 py-3 text-sm font-bold text-copper hover:bg-copper/10"
-              >
-                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                {copied ? t('app.copied') : t('agentConnect.copyLink')}
+                {t('app.retry')}
               </button>
             </div>
           )}
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+          <button
+            type="button"
+            disabled={busy || keyQuery.isPending || keyQuery.isError}
+            onClick={() => void generateLink()}
+            className="t-btn t-btn--primary h-10 w-full"
+          >
+            <KeyRound className="h-4 w-4" />
+            {busy
+              ? t('agentConnect.generating')
+              : hasKey
+                ? t('agentConnect.generateLink')
+                : t('agentConnect.createKeyAndLink')}
+          </button>
+          {!hasKey && (
+            <button
+              type="button"
+              onClick={hideToday}
+              className="w-full text-center font-mono text-xs text-text-tertiary hover:text-accent"
+            >
+              {t('agentConnect.hideToday')}
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="mt-5 space-y-3">
+          <div className="border border-[#1A2E1A] bg-black p-3">
+            <div className="mb-2 font-mono text-[11px] uppercase tracking-[0.12em] text-accent">
+              {t('agentConnect.linkReady')}
+            </div>
+            <code className="block break-all font-mono text-xs leading-5 text-info">{link}</code>
+          </div>
+          <p className="font-mono text-xs text-text-tertiary">
+            {t('agentConnect.expiresAt', { time: new Date(expiresAt).toLocaleTimeString() })}
+          </p>
+          <button
+            type="button"
+            onClick={() => void copy()}
+            className="t-btn t-btn--ghost h-10 w-full"
+          >
+            {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+            {copied ? t('app.copied') : t('agentConnect.copyLink')}
+          </button>
+        </div>
+      )}
+
+      <div className="mt-5 border-t border-[#1A2E1A] pt-3">
+        <Link
+          href="/guide.md"
+          className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A] transition-colors [transition-timing-function:steps(2,end)] hover:text-[#ADFF2F]"
+        >
+          <ScrambleText text={t('landing.protocol.guideEntry')} />
+        </Link>
+      </div>
+    </TerminalDialog>
   );
 }

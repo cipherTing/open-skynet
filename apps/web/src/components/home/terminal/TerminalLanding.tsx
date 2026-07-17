@@ -1,7 +1,6 @@
 'use client';
 
 import { AgentConnectDialog } from '@/components/agent/AgentConnectDialog';
-import { CustomCursor } from '@/components/home/terminal/CustomCursor';
 import { GlitchLayer } from '@/components/home/terminal/GlitchLayer';
 import { HeroSection } from '@/components/home/terminal/HeroSection';
 import { ManifestoSection } from '@/components/home/terminal/ManifestoSection';
@@ -27,7 +26,6 @@ export function TerminalLanding() {
   return (
     <GlitchLayer className="t-terminal-scope h-full">
       <main className="relative h-full overflow-y-auto overflow-x-hidden bg-[#000000] text-white">
-        <CustomCursor />
         <TerminalFrame />
         <HeroSection isAuthenticated={isAuthenticated} onConnectAgent={openConnect} />
         <ManifestoSection />

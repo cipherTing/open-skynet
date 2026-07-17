@@ -2,6 +2,7 @@
 
 import { Radio } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { TButton, TEmpty } from '@/components/ui/terminal';
 
 type LoadingScreenProps = {
   label?: string;
@@ -42,48 +43,39 @@ export function ErrorState({ title, message, actionLabel, onAction }: FeedbackSt
   const { t } = useTranslation();
 
   return (
-    <div className="signal-bubble flex flex-col items-center justify-center gap-3 p-8 text-center">
-      <div className="flex h-10 w-10 items-center justify-center rounded-full border border-ochre/25 bg-ochre/10 text-ochre">
+    <div className="t-corner relative flex flex-col items-center justify-center gap-3 border border-[#1A2E1A] bg-black p-8 text-center">
+      <div className="flex h-10 w-10 items-center justify-center border border-[#7F1D1D] bg-[#7F1D1D]/20 text-[#EF4444]">
         <Radio className="h-4 w-4" />
       </div>
       <div>
-        {title && <p className="mb-1 text-sm font-bold text-ochre">{title}</p>}
-        <p className="text-sm text-ink-muted">{message}</p>
+        {title && <p className="mb-1 font-mono text-[12px] font-bold uppercase tracking-[0.15em] text-[#EF4444]">{title}</p>}
+        <p className="font-mono text-[11px] tracking-[0.08em] text-[#3A5A3A]">{message}</p>
       </div>
       {onAction && (
-        <button
-          type="button"
-          onClick={onAction}
-          className="rounded-lg border border-copper/25 px-4 py-2 text-xs text-copper transition-colors hover:bg-copper/10"
-        >
+        <TButton variant="secondary" size="sm" onClick={onAction}>
           {actionLabel ?? t('app.retry')}
-        </button>
+        </TButton>
       )}
     </div>
   );
 }
 
 export function EmptyState({ message }: { message: string }) {
-  return (
-    <div className="signal-bubble flex flex-col items-center justify-center gap-3 p-8 text-center">
-      <div className="h-2.5 w-2.5 rounded-full bg-ink-muted/35" />
-      <p className="text-sm text-ink-muted">{message}</p>
-    </div>
-  );
+  return <TEmpty message={message} />;
 }
 
 function LoadingMark({ label, size }: { label: string; size: 'sm' | 'md' }) {
   const boxClass = size === 'sm' ? 'h-6 w-6' : 'h-8 w-8';
-  const textClass = size === 'sm' ? 'text-xs' : 'text-sm';
+  const textClass = size === 'sm' ? 'text-[11px]' : 'text-[12px]';
 
   return (
     <div className="flex flex-col items-center gap-3">
       <div className={`relative ${boxClass}`}>
-        <div className="absolute inset-0 rounded-full border border-copper/20" />
-        <div className="absolute inset-0 animate-spin rounded-full border-t border-copper" />
-        <div className="absolute inset-[6px] rounded-full bg-copper/20 animate-pulse" />
+        <div className="absolute inset-0 border border-[#1A2E1A]" />
+        <div className="absolute inset-0 border-t border-[#ADFF2F] animate-[t-spin-step_1s_steps(8)_infinite] motion-reduce:animate-none" />
+        <div className="absolute inset-[6px] bg-[#ADFF2F]/20 animate-[t-blink_1.6s_steps(1)_infinite] motion-reduce:animate-none" />
       </div>
-      <span className={`${textClass} tracking-wide text-copper-dim`}>{label}</span>
+      <span className={`${textClass} font-mono uppercase tracking-[0.15em] text-[#3A5A3A]`}>{label}</span>
     </div>
   );
 }

@@ -76,7 +76,7 @@ export function LanguageToggle() {
           aria-haspopup="menu"
           aria-expanded={open}
           onClick={() => setOpen((nextOpen) => !nextOpen)}
-          className="inline-flex h-8 min-w-12 items-center justify-center gap-1 rounded-lg border border-border-subtle bg-surface-1/35 px-2 text-[11px] font-bold text-ink-muted transition-all hover:border-border-accent hover:bg-accent-muted hover:text-copper"
+          className="inline-flex h-8 min-w-12 items-center justify-center gap-1 rounded-none border border-[#1A2E1A] bg-black px-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[#3A5A3A] transition-[color,background-color,border-color] duration-100 [transition-timing-function:steps(2,end)] hover:border-[#ADFF2F]/60 hover:bg-[#ADFF2F]/10 hover:text-[#ADFF2F]"
         >
           <Languages className="h-3.5 w-3.5" />
           <span>{t(currentOption.shortLabelKey)}</span>
@@ -91,9 +91,9 @@ export function LanguageToggle() {
         offset={8}
         zIndex={FLOATING_Z_INDEX.menu}
         role="menu"
-        className="w-36 rounded-lg border border-border-subtle bg-surface-1 p-1.5 shadow-[0_18px_48px_rgba(0,0,0,0.32)]"
+        className="w-36 rounded-none border border-[#1A2E1A] bg-black p-1 animate-[skynet-floating-in_120ms_steps(3)] motion-reduce:animate-none"
       >
-        <div ref={menuRef} className="grid gap-1">
+        <div ref={menuRef} className="grid gap-0.5">
           {LANGUAGE_OPTIONS.map((option) => {
             const selected = currentLanguage === option.value;
             return (
@@ -107,10 +107,10 @@ export function LanguageToggle() {
                     console.error('Failed to change language:', error);
                   });
                 }}
-                className={`flex items-center justify-between rounded-md px-2.5 py-2 text-left text-xs transition-all ${
+                className={`flex items-center justify-between px-2.5 py-2 text-left font-mono text-[11px] uppercase tracking-[0.15em] transition-[color,background-color] duration-100 [transition-timing-function:steps(2,end)] ${
                   selected
-                    ? 'bg-copper/[0.12] text-copper'
-                    : 'text-ink-secondary hover:bg-copper/[0.06] hover:text-ink-primary'
+                    ? 'bg-[#ADFF2F]/10 text-[#ADFF2F]'
+                    : 'text-white/70 hover:bg-[#1A2E1A]/60 hover:text-white'
                 }`}
               >
                 <span>{t(option.labelKey)}</span>

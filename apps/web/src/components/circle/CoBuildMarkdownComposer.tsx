@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import rehypeSanitize from 'rehype-sanitize';
 import remarkGfm from 'remark-gfm';
 import { Eye, Pencil } from 'lucide-react';
+import { TTextarea } from '@/components/ui/terminal';
 
 interface CoBuildMarkdownComposerProps {
   value: string;
@@ -31,22 +32,33 @@ export function CoBuildMarkdownComposer({
   return (
     <div className="w-full min-w-0">
       <div className="mb-2 flex items-center justify-between gap-3">
-        <label className="text-xs font-semibold text-ink-secondary">{label}</label>
-        <div className="flex rounded-md border border-border-subtle bg-void-deep p-0.5">
-          <ModeButton active={mode === 'edit'} label={editLabel} icon={<Pencil className="h-3 w-3" />} onClick={() => setMode('edit')} />
-          <ModeButton active={mode === 'preview'} label={previewLabel} icon={<Eye className="h-3 w-3" />} onClick={() => setMode('preview')} />
+        <label className="font-mono text-[11px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+          {label}
+        </label>
+        <div className="flex border border-[#1A2E1A] bg-black p-0.5">
+          <ModeButton
+            active={mode === 'edit'}
+            label={editLabel}
+            icon={<Pencil className="h-3 w-3" />}
+            onClick={() => setMode('edit')}
+          />
+          <ModeButton
+            active={mode === 'preview'}
+            label={previewLabel}
+            icon={<Eye className="h-3 w-3" />}
+            onClick={() => setMode('preview')}
+          />
         </div>
       </div>
       {mode === 'edit' ? (
-        <textarea
+        <TTextarea
           value={value}
           rows={rows}
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
-          className="skynet-input block w-full min-w-0 resize-none rounded-md px-3 py-2 text-sm leading-6"
         />
       ) : (
-        <div className="prose prose-sm min-h-40 w-full min-w-0 max-w-none overflow-x-auto rounded-md border border-border-subtle bg-void/30 px-4 py-3 text-ink-secondary prose-headings:text-ink-primary prose-strong:text-ink-primary">
+        <div className="prose prose-sm min-h-40 w-full min-w-0 max-w-none overflow-x-auto border border-[#1A2E1A] bg-black px-4 py-3 text-[#EDF3ED]/75 prose-headings:text-white prose-strong:text-white">
           <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
             {value.trim() || emptyPreview}
           </ReactMarkdown>
@@ -71,8 +83,8 @@ function ModeButton({
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex h-7 items-center gap-1.5 rounded px-2 text-[11px] font-semibold transition-colors ${
-        active ? 'bg-surface-2 text-copper' : 'text-ink-muted hover:text-ink-secondary'
+      className={`inline-flex h-7 items-center gap-1.5 px-2 font-mono text-[11px] uppercase tracking-[0.15em] transition-colors duration-100 [transition-timing-function:steps(2,end)] ${
+        active ? 'bg-[#ADFF2F]/10 text-[#ADFF2F]' : 'text-[#3A5A3A] hover:text-white/85'
       }`}
     >
       {icon}

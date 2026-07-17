@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
-import { useReducedMotion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { isGovernanceAuthError } from '@/components/governance/governance-format';
 import { Sidebar } from '@/components/layout/Sidebar';
@@ -41,11 +40,28 @@ const GOVERNANCE_AUTO_REFRESH_MS = 60_000;
 const COUNTDOWN_TICK_MS = 1_000;
 const MANUAL_REFRESH_COOLDOWN_MS = 1_000;
 
+function usePrefersReducedMotion(): boolean {
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(
+    () =>
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+  );
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const handleChange = () => setPrefersReducedMotion(mediaQuery.matches);
+    handleChange();
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, []);
+
+  return prefersReducedMotion;
+}
+
 export function HomeShell() {
   const { t } = useTranslation();
   const { isAuthenticated, isLoading: isAuthLoading, isUnavailable: isAuthUnavailable } = useAuth();
-  const prefersReducedMotion = useReducedMotion();
-  const reducedMotionEnabled = prefersReducedMotion === true;
+  const reducedMotionEnabled = usePrefersReducedMotion();
   const storedActiveSection = useHomeNavigationStore((state) => state.activeSection);
   const setActiveSection = useHomeNavigationStore((state) => state.setActiveSection);
   const activeSection = storedActiveSection;
@@ -59,6 +75,7 @@ export function HomeShell() {
       : 'feed';
   const [isDocumentVisible, setIsDocumentVisible] = useState(true);
   const [isGovernanceDetailOpen, setIsGovernanceDetailOpen] = useState(false);
+  const [isNavOpen, setIsNavOpen] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [nextRefreshAt, setNextRefreshAt] = useState(() => Date.now() + GOVERNANCE_AUTO_REFRESH_MS);
   const pauseRemainingMsRef = useRef<number | null>(null);
@@ -229,17 +246,23 @@ export function HomeShell() {
   ]);
 
   return (
-    <div className="flex h-full min-h-0 w-full overflow-x-auto overflow-y-hidden overscroll-none">
-      <Sidebar activeSection={activeSection} onSectionChange={handleSectionChange} />
+    <div className="t-terminal-scope relative flex h-full min-h-0 w-full overflow-hidden overscroll-none">
+      <Sidebar
+        activeSection={activeSection}
+        onSectionChange={handleSectionChange}
+        mobileOpen={isNavOpen}
+        onRequestClose={() => setIsNavOpen(false)}
+      />
 
-      <main className="ml-[68px] flex h-full min-h-0 min-w-[360px] flex-1 flex-col overflow-hidden">
+      <main className="ml-0 flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:ml-[68px]">
         <TopBar
           disableScrollFade
           position="static"
           mode={topBarMode}
           governanceControls={governanceControls}
+          onOpenNav={() => setIsNavOpen(true)}
         />
-        <div className="min-h-0 flex-1 px-6 pt-0">
+        <div className="min-h-0 flex-1 px-4 pt-0 sm:px-6">
           {activeSection === 'governance' ? (
             <div className="h-full pb-1">
               <GovernanceResultGrid
@@ -257,7 +280,7 @@ export function HomeShell() {
         </div>
       </main>
 
-      <aside className="flex h-full min-h-0 w-[220px] shrink-0 flex-col overflow-hidden border-l border-border-subtle bg-void-deep md:w-[240px] xl:w-[280px]">
+      <aside className="hidden h-full min-h-0 w-[220px] shrink-0 flex-col overflow-hidden border-l border-[#1A2E1A] bg-black md:flex md:w-[240px] xl:w-[280px]">
         {activeSection === 'governance' ? <GovernancePanelContent /> : <SignalPanelContent />}
       </aside>
       <AgentConnectDialog autoPrompt />
@@ -267,12 +290,12 @@ export function HomeShell() {
 
 function SectionLoading() {
   return (
-    <div className="flex h-full items-center justify-center text-xs uppercase tracking-[0.24em] text-ink-muted">
+    <div className="flex h-full items-center justify-center font-mono text-xs uppercase tracking-[0.24em] text-text-tertiary">
       SKYNET
     </div>
   );
 }
 
 function PanelLoading() {
-  return <div className="p-4 text-xs uppercase tracking-[0.2em] text-ink-muted">SKYNET</div>;
+  return <div className="p-4 font-mono text-xs uppercase tracking-[0.2em] text-text-tertiary">SKYNET</div>;
 }

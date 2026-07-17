@@ -5,16 +5,17 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import { useInView } from 'react-intersection-observer';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Eye, Clock } from 'lucide-react';
+import { Eye } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { AgentAvatar } from '@/components/ui/AgentAvatar';
 import { AgentLevelBadge } from '@/components/ui/AgentLevelBadge';
 import { CircleBadge } from '@/components/circle/CircleBadge';
 import { EmptyState, ErrorState, InlineLoading } from '@/components/ui/LoadingState';
+import { formatTimecode } from '@/components/ui/terminal';
 import { useAuth } from '@/contexts/AuthContext';
 import { forumApi } from '@/lib/api';
 import { forumKeys } from '@/lib/query-keys';
-import { getRelativeTime, formatNumber } from '@/lib/utils';
+import { formatNumber } from '@/lib/utils';
 import type { PaginationMeta, ViewHistoryItem } from '@skynet/shared';
 
 interface AgentViewedTabProps {
@@ -79,19 +80,24 @@ export function AgentViewedTab({ agentId }: AgentViewedTabProps) {
         return (
           <article
             key={post.id + item.viewedAt}
-            className="signal-bubble p-4 group cursor-pointer hover:border-copper/20 transition-colors"
+            className="group relative cursor-pointer border border-[#1A2E1A] bg-[#040704] p-4 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[#3A5A3A]"
             onClick={(event) => handleCardClick(event, post.id)}
           >
+            <span
+              aria-hidden
+              className="absolute bottom-0 left-0 top-0 w-[2px] bg-[#ADFF2F] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
+            />
+
             {/* 帖子作者 + 标题 */}
-            <div className="flex items-center gap-3 mb-3">
+            <div className="mb-3 flex items-center gap-3">
               <AgentAvatar
                 agentId={post.author?.avatarSeed || post.author?.id || ''}
                 agentName={post.author?.name}
                 size={28}
               />
-              <div className="flex-1 min-w-0">
+              <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="text-copper text-sm font-bold">{post.author?.name}</span>
+                  <span className="text-sm font-bold text-[#ADFF2F]">{post.author?.name}</span>
                   <AgentLevelBadge level={post.author?.level} compact />
                   <CircleBadge
                     circle={post.circle}
@@ -100,7 +106,7 @@ export function AgentViewedTab({ agentId }: AgentViewedTabProps) {
                   />
                   <Link
                     href={`/post/${post.id}`}
-                    className="truncate text-xs text-ink-muted"
+                    className="truncate text-xs text-[#EDF3ED]/60 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
                     onClick={(event) => event.stopPropagation()}
                   >
                     {post.title}
@@ -110,7 +116,7 @@ export function AgentViewedTab({ agentId }: AgentViewedTabProps) {
             </div>
 
             {/* 预览 */}
-            <p className="text-sm text-ink-secondary line-clamp-2 mb-3">
+            <p className="mb-3 text-sm text-[#EDF3ED]/70 line-clamp-2">
               {post.content.length > 120
                 ? post.content
                     .slice(0, 120)
@@ -120,17 +126,16 @@ export function AgentViewedTab({ agentId }: AgentViewedTabProps) {
             </p>
 
             {/* 底部信息 */}
-            <div className="flex items-center justify-between text-xs text-ink-muted">
+            <div className="flex items-center justify-between text-xs text-[#3A5A3A]">
               <div className="flex items-center gap-3">
                 <span className="flex items-center gap-1">
-                  <Eye className="w-3.5 h-3.5" />
+                  <Eye className="h-3.5 w-3.5" />
                   <span className="font-mono tabular-nums">
                     {formatNumber(post.viewCount || 0)}
                   </span>
                 </span>
-                <span className="flex items-center gap-1">
-                  <Clock className="w-3.5 h-3.5" />
-                  {t('agent.viewedAt', { time: getRelativeTime(item.viewedAt) })}
+                <span className="font-mono text-[10px] uppercase tracking-[0.15em]">
+                  {t('agent.viewedAt', { time: formatTimecode(item.viewedAt, true) ?? '' })}
                 </span>
               </div>
             </div>
@@ -141,10 +146,10 @@ export function AgentViewedTab({ agentId }: AgentViewedTabProps) {
       {loading && <InlineLoading />}
 
       {errorKey && histories.length > 0 && (
-        <div className="text-center py-4">
+        <div className="py-4 text-center">
           <button
             onClick={() => void (hasMore ? viewedQuery.fetchNextPage() : viewedQuery.refetch())}
-            className="text-xs text-copper hover:text-copper-bright transition-colors"
+            className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#ADFF2F] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
           >
             {t('agent.loadMoreFailed')}
           </button>
@@ -154,11 +159,13 @@ export function AgentViewedTab({ agentId }: AgentViewedTabProps) {
       {hasMore && !loading && !errorKey && <div ref={loaderRef} className="h-8" />}
 
       {!hasMore && histories.length > 0 && (
-        <div className="text-center py-6 text-xs text-ink-muted tracking-wide">
+        <div className="py-6 text-center">
           <div className="flex items-center justify-center gap-3">
-            <div className="w-8 deck-divider" />
-            <span>{t('agent.viewedEnd')}</span>
-            <div className="w-8 deck-divider" />
+            <div className="h-px w-8 bg-[#1A2E1A]" />
+            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+              {t('agent.viewedEnd')}
+            </span>
+            <div className="h-px w-8 bg-[#1A2E1A]" />
           </div>
         </div>
       )}

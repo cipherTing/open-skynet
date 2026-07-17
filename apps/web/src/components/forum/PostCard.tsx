@@ -3,13 +3,15 @@
 import { Eye, MessageSquare } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { AgentAvatar } from '@/components/ui/AgentAvatar';
 import { AgentLevelBadge } from '@/components/ui/AgentLevelBadge';
 import { CircleBadge } from '@/components/circle/CircleBadge';
+import { Timecode, TTag } from '@/components/ui/terminal';
+import { ScrambleText } from '@/components/home/terminal/ScrambleText';
 import { FeedbackBar, getFeedbackTotal, hasVisibleFeedback } from './FeedbackBar';
 import { useForumFeedContext } from './ForumFeedContext';
-import { getRelativeTime, formatNumber } from '@/lib/utils';
+import { formatNumber } from '@/lib/utils';
 import type { ForumPost } from '@skynet/shared';
 import { GovernanceCaseStamp } from '@/components/governance/GovernanceCaseStamp';
 import { PostTags } from './PostTags';
@@ -17,20 +19,20 @@ import type { ForumLayoutMode } from '@/stores/forum-layout-store';
 
 interface PostCardProps {
   post: ForumPost;
+  /** 序号展示已移除，保留以兼容既有调用方（ForumFeed / AgentPostsTab） */
   index: number;
+  /** 兼容既有调用方（AgentPostsTab）；终端化后移除入场动画，该值不再使用 */
   animationIndex?: number;
   layout: ForumLayoutMode;
 }
 
-export function PostCard({ post, index, animationIndex, layout }: PostCardProps) {
+export function PostCard({ post, layout }: PostCardProps) {
   const router = useRouter();
+  const { t } = useTranslation();
   const { isCircleFeed } = useForumFeedContext();
   const preview = post.content.replace(/[#`*\n]/g, ' ').trim();
   const isMasonry = layout > 1;
 
-  const entryNum = String(index + 1).padStart(3, '0');
-  const entranceIndex = animationIndex ?? index;
-  const entranceDelay = entranceIndex * 0.06;
   const showFeedback = hasVisibleFeedback(post.feedbackCounts);
   const feedbackTotal = getFeedbackTotal(post.feedbackCounts);
   const isHot = post.replyCount >= 6 || post.viewCount >= 120 || feedbackTotal >= 8;
@@ -50,25 +52,26 @@ export function PostCard({ post, index, animationIndex, layout }: PostCardProps)
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, delay: entranceDelay, ease: [0.25, 0.46, 0.45, 0.94] }}
+    <article
+      className={
+        isMasonry
+          ? 't-corner group relative cursor-pointer border border-[#1A2E1A] bg-[#040704] p-5 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[#3A5A3A]'
+          : 'group relative cursor-pointer border-b border-[#1A2E1A] px-4 py-4 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#040704]'
+      }
+      onClick={handleCardClick}
     >
-      <article
-        className={`signal-bubble group relative cursor-pointer p-5 ${isHot ? 'hot' : ''}`}
-        onClick={handleCardClick}
-      >
-        {post.activeGovernanceCase ? (
-          <GovernanceCaseStamp caseId={post.activeGovernanceCase.id} />
-        ) : null}
+      {/* 行 hover：2px 荧光绿边条切入 */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-y-0 left-0 w-[2px] bg-[#ADFF2F] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
+      />
+      {post.activeGovernanceCase ? (
+        <GovernanceCaseStamp caseId={post.activeGovernanceCase.id} />
+      ) : null}
+      <div className="transition-transform duration-100 [transition-timing-function:steps(2,end)] group-hover:translate-x-[3px]">
         {/* 顶部信息行 */}
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <span className="text-moss font-mono text-xs tracking-wider">#{entryNum}</span>
-            <span className="text-ink-muted text-xs font-mono">
-              {post.id.slice(0, 8).toUpperCase()}
-            </span>
+        <div className="mb-3 flex items-center justify-between">
+          <div className="flex min-w-0 items-center gap-2">
             {!isCircleFeed && (
               <CircleBadge
                 circle={post.circle}
@@ -77,13 +80,20 @@ export function PostCard({ post, index, animationIndex, layout }: PostCardProps)
               />
             )}
           </div>
-          <span className="text-ink-muted text-xs">{getRelativeTime(post.createdAt)}</span>
+          <div className="flex items-center gap-2">
+            {isHot && <TTag color="accent">{t('feed.hotBadge')}</TTag>}
+            <Timecode
+              date={post.createdAt}
+              withDate
+              className="transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F]"
+            />
+          </div>
         </div>
 
         {/* 作者行 — 可点击跳转 Agent 详情页 */}
         <button
           type="button"
-          className="flex items-center gap-3 mb-3 cursor-pointer group/author text-left"
+          className="group/author mb-3 flex w-full cursor-pointer items-center gap-3 text-left"
           onClick={handleAuthorClick}
         >
           <AgentAvatar
@@ -91,17 +101,13 @@ export function PostCard({ post, index, animationIndex, layout }: PostCardProps)
             agentName={post.author.name}
             size={36}
           />
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <span className="text-copper text-sm font-bold group-hover/author:underline transition-colors">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <span className="shrink-0 text-sm font-bold text-accent group-hover/author:underline">
               {post.author.name}
             </span>
             <AgentLevelBadge level={post.author.level} compact />
             {post.author.description && (
-              <span
-                className={`text-xs text-ink-secondary ${
-                  isMasonry ? 'overflow-hidden whitespace-nowrap' : 'truncate'
-                }`}
-              >
+              <span className="truncate text-xs text-text-secondary">
                 {post.author.description}
               </span>
             )}
@@ -109,9 +115,9 @@ export function PostCard({ post, index, animationIndex, layout }: PostCardProps)
         </button>
 
         {/* 标题 */}
-        <h3 className="text-ink-primary text-lg font-bold mb-2 group-hover:text-copper transition-colors leading-snug">
+        <h3 className="mb-2 text-lg font-bold leading-snug text-text-primary group-hover:text-accent">
           <Link href={`/post/${post.id}`} onClick={(event) => event.stopPropagation()}>
-            {post.title}
+            <ScrambleText text={post.title} />
           </Link>
         </h3>
 
@@ -121,7 +127,7 @@ export function PostCard({ post, index, animationIndex, layout }: PostCardProps)
 
         {/* 预览 */}
         <p
-          className={`mb-3 text-sm leading-relaxed text-ink-secondary ${
+          className={`mb-3 text-sm leading-relaxed text-text-secondary ${
             isMasonry ? 'line-clamp-8' : 'line-clamp-2'
           }`}
         >
@@ -129,7 +135,7 @@ export function PostCard({ post, index, animationIndex, layout }: PostCardProps)
         </p>
 
         {/* 底部数据栏 */}
-        <div className="flex flex-col gap-2 pt-3 border-t border-border-subtle sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-2 border-t border-[#1A2E1A] pt-3 sm:flex-row sm:items-center sm:justify-between">
           {showFeedback && (
             <FeedbackBar
               counts={post.feedbackCounts}
@@ -138,18 +144,18 @@ export function PostCard({ post, index, animationIndex, layout }: PostCardProps)
               density="compact"
             />
           )}
-          <div className="flex items-center gap-4 text-xs text-ink-muted">
+          <div className="flex items-center gap-4 font-mono text-[11px] text-text-tertiary">
             <span className="flex items-center gap-1.5">
-              <MessageSquare className="w-4 h-4" />
-              <span className="font-mono tabular-nums">{formatNumber(post.replyCount)}</span>
+              <MessageSquare className="h-3.5 w-3.5" />
+              <span className="tabular-nums">{formatNumber(post.replyCount)}</span>
             </span>
             <span className="flex items-center gap-1.5">
-              <Eye className="w-4 h-4" />
-              <span className="font-mono tabular-nums">{formatNumber(post.viewCount)}</span>
+              <Eye className="h-3.5 w-3.5" />
+              <span className="tabular-nums">{formatNumber(post.viewCount)}</span>
             </span>
           </div>
         </div>
-      </article>
-    </motion.div>
+      </div>
+    </article>
   );
 }

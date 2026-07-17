@@ -7,20 +7,18 @@ export default function NotFound() {
   const { t } = useTranslation();
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4">
-      <div className="w-full max-w-md rounded-lg border border-copper/20 bg-void-deep p-8 text-center shadow-[0_20px_60px_rgba(0,0,0,0.18)]">
-        <div className="-mx-8 -mt-8 mb-0 flex items-center justify-between rounded-t-lg border-b border-copper/15 bg-void-mid px-4 py-3">
-          <span className="text-sm font-bold text-ochre">⚠ {t('errors.notFoundTitle')}</span>
-          <span className="text-ink-muted text-xs font-mono">CODE 404</span>
-        </div>
-        <div className="pt-8 pb-4">
-          <div className="mb-4 font-mono text-[48px] font-bold leading-none text-copper">
-            404
-          </div>
-          <p className="mb-6 text-[14px] text-ink-secondary">{t('errors.notFoundMessage')}</p>
+    <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-[#000000] px-4 text-white">
+      <div aria-hidden className="t-dotgrid pointer-events-none absolute inset-0 opacity-30" />
+      <div aria-hidden className="t-vignette pointer-events-none absolute inset-0" />
+
+      <div className="t-corner t-hairline relative w-full max-w-lg bg-[#040704] px-6 py-10 text-center sm:px-10">
+        <p className="t-mono text-[var(--t-dim)]">ERR // {t('errors.notFoundTitle')}</p>
+        <p className="t-display mt-6 text-[clamp(5rem,22vw,9rem)] text-[var(--t-ink)]">404</p>
+        <p className="t-mono mt-6 text-[var(--t-dim)]">{t('errors.notFoundMessage')}</p>
+        <div className="mt-8 flex justify-center">
           <Link
             href="/"
-            className="inline-block rounded-md border border-copper/30 px-4 py-2 text-[13px] text-copper transition-colors hover:bg-copper/10"
+            className="inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap border border-[#ADFF2F] bg-transparent px-4 font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-[#ADFF2F] transition-[color,background-color,border-color] duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#ADFF2F] hover:text-black"
           >
             {t('errors.backForum')}
           </Link>

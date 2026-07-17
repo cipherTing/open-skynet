@@ -33,9 +33,9 @@ export function AgentAvatar({
       className={`relative flex-shrink-0 group ${className}`}
       style={{ width: size, height: size }}
     >
-      {/* 光环 */}
+      {/* 外框：1px 暗绿 hairline，hover 荧光绿点亮，steps(2) 硬切换 */}
       <div
-        className="absolute -inset-[2px] rounded-full border-2 border-ink-muted/30 transition-all duration-300 group-hover:scale-110"
+        className="absolute -inset-[2px] border border-[#1A2E1A] transition-[border-color] duration-100 [transition-timing-function:steps(2,end)] group-hover:border-[#ADFF2F]"
       />
       <Image
         src={avatarDataUri}
@@ -43,7 +43,7 @@ export function AgentAvatar({
         width={size}
         height={size}
         unoptimized
-        className="w-full h-full rounded-full object-cover"
+        className="w-full h-full object-cover"
       />
     </div>
   );

@@ -3,12 +3,8 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Check, SmilePlus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import {
-  FLOATING_Z_INDEX,
-  FloatingPortal,
-  PortalTooltip,
-  isEventInsideRefs,
-} from '@/components/ui/FloatingPortal';
+import { FloatingPortal, PortalTooltip, isEventInsideRefs } from '@/components/ui/FloatingPortal';
+import { TTag } from '@/components/ui/terminal';
 import { formatNumber } from '@/lib/utils';
 import type { FeedbackCounts, FeedbackType } from '@skynet/shared';
 
@@ -160,12 +156,12 @@ export function FeedbackBar({
         const description = t(`feedback.items.${item.type}.description`);
         const tooltip = (
           <div className="space-y-1">
-            <div className="font-bold text-ink-primary">
+            <div className="font-bold text-text-primary">
               {item.emoji} {label}
             </div>
             <div>{description}</div>
             {canInteract && selected && (
-              <div className="border-t border-copper/10 pt-1 text-ink-muted">
+              <div className="border-t border-border-subtle pt-1 text-text-tertiary">
                 {t('feedback.undoHint')}
               </div>
             )}
@@ -176,21 +172,22 @@ export function FeedbackBar({
           <PortalTooltip key={item.type} content={tooltip} placement="top" align="center">
             <span
               aria-label={t('feedback.countLabel', { label, count })}
-              className={[
-                'inline-flex h-7 min-w-[50px] items-center justify-center gap-1 rounded-full border px-2 font-mono text-[12px] tabular-nums transition-all',
-                compact ? 'h-6 min-w-[44px] px-1.5 text-[11px]' : '',
-                selected
-                  ? 'border-copper/60 bg-copper/15 text-copper shadow-[0_0_12px_rgba(255,122,46,0.12)]'
-                  : 'border-copper/[0.12] bg-void-mid/70 text-ink-secondary',
-                'cursor-default focus:outline-none focus-visible:border-copper/45 focus-visible:text-ink-primary',
-              ]
-                .filter(Boolean)
-                .join(' ')}
+              className="inline-flex cursor-default focus:outline-none"
             >
-              <span aria-hidden="true" className="leading-none">
-                {item.emoji}
-              </span>
-              <span>{formatNumber(count)}</span>
+              <TTag
+                color={selected ? 'accent' : 'default'}
+                className={[
+                  'h-7 min-w-[50px] justify-center gap-1',
+                  compact ? 'h-6 min-w-[44px]' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+              >
+                <span aria-hidden="true" className="leading-none">
+                  {item.emoji}
+                </span>
+                <span className="text-[11px] tabular-nums">{formatNumber(count)}</span>
+              </TTag>
             </span>
           </PortalTooltip>
         );
@@ -214,9 +211,9 @@ export function FeedbackBar({
               setMenuOpen((open) => !open);
             }}
             className={[
-              'inline-flex items-center justify-center gap-1.5 rounded-full border border-steel/25 bg-steel/[0.08] font-bold text-steel transition-all hover:border-steel/45 hover:bg-steel/[0.14]',
+              'inline-flex items-center justify-center gap-1.5 border border-[#1A2E1A] bg-transparent font-mono text-text-secondary transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[#ADFF2F]/60 hover:bg-[#ADFF2F]/5 hover:text-[#ADFF2F]',
               !canInteract
-                ? 'border-copper/15 text-ink-muted hover:border-copper/30 hover:text-copper'
+                ? 'text-text-tertiary hover:border-[#1A2E1A] hover:bg-transparent hover:text-text-secondary'
                 : '',
               compact ? 'h-6 px-2 text-[11px]' : 'h-7 px-3 text-[12px]',
             ]
@@ -235,21 +232,21 @@ export function FeedbackBar({
             placement="bottom"
             align="end"
             offset={8}
-            zIndex={FLOATING_Z_INDEX.menu}
+            zIndex={100}
             role="dialog"
             id={menuId}
             ariaLabelledBy={menuTitleId}
-            className="max-h-[min(520px,calc(100vh-24px))] w-[min(360px,calc(100vw-24px))] overflow-y-auto overscroll-contain rounded-lg border border-copper/20 bg-void-deep p-2 shadow-[0_18px_48px_rgba(0,0,0,0.45)]"
+            className="max-h-[min(520px,calc(100vh-24px))] w-[min(360px,calc(100vw-24px))] overflow-y-auto overscroll-contain border border-[#1A2E1A] bg-[#040704] p-2"
           >
             <div ref={menuRef}>
               <div className="px-2 pb-2 pt-1">
                 <div
                   id={menuTitleId}
-                  className="text-[11px] font-bold uppercase tracking-deck-normal text-copper"
+                  className="font-mono text-[10px] font-semibold uppercase tracking-deck-wide text-accent"
                 >
                   {t('feedback.choose')}
                 </div>
-                <div className="mt-0.5 text-[11px] leading-relaxed text-ink-muted">
+                <div className="mt-0.5 text-[11px] leading-relaxed text-text-tertiary">
                   {t('feedback.chooseHint')}
                 </div>
               </div>
@@ -281,26 +278,26 @@ export function FeedbackBar({
                         triggerRef.current?.focus();
                       }}
                       className={[
-                        'grid grid-cols-[28px_1fr_auto] items-start gap-2 rounded-md border px-2.5 py-2 text-left transition-all',
+                        'grid grid-cols-[28px_1fr_auto] items-start gap-2 border px-2.5 py-2 text-left transition-colors duration-100 [transition-timing-function:steps(2,end)]',
                         selected
-                          ? 'border-copper/45 bg-copper/[0.12]'
-                          : 'border-transparent hover:border-copper/20 hover:bg-copper/[0.06]',
+                          ? 'border-[#ADFF2F]/60 bg-[#ADFF2F]/5'
+                          : 'border-transparent hover:bg-white/5',
                       ].join(' ')}
                     >
                       <span className="text-lg leading-none" aria-hidden="true">
                         {item.emoji}
                       </span>
                       <span className="min-w-0">
-                        <span className="block text-[12px] font-bold text-ink-primary">
+                        <span className="block font-mono text-[12px] font-semibold text-text-primary">
                           {label}
                         </span>
-                        <span className="mt-0.5 block text-[11px] leading-snug text-ink-muted">
+                        <span className="mt-0.5 block text-[11px] leading-snug text-text-tertiary">
                           {description}
                         </span>
                       </span>
-                      <span className="flex items-center gap-1 text-[11px] font-mono text-ink-secondary">
+                      <span className="flex items-center gap-1 font-mono text-[11px] text-text-secondary">
                         {formatNumber(count)}
-                        {selected && <Check className="h-3.5 w-3.5 text-copper" />}
+                        {selected && <Check className="h-3.5 w-3.5 text-accent" />}
                       </span>
                     </button>
                   );

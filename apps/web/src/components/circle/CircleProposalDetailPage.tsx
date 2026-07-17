@@ -21,11 +21,24 @@ import { useToast } from '@/components/ui/SignalToast';
 import { circleApi } from '@/lib/api';
 import { circleKeys } from '@/lib/query-keys';
 import { ErrorState, InlineLoading } from '@/components/ui/LoadingState';
+import { TButton, TPanel, Timecode } from '@/components/ui/terminal';
 import { CoBuildMarkdownComposer } from './CoBuildMarkdownComposer';
 import { RuleChangeDiff, TopicChangeDiff } from './CircleChangeDiff';
 import { CreateCircleProposalModal } from './CreateCircleProposalModal';
 import { ReportDialog } from '@/components/forum/ReportDialog';
 import { PageHeader } from '@/components/layout/PageHeader';
+import type { CircleProposalStatus } from '@skynet/shared';
+
+const PROGRESS_BLOCKS = 24;
+
+/** 左色条：讨论/表决中=荧光绿（有异议转琥珀），被否决/终止=琥珀，已结=暗绿。 */
+function proposalRailClass(status: CircleProposalStatus, hasObjection: boolean): string {
+  if (status === 'DISCUSSION' || status === 'VOTING') {
+    return hasObjection ? 'bg-[#A16207]' : 'bg-[#ADFF2F]';
+  }
+  if (status === 'REJECTED' || status === 'MODERATED') return 'bg-[#A16207]';
+  return 'bg-[#3A5A3A]';
+}
 
 export function CircleProposalDetailPage({
   slug,
@@ -140,18 +153,24 @@ export function CircleProposalDetailPage({
   const canFormal = proposal.eligibility?.eligible === true;
   const canRevise = proposal.status === 'DISCUSSION' && agent?.id === proposal.creator.id;
   const canWithdraw = canRevise;
+  const hasObjection = proposal.stance.objectionCount > 0;
+  const isVotingPhase = proposal.status === 'VOTING' || proposal.status === 'DISCUSSION';
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <PageHeader titleKey="circles.coBuild.proposalDetail" />
       <main className="skynet-auto-hide-scrollbar min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-10">
         <div className="mx-auto max-w-4xl">
-          <div className="border-b border-border-subtle pb-6">
-            <p className="text-[11px] font-bold uppercase tracking-deck-normal text-copper">
-              {t(`circles.coBuild.scopes.${proposal.scope}`)}
+          <header className="relative border border-[#1A2E1A] bg-[#040704] py-5 pl-6 pr-5">
+            <span
+              aria-hidden
+              className={`absolute left-0 top-0 h-full w-[3px] ${proposalRailClass(proposal.status, hasObjection)}`}
+            />
+            <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+              PROPOSAL // {t(`circles.coBuild.scopes.${proposal.scope}`)}
             </p>
-            <div className="mt-1 flex items-center justify-between gap-3">
-              <h1 className="text-2xl font-bold text-ink-primary">
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <h1 className="text-2xl font-black tracking-tight text-white">
                 {t(`circles.coBuild.statuses.${proposal.status}`)}
               </h1>
               {agent && agent.id !== proposal.creator.id ? (
@@ -164,25 +183,37 @@ export function CircleProposalDetailPage({
                 />
               ) : null}
             </div>
-            <p className="mt-2 text-sm text-ink-secondary">
+            <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
               {t('circles.coBuild.quorum', { count: proposal.quorum })} ·{' '}
               {t('circles.coBuild.eligibleCount', { count: proposal.eligibleMemberCount })}
             </p>
-          </div>
+            {proposal.status === 'VOTING' ? (
+              <VoteProgress
+                approve={proposal.voting.approveCount ?? 0}
+                reject={proposal.voting.rejectCount ?? 0}
+                caption={t('circles.coBuild.voteProgress')}
+                summary={t('circles.coBuild.voteSummary', {
+                  approve: proposal.voting.approveCount ?? 0,
+                  reject: proposal.voting.rejectCount ?? 0,
+                })}
+              />
+            ) : null}
+          </header>
+
           {proposal.eligibility && !canFormal ? (
-            <p className="mt-4 rounded-md border border-ochre/20 bg-ochre/10 px-3 py-2 text-xs text-ochre">
+            <p className="mt-4 border border-[#713F12] bg-[#A16207]/10 px-3 py-2 font-mono text-[11px] tracking-[0.08em] text-[#A16207]">
               {proposal.eligibility.reason}
             </p>
           ) : null}
+
           <section className="mt-6">
-            <h2 className="text-sm font-bold text-ink-primary">
-              {t('circles.coBuild.proposalContent')}
-            </h2>
-            <div className="mt-3 rounded-md border border-border-subtle bg-void/30 p-4">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
-                {currentRevision?.reason ?? ''}
-              </ReactMarkdown>
-              <div className="mt-5 border-t border-border-subtle pt-4">
+            <TPanel title={t('circles.coBuild.proposalContent')}>
+              <div className="text-sm leading-7 text-[#EDF3ED]/85">
+                <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
+                  {currentRevision?.reason ?? ''}
+                </ReactMarkdown>
+              </div>
+              <div className="mt-5 border-t border-[#122012] pt-4">
                 {proposal.scope === 'TOPIC' ? (
                   <TopicChangeDiff
                     before={proposal.base.topic}
@@ -195,87 +226,80 @@ export function CircleProposalDetailPage({
                   />
                 )}
               </div>
-            </div>
+            </TPanel>
           </section>
-          <section className="mt-6 flex flex-wrap gap-2 border-y border-border-subtle py-4">
+
+          <section className="mt-6 flex flex-wrap gap-2 border-y border-[#1A2E1A] py-4">
             {proposal.status === 'DISCUSSION' && (
               <>
-                <button
-                  type="button"
+                <TButton
+                  variant="primary"
                   disabled={!canFormal || action.isPending}
                   onClick={() => action.mutate('support')}
-                  className="inline-flex h-9 items-center gap-2 rounded-md border border-moss/25 px-3 text-xs font-bold text-moss disabled:opacity-40"
                 >
                   <ThumbsUp className="h-3.5 w-3.5" />
                   {t('circles.coBuild.support')} {proposal.stance.supportCount}
-                </button>
+                </TButton>
                 <button
                   type="button"
                   disabled={!canFormal || action.isPending}
                   onClick={() => setObjectionOpen((value) => !value)}
-                  className="inline-flex h-9 items-center gap-2 rounded-md border border-ochre/25 px-3 text-xs font-bold text-ochre disabled:opacity-40"
+                  className="inline-flex h-9 items-center gap-1.5 border border-[#713F12] px-4 font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-[#A16207] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#A16207]/10 disabled:cursor-not-allowed disabled:opacity-45"
                 >
                   <ThumbsDown className="h-3.5 w-3.5" />
                   {t('circles.coBuild.object')} {proposal.stance.objectionCount}
                 </button>
                 {proposal.stance.current ? (
-                  <button
-                    type="button"
+                  <TButton
+                    variant="secondary"
                     disabled={action.isPending}
                     onClick={() => action.mutate('withdrawStance')}
-                    className="h-9 rounded-md border border-border-subtle px-3 text-xs font-semibold text-ink-secondary"
                   >
                     {t('circles.coBuild.withdrawStance')}
-                  </button>
+                  </TButton>
                 ) : null}
               </>
             )}
             {proposal.status === 'VOTING' && (
               <>
-                <button
-                  type="button"
+                <TButton
+                  variant="primary"
                   disabled={
                     !canFormal || action.isPending || Boolean(proposal.voting.currentChoice)
                   }
                   onClick={() => action.mutate('approve')}
-                  className="inline-flex h-9 items-center gap-2 rounded-md bg-moss px-3 text-xs font-bold text-void disabled:opacity-40"
                 >
                   <Vote className="h-3.5 w-3.5" />
                   {t('circles.coBuild.approve')}
-                </button>
-                <button
-                  type="button"
+                </TButton>
+                <TButton
+                  variant="danger"
                   disabled={
                     !canFormal || action.isPending || Boolean(proposal.voting.currentChoice)
                   }
                   onClick={() => action.mutate('reject')}
-                  className="inline-flex h-9 items-center gap-2 rounded-md bg-ochre px-3 text-xs font-bold text-void disabled:opacity-40"
                 >
                   <Vote className="h-3.5 w-3.5" />
                   {t('circles.coBuild.reject')}
-                </button>
+                </TButton>
               </>
             )}
             {canRevise ? (
-              <button
-                type="button"
-                onClick={() => setRevisionOpen(true)}
-                className="inline-flex h-9 items-center gap-2 rounded-md border border-steel/25 px-3 text-xs font-bold text-steel"
-              >
+              <TButton variant="secondary" onClick={() => setRevisionOpen(true)}>
                 <Pencil className="h-3.5 w-3.5" />
                 {t('circles.coBuild.revise')}
-              </button>
+              </TButton>
             ) : null}
             {canWithdraw ? (
-              <button
-                type="button"
+              <TButton
+                variant="secondary"
                 onClick={() => action.mutate('withdrawProposal')}
-                className="h-9 rounded-md border border-border-subtle px-3 text-xs font-semibold text-ink-secondary"
               >
                 {t('circles.coBuild.withdrawProposal')}
-              </button>
+              </TButton>
             ) : null}
           </section>
+
           {objectionOpen ? (
             <div className="mt-5">
               <CoBuildMarkdownComposer
@@ -291,68 +315,77 @@ export function CircleProposalDetailPage({
                 type="button"
                 disabled={!objection.trim() || action.isPending}
                 onClick={() => action.mutate('object')}
-                className="mt-3 inline-flex h-9 items-center gap-2 rounded-md bg-ochre px-3 text-xs font-bold text-void disabled:opacity-40"
+                className="mt-3 inline-flex h-9 items-center gap-1.5 border border-[#713F12] bg-[#A16207]/15 px-4 font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-[#A16207] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#A16207]/25 disabled:cursor-not-allowed disabled:opacity-45"
               >
                 {action.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                 {t('circles.coBuild.submitObjection')}
               </button>
             </div>
           ) : null}
+
           <section className="mt-8">
-            <h2 className="flex items-center gap-2 text-sm font-bold text-ink-primary">
-              <HistoryIcon />
+            <h2 className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.15em] text-white">
+              <Scale className="h-3.5 w-3.5 text-[#3A5A3A]" />
               {t('circles.coBuild.revisions')}
             </h2>
             <ol className="mt-3 space-y-3">
               {proposal.revisions.map((revision) => (
-                <li key={revision.id} className="border-l border-border-subtle pl-3">
-                  <p className="text-xs font-semibold text-ink-secondary">
+                <li key={revision.id} className="border-l border-[#1A2E1A] pl-3">
+                  <p className="text-xs font-semibold text-[#EDF3ED]/80">
                     {t('circles.coBuild.revision', { number: revision.revisionNumber })}
                   </p>
-                  <p className="mt-1 text-xs text-ink-muted">{formatDate(revision.createdAt)}</p>
+                  <Timecode date={revision.createdAt} withDate className="mt-1 block" />
                 </li>
               ))}
             </ol>
           </section>
-          {proposal.status !== 'VOTING' && proposal.status !== 'DISCUSSION' ? (
+
+          {!isVotingPhase ? (
             <section className="mt-8">
-              <h2 className="text-sm font-bold text-ink-primary">
+              <h2 className="font-mono text-[11px] uppercase tracking-[0.15em] text-white">
                 {t('circles.coBuild.voteResult')}
               </h2>
-              <p className="mt-2 text-sm text-ink-secondary">
-                {t('circles.coBuild.voteSummary', {
+              <VoteProgress
+                approve={proposal.voting.approveCount ?? 0}
+                reject={proposal.voting.rejectCount ?? 0}
+                caption={t('circles.coBuild.voteProgress')}
+                summary={t('circles.coBuild.voteSummary', {
                   approve: proposal.voting.approveCount ?? 0,
                   reject: proposal.voting.rejectCount ?? 0,
                 })}
-              </p>
+              />
               {proposal.moderationReason ? (
-                <p className="mt-3 border-l-2 border-ochre/40 pl-3 text-sm text-ochre">
+                <p className="mt-3 border-l-2 border-[#A16207]/60 pl-3 text-sm text-[#A16207]">
                   {proposal.moderationReason}
                 </p>
               ) : null}
             </section>
           ) : null}
-          <section className="mt-8 border-t border-border-subtle pt-6">
-            <h2 className="flex items-center gap-2 text-sm font-bold text-ink-primary">
-              <MessageSquare className="h-4 w-4 text-steel" />
+
+          <section className="mt-8 border-t border-[#1A2E1A] pt-6">
+            <h2 className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.15em] text-white">
+              <MessageSquare className="h-3.5 w-3.5 text-[#3A5A3A]" />
               {t('circles.coBuild.comments')}
             </h2>
             <div className="mt-4 space-y-4">
               {commentsQuery.data?.items.map((item) => (
-                <article key={item.id} className="border-l border-border-subtle pl-3">
+                <article key={item.id} className="border-l border-[#1A2E1A] pl-3">
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs font-semibold text-ink-primary">{item.author.name}</p>
-                    {agent && agent.id !== item.author.id ? (
-                      <ReportDialog
-                        targetType="CIRCLE_PROPOSAL_COMMENT"
-                        targetId={item.id}
-                        targetContentVersion={1}
-                        density="compact"
-                        unavailableReason={!user ? t('report.loginRequired') : undefined}
-                      />
-                    ) : null}
+                    <p className="text-xs font-semibold text-white">{item.author.name}</p>
+                    <div className="flex shrink-0 items-center gap-3">
+                      <Timecode date={item.createdAt} withDate />
+                      {agent && agent.id !== item.author.id ? (
+                        <ReportDialog
+                          targetType="CIRCLE_PROPOSAL_COMMENT"
+                          targetId={item.id}
+                          targetContentVersion={1}
+                          density="compact"
+                          unavailableReason={!user ? t('report.loginRequired') : undefined}
+                        />
+                      ) : null}
+                    </div>
                   </div>
-                  <div className="prose prose-sm mt-2 max-w-none text-ink-secondary">
+                  <div className="prose prose-sm mt-2 max-w-none text-[#EDF3ED]/75 prose-headings:text-white prose-strong:text-white">
                     <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
                       {item.content}
                     </ReactMarkdown>
@@ -360,7 +393,7 @@ export function CircleProposalDetailPage({
                 </article>
               ))}
             </div>
-            {proposal.status === 'DISCUSSION' || proposal.status === 'VOTING' ? (
+            {isVotingPhase ? (
               <div className="mt-5">
                 <CoBuildMarkdownComposer
                   value={comment}
@@ -372,15 +405,15 @@ export function CircleProposalDetailPage({
                   emptyPreview={t('circles.coBuild.emptyPreview')}
                   rows={5}
                 />
-                <button
-                  type="button"
+                <TButton
+                  variant="secondary"
                   disabled={!comment.trim() || commentMutation.isPending}
                   onClick={() => commentMutation.mutate()}
-                  className="mt-3 inline-flex h-9 items-center gap-2 rounded-md border border-steel/25 px-3 text-xs font-bold text-steel disabled:opacity-40"
+                  className="mt-3"
                 >
                   <Check className="h-3.5 w-3.5" />
                   {t('circles.coBuild.sendComment')}
-                </button>
+                </TButton>
               </div>
             ) : null}
           </section>
@@ -401,9 +434,45 @@ export function CircleProposalDetailPage({
   );
 }
 
-function HistoryIcon() {
-  return <Scale className="h-4 w-4 text-steel" />;
+/** 投票进度：直角分段条，赞成=荧光绿段、反对=琥珀段、未投=暗绿段。 */
+function VoteProgress({
+  approve,
+  reject,
+  caption,
+  summary,
+}: {
+  approve: number;
+  reject: number;
+  caption: string;
+  summary: string;
+}) {
+  const total = approve + reject;
+  const approveBlocks = total === 0 ? 0 : Math.round((approve / total) * PROGRESS_BLOCKS);
+  const rejectBlocks = total === 0 ? 0 : PROGRESS_BLOCKS - approveBlocks;
+  return (
+    <div className="mt-4">
+      <div className="flex items-center justify-between gap-3 font-mono text-[9px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+        <span>{caption}</span>
+        <span>{summary}</span>
+      </div>
+      <div className="mt-1.5 flex h-[7px] items-center gap-px" role="presentation">
+        {Array.from({ length: PROGRESS_BLOCKS }, (_, index) => (
+          <span
+            key={index}
+            className={`h-[3px] flex-1 ${
+              index < approveBlocks
+                ? 'bg-[#ADFF2F]'
+                : index < approveBlocks + rejectBlocks
+                  ? 'bg-[#A16207]'
+                  : 'bg-[#122012]'
+            }`}
+          />
+        ))}
+      </div>
+    </div>
+  );
 }
+
 function PageState({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
@@ -411,12 +480,4 @@ function PageState({ children }: { children: ReactNode }) {
       <main className="flex min-h-0 flex-1 items-center justify-center px-6 py-16">{children}</main>
     </div>
   );
-}
-function formatDate(value: string): string {
-  return new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(value));
 }

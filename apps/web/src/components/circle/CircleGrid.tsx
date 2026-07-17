@@ -4,11 +4,12 @@ import { useState, type KeyboardEvent, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
-import { AnimatePresence } from 'framer-motion';
 import { Bell, BellOff, Clock, Flame, Plus, RefreshCw, Search } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { EmptyState, ErrorState, InlineLoading } from '@/components/ui/LoadingState';
+import { ErrorState, InlineLoading } from '@/components/ui/LoadingState';
 import { useToast } from '@/components/ui/SignalToast';
+import { TelemetryValue } from '@/components/home/terminal/TelemetryValue';
+import { TButton, TEmpty, TTag, Timecode } from '@/components/ui/terminal';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOwnerOperation } from '@/contexts/OwnerOperationContext';
 import { circleApi, userApi } from '@/lib/api';
@@ -29,6 +30,8 @@ const CreateCircleModal = dynamic(
   () => import('@/components/circle/CreateCircleModal').then((mod) => mod.CreateCircleModal),
   { ssr: false },
 );
+
+const formatTelemetryCount = (value: number) => formatNumber(Math.max(0, Math.round(value)));
 
 export function CircleGrid() {
   const { t } = useTranslation();
@@ -155,9 +158,9 @@ export function CircleGrid() {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="mb-4 flex flex-none flex-wrap items-center justify-between gap-3">
-        <div className="flex max-w-full flex-wrap items-center gap-0.5 rounded-md border border-copper/10 bg-void-deep/60 p-0.5 backdrop-blur-sm">
+        <div className="flex max-w-full flex-wrap items-center gap-0.5 border border-[#1A2E1A] bg-black p-0.5">
           {search ? (
-            <span className="flex h-7 items-center gap-1.5 px-2.5 text-xs font-semibold text-copper">
+            <span className="flex h-7 items-center gap-1.5 px-2.5 font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-[#ADFF2F]">
               <Search className="h-3.5 w-3.5" />
               {t('circles.searchResults')}
             </span>
@@ -182,25 +185,22 @@ export function CircleGrid() {
             aria-label={t('circles.refresh')}
             disabled={activeQuery.isFetching}
             onClick={() => void activeQuery.refetch()}
-            className="ml-0.5 flex h-7 w-7 items-center justify-center rounded border-l border-copper/10 text-ink-muted transition-all hover:bg-void-hover hover:text-copper disabled:cursor-not-allowed disabled:opacity-60"
+            className="ml-0.5 flex h-7 w-7 items-center justify-center border-l border-[#1A2E1A] text-[#3A5A3A] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#ADFF2F]/5 hover:text-[#ADFF2F] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${activeQuery.isFetching ? 'animate-spin' : ''}`} />
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${activeQuery.isFetching ? '[animation:t-spin-step_0.8s_steps(8)_infinite]' : ''}`}
+            />
           </button>
         </div>
 
-        <button
-          type="button"
+        <TButton
+          variant="primary"
           title={createDisabledReason || t('circles.createTitle')}
           onClick={handleCreateClick}
-          className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs tracking-wide transition-all ${
-            canCreateCircle
-              ? 'border-copper/25 text-copper hover:border-copper/40 hover:bg-copper/10'
-              : 'border-copper/10 text-ink-muted hover:border-copper/25 hover:text-copper'
-          }`}
         >
           <Plus className="h-3 w-3" />
           {t('circles.create')}
-        </button>
+        </TButton>
       </div>
 
       <div className="skynet-auto-hide-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain pb-6">
@@ -215,10 +215,11 @@ export function CircleGrid() {
         )}
 
         {!hasInitialError && circles.length > 0 && (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {circles.map((circle) => (
-              <CircleCard
+          <div className="divide-y divide-[#122012] border-y border-[#1A2E1A]">
+            {circles.map((circle, index) => (
+              <CircleArchiveRow
                 key={circle.id}
+                index={index}
                 circle={circle}
                 canSubscribe={isAuthenticated && Boolean(agent)}
                 subscriptionDisabledReason={subscriptionDisabledReason}
@@ -234,38 +235,33 @@ export function CircleGrid() {
 
         {!search && !loading && circleQuery.hasNextPage && (
           <div className="mt-5 flex justify-center">
-            <button
-              type="button"
-              onClick={() => void circleQuery.fetchNextPage()}
-              className="rounded-lg border border-copper/20 px-4 py-2 text-xs font-bold text-copper transition-all hover:bg-copper/10"
-            >
+            <TButton variant="secondary" onClick={() => void circleQuery.fetchNextPage()}>
               {t('circles.loadMore')}
-            </button>
+            </TButton>
           </div>
         )}
 
         {isEmpty && (
-          <div className="flex min-h-full items-center justify-center py-16">
-            <EmptyState message={t(search ? 'circles.noSearchResults' : 'circles.empty')} />
-          </div>
+          <TEmpty
+            className="mt-6"
+            message={t(search ? 'circles.noSearchResults' : 'circles.empty')}
+          />
         )}
       </div>
 
-      <AnimatePresence>
-        {showCreateModal && (
-          <CreateCircleModal
-            key="create-circle-modal"
-            onClose={() => setShowCreateModal(false)}
-            onCreated={handleCircleCreated}
-            onSelectExisting={handleSelectExisting}
-          />
-        )}
-      </AnimatePresence>
+      {showCreateModal && (
+        <CreateCircleModal
+          onClose={() => setShowCreateModal(false)}
+          onCreated={handleCircleCreated}
+          onSelectExisting={handleSelectExisting}
+        />
+      )}
     </div>
   );
 }
 
-function CircleCard({
+function CircleArchiveRow({
+  index,
   circle,
   canSubscribe,
   subscriptionDisabledReason,
@@ -273,6 +269,7 @@ function CircleCard({
   onOpen,
   onSubscription,
 }: {
+  index: number;
   circle: Circle;
   canSubscribe: boolean;
   subscriptionDisabledReason: string;
@@ -297,60 +294,68 @@ function CircleCard({
       aria-label={t('circles.detail.openCircle', { name: circle.name })}
       onClick={onOpen}
       onKeyDown={handleKeyDown}
-      className="signal-bubble flex min-h-44 cursor-pointer flex-col justify-between p-4 outline-none transition-colors focus-visible:border-copper/40 focus-visible:ring-2 focus-visible:ring-copper/25"
+      className="group relative flex cursor-pointer items-center gap-4 py-4 pl-4 pr-2 outline-none transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#ADFF2F]/[0.04] focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[#ADFF2F]"
     >
-      <div>
-        <div className="mb-2 flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h3 className="truncate text-lg font-bold text-ink-primary">/{circle.name}</h3>
-            <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-ink-secondary">
-              {circle.topic}
-            </p>
-          </div>
-          {circle.kind === 'OFFICIAL' && (
-            <span className="shrink-0 rounded-full border border-moss/20 bg-moss/10 px-2 py-0.5 text-[10px] font-bold text-moss">
-              {t('circles.official')}
-            </span>
-          )}
+      <span
+        aria-hidden
+        className="absolute left-0 top-0 h-full w-[2px] bg-[#ADFF2F] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
+      />
+      <span className="hidden w-12 shrink-0 font-mono text-[10px] tracking-[0.15em] text-[#3A5A3A] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F]/70 sm:block">
+        N-{String(index + 1).padStart(3, '0')}
+      </span>
+
+      <div className="min-w-0 flex-1 transition-transform duration-100 [transition-timing-function:steps(2,end)] group-hover:translate-x-1">
+        <div className="flex items-center gap-2">
+          <h3 className="truncate text-lg font-black tracking-tight text-white">
+            /{circle.name}
+          </h3>
+          {circle.kind === 'OFFICIAL' ? <TTag color="accent">{t('circles.official')}</TTag> : null}
         </div>
+        <p className="mt-1 line-clamp-1 text-xs leading-5 text-[#EDF3ED]/50">{circle.topic}</p>
       </div>
 
-      <div className="mt-4 flex items-end justify-between gap-3 border-t border-copper/[0.08] pt-3">
-        <div className="flex flex-wrap gap-3 text-xs text-ink-muted">
-          <span>
-            <span className="font-mono text-ink-secondary">
-              {formatNumber(circle.subscriberCount)}
-            </span>{' '}
-            {t('circles.subscribers')}
-          </span>
-          <span>
-            <span className="font-mono text-ink-secondary">{formatNumber(circle.postCount)}</span>{' '}
-            {t('circles.posts')}
-          </span>
-        </div>
-        <button
-          type="button"
-          disabled={busy || !canSubscribe}
-          title={!canSubscribe ? subscriptionDisabledReason : undefined}
-          onClick={(event) => {
-            event.stopPropagation();
-            onSubscription();
-          }}
-          className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-3 text-xs font-bold transition-all disabled:cursor-not-allowed disabled:opacity-60 ${
-            circle.subscribed
-              ? 'border-moss/25 bg-moss/10 text-moss hover:border-moss/40'
-              : 'border-copper/20 text-copper hover:border-copper/35 hover:bg-copper/10'
-          }`}
-        >
-          {circle.subscribed ? (
-            <BellOff className="h-3.5 w-3.5" />
-          ) : (
-            <Bell className="h-3.5 w-3.5" />
-          )}
-          {subscriptionLabel}
-        </button>
+      <div className="hidden shrink-0 items-center gap-5 md:flex">
+        <TelemetryReading label={t('circles.subscribers')} value={circle.subscriberCount} />
+        <TelemetryReading label={t('circles.posts')} value={circle.postCount} />
       </div>
+
+      <Timecode
+        date={circle.lastPostAt ?? circle.createdAt}
+        withDate
+        className="hidden shrink-0 transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F] lg:block"
+      />
+
+      <TButton
+        size="sm"
+        variant={circle.subscribed ? 'secondary' : 'primary'}
+        disabled={busy || !canSubscribe}
+        title={!canSubscribe ? subscriptionDisabledReason : undefined}
+        onClick={(event) => {
+          event.stopPropagation();
+          onSubscription();
+        }}
+        className="shrink-0"
+      >
+        {circle.subscribed ? <BellOff className="h-3 w-3" /> : <Bell className="h-3 w-3" />}
+        {subscriptionLabel}
+      </TButton>
     </article>
+  );
+}
+
+function TelemetryReading({ label, value }: { label: string; value: number }) {
+  return (
+    <span className="flex flex-col items-end gap-0.5">
+      <span className="font-mono text-[9px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+        {label}
+      </span>
+      <TelemetryValue
+        value={value}
+        format={formatTelemetryCount}
+        jitterPct={0.05}
+        className="font-mono text-sm text-[#EDF3ED]"
+      />
+    </span>
   );
 }
 
@@ -369,10 +374,10 @@ function CircleSortTab({
     <button
       type="button"
       onClick={onClick}
-      className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs tracking-wide transition-all ${
+      className={`flex items-center gap-1.5 border px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-[0.15em] transition-colors duration-100 [transition-timing-function:steps(2,end)] ${
         active
-          ? 'bg-copper/12 text-copper shadow-[0_0_0_1px_rgba(232,111,53,0.12)]'
-          : 'text-ink-muted hover:bg-copper/5 hover:text-copper'
+          ? 'border-[#ADFF2F]/40 bg-[#ADFF2F]/10 text-[#ADFF2F]'
+          : 'border-transparent text-[#3A5A3A] hover:bg-[#ADFF2F]/5 hover:text-[#ADFF2F]'
       }`}
     >
       {icon}

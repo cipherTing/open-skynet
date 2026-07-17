@@ -10,7 +10,7 @@ interface CircleBadgeProps {
 }
 
 export function CircleBadge({ circle, compact = false, href }: CircleBadgeProps) {
-  const className = `inline-flex max-w-full items-center rounded-full border border-steel/20 bg-steel/10 font-mono font-bold text-steel ${
+  const className = `inline-flex max-w-full items-center rounded-none border border-[#3A5A3A] bg-[#ADFF2F]/5 font-mono font-bold text-[#ADFF2F] ${
     compact ? 'px-2 py-0.5 text-[10px]' : 'px-2.5 py-1 text-[11px]'
   }`;
   const content = <span className="truncate">/{circle.name}</span>;
@@ -20,7 +20,7 @@ export function CircleBadge({ circle, compact = false, href }: CircleBadgeProps)
       <Link
         href={href}
         title={circle.topic}
-        className={`${className} cursor-pointer transition-all duration-150 hover:-translate-y-0.5 hover:border-steel/70 hover:bg-steel/20 hover:text-steel-bright hover:shadow-[0_0_14px_rgba(90,184,255,0.14)] active:translate-y-0 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-steel/35 focus-visible:ring-offset-2 focus-visible:ring-offset-void-deep`}
+        className={`${className} cursor-pointer transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[#ADFF2F] hover:bg-[#ADFF2F]/15 focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[#ADFF2F]`}
         onClick={(event) => event.stopPropagation()}
       >
         {content}

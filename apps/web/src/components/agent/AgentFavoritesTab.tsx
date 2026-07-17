@@ -3,21 +3,21 @@
 import { useEffect } from 'react';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { useInView } from 'react-intersection-observer';
-import { Clock, Eye, Lock, MessageSquare, X } from 'lucide-react';
+import { Eye, Lock, MessageSquare, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { AgentAvatar } from '@/components/ui/AgentAvatar';
 import { AgentLevelBadge } from '@/components/ui/AgentLevelBadge';
 import { CircleBadge } from '@/components/circle/CircleBadge';
 import { FeedbackBar, hasVisibleFeedback } from '@/components/forum/FeedbackBar';
 import { EmptyState, ErrorState, InlineLoading } from '@/components/ui/LoadingState';
+import { Timecode, formatTimecode } from '@/components/ui/terminal';
 import { useToast } from '@/components/ui/SignalToast';
 import { useAuth } from '@/contexts/AuthContext';
 import { ApiError, forumApi } from '@/lib/api';
 import { forumKeys } from '@/lib/query-keys';
-import { formatNumber, getRelativeTime } from '@/lib/utils';
+import { formatNumber } from '@/lib/utils';
 import type { AgentFavoriteItem, AgentFavoritesResponse, ForumPost } from '@skynet/shared';
 
 interface AgentFavoritesTabProps {
@@ -84,10 +84,12 @@ export function AgentFavoritesTab({ agentId }: AgentFavoritesTabProps) {
 
   if (hidden) {
     return (
-      <div className="signal-bubble p-8 text-center">
-        <Lock className="mx-auto mb-3 h-6 w-6 text-ink-muted" />
-        <p className="text-sm font-bold text-ink-secondary">{t('agent.favoritesHidden')}</p>
-        <p className="mt-1 text-xs text-ink-muted">{t('agent.favoritesHiddenHint')}</p>
+      <div className="border border-[#1A2E1A] bg-[#040704] p-8 text-center">
+        <Lock className="mx-auto mb-3 h-6 w-6 text-[#3A5A3A]" />
+        <p className="text-sm font-bold text-[#EDF3ED]">{t('agent.favoritesHidden')}</p>
+        <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+          {t('agent.favoritesHiddenHint')}
+        </p>
       </div>
     );
   }
@@ -102,11 +104,10 @@ export function AgentFavoritesTab({ agentId }: AgentFavoritesTabProps) {
 
   return (
     <div className="space-y-3">
-      {favorites.map((item, index) => (
+      {favorites.map((item) => (
         <AgentFavoriteCard
           key={`${item.post.id}-${item.favoritedAt}`}
           item={item}
-          index={index}
           canRemove={isOwner}
           removeEnabled={isAuthenticated && !!agent}
           onRemove={() => handleRemove(item.post.id)}
@@ -116,12 +117,12 @@ export function AgentFavoritesTab({ agentId }: AgentFavoritesTabProps) {
       {loading && <InlineLoading />}
 
       {errorKey && favorites.length > 0 && (
-        <div className="text-center py-4">
+        <div className="py-4 text-center">
           <button
             onClick={() =>
               void (hasMore ? favoritesQuery.fetchNextPage() : favoritesQuery.refetch())
             }
-            className="text-xs text-copper hover:text-copper-bright transition-colors"
+            className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#ADFF2F] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
           >
             {t('agent.loadMoreFailed')}
           </button>
@@ -131,11 +132,13 @@ export function AgentFavoritesTab({ agentId }: AgentFavoritesTabProps) {
       {hasMore && !loading && !errorKey && <div ref={loaderRef} className="h-8" />}
 
       {!hasMore && favorites.length > 0 && (
-        <div className="text-center py-6 text-xs text-ink-muted tracking-wide">
+        <div className="py-6 text-center">
           <div className="flex items-center justify-center gap-3">
-            <div className="w-8 deck-divider" />
-            <span>{t('agent.favoriteEnd')}</span>
-            <div className="w-8 deck-divider" />
+            <div className="h-px w-8 bg-[#1A2E1A]" />
+            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+              {t('agent.favoriteEnd')}
+            </span>
+            <div className="h-px w-8 bg-[#1A2E1A]" />
           </div>
         </div>
       )}
@@ -145,13 +148,11 @@ export function AgentFavoritesTab({ agentId }: AgentFavoritesTabProps) {
 
 function AgentFavoriteCard({
   item,
-  index,
   canRemove,
   removeEnabled,
   onRemove,
 }: {
   item: AgentFavoriteItem;
-  index: number;
   canRemove: boolean;
   removeEnabled: boolean;
   onRemove: () => void;
@@ -167,17 +168,19 @@ function AgentFavoriteCard({
   };
 
   return (
-    <motion.article
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, delay: Math.min(index * 0.04, 0.24) }}
-      className="signal-bubble cursor-pointer p-4 group"
+    <article
+      className="group relative cursor-pointer border border-[#1A2E1A] bg-[#040704] p-4 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[#3A5A3A]"
       onClick={handleCardClick}
     >
+      <span
+        aria-hidden
+        className="absolute bottom-0 left-0 top-0 w-[2px] bg-[#ADFF2F] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
+      />
+
       <div className="mb-3 flex items-start justify-between gap-3">
         <button
           type="button"
-          className="flex min-w-0 items-center gap-3 text-left group/author"
+          className="group/author flex min-w-0 items-center gap-3 text-left"
           onClick={(event) => {
             event.stopPropagation();
             router.push(`/agent/${post.author.id}`);
@@ -190,13 +193,13 @@ function AgentFavoriteCard({
           />
           <span className="min-w-0">
             <span className="flex min-w-0 items-center gap-2">
-              <span className="truncate text-sm font-bold text-copper group-hover/author:underline">
+              <span className="truncate text-sm font-bold text-[#ADFF2F] group-hover/author:underline">
                 {post.author.name}
               </span>
               <AgentLevelBadge level={post.author.level} compact />
             </span>
-            <span className="block truncate text-xs text-ink-muted">
-              {t('agent.favoritedAt', { time: getRelativeTime(favoritedAt) })}
+            <span className="mt-0.5 block truncate font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+              {t('agent.favoritedAt', { time: formatTimecode(favoritedAt, true) ?? '' })}
             </span>
           </span>
         </button>
@@ -205,21 +208,23 @@ function AgentFavoriteCard({
           <button
             type="button"
             title={removeEnabled ? t('agent.removeFavorite') : t('agent.removeFavoriteDisabled')}
-            className={`inline-flex shrink-0 items-center gap-1.5 rounded-md border border-copper/15 px-2.5 py-1.5 text-xs transition-all hover:border-ochre/30 hover:text-ochre ${
-              removeEnabled ? 'text-ink-secondary' : 'text-ink-muted opacity-60'
+            className={`inline-flex shrink-0 items-center gap-1.5 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em] transition-colors duration-100 [transition-timing-function:steps(2,end)] ${
+              removeEnabled
+                ? 'border-[#1A2E1A] text-[#EDF3ED]/70 hover:border-[#A16207] hover:text-[#A16207]'
+                : 'border-[#1A2E1A] text-[#3A5A3A] opacity-60'
             }`}
             onClick={(event) => {
               event.stopPropagation();
               onRemove();
             }}
           >
-            <X className="h-3.5 w-3.5" />
+            <X className="h-3 w-3" />
             {t('agent.removeFavorite')}
           </button>
         )}
       </div>
 
-      <h3 className="mb-2 text-base font-bold leading-snug text-ink-primary group-hover:text-copper transition-colors">
+      <h3 className="mb-2 text-base font-bold leading-snug text-[#EDF3ED] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F]">
         <Link href={`/post/${post.id}`} onClick={(event) => event.stopPropagation()}>
           {post.title}
         </Link>
@@ -231,9 +236,9 @@ function AgentFavoriteCard({
           href={`/circles/${encodeURIComponent(post.circle.slug)}`}
         />
       </div>
-      <p className="mb-3 line-clamp-2 text-sm leading-relaxed text-ink-secondary">{preview}</p>
+      <p className="mb-3 text-sm leading-relaxed text-[#EDF3ED]/70 line-clamp-2">{preview}</p>
 
-      <div className="flex flex-col gap-2 border-t border-copper/[0.08] pt-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-2 border-t border-[#1A2E1A] pt-3 sm:flex-row sm:items-center sm:justify-between">
         {showFeedback && (
           <FeedbackBar
             counts={post.feedbackCounts}
@@ -242,7 +247,7 @@ function AgentFavoriteCard({
             density="compact"
           />
         )}
-        <div className="flex items-center gap-4 text-xs text-ink-muted">
+        <div className="flex items-center gap-4 text-xs text-[#3A5A3A]">
           <span className="flex items-center gap-1.5">
             <MessageSquare className="h-3.5 w-3.5" />
             <span className="font-mono tabular-nums">{formatNumber(post.replyCount)}</span>
@@ -251,13 +256,10 @@ function AgentFavoriteCard({
             <Eye className="h-3.5 w-3.5" />
             <span className="font-mono tabular-nums">{formatNumber(post.viewCount)}</span>
           </span>
-          <span className="flex items-center gap-1.5">
-            <Clock className="h-3.5 w-3.5" />
-            {getRelativeTime(post.createdAt)}
-          </span>
+          <Timecode date={post.createdAt} withDate />
         </div>
       </div>
-    </motion.article>
+    </article>
   );
 }
 

@@ -30,19 +30,19 @@ export function AdminSelect({
     >
       <Select.Trigger
         aria-label={ariaLabel}
-        className={`skynet-input inline-flex h-9 min-w-36 items-center justify-between gap-3 rounded-md px-3 text-xs ${className}`}
+        className={`inline-flex h-8 min-w-36 items-center justify-between gap-3 rounded-none border border-[#1A2E1A] bg-black px-3 font-mono text-[11px] uppercase tracking-[0.12em] text-white/70 outline-none transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[#3A5A3A] data-[state=open]:border-[#ADFF2F] ${className}`}
       >
         <Select.Value />
         <Select.Icon asChild>
-          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-ink-muted" />
+          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[#3A5A3A]" />
         </Select.Icon>
       </Select.Trigger>
       <Select.Portal>
         <Select.Content
           position="popper"
-          sideOffset={6}
+          sideOffset={4}
           collisionPadding={12}
-          className="skynet-floating-content z-[220] max-h-[min(20rem,var(--radix-select-content-available-height))] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-md border border-border-default bg-void-deep shadow-[var(--shadow-popover)]"
+          className="z-[100] max-h-[min(20rem,var(--radix-select-content-available-height))] min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-none border border-[#1A2E1A] bg-[#040704]"
         >
           <Select.Viewport className="p-1">
             {options.map((option) => {
@@ -51,7 +51,7 @@ export function AdminSelect({
                 <Select.Item
                   key={optionValue}
                   value={optionValue}
-                  className="relative flex h-9 cursor-default select-none items-center rounded px-8 text-xs text-ink-secondary outline-none data-[highlighted]:bg-copper/10 data-[highlighted]:text-copper data-[state=checked]:text-ink-primary"
+                  className="relative flex h-8 cursor-default select-none items-center rounded-none px-8 font-mono text-[11px] uppercase tracking-[0.12em] text-white/60 outline-none transition-colors duration-100 [transition-timing-function:steps(2,end)] data-[highlighted]:bg-[#1A2E1A] data-[highlighted]:text-[#ADFF2F] data-[state=checked]:text-[#ADFF2F]"
                 >
                   <Select.ItemIndicator className="absolute left-2.5 inline-flex items-center">
                     <Check className="h-3.5 w-3.5" />

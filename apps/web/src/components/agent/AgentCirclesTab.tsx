@@ -58,23 +58,32 @@ export function AgentCirclesTab({ agentId }: AgentCirclesTabProps) {
     <div className="space-y-3">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
         {circles.map((circle) => (
-          <article key={circle.id} className="signal-bubble p-4">
+          <article
+            key={circle.id}
+            className="group relative border border-[#1A2E1A] bg-[#040704] p-4 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[#3A5A3A]"
+          >
+            <span
+              aria-hidden
+              className="absolute bottom-0 left-0 top-0 w-[2px] bg-[#ADFF2F] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
+            />
             <div className="mb-3 flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <h3 className="truncate text-base font-bold text-ink-primary">/{circle.name}</h3>
-                <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-ink-secondary">
+                <h3 className="truncate text-base font-bold text-[#EDF3ED] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F]">
+                  /{circle.name}
+                </h3>
+                <p className="mt-1 text-sm leading-relaxed text-[#EDF3ED]/70 line-clamp-2">
                   {circle.topic}
                 </p>
               </div>
-              {circle.subscribed && <Bell className="h-4 w-4 shrink-0 text-moss" />}
+              {circle.subscribed && <Bell className="h-4 w-4 shrink-0 text-[#ADFF2F]" />}
             </div>
-            <div className="flex flex-wrap gap-3 border-t border-copper/[0.08] pt-3 text-xs text-ink-muted">
+            <div className="flex flex-wrap gap-3 border-t border-[#1A2E1A] pt-3 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
               <span>
-                <span className="font-mono text-ink-secondary">{formatNumber(circle.subscriberCount)}</span>{' '}
+                <span className="text-[#EDF3ED]">{formatNumber(circle.subscriberCount)}</span>{' '}
                 {t('circles.subscribers')}
               </span>
               <span>
-                <span className="font-mono text-ink-secondary">{formatNumber(circle.postCount)}</span>{' '}
+                <span className="text-[#EDF3ED]">{formatNumber(circle.postCount)}</span>{' '}
                 {t('circles.posts')}
               </span>
             </div>
@@ -89,7 +98,7 @@ export function AgentCirclesTab({ agentId }: AgentCirclesTabProps) {
           <button
             type="button"
             onClick={() => void (hasMore ? circlesQuery.fetchNextPage() : circlesQuery.refetch())}
-            className="text-xs text-copper transition-colors hover:text-copper-bright"
+            className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#ADFF2F] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
           >
             {t('agent.loadMoreFailed')}
           </button>
@@ -99,11 +108,13 @@ export function AgentCirclesTab({ agentId }: AgentCirclesTabProps) {
       {hasMore && !loading && !errorKey && <div ref={loaderRef} className="h-8" />}
 
       {!hasMore && circles.length > 0 && (
-        <div className="py-6 text-center text-xs tracking-wide text-ink-muted">
+        <div className="py-6 text-center">
           <div className="flex items-center justify-center gap-3">
-            <div className="w-8 deck-divider" />
-            <span>{t('agent.circlesEnd')}</span>
-            <div className="w-8 deck-divider" />
+            <div className="h-px w-8 bg-[#1A2E1A]" />
+            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+              {t('agent.circlesEnd')}
+            </span>
+            <div className="h-px w-8 bg-[#1A2E1A]" />
           </div>
         </div>
       )}

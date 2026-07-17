@@ -2,14 +2,14 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Search, Send, X } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { Check, Send } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { ApiError, circleApi } from '@/lib/api';
 import { circleKeys } from '@/lib/query-keys';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Circle, ForumCircle } from '@skynet/shared';
-import { ComposerTextarea } from '@/components/ui/ComposerTextarea';
+import { TButton, TInput, TTextarea } from '@/components/ui/terminal';
+import { TerminalDialog } from '@/components/ui/TerminalDialog';
 
 interface CreateCircleModalProps {
   onClose: () => void;
@@ -57,18 +57,6 @@ export function CreateCircleModal({
   const [reviewPending, setReviewPending] = useState(false);
 
   useEffect(() => {
-    document.body.style.overflow = 'hidden';
-    const handleEsc = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleEsc);
-    return () => {
-      document.body.style.overflow = '';
-      window.removeEventListener('keydown', handleEsc);
-    };
-  }, [onClose]);
-
-  useEffect(() => {
     const timer = window.setTimeout(() => {
       setDebouncedName(name.trim());
     }, SEARCH_DEBOUNCE_MS);
@@ -86,8 +74,7 @@ export function CreateCircleModal({
     () => (searchQuery.data?.items ?? []).filter((item) => item.id !== exactMatch?.id),
     [exactMatch?.id, searchQuery.data?.items],
   );
-  const createDisabled =
-    submitting || !name.trim() || !topic.trim() || Boolean(exactMatch);
+  const createDisabled = submitting || !name.trim() || !topic.trim() || Boolean(exactMatch);
 
   const handleCreate = async () => {
     if (createDisabled) return;
@@ -127,128 +114,112 @@ export function CreateCircleModal({
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[130] flex items-center justify-center"
-      onClick={onClose}
+    <TerminalDialog
+      open
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      title={t('circles.createTitle')}
+      code="CIRCLE.CREATE"
+      size="md"
+      footer={
+        reviewPending ? (
+          <TButton variant="primary" onClick={onClose}>
+            {t('app.close')}
+          </TButton>
+        ) : (
+          <>
+            <TButton variant="secondary" onClick={onClose}>
+              {t('app.cancel')}
+            </TButton>
+            <TButton variant="primary" disabled={createDisabled} onClick={handleCreate}>
+              <Send className="h-3 w-3" />
+              {submitting ? t('circles.creating') : t('circles.createSubmit')}
+            </TButton>
+          </>
+        )
+      }
     >
-      <div className="absolute inset-0 bg-void/45 backdrop-blur-[2px]" />
-      <motion.div
-        initial={{ scale: 0.95, opacity: 0, y: 20 }}
-        animate={{ scale: 1, opacity: 1, y: 0 }}
-        exit={{ scale: 0.95, opacity: 0, y: 20 }}
-        transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-        className="signal-bubble relative mx-4 w-full max-w-lg"
-        onClick={(event) => event.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="create-circle-title"
-      >
-        <div className="flex items-center justify-between border-b border-copper/10 px-5 py-3">
-          <div className="flex items-center gap-2">
-            <Search className="h-4 w-4 text-moss" />
-            <span id="create-circle-title" className="font-mono text-xs tracking-wider text-moss">
-              {t('circles.createTitle')}
-            </span>
+      {reviewPending ? (
+        <div className="py-6 text-center">
+          <div className="font-mono text-[11px] uppercase tracking-[0.15em] text-[#ADFF2F]">
+            {t('circles.reviewPendingTitle')}
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={t('app.close')}
-            className="rounded-md p-1 text-ink-muted transition-colors hover:bg-ochre/5 hover:text-ochre"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-[#EDF3ED]/70">
+            {t('circles.reviewPendingDescription')}
+          </p>
         </div>
-
-        <div className="space-y-4 p-5">
-          {reviewPending ? (
-            <div className="py-6 text-center">
-              <div className="text-base font-bold text-ink-primary">{t('circles.reviewPendingTitle')}</div>
-              <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-ink-secondary">{t('circles.reviewPendingDescription')}</p>
-              <button type="button" onClick={onClose} className="mt-6 rounded-md bg-copper px-4 py-2 text-sm font-bold text-void">{t('app.close')}</button>
-            </div>
-          ) : (
-            <>
+      ) : (
+        <div className="space-y-4">
           {error && (
-            <div className="rounded-md border border-ochre/20 bg-ochre/10 px-3 py-2 text-[12px] text-ochre">
+            <div className="border border-[#7F1D1D] bg-[#7F1D1D]/20 px-3 py-2 font-mono text-[12px] text-[#EF4444]">
               {error}
             </div>
           )}
 
           <div>
-            <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-deck-normal text-copper">
+            <label className="mb-1.5 block font-mono text-[11px] uppercase tracking-[0.15em] text-[#3A5A3A]">
               {t('circles.name')}
             </label>
-            <input
+            <TInput
               type="text"
               value={name}
               onChange={(event) => setName(event.target.value)}
               placeholder={t('circles.namePlaceholder')}
-              className="skynet-input w-full rounded-lg px-3 py-2.5 text-sm"
             />
           </div>
 
           <div>
-            <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-deck-normal text-copper">
+            <label className="mb-1.5 block font-mono text-[11px] uppercase tracking-[0.15em] text-[#3A5A3A]">
               {t('circles.topic')}
             </label>
-            <ComposerTextarea
+            <TTextarea
               value={topic}
               onChange={(event) => setTopic(event.target.value)}
               placeholder={t('circles.topicPlaceholder')}
               rows={3}
-              variant="framed"
             />
           </div>
 
           {debouncedName && (
-            <div className="rounded-lg border border-copper/10 bg-void-deep/45 p-3">
+            <div className="border border-[#1A2E1A] bg-black p-3">
               {searchQuery.isFetching ? (
-                <p className="text-xs text-ink-muted">{t('circles.searching')}</p>
+                <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                  {t('circles.searching')}
+                </p>
               ) : exactMatch ? (
                 <div className="space-y-2">
-                  <p className="text-xs font-bold text-ochre">{t('circles.exactExists')}</p>
-                  <CircleMatchButton circle={exactMatch} onClick={() => onSelectExisting(exactMatch)} />
+                  <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-[#EF4444]/80">
+                    {t('circles.exactExists')}
+                  </p>
+                  <CircleMatchButton
+                    circle={exactMatch}
+                    onClick={() => onSelectExisting(exactMatch)}
+                  />
                 </div>
               ) : fuzzyMatches.length > 0 ? (
                 <div className="space-y-2">
-                  <p className="text-xs font-bold text-steel">{t('circles.relatedMatches')}</p>
+                  <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-[#A16207]">
+                    {t('circles.relatedMatches')}
+                  </p>
                   {fuzzyMatches.slice(0, 5).map((circle) => (
-                    <CircleMatchButton key={circle.id} circle={circle} onClick={() => onSelectExisting(circle)} />
+                    <CircleMatchButton
+                      key={circle.id}
+                      circle={circle}
+                      onClick={() => onSelectExisting(circle)}
+                    />
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-moss">{t('circles.noDuplicate')}</p>
+                <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-[#ADFF2F]">
+                  {t('circles.noDuplicate')}
+                </p>
               )}
             </div>
           )}
-
-          <div className="flex items-center justify-end gap-3 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg border border-copper/15 px-4 py-2 text-[12px] tracking-wide text-ink-secondary transition-all hover:border-copper/30 hover:text-ink-primary"
-            >
-              {t('app.cancel')}
-            </button>
-            <button
-              type="button"
-              disabled={createDisabled}
-              onClick={handleCreate}
-              className="flex items-center gap-1.5 rounded-lg bg-copper px-4 py-2 text-[12px] font-bold tracking-wide text-void transition-all hover:bg-copper-dim disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <Send className="h-3 w-3" />
-              {submitting ? t('circles.creating') : t('circles.createSubmit')}
-            </button>
-          </div>
-            </>
-          )}
         </div>
-      </motion.div>
-    </motion.div>
+      )}
+    </TerminalDialog>
   );
 }
 
@@ -258,13 +229,13 @@ function CircleMatchButton({ circle, onClick }: { circle: ForumCircle; onClick: 
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full items-center justify-between gap-3 rounded-md border border-copper/10 bg-void-mid/55 px-3 py-2 text-left transition-all hover:border-copper/25 hover:bg-copper/5"
+      className="flex w-full items-center justify-between gap-3 border border-[#1A2E1A] bg-[#040704] px-3 py-2 text-left transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[#ADFF2F]/50 hover:bg-[#ADFF2F]/5"
     >
       <span className="min-w-0">
-        <span className="block truncate text-sm font-bold text-copper">/{circle.name}</span>
-        <span className="mt-0.5 block line-clamp-1 text-xs text-ink-muted">{circle.topic}</span>
+        <span className="block truncate text-sm font-bold text-white">/{circle.name}</span>
+        <span className="mt-0.5 block line-clamp-1 text-xs text-[#EDF3ED]/50">{circle.topic}</span>
       </span>
-      <span className="inline-flex shrink-0 items-center gap-1 text-xs font-bold text-moss">
+      <span className="inline-flex shrink-0 items-center gap-1 font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-[#ADFF2F]">
         <Check className="h-3.5 w-3.5" />
         {t('circles.selectExisting')}
       </span>

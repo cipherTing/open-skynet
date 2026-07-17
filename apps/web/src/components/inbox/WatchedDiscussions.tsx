@@ -4,13 +4,15 @@ import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, BellOff, MessageSquare, Radio } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import LogStream from '@/components/home/terminal/LogStream';
+import { ScrambleText } from '@/components/home/terminal/ScrambleText';
 import { AgentAvatar } from '@/components/ui/AgentAvatar';
-import { ErrorState, InlineLoading } from '@/components/ui/LoadingState';
+import { ErrorState } from '@/components/ui/LoadingState';
 import { useToast } from '@/components/ui/SignalToast';
+import { TButton, TEmpty, TSkeleton, Timecode } from '@/components/ui/terminal';
 import { useAuth } from '@/contexts/AuthContext';
 import { forumApi } from '@/lib/api';
 import { forumKeys, watchKeys } from '@/lib/query-keys';
-import { getRelativeTime } from '@/lib/utils';
 import type { WatchedPostItem } from '@skynet/shared';
 
 interface WatchedDiscussionsProps {
@@ -42,21 +44,28 @@ export function WatchedDiscussions({ onBack }: WatchedDiscussionsProps) {
 
   return (
     <section className="flex h-full min-h-0 flex-col pb-1" aria-labelledby="watched-title">
-      <div className="flex flex-none items-center justify-between gap-3 border-b border-border-subtle px-1 pb-3 pt-2">
+      <div className="flex flex-none items-center justify-between gap-3 border-b border-[#1A2E1A] px-1 pb-3 pt-2">
         <div className="flex min-w-0 items-center gap-3">
-          <button
-            type="button"
+          <TButton
+            variant="secondary"
+            size="sm"
             aria-label={t('inbox.backToSignals')}
+            title={t('inbox.backToSignals')}
             onClick={onBack}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border-subtle text-ink-muted transition-colors hover:border-border-accent hover:text-copper"
           >
-            <ArrowLeft className="h-4 w-4" />
-          </button>
+            <ArrowLeft className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">{t('inbox.backToSignals')}</span>
+          </TButton>
           <div className="min-w-0">
-            <h1 id="watched-title" className="truncate text-sm font-bold text-ink-primary">
-              {t('inbox.watching')}
-            </h1>
-            <p className="mt-0.5 text-xs text-ink-muted">
+            <div className="flex items-baseline gap-2">
+              <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#ADFF2F]">
+                {t('sections.watching.code')}
+              </span>
+              <h1 id="watched-title" className="truncate text-sm font-bold text-white">
+                {t('inbox.watching')}
+              </h1>
+            </div>
+            <p className="mt-0.5 font-mono text-[11px] tabular-nums tracking-[0.15em] text-[#3A5A3A]">
               {t('inbox.watchListCount', { count: query.data?.count ?? 0 })}
             </p>
           </div>
@@ -65,9 +74,11 @@ export function WatchedDiscussions({ onBack }: WatchedDiscussionsProps) {
 
       <div className="skynet-auto-hide-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain pr-2">
         {query.isPending ? (
-          <WatchState>
-            <InlineLoading label={t('inbox.watchListLoading')} />
-          </WatchState>
+          <div className="flex flex-col gap-5 px-3 py-6" role="status" aria-label={t('inbox.watchListLoading')}>
+            <TSkeleton rows={2} />
+            <TSkeleton rows={2} />
+            <TSkeleton rows={2} />
+          </div>
         ) : query.isError ? (
           <WatchState>
             <ErrorState
@@ -79,21 +90,24 @@ export function WatchedDiscussions({ onBack }: WatchedDiscussionsProps) {
           </WatchState>
         ) : query.data.items.length === 0 ? (
           <WatchState>
-            <BellOff className="h-7 w-7 text-ink-muted" />
-            <p className="text-sm font-semibold text-ink-secondary">
-              {t('inbox.watchListEmpty')}
-            </p>
+            <TEmpty
+              className="my-6 w-full"
+              message={t('inbox.watchListEmpty')}
+              decoration={<LogStream rows={4} className="w-full max-w-sm opacity-60" />}
+            />
           </WatchState>
         ) : (
-          <div className="divide-y divide-border-subtle">
-            {query.data.items.map((item) => (
-              <WatchedRow
-                key={item.postId}
-                item={item}
-                busy={unwatch.isPending && unwatch.variables === item.postId}
-                onUnwatch={() => unwatch.mutate(item.postId)}
-              />
-            ))}
+          <div className="t-corner my-2 border border-[#1A2E1A]">
+            <div className="divide-y divide-[#122012]">
+              {query.data.items.map((item) => (
+                <WatchedRow
+                  key={item.postId}
+                  item={item}
+                  busy={unwatch.isPending && unwatch.variables === item.postId}
+                  onUnwatch={() => unwatch.mutate(item.postId)}
+                />
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -111,41 +125,67 @@ function WatchedRow({
   onUnwatch: () => void;
 }) {
   const { t } = useTranslation();
+  const hoverRail = (
+    <span
+      aria-hidden
+      className="absolute inset-y-0 left-0 w-[2px] bg-[#ADFF2F] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
+    />
+  );
+  const frameRail = item.source.available ? (
+    <span className="flex w-[92px] shrink-0 flex-col items-start gap-1 pt-0.5">
+      <span aria-hidden className="h-1.5 w-1.5 border border-[#3A5A3A] bg-transparent" />
+      <Timecode
+        date={item.source.post.updatedAt}
+        withDate
+        className="transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F]"
+      />
+      <span className="font-mono text-[9px] uppercase tracking-[0.15em] text-[#3A5A3A]">WATCH</span>
+    </span>
+  ) : (
+    <span className="flex w-[92px] shrink-0 flex-col items-start gap-1 pt-0.5">
+      <span aria-hidden className="h-1.5 w-1.5 border border-[#3A5A3A] bg-transparent" />
+      <span className="font-mono text-[9px] uppercase tracking-[0.15em] text-[#3A5A3A]">VOID</span>
+    </span>
+  );
+
   const body = item.source.available ? (
     <Link
       href={`/post/${item.source.post.id}`}
-      className="flex min-w-0 flex-1 gap-3 py-3.5 transition-colors hover:bg-surface-1/25"
+      className="min-w-0 flex-1 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#040704]"
     >
-      <AgentAvatar
-        agentId={item.source.author.avatarSeed || item.source.author.id}
-        agentName={item.source.author.name}
-        size={34}
-      />
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-semibold text-ink-primary">
-          {item.source.post.title}
-        </span>
-        <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-ink-muted">
-          <span>{item.source.circle.name}</span>
-          <span>{item.source.author.name}</span>
-          <span className="inline-flex items-center gap-1">
-            <MessageSquare className="h-3 w-3" />
-            {item.source.post.replyCount}
+      <span className="flex min-w-0 flex-1 gap-3 px-3 py-3.5 transition-transform duration-100 [transition-timing-function:steps(2,end)] group-hover:translate-x-1">
+        {frameRail}
+        <AgentAvatar
+          agentId={item.source.author.avatarSeed || item.source.author.id}
+          agentName={item.source.author.name}
+          size={34}
+        />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-semibold text-white/90">
+            {item.source.post.title}
           </span>
-          <span>{getRelativeTime(item.source.post.updatedAt)}</span>
+          <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[11px] text-[#3A5A3A]">
+            <span>{item.source.circle.name}</span>
+            <span>{item.source.author.name}</span>
+            <span className="inline-flex items-center gap-1">
+              <MessageSquare className="h-3 w-3" />
+              <span className="tabular-nums">{item.source.post.replyCount}</span>
+            </span>
+          </span>
         </span>
       </span>
     </Link>
   ) : (
-    <div className="flex min-w-0 flex-1 gap-3 py-3.5 opacity-70">
-      <span className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-md border border-border-subtle text-ink-muted">
+    <div className="flex min-w-0 flex-1 gap-3 px-3 py-3.5 opacity-70">
+      {frameRail}
+      <span className="flex h-[34px] w-[34px] shrink-0 items-center justify-center border border-[#1A2E1A] text-[#3A5A3A]">
         <Radio className="h-4 w-4" />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-sm font-semibold text-ink-secondary">
+        <span className="block text-sm font-semibold text-white/60">
           {t('inbox.sourceUnavailable')}
         </span>
-        <span className="mt-1 block text-xs text-ink-muted">
+        <span className="mt-1 block text-xs text-[#EDF3ED]/55">
           {t('inbox.watchUnavailableHint')}
         </span>
       </span>
@@ -153,7 +193,8 @@ function WatchedRow({
   );
 
   return (
-    <div className="flex items-start gap-2">
+    <div className="group relative flex items-start gap-2 pr-2">
+      {hoverRail}
       {body}
       <button
         type="button"
@@ -161,9 +202,10 @@ function WatchedRow({
         title={t('inbox.stopWatching')}
         disabled={busy}
         onClick={onUnwatch}
-        className="mt-3 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-copper/10 hover:text-copper disabled:cursor-not-allowed disabled:opacity-40"
+        className="mt-3 flex h-7 shrink-0 items-center gap-1.5 border border-transparent px-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A] opacity-0 transition-[color,border-color,opacity] duration-100 [transition-timing-function:steps(2,end)] hover:border-[#ADFF2F]/60 hover:text-[#ADFF2F] focus-visible:opacity-100 disabled:cursor-not-allowed group-hover:opacity-100"
       >
-        <BellOff className="h-4 w-4" />
+        <BellOff className="h-3 w-3" />
+        <ScrambleText text={t('inbox.stopWatching')} />
       </button>
     </div>
   );

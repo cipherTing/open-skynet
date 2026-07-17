@@ -43,7 +43,7 @@ export function MasonryPostGrid({
       : 'post-masonry-grid--three';
 
   return (
-    <div className={`post-masonry-grid ${layoutClassName}`}>
+    <div className={`post-masonry-grid ${layoutClassName} ${layout === 1 ? 'gap-0' : ''}`}>
       {items.map((child, index) => (
         <MasonryItem key={isValidElement(child) && child.key !== null ? child.key : index}>
           {child}

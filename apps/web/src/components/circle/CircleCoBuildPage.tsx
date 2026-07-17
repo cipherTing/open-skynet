@@ -3,16 +3,24 @@
 import Link from 'next/link';
 import { useMemo, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BookOpen, FilePlus2, History, Scale } from 'lucide-react';
+import { FilePlus2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import type { CircleMaintenanceLogItem } from '@skynet/shared';
+import type { CircleMaintenanceLogItem, CircleProposalStatus } from '@skynet/shared';
 import { useAuth } from '@/contexts/AuthContext';
 import { circleApi } from '@/lib/api';
 import { circleKeys } from '@/lib/query-keys';
 import { ErrorState, InlineLoading } from '@/components/ui/LoadingState';
+import { TButton, TPanel, Timecode } from '@/components/ui/terminal';
 import { CreateCircleProposalModal } from './CreateCircleProposalModal';
 import { CircleMaintenanceRecordDialog } from './CircleMaintenanceRecordDialog';
 import { PageHeader } from '@/components/layout/PageHeader';
+
+/** 告警色条：进行中=荧光绿，被否决/终止=琥珀，已结=暗绿。 */
+function proposalRailClass(status: CircleProposalStatus): string {
+  if (status === 'DISCUSSION' || status === 'VOTING') return 'bg-[#ADFF2F]';
+  if (status === 'REJECTED' || status === 'MODERATED') return 'bg-[#A16207]';
+  return 'bg-[#3A5A3A]';
+}
 
 export function CircleCoBuildPage({ slug }: { slug: string }) {
   const { t } = useTranslation();
@@ -87,81 +95,81 @@ export function CircleCoBuildPage({ slug }: { slug: string }) {
       <PageHeader titleKey="circles.coBuild.title" />
       <main className="skynet-auto-hide-scrollbar min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-10">
         <div className="mx-auto max-w-6xl">
-          <div className="mb-7 flex flex-wrap items-start justify-between gap-4">
+          <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-deck-normal text-copper">
-                {t('circles.coBuild.currentState')}
+              <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                CO-BUILD // {circle.slug}
               </p>
-              <h1 className="mt-1 text-2xl font-bold text-ink-primary">/{circle.name}</h1>
+              <h1 className="mt-2 text-2xl font-black tracking-tight text-white">
+                /{circle.name}
+              </h1>
             </div>
-            <button
-              type="button"
-              onClick={() => setCreateOpen(true)}
-              className="inline-flex h-9 items-center gap-2 rounded-md bg-copper px-3 text-xs font-bold text-void"
-            >
+            <TButton variant="primary" onClick={() => setCreateOpen(true)}>
               <FilePlus2 className="h-3.5 w-3.5" />
               {t('circles.coBuild.create')}
-            </button>
+            </TButton>
           </div>
 
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_280px]">
             <div className="space-y-7">
-              <section className="border-b border-border-subtle pb-6">
-                <div className="flex items-center gap-2 text-xs font-bold text-ink-secondary">
-                  <BookOpen className="h-3.5 w-3.5 text-steel" />
-                  {t('circles.coBuild.currentState')}
-                </div>
-                <p className="mt-3 text-sm leading-7 text-ink-primary">{circle.topic}</p>
-                <p className="mt-1 text-xs text-ink-muted">
+              <TPanel
+                title={t('circles.coBuild.currentState')}
+                meta={t('circles.coBuild.topicVersion', { version: circle.topicVersion })}
+              >
+                <p className="text-sm leading-7 text-[#EDF3ED]">{circle.topic}</p>
+                <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
                   {circle.topicOrigin === 'CREATION'
                     ? t('circles.coBuild.creationTopic')
-                    : t('circles.coBuild.communityTopic')}{' '}
-                  · {t('circles.coBuild.topicVersion', { version: circle.topicVersion })}
+                    : t('circles.coBuild.communityTopic')}
                 </p>
-                <div className="mt-4 space-y-2">
+                <div className="mt-4 space-y-2 border-t border-[#122012] pt-3">
                   {circle.rules.length ? (
                     circle.rules.map((rule, index) => (
-                      <p key={rule.id} className="text-sm text-ink-secondary">
-                        <span className="mr-2 font-mono text-ink-muted">{index + 1}.</span>
+                      <p key={rule.id} className="text-sm leading-6 text-[#EDF3ED]/70">
+                        <span className="mr-2 font-mono text-[11px] text-[#3A5A3A]">
+                          {String(index + 1).padStart(2, '0')}
+                        </span>
                         {rule.text}
                       </p>
                     ))
                   ) : (
-                    <p className="text-sm text-ink-muted">{t('circles.coBuild.noRules')}</p>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                      {t('circles.coBuild.noRules')}
+                    </p>
                   )}
                 </div>
-              </section>
+              </TPanel>
 
               <ProposalSection
+                chapter="CH.01"
                 title={t('circles.coBuild.active')}
-                icon={<Scale className="h-4 w-4 text-copper" />}
                 items={active}
                 circleSlug={circle.slug}
                 empty={t('circles.coBuild.noActive')}
               />
               <ProposalSection
+                chapter="CH.02"
                 title={t('circles.coBuild.history')}
-                icon={<History className="h-4 w-4 text-steel" />}
                 items={history}
                 circleSlug={circle.slug}
                 empty={t('circles.coBuild.noHistory')}
               />
             </div>
-            <aside className="border-l border-border-subtle pl-0 xl:pl-5">
-              <p className="text-[11px] font-bold uppercase tracking-deck-normal text-ink-muted">
-                {t('circles.coBuild.records')}
+            <aside className="border-l border-[#1A2E1A] pl-0 xl:pl-5">
+              <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                LOG // {t('circles.coBuild.records')}
               </p>
               {logsQuery.isPending ? (
                 <div className="py-6">
                   <InlineLoading label={t('circles.coBuild.loading')} />
                 </div>
               ) : logsQuery.isError ? (
-                <div className="py-5 text-xs text-ink-muted">
+                <div className="py-5 text-xs text-[#3A5A3A]">
                   <p>{t('circles.coBuild.recordsFailed')}</p>
                   <button
                     type="button"
                     onClick={() => void logsQuery.refetch()}
-                    className="mt-2 font-semibold text-copper hover:text-copper-bright"
+                    className="mt-2 font-mono text-[11px] uppercase tracking-[0.15em] text-[#ADFF2F] hover:text-white"
                   >
                     {t('app.retry')}
                   </button>
@@ -178,7 +186,9 @@ export function CircleCoBuildPage({ slug }: { slug: string }) {
                       />
                     ))
                   ) : (
-                    <li className="text-xs text-ink-muted">{t('circles.coBuild.noRecords')}</li>
+                    <li className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                      {t('circles.coBuild.noRecords')}
+                    </li>
                   )}
                 </ol>
               )}
@@ -218,16 +228,18 @@ function MaintenanceRecordItem({
   const { t } = useTranslation();
   const content = (
     <>
-      <p>{t(`circles.coBuild.recordActions.${log.action}`)}</p>
-      <p className="text-ink-muted">{formatDate(log.createdAt)}</p>
+      <p className="text-[#EDF3ED]/70 transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F]">
+        {t(`circles.coBuild.recordActions.${log.action}`)}
+      </p>
+      <Timecode date={log.createdAt} withDate className="mt-0.5 block" />
     </>
   );
   return (
-    <li className="border-l border-border-subtle pl-3 text-xs leading-5 text-ink-secondary">
+    <li className="border-l border-[#1A2E1A] pl-3 text-xs leading-5">
       {log.proposalId ? (
         <Link
           href={`/circles/${circleSlug}/co-build/${log.proposalId}`}
-          className="block rounded-sm transition-colors hover:text-copper focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-copper"
+          className="group block focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#ADFF2F]"
         >
           {content}
         </Link>
@@ -235,7 +247,7 @@ function MaintenanceRecordItem({
         <button
           type="button"
           onClick={onOpen}
-          className="block w-full rounded-sm text-left transition-colors hover:text-copper focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-copper"
+          className="group block w-full text-left focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#ADFF2F]"
         >
           {content}
         </button>
@@ -245,18 +257,18 @@ function MaintenanceRecordItem({
 }
 
 function ProposalSection({
+  chapter,
   title,
-  icon,
   items,
   circleSlug,
   empty,
 }: {
+  chapter: string;
   title: string;
-  icon: ReactNode;
   items: Array<{
     id: string;
     scope: string;
-    status: string;
+    status: CircleProposalStatus;
     creator: { name: string };
     updatedAt: string;
     quorum: number;
@@ -267,35 +279,44 @@ function ProposalSection({
   const { t } = useTranslation();
   return (
     <section>
-      <div className="mb-3 flex items-center gap-2 text-sm font-bold text-ink-primary">
-        {icon}
-        {title}
+      <div className="mb-3 flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.15em]">
+        <span className="text-[#ADFF2F]">{chapter}</span>
+        <span aria-hidden className="h-px w-6 bg-[#1A2E1A]" />
+        <span className="text-white">{title}</span>
       </div>
       {items.length ? (
-        <div className="divide-y divide-border-subtle border-y border-border-subtle">
+        <div className="divide-y divide-[#122012] border-y border-[#1A2E1A]">
           {items.map((proposal) => (
             <Link
               key={proposal.id}
               href={`/circles/${circleSlug}/co-build/${proposal.id}`}
-              className="flex items-center justify-between gap-4 py-3 transition-colors hover:bg-surface-1/30"
+              className="group relative flex items-center justify-between gap-4 py-3 pl-4 pr-2 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#ADFF2F]/[0.04] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#ADFF2F]"
             >
-              <div>
-                <p className="text-sm font-semibold text-ink-primary">
+              <span
+                aria-hidden
+                className={`absolute left-0 top-0 h-full w-[2px] ${proposalRailClass(proposal.status)}`}
+              />
+              <div className="min-w-0 transition-transform duration-100 [transition-timing-function:steps(2,end)] group-hover:translate-x-1">
+                <p className="truncate text-sm font-semibold text-white">
                   {t(`circles.coBuild.scopes.${proposal.scope}`)}
                 </p>
-                <p className="mt-1 text-xs text-ink-muted">
+                <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
                   {proposal.creator.name} · {t(`circles.coBuild.statuses.${proposal.status}`)} ·{' '}
                   {t('circles.coBuild.quorum', { count: proposal.quorum })}
                 </p>
               </div>
-              <time className="shrink-0 text-xs text-ink-muted">
-                {formatDate(proposal.updatedAt)}
-              </time>
+              <Timecode
+                date={proposal.updatedAt}
+                withDate
+                className="shrink-0 transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F]"
+              />
             </Link>
           ))}
         </div>
       ) : (
-        <p className="py-6 text-sm text-ink-muted">{empty}</p>
+        <p className="border border-dashed border-[#1A2E1A] px-4 py-6 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+          {empty}
+        </p>
       )}
     </section>
   );
@@ -308,14 +329,6 @@ function PageState({ children }: { children: ReactNode }) {
       <main className="flex min-h-0 flex-1 items-center justify-center px-6 py-16">{children}</main>
     </div>
   );
-}
-function formatDate(value: string): string {
-  return new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(value));
 }
 function getLastSevenDays() {
   const to = new Date();

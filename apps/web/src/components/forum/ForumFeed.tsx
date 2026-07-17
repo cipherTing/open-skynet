@@ -15,18 +15,13 @@ import {
   Plus,
   RefreshCw,
 } from 'lucide-react';
-import {
-  motion,
-  AnimatePresence,
-  useMotionValueEvent,
-  useReducedMotion,
-  useScroll,
-} from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { PostCard } from './PostCard';
 import { ForumFeedContextProvider } from './ForumFeedContext';
 import { FORUM_FEED_PAGE_SIZE } from './forum-feed-constants';
-import { ErrorState, InlineLoading } from '@/components/ui/LoadingState';
+import { ErrorState } from '@/components/ui/LoadingState';
+import { TEmpty, TSkeleton } from '@/components/ui/terminal';
+import { ScrambleText } from '@/components/home/terminal/ScrambleText';
 import { forumApi } from '@/lib/api';
 import { forumKeys } from '@/lib/query-keys';
 import { useOwnerOperation } from '@/contexts/OwnerOperationContext';
@@ -75,13 +70,13 @@ export function ForumFeed({
   receiveErrorTitleKey = 'forum.postsReceiveError',
 }: ForumFeedProps = {}) {
   const { t } = useTranslation();
-  const prefersReducedMotion = useReducedMotion();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [scrollRoot, setScrollRoot] = useState<HTMLDivElement | null>(null);
   const scrollRootRef = useRef<HTMLDivElement | null>(null);
   const lastRestoredKeyRef = useRef('');
   const scrollReadyFeedKeyRef = useRef<string | null>(null);
   const currentFeedKeyRef = useRef('');
+  const lastScrollTopRef = useRef(0);
   const submittedSearch = useHomeNavigationStore((state) => state.postSearch);
   const searchRevision = useHomeNavigationStore((state) => state.postSearchRevision);
   const search = circle ? '' : submittedSearch;
@@ -94,7 +89,6 @@ export function ForumFeed({
   const toast = useToast();
   const queryClient = useQueryClient();
   const { isScrolling, handleScroll } = useAutoHideScrollbar();
-  const { scrollY } = useScroll({ container: scrollRootRef });
   const effectiveScope = circle || !isAuthenticated ? 'all' : feedScope;
   const scopeKey = circle
     ? `${viewerKey}:circle:${circle.id}`
@@ -113,20 +107,6 @@ export function ForumFeed({
   const toolbarVisibleByFeedKey = useForumFeedStore((state) => state.toolbarVisibleByFeedKey);
   const toolbarVisible = getForumFeedToolbarVisible(toolbarVisibleByFeedKey, feedKey);
   const setToolbarVisible = useForumFeedStore((state) => state.setToolbarVisible);
-  useMotionValueEvent(scrollY, 'change', (latest) => {
-    if (scrollReadyFeedKeyRef.current !== feedKey) return;
-
-    const previous = scrollY.getPrevious() ?? 0;
-    const delta = latest - previous;
-
-    if (latest <= OVERLAY_BAR_SCROLL_THRESHOLD) {
-      setToolbarVisible(feedKey, true);
-      return;
-    }
-
-    if (Math.abs(delta) < OVERLAY_BAR_SCROLL_THRESHOLD) return;
-    setToolbarVisible(feedKey, delta < 0);
-  });
   const queryKey = forumKeys.posts(viewerKey, {
     pageSize: FORUM_FEED_PAGE_SIZE,
     sortBy: sortMode,
@@ -191,6 +171,7 @@ export function ForumFeed({
     scrollRootRef.current = node;
     lastRestoredKeyRef.current = '';
     scrollReadyFeedKeyRef.current = null;
+    lastScrollTopRef.current = 0;
     setScrollRoot(node);
   }, []);
 
@@ -281,10 +262,19 @@ export function ForumFeed({
   const handleFeedScroll = useCallback(
     (event: UIEvent<HTMLDivElement>) => {
       handleScroll();
+      const scrollTop = event.currentTarget.scrollTop;
+      const delta = scrollTop - lastScrollTopRef.current;
+      lastScrollTopRef.current = scrollTop;
       if (scrollReadyFeedKeyRef.current !== feedKey) return;
-      setScrollTop(feedKey, event.currentTarget.scrollTop);
+      setScrollTop(feedKey, scrollTop);
+      if (scrollTop <= OVERLAY_BAR_SCROLL_THRESHOLD) {
+        setToolbarVisible(feedKey, true);
+        return;
+      }
+      if (Math.abs(delta) < OVERLAY_BAR_SCROLL_THRESHOLD) return;
+      setToolbarVisible(feedKey, delta < 0);
     },
-    [feedKey, handleScroll, setScrollTop],
+    [feedKey, handleScroll, setScrollTop, setToolbarVisible],
   );
 
   const handleRefresh = useCallback(() => {
@@ -334,18 +324,11 @@ export function ForumFeed({
     <ForumFeedContextProvider isCircleFeed={Boolean(circle)}>
       <div className="feed-overlay-shell">
         {/* 排序标签 + 创建按钮 */}
-        <motion.div
-          className="home-feed-toolbar"
-          initial={false}
-          animate={
-            prefersReducedMotion || toolbarVisible
-              ? { opacity: 1, y: 0, pointerEvents: 'auto' }
-              : { opacity: 0, y: '-115%', pointerEvents: 'none' }
-          }
-          transition={{ duration: prefersReducedMotion ? 0 : 0.18, ease: 'easeOut' }}
+        <div
+          className={`home-feed-toolbar ${toolbarVisible ? '' : 'pointer-events-none invisible'}`}
         >
           <div className="forum-toolbar-controls">
-            <div className="flex max-w-full flex-wrap items-center gap-0.5 rounded-md border border-copper/10 bg-void-deep/60 p-0.5 backdrop-blur-sm">
+            <div className="flex max-w-full flex-wrap items-center gap-0.5 border border-border-subtle bg-surface-1 p-0.5">
               <SortTab
                 icon={<Flame className="w-3.5 h-3.5" />}
                 label={t('forum.hot')}
@@ -363,7 +346,7 @@ export function ForumFeed({
                 aria-label={t('forum.refreshPosts')}
                 disabled={postsQuery.isFetching}
                 onClick={handleRefresh}
-                className="ml-0.5 flex h-7 w-7 items-center justify-center rounded border-l border-copper/10 text-ink-muted transition-all hover:bg-void-hover hover:text-copper disabled:cursor-not-allowed disabled:opacity-60"
+                className="ml-0.5 flex h-7 w-7 items-center justify-center border-l border-border-subtle text-text-tertiary hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <RefreshCw
                   className={`h-3.5 w-3.5 ${postsQuery.isFetching ? 'animate-spin' : ''}`}
@@ -373,7 +356,7 @@ export function ForumFeed({
             </div>
 
             {!circle && isAuthenticated && (
-              <div className="flex max-w-full items-center gap-0.5 rounded-md border border-copper/10 bg-void-deep/60 p-0.5 backdrop-blur-sm">
+              <div className="flex max-w-full items-center gap-0.5 border border-border-subtle bg-surface-1 p-0.5">
                 <ScopeTab
                   icon={<Globe2 className="h-3.5 w-3.5" />}
                   label={t('forum.scopeAll')}
@@ -413,25 +396,21 @@ export function ForumFeed({
             <button
               type="button"
               onClick={handleCreateClick}
-              className={`flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs tracking-wide transition-all ${
-                canOperateAsAgent
-                  ? 'border-copper/25 text-copper hover:border-copper/40 hover:bg-copper/10'
-                  : 'border-copper/10 text-ink-muted hover:border-copper/25 hover:text-copper'
-              }`}
+              className={`t-btn shrink-0 ${canOperateAsAgent ? 't-btn--primary' : 't-btn--ghost'}`}
             >
               <Plus className="h-3 w-3" />
               {t('forum.createPost')}
             </button>
           </div>
-        </motion.div>
+        </div>
         {errorKey && posts.length > 0 && (
-          <div className="mb-4 flex flex-none items-center justify-between rounded-lg border border-ochre/20 bg-ochre/10 px-4 py-3 text-[12px] tracking-wide text-ochre">
+          <div className="mb-4 flex flex-none items-center justify-between border border-danger/30 border-l-2 border-l-danger bg-danger/10 px-4 py-3 font-mono text-[11px] tracking-deck-tight text-danger">
             <span>
               {t(receiveErrorTitleKey)}: {t(errorKey)}
             </span>
             <button
               onClick={() => void (hasMore ? fetchNextPage() : refetch())}
-              className="text-copper hover:text-copper-bright transition-colors ml-3"
+              className="ml-3 text-accent hover:text-accent-dim"
             >
               {t('app.retry')}
             </button>
@@ -446,38 +425,37 @@ export function ForumFeed({
             isScrolling ? 'is-scrolling' : ''
           }`}
         >
-          <AnimatePresence>
-            {hasInitialError && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 10 }}
-                className="flex min-h-full items-center justify-center py-16"
-              >
-                <ErrorState
-                  title={t(receiveErrorTitleKey)}
-                  message={t(errorKey)}
-                  actionLabel={t('forum.rescan')}
-                  onAction={handleRefresh}
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {hasInitialError && (
+            <div className="flex min-h-full items-center justify-center py-16">
+              <ErrorState
+                title={t(receiveErrorTitleKey)}
+                message={t(errorKey)}
+                actionLabel={t('forum.rescan')}
+                onAction={handleRefresh}
+              />
+            </div>
+          )}
 
           {showingRefreshLoading && <FeedLoadingState label={t(loadingLabelKey)} />}
 
           {!showingRefreshLoading && posts.length > 0 && (
-            <MasonryPostGrid layout={layout}>
-              {posts.map((post, index) => (
-                <PostCard
-                  key={post.id}
-                  post={post}
-                  index={index}
-                  animationIndex={index % FORUM_FEED_PAGE_SIZE}
-                  layout={layout}
-                />
-              ))}
-            </MasonryPostGrid>
+            <>
+              <div className="mb-4 flex items-center gap-3 px-1">
+                <span className="font-mono text-[11px] tracking-[0.2em] text-[#ADFF2F]">
+                  CH.01
+                </span>
+                <span className="font-mono text-[11px] tracking-[0.2em] text-[#3A5A3A]">{'//'}</span>
+                <span className="text-[13px] font-bold tracking-wide text-text-primary">
+                  {t('forum.chapterFeed')}
+                </span>
+                <span aria-hidden className="h-px flex-1 bg-[#1A2E1A]" />
+              </div>
+              <MasonryPostGrid layout={layout}>
+                {posts.map((post, index) => (
+                  <PostCard key={post.id} post={post} index={index} layout={layout} />
+                ))}
+              </MasonryPostGrid>
+            </>
           )}
 
           {!showingRefreshLoading && loading && <FeedLoadingState label={t(loadingLabelKey)} />}
@@ -487,11 +465,11 @@ export function ForumFeed({
           )}
 
           {!showingRefreshLoading && !hasMore && posts.length > 0 && (
-            <div className="text-center py-8 text-xs text-ink-muted tracking-wide">
+            <div className="py-8 text-center font-mono text-[11px] tracking-deck-normal text-text-tertiary">
               <div className="flex items-center justify-center gap-3">
-                <div className="w-8 deck-divider" />
+                <div className="h-px w-8 bg-[#1A2E1A]" aria-hidden />
                 <span>{t('forum.postsEnd')}</span>
-                <div className="w-8 deck-divider" />
+                <div className="h-px w-8 bg-[#1A2E1A]" aria-hidden />
               </div>
             </div>
           )}
@@ -502,16 +480,14 @@ export function ForumFeed({
         </div>
 
         {/* 创建帖子模态框 */}
-        <AnimatePresence>
-          {showCreateModal && (
-            <CreatePostModal
-              key="create-post-modal"
-              onClose={() => setShowCreateModal(false)}
-              onCreated={handlePostCreated}
-              initialCircle={circle}
-            />
-          )}
-        </AnimatePresence>
+        {showCreateModal && (
+          <CreatePostModal
+            key="create-post-modal"
+            onClose={() => setShowCreateModal(false)}
+            onCreated={handlePostCreated}
+            initialCircle={circle}
+          />
+        )}
       </div>
     </ForumFeedContextProvider>
   );
@@ -519,8 +495,10 @@ export function ForumFeed({
 
 function FeedLoadingState({ label }: { label: string }) {
   return (
-    <div className="flex min-h-full items-center justify-center py-16">
-      <InlineLoading label={label} />
+    <div role="status" aria-label={label} className="flex min-h-full flex-col gap-6 px-1 py-6">
+      {[0, 1, 2].map((row) => (
+        <TSkeleton key={row} rows={2} />
+      ))}
     </div>
   );
 }
@@ -528,11 +506,7 @@ function FeedLoadingState({ label }: { label: string }) {
 function FeedEmptyState({ message }: { message: string }) {
   return (
     <div className="flex min-h-full items-center justify-center py-16">
-      <div className="flex items-center gap-3 text-sm font-medium tracking-wide text-ink-muted/80">
-        <span className="h-px w-10 bg-border-subtle" aria-hidden="true" />
-        <span>{message}</span>
-        <span className="h-px w-10 bg-border-subtle" aria-hidden="true" />
-      </div>
+      <TEmpty message={message} className="w-full" />
     </div>
   );
 }
@@ -550,22 +524,16 @@ function SortTab({
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      className={`relative flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium tracking-wide transition-all ${
+      className={`flex items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] uppercase tracking-deck-normal ${
         active
-          ? 'text-copper bg-copper/10'
-          : 'text-ink-muted hover:text-ink-secondary hover:bg-void-hover'
+          ? 'bg-accent-muted text-accent'
+          : 'text-text-tertiary hover:bg-surface-hover hover:text-text-secondary'
       }`}
     >
-      {active && (
-        <motion.div
-          layoutId="sort-active"
-          className="absolute inset-0 rounded bg-copper/10"
-          transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-        />
-      )}
-      <span className="relative z-10">{icon}</span>
-      <span className="relative z-10">{label}</span>
+      {icon}
+      <ScrambleText text={label} />
     </button>
   );
 }
@@ -585,14 +553,14 @@ function ScopeTab({
     <button
       type="button"
       onClick={onClick}
-      className={`flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-medium transition-colors ${
+      className={`flex items-center gap-1.5 px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-deck-normal ${
         active
-          ? 'bg-moss/10 text-moss'
-          : 'text-ink-muted hover:bg-void-hover hover:text-ink-secondary'
+          ? 'bg-accent-muted text-accent'
+          : 'text-text-tertiary hover:bg-surface-hover hover:text-text-secondary'
       }`}
     >
       {icon}
-      <span>{label}</span>
+      <ScrambleText text={label} />
     </button>
   );
 }

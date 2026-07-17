@@ -3,7 +3,10 @@
 import { AlertTriangle, CheckCircle2, FileText, MessageSquare, Scale } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { GovernanceResultFeedItem, GovernanceTargetSummary } from '@skynet/shared';
+import { TTag } from '@/components/ui/terminal/TTag';
+import { Timecode } from '@/components/ui/terminal/Timecode';
 import { formatGovernanceDuration, getGovernanceResultKey } from './governance-format';
+import { GovernanceAlertRail, GovernanceVoteCompare } from './GovernanceTerminal';
 
 interface GovernanceResultCardProps {
   result: GovernanceResultFeedItem;
@@ -62,10 +65,6 @@ function getSummaryCopy(summary: GovernanceTargetSummary, t: ReturnType<typeof u
   };
 }
 
-function formatTally(value: number) {
-  return Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/, '');
-}
-
 export function GovernanceResultCard({ result, onOpen }: GovernanceResultCardProps) {
   const { t } = useTranslation();
   const meta = getResultMeta(result);
@@ -77,14 +76,18 @@ export function GovernanceResultCard({ result, onOpen }: GovernanceResultCardPro
   return (
     <button
       type="button"
-      className={`governance-result-card governance-result-card-interactive ${meta.className}`}
+      className={`governance-result-card governance-result-card-interactive pl-4 hover:border-border-accent ${meta.className}`}
       onClick={(event) => onOpen(result, event.currentTarget)}
       aria-label={t('governance.detail.openDetails', { verdict: verdictLabel })}
     >
+      <GovernanceAlertRail tone={result.resolutionSource === 'ADMIN' ? 'admin' : 'closed'} />
       <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-1.5 text-[11px] text-ink-muted">
-          <TargetIcon className="h-3.5 w-3.5 text-copper" />
-          <span>{summary.source}</span>
+        <div className="flex min-w-0 items-center gap-2">
+          <TTag color={result.resolutionSource === 'ADMIN' ? 'red' : 'default'}>
+            <TargetIcon className="h-3 w-3" />
+            {summary.source}
+          </TTag>
+          <Timecode date={result.openedAt} withDate />
         </div>
         <span className={meta.labelClassName}>
           <Icon className="h-3.5 w-3.5" />
@@ -93,15 +96,24 @@ export function GovernanceResultCard({ result, onOpen }: GovernanceResultCardPro
       </div>
 
       <div className="mt-2 text-left">
-        <h3 className="line-clamp-1 text-[13px] font-bold text-ink-primary">{summary.title}</h3>
+        <h3 className="line-clamp-1 text-[13px] font-bold text-text-primary">{summary.title}</h3>
         {summary.context ? <p className="governance-card-context">{summary.context}</p> : null}
         <p className="governance-card-content">{summary.content}</p>
       </div>
 
-      <div className="governance-card-inline-meta">
-        <span className="text-ochre">{t('governance.metrics.violationVotes')} {formatTally(result.tally.violation)}</span>
-        <span className="text-moss">{t('governance.metrics.notViolationVotes')} {formatTally(result.tally.notViolation)}</span>
+      <GovernanceVoteCompare
+        className="mt-3"
+        violation={result.tally.violation}
+        notViolation={result.tally.notViolation}
+        violationLabel={t('governance.metrics.violationVotes')}
+        notViolationLabel={t('governance.metrics.notViolationVotes')}
+      />
+
+      <div className="governance-card-inline-meta font-mono tabular-nums">
         <span>{formatGovernanceDuration(result.durationMinutes, '—', t)}</span>
+        {result.resolutionSource === 'ADMIN' ? (
+          <span className="text-[#EF4444]/80">{t('governance.detail.adminDecision')}</span>
+        ) : null}
       </div>
     </button>
   );

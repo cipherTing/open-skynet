@@ -11,7 +11,7 @@ import {
 } from 'recharts';
 import { useTranslation } from 'react-i18next';
 import type { AgentDimensions } from '@/config/agent-dimensions';
-import { DIMENSION_CONFIG, getDimensionGrade } from '@/config/agent-dimensions';
+import { getDimensionGrade } from '@/config/agent-dimensions';
 import { PortalTooltip } from '@/components/ui/FloatingPortal';
 
 interface AgentRadarChartProps {
@@ -47,7 +47,6 @@ const DimensionLabel = memo(function DimensionLabel({
   item: RadarDataItem;
   index: number;
 }) {
-  const config = DIMENSION_CONFIG[item.key];
   const pos = LABEL_POSITIONS[index];
 
   return (
@@ -59,20 +58,22 @@ const DimensionLabel = memo(function DimensionLabel({
         placement={pos.y > 0 ? 'top' : 'bottom'}
         content={
           <>
-            <div className="flex items-center gap-1.5 mb-1">
-              <span className="text-[11px] font-semibold" style={{ color: config.color }}>{item.dimension}</span>
-              <span className="text-[10px] font-mono text-ink-muted">{item.grade}</span>
+            <div className="mb-1 flex items-center gap-1.5">
+              <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#ADFF2F]">
+                {item.dimension}
+              </span>
+              <span className="font-mono text-[10px] text-[#3A5A3A]">{item.grade}</span>
             </div>
             <p>{item.description}</p>
           </>
         }
         contentClassName="min-w-[180px]"
       >
-        <div tabIndex={0} className="text-center leading-tight cursor-help">
-          <div className="text-[11px] font-semibold" style={{ color: config.color }}>
+        <div tabIndex={0} className="cursor-help text-center leading-tight">
+          <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#EDF3ED]">
             {item.dimension}
           </div>
-          <div className="text-[10px] font-mono font-bold mt-0.5" style={{ color: config.color, opacity: 0.75 }}>
+          <div className="mt-0.5 font-mono text-[10px] font-bold text-[#ADFF2F]">
             {item.grade}
           </div>
         </div>
@@ -102,21 +103,21 @@ export function AgentRadarChart({ dimensions }: AgentRadarChartProps) {
 
   return (
     <div
-      className="relative rounded-xl border border-copper/20 bg-void-deep flex flex-col min-h-[340px] shadow-sm outline-none focus:outline-none"
+      className="t-corner relative flex min-h-[340px] flex-col border border-[#1A2E1A] bg-[#040704] outline-none focus:outline-none"
       role="img"
       aria-label={ariaLabel}
     >
       {/* 标题 */}
-      <div className="flex items-center gap-2 px-4 pt-3 pb-1">
-        <div className="w-1.5 h-1.5 rounded-full bg-copper shadow-led-copper" />
-        <span className="text-[10px] font-mono font-bold tracking-wider uppercase text-copper">
+      <div className="flex items-center gap-2 border-b border-[#1A2E1A] px-4 py-2.5">
+        <div className="h-1.5 w-1.5 bg-[#ADFF2F]" />
+        <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-white">
           {t('agent.radarTitle')}
         </span>
       </div>
 
       {/* 雷达图 */}
-      <div className="relative flex-1 flex items-center justify-center min-h-[260px] px-4 select-none">
-        <div className="relative aspect-square max-h-[280px] w-full pointer-events-none select-none">
+      <div className="relative flex min-h-[260px] flex-1 select-none items-center justify-center px-4">
+        <div className="pointer-events-none relative aspect-square max-h-[280px] w-full select-none">
           {/* 维度标签 overlay — 从中心精确偏移到顶点 */}
           <div className="absolute inset-0 z-10 select-none">
             {data.map((item, i) => (
@@ -127,29 +128,21 @@ export function AgentRadarChart({ dimensions }: AgentRadarChartProps) {
           <ResponsiveContainer width="100%" height="100%">
             <RadarChart data={data} cx="50%" cy="50%" outerRadius="75%">
               <defs>
-                <radialGradient id="radar-copper-gradient" cx="50%" cy="50%" r="50%">
-                  <stop offset="0%" stopColor="var(--copper)" stopOpacity={0.3} />
-                  <stop offset="70%" stopColor="var(--copper)" stopOpacity={0.12} />
-                  <stop offset="100%" stopColor="var(--copper)" stopOpacity={0.04} />
+                <radialGradient id="radar-terminal-gradient" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%" stopColor="#ADFF2F" stopOpacity={0.22} />
+                  <stop offset="70%" stopColor="#ADFF2F" stopOpacity={0.08} />
+                  <stop offset="100%" stopColor="#ADFF2F" stopOpacity={0.02} />
                 </radialGradient>
-                <filter id="radar-glow" x="-50%" y="-50%" width="200%" height="200%">
-                  <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="blur" />
-                  <feMerge>
-                    <feMergeNode in="blur" />
-                    <feMergeNode in="SourceGraphic" />
-                  </feMerge>
-                </filter>
               </defs>
-              <PolarGrid stroke="rgba(140,140,160,0.38)" strokeWidth={1} />
+              <PolarGrid stroke="#1A2E1A" strokeWidth={1} />
               <PolarAngleAxis dataKey="dimension" tick={false} />
               <PolarRadiusAxis angle={90} domain={[0, 100]} tick={false} axisLine={false} />
               <Radar
                 name=""
                 dataKey="value"
-                stroke="var(--copper)"
-                strokeWidth={2.5}
-                fill="url(#radar-copper-gradient)"
-                filter="url(#radar-glow)"
+                stroke="#ADFF2F"
+                strokeWidth={2}
+                fill="url(#radar-terminal-gradient)"
                 isAnimationActive={false}
                 dot={false}
                 activeDot={false}

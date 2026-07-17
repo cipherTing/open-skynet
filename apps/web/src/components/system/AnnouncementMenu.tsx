@@ -8,6 +8,7 @@ import { AlertTriangle, Bell, Info, ShieldAlert, Wrench } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/contexts/AuthContext';
 import { systemApi, type ActiveAnnouncement } from '@/lib/api';
+import { TButton } from '@/components/ui/terminal';
 import { AnnouncementMarkdown } from './AnnouncementMarkdown';
 
 const READ_ANNOUNCEMENTS_PREFIX = 'skynet-read-announcements';
@@ -84,18 +85,16 @@ export function AnnouncementMenu() {
   const unreadCount = announcements.filter(
     (item) => !readVersions.has(announcementVersion(item)),
   ).length;
-  const buttonLabel = unreadCount > 0
-    ? t('announcement.buttonUnread', { count: unreadCount })
-    : t('announcement.button');
+  const buttonLabel =
+    unreadCount > 0
+      ? t('announcement.buttonUnread', { count: unreadCount })
+      : t('announcement.button');
 
   const markCurrentAnnouncementsRead = useCallback(() => {
     if (announcements.length === 0) return;
     const latestReadVersions = parseReadVersions(readSnapshot(viewerKey));
     const next = [
-      ...new Set([
-        ...latestReadVersions,
-        ...announcements.map(announcementVersion),
-      ]),
+      ...new Set([...latestReadVersions, ...announcements.map(announcementVersion)]),
     ].slice(-200);
     memoryReadVersions.set(viewerKey, next);
     try {
@@ -122,11 +121,11 @@ export function AnnouncementMenu() {
         <button
           type="button"
           aria-label={buttonLabel}
-          className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border-subtle text-ink-muted transition-colors hover:border-border-accent hover:text-copper"
+          className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-none border border-[#1A2E1A] text-[#3A5A3A] transition-[color,border-color] duration-100 [transition-timing-function:steps(2,end)] hover:border-[#ADFF2F]/60 hover:text-[#ADFF2F]"
         >
           <Bell className="h-4 w-4" />
           {unreadCount > 0 && (
-            <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-ochre ring-2 ring-void" aria-hidden="true" />
+            <span className="absolute right-1 top-1 h-1.5 w-1.5 bg-[#EF4444]" aria-hidden="true" />
           )}
         </button>
       </Popover.Trigger>
@@ -136,48 +135,59 @@ export function AnnouncementMenu() {
           align="end"
           sideOffset={8}
           collisionPadding={12}
-          className="skynet-floating-content z-[220] w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-md border border-border-default bg-void-deep shadow-[var(--shadow-popover)]"
+          className="z-[100] w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-none border border-[#1A2E1A] bg-black"
         >
-          <div className="border-b border-border-subtle px-4 py-3">
-            <h2 id={titleId} className="text-sm font-bold text-ink-primary">{t('announcement.menuTitle')}</h2>
+          <div className="border-b border-[#1A2E1A] px-4 py-3">
+            <h2 id={titleId} className="font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-white">
+              {t('announcement.menuTitle')}
+            </h2>
           </div>
-          <div className="max-h-[min(420px,calc(100dvh-96px))] overflow-y-auto p-1.5">
+          <div className="max-h-[min(420px,calc(100dvh-96px))] overflow-y-auto">
             {query.isPending ? (
-              <div className="px-3 py-8 text-center text-xs text-ink-muted">
+              <div className="px-3 py-8 text-center font-mono text-[11px] uppercase tracking-[0.15em] text-[#3A5A3A]">
                 {t('announcement.loading')}
               </div>
             ) : query.isError ? (
-              <div className="flex flex-col items-center gap-3 px-3 py-8 text-center text-xs text-ochre">
+              <div className="flex flex-col items-center gap-3 px-3 py-8 text-center font-mono text-[11px] uppercase tracking-[0.15em] text-[#EF4444]">
                 <span>{t('announcement.failed')}</span>
-                <button
-                  type="button"
+                <TButton
+                  variant="secondary"
+                  size="sm"
                   onClick={() => void query.refetch()}
-                  className="rounded-md border border-ochre/30 px-3 py-1.5 text-ink-secondary hover:text-ochre"
                 >
                   {t('announcement.retry')}
-                </button>
+                </TButton>
               </div>
             ) : announcements.length === 0 ? (
-              <div className="px-3 py-8 text-center text-xs text-ink-muted">
+              <div className="px-3 py-8 text-center font-mono text-[11px] uppercase tracking-[0.15em] text-[#3A5A3A]">
                 {t('announcement.empty')}
               </div>
             ) : (
               announcements.map((item) => {
                 const Icon = KIND_ICON[item.kind];
                 const content = (
-                  <div className="flex gap-3 rounded px-2.5 py-3">
-                    <Icon className="mt-0.5 h-4 w-4 shrink-0 text-copper" />
+                  <div className="flex gap-3 px-2.5 py-3">
+                    <Icon className="mt-0.5 h-4 w-4 shrink-0 text-[#ADFF2F]" />
                     <div className="min-w-0">
-                      <div className="text-xs font-bold text-ink-primary">{item.title}</div>
+                      <div className="text-xs font-bold text-white">{item.title}</div>
                       <AnnouncementMarkdown
                         content={item.body}
-                        className="mt-1 text-xs leading-5 text-ink-secondary"
+                        className="mt-1 text-xs leading-5 text-white/70"
                       />
+                      <div className="mt-2 font-mono text-[10px] tabular-nums tracking-[0.15em] text-[#3A5A3A]">
+                        {new Intl.DateTimeFormat(undefined, {
+                          dateStyle: 'medium',
+                          timeStyle: 'short',
+                        }).format(new Date(item.startsAt))}
+                      </div>
                     </div>
                   </div>
                 );
                 return (
-                  <div key={item.id} className="rounded transition-colors hover:bg-surface-1">
+                  <div
+                    key={item.id}
+                    className="border-b border-[#1A2E1A] transition-colors [transition-timing-function:steps(2,end)] last:border-b-0 hover:bg-[#ADFF2F]/5"
+                  >
                     {content}
                     {item.linkUrl && (
                       <div className="px-2.5 pb-3 pl-9">
@@ -185,7 +195,7 @@ export function AnnouncementMenu() {
                           <Link
                             href={item.linkUrl}
                             onClick={() => setOpen(false)}
-                            className="text-xs font-bold text-copper hover:text-copper-dim"
+                            className="font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[#ADFF2F] hover:text-white"
                           >
                             {t('announcement.open')}
                           </Link>
@@ -194,7 +204,7 @@ export function AnnouncementMenu() {
                             href={item.linkUrl}
                             target="_blank"
                             rel="noreferrer noopener"
-                            className="text-xs font-bold text-copper hover:text-copper-dim"
+                            className="font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[#ADFF2F] hover:text-white"
                           >
                             {t('announcement.open')}
                           </a>
