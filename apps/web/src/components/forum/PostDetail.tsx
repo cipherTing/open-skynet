@@ -2,16 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  Bell,
-  BellRing,
-  Bookmark,
-  BookmarkCheck,
-  Eye,
-  MessageSquare,
-  Quote,
-  X,
-} from 'lucide-react';
+import { Bell, BellRing, Bookmark, BookmarkCheck, Quote, X } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -309,10 +300,16 @@ function PostDetailContent({ postId }: PostDetailProps) {
 
   if (loading) {
     return (
-      <div role="status" aria-label={t('forum.loadingPost')} className="flex flex-col gap-6 py-8">
-        <TSkeleton rows={2} />
-        <TSkeleton rows={4} />
-        <TSkeleton rows={3} />
+      <div role="status" aria-label={t('forum.loadingPost')} className="flex flex-col gap-8 py-8">
+        <div className="border border-[#1A2E1A] bg-[#040704] px-4 py-5 sm:px-6">
+          <TSkeleton rows={3} />
+        </div>
+        <div className="max-w-3xl">
+          <TSkeleton rows={5} />
+        </div>
+        <div className="max-w-3xl">
+          <TSkeleton rows={3} />
+        </div>
       </div>
     );
   }
@@ -330,145 +327,158 @@ function PostDetailContent({ postId }: PostDetailProps) {
   const postReportReason = getReportUnavailableReason(isOwnPost, t('forum.postTarget'));
   const canFeedbackOnPost = canOperateAsAgent && !postFeedbackReason;
   const showPostFeedback = hasVisibleFeedback(post.feedbackCounts);
-  const favoriteReason = getFavoriteUnavailableReason();
-  const canFavoritePost = !favoriteReason;
   const postFavorited = post.currentAgentFavorited === true;
   const watchReason = getWatchUnavailableReason();
   const canWatchPost = !watchReason;
   const postWatching = post.currentAgentWatching === true;
 
   return (
-    <div className="w-full pb-8">
-      {/* 主帖内容 */}
-      <article className="post-topic-card t-corner relative mb-7 overflow-visible border px-5 py-5 sm:px-7 sm:py-6">
+    <div className="w-full pb-10">
+      {/* 档案卷宗头 */}
+      <article className="t-corner relative border border-[#1A2E1A] bg-[#040704]">
         {post.activeGovernanceCase ? (
           <GovernanceCaseStamp caseId={post.activeGovernanceCase.id} />
         ) : null}
+        <div aria-hidden className="t-ambient-scan pointer-events-none absolute inset-0" />
 
-        <div className="post-topic-card-header mb-5 flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-start sm:justify-between">
-          <button
-            type="button"
-            className="group/author flex min-w-0 items-center gap-3 text-left"
-            onClick={() => router.push(`/agent/${post.author?.id}`)}
-          >
-            <AgentAvatar
-              agentId={post.author?.avatarSeed || post.author?.id || ''}
-              agentName={post.author?.name}
-              size={40}
-            />
-            <span className="min-w-0">
-              <span className="flex min-w-0 items-center gap-2">
-                <span className="post-topic-author-name truncate text-base font-bold group-hover/author:underline">
+        {/* FILE 编号行 */}
+        <div className="relative flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-[#1A2E1A] px-4 py-2 sm:px-6">
+          <span className="font-mono text-[10px] tracking-[0.2em] text-[#ADFF2F]">
+            FILE #{post.id.slice(0, 8).toUpperCase()}
+          </span>
+          <span aria-hidden className="font-mono text-[10px] tracking-[0.2em] text-[#3A5A3A]">
+            {'//'}
+          </span>
+          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#3A5A3A]">
+            {t('forum.dossier')}
+          </span>
+          <span className="ml-auto flex items-center gap-3 font-mono text-[10px] tabular-nums tracking-[0.15em] text-[#3A5A3A]">
+            <span>REPLIES ×{formatNumber(post.replyCount || 0)}</span>
+            <span>VIEWS ×{formatNumber(post.viewCount || 0)}</span>
+            <span>REV.{post.contentVersion}</span>
+          </span>
+        </div>
+
+        {/* 元数据栅格：1px 暗绿分隔 */}
+        <div className="relative grid grid-cols-2 gap-px border-b border-[#1A2E1A] bg-[#122012] sm:grid-cols-4">
+          <div className="bg-[#040704] px-4 py-2.5 sm:px-6">
+            <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-[#3A5A3A]">
+              {t('post.meta.author')}
+            </p>
+            <button
+              type="button"
+              className="group/author mt-1.5 flex min-w-0 items-center gap-2 text-left"
+              onClick={() => router.push(`/agent/${post.author?.id}`)}
+            >
+              <AgentAvatar
+                agentId={post.author?.avatarSeed || post.author?.id || ''}
+                agentName={post.author?.name}
+                size={22}
+              />
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span className="truncate text-[12px] font-bold text-white transition-colors [transition-timing-function:steps(2,end)] group-hover/author:text-[#ADFF2F]">
                   {post.author?.name}
                 </span>
                 <AgentLevelBadge level={post.author?.level} />
               </span>
-              {post.author?.description && (
-                <span className="post-topic-muted block max-w-[520px] truncate text-[12px]">
-                  {post.author.description}
-                </span>
-              )}
-            </span>
-          </button>
-
-          <div className="post-topic-muted flex flex-wrap items-center gap-x-3 gap-y-1.5 font-mono text-[11px] tabular-nums sm:justify-end">
-            <span className="tracking-wider text-info">{t('forum.dossier')}</span>
-            <CircleBadge
-              circle={post.circle}
-              compact
-              href={`/circles/${encodeURIComponent(post.circle.slug)}`}
-            />
-            <span>{post.id.slice(0, 8).toUpperCase()}</span>
-            <Timecode date={post.createdAt} withDate />
-            <span className="flex items-center gap-1">
-              <MessageSquare className="w-3 h-3" />
-              {formatNumber(post.replyCount || 0)}
-            </span>
-            <span className="flex items-center gap-1">
-              <Eye className="w-3 h-3" />
-              {formatNumber(post.viewCount || 0)}
-            </span>
-            <button
-              type="button"
-              disabled={favoriteBusy}
-              onClick={handleFavorite}
-              className={`inline-flex items-center gap-1 border px-2.5 py-1 text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                postFavorited
-                  ? 'border-accent/40 bg-accent-muted text-accent'
-                  : 'border-border text-text-secondary hover:border-border-accent hover:text-accent'
+            </button>
+          </div>
+          <div className="bg-[#040704] px-4 py-2.5 sm:px-6">
+            <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-[#3A5A3A]">
+              {t('post.meta.filed')}
+            </p>
+            <p className="mt-1.5">
+              <Timecode date={post.createdAt} withDate className="text-[11px] text-white/80" />
+            </p>
+          </div>
+          <div className="bg-[#040704] px-4 py-2.5 sm:px-6">
+            <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-[#3A5A3A]">
+              {t('post.meta.circle')}
+            </p>
+            <p className="mt-1.5">
+              <CircleBadge
+                circle={post.circle}
+                compact
+                href={`/circles/${encodeURIComponent(post.circle.slug)}`}
+              />
+            </p>
+          </div>
+          <div className="bg-[#040704] px-4 py-2.5 sm:px-6">
+            <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-[#3A5A3A]">
+              {t('post.meta.status')}
+            </p>
+            <p
+              className={`mt-1.5 font-mono text-[11px] uppercase tracking-[0.15em] ${
+                post.activeGovernanceCase ? 'text-[#ADFF2F]' : 'text-white/70'
               }`}
             >
-              {postFavorited ? (
-                <BookmarkCheck className="h-3.5 w-3.5" />
-              ) : (
-                <Bookmark className="h-3.5 w-3.5" />
-              )}
-              {postFavorited ? t('forum.favorited') : t('forum.favorite')}
-            </button>
-            <button
-              type="button"
-              disabled={watchBusy}
-              aria-disabled={!canWatchPost || undefined}
-              onClick={handleWatch}
-              className={`inline-flex items-center gap-1 border px-2.5 py-1 text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                postWatching
-                  ? 'border-info/40 bg-info/10 text-info'
-                  : 'border-border text-text-secondary hover:border-border-accent hover:text-accent'
-              }`}
-            >
-              {postWatching ? (
-                <BellRing className="h-3.5 w-3.5" />
-              ) : (
-                <Bell className="h-3.5 w-3.5" />
-              )}
-              {postWatching ? t('forum.watching') : t('forum.watch')}
-            </button>
+              {post.activeGovernanceCase
+                ? t('post.meta.statusCase')
+                : t('post.meta.statusActive')}
+            </p>
           </div>
         </div>
 
-        <h1 className="post-topic-title mb-4 text-2xl font-bold leading-tight sm:text-3xl">
-          {post.title}
-        </h1>
-
-        <div className="mb-4">
-          <PostTags tags={post.tags} />
+        {/* 巨型标题 */}
+        <div className="relative px-4 py-6 sm:px-6 sm:py-8">
+          <h1 className="max-w-4xl text-[clamp(2rem,4vw,3.5rem)] font-black leading-[0.95] tracking-tight text-white [text-shadow:0_0_6px_rgba(173,255,47,0.22)]">
+            {post.title}
+          </h1>
+          <div className="mt-5">
+            <PostTags tags={post.tags} />
+          </div>
         </div>
 
-        {(post.contentVersion > 1 || isOwnPost) && (
-          <div className="mb-4">
+        {/* 等宽小字操作行 */}
+        <div className="relative flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-[#122012] px-4 py-2 sm:px-6">
+          <button
+            type="button"
+            disabled={favoriteBusy}
+            onClick={handleFavorite}
+            className={`inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.15em] transition-colors [transition-timing-function:steps(2,end)] disabled:cursor-not-allowed disabled:opacity-60 ${
+              postFavorited ? 'text-[#ADFF2F]' : 'text-[#3A5A3A] hover:text-[#ADFF2F]'
+            }`}
+          >
+            {postFavorited ? (
+              <BookmarkCheck className="h-3 w-3" />
+            ) : (
+              <Bookmark className="h-3 w-3" />
+            )}
+            {postFavorited ? t('forum.favorited') : t('forum.favorite')}
+          </button>
+          <button
+            type="button"
+            disabled={watchBusy}
+            aria-disabled={!canWatchPost || undefined}
+            onClick={handleWatch}
+            className={`inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.15em] transition-colors [transition-timing-function:steps(2,end)] disabled:cursor-not-allowed disabled:opacity-60 ${
+              postWatching ? 'text-white' : 'text-[#3A5A3A] hover:text-[#ADFF2F]'
+            }`}
+          >
+            {postWatching ? <BellRing className="h-3 w-3" /> : <Bell className="h-3 w-3" />}
+            {postWatching ? t('forum.watching') : t('forum.watch')}
+          </button>
+          {canOperateAsAgent ? (
+            <button
+              type="button"
+              onClick={quoteSelectedPostText}
+              className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A] transition-colors [transition-timing-function:steps(2,end)] hover:text-[#ADFF2F]"
+            >
+              <Quote className="h-3 w-3" />
+              {t('replyInput.quoteSelection')}
+            </button>
+          ) : null}
+          {(post.contentVersion > 1 || isOwnPost) && (
             <PostRevisionActions
               post={post}
               canEdit={isOwnPost && canOperateAsAgent}
               onUpdated={refreshPostData}
             />
-          </div>
-        )}
-
-        <div
-          id="post-content"
-          ref={postContentRef}
-          className="prose-deck post-topic-prose post-topic-prose-panel mb-3 max-w-none border px-4 py-3"
-        >
-          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
-            {post.content}
-          </ReactMarkdown>
+          )}
         </div>
 
-        {canOperateAsAgent ? (
-          <div className="mb-4 flex justify-end">
-            <button
-              type="button"
-              onClick={quoteSelectedPostText}
-              className="inline-flex items-center gap-1 font-mono text-[11px] text-text-tertiary transition-colors hover:text-info"
-            >
-              <Quote className="h-3.5 w-3.5" />
-              {t('replyInput.quoteSelection')}
-            </button>
-          </div>
-        ) : null}
-
         {(showPostFeedback || canFeedbackOnPost || postFeedbackReason) && (
-          <div className="post-topic-feedback flex flex-col gap-2 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-[#122012] px-4 py-2 sm:px-6">
             <FeedbackBar
               counts={post.feedbackCounts}
               currentFeedback={post.currentUserFeedback}
@@ -489,16 +499,33 @@ function PostDetailContent({ postId }: PostDetailProps) {
         )}
       </article>
 
-      {/* 回复区域 */}
-      <section>
-        <div className="mb-5 flex items-center gap-3 px-1">
-          <span className="font-mono text-[11px] tracking-[0.2em] text-[#ADFF2F]">CH.02</span>
-          <span className="font-mono text-[11px] tracking-[0.2em] text-[#3A5A3A]">{'//'}</span>
+      {/* 正文：可读栏宽 */}
+      <div className="mt-8 w-full max-w-3xl">
+        <div
+          id="post-content"
+          ref={postContentRef}
+          className="prose-deck post-topic-prose text-[15px] leading-7"
+        >
+          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
+            {post.content}
+          </ReactMarkdown>
+        </div>
+      </div>
+
+      {/* 回复区域 = 追加日志 */}
+      <section className="mt-10 w-full max-w-3xl">
+        <div className="mb-4 flex items-center gap-3">
+          <span className="font-mono text-[11px] tracking-[0.2em] text-[#ADFF2F]">
+            {'> APPEND.LOG'}
+          </span>
+          <span aria-hidden className="font-mono text-[11px] tracking-[0.2em] text-[#3A5A3A]">
+            {'//'}
+          </span>
           <span className="text-[13px] font-bold tracking-wide text-text-primary">
-            {t('forum.chapterReplies')}
+            {t('post.replies.title')}
           </span>
           <span aria-hidden className="h-px flex-1 bg-[#1A2E1A]" />
-          <span className="font-mono text-[10px] tracking-[0.15em] text-[#3A5A3A] tabular-nums">
+          <span className="font-mono text-[10px] tabular-nums tracking-[0.15em] text-[#3A5A3A]">
             {formatNumber(post.replyCount || 0)} REPLIES
           </span>
         </div>
@@ -556,7 +583,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
           </div>
         ) : null}
 
-        <div className="space-y-3">
+        <div>
           {repliesQuery.isPending && (
             <div role="status" aria-label={t('forum.loadingReplies')} className="py-2">
               <TSkeleton rows={4} />
@@ -576,7 +603,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
         </div>
 
         {repliesQuery.isError && (
-          <div className="border border-danger/40 border-l-2 border-l-danger bg-danger/10 px-4 py-3 text-center font-mono text-[12px] tracking-wide text-danger">
+          <div className="mt-3 border border-danger/40 border-l-2 border-l-danger bg-danger/10 px-4 py-3 text-center font-mono text-[12px] tracking-wide text-danger">
             <p>{t('forum.repliesLoadFailed')}</p>
             <button
               type="button"
@@ -589,16 +616,16 @@ function PostDetailContent({ postId }: PostDetailProps) {
         )}
 
         {repliesQuery.hasNextPage && (
-          <div className="flex justify-center pt-5">
+          <div className="flex pt-5">
             <button
               type="button"
               disabled={repliesQuery.isFetchingNextPage}
               onClick={() => void repliesQuery.fetchNextPage()}
-              className="t-btn t-btn--ghost"
+              className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A] transition-colors [transition-timing-function:steps(2,end)] hover:text-[#ADFF2F] disabled:cursor-wait disabled:opacity-50"
             >
               {repliesQuery.isFetchingNextPage
                 ? t('forum.loadingMoreReplies')
-                : t('forum.loadMoreReplies')}
+                : `[ ${t('forum.loadMoreReplies')} ]`}
             </button>
           </div>
         )}

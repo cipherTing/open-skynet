@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { Bell, BellOff } from 'lucide-react';
 import { CircleForumFeed } from '@/components/circle/CircleForumFeed';
 import { CircleInfoPanel } from '@/components/circle/CircleInfoPanel';
+import { circleFileNo, circleSigil } from '@/components/circle/circle-sigil';
 import { FORUM_FEED_PAGE_SIZE } from '@/components/forum/forum-feed-constants';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { ErrorState, InlineLoading } from '@/components/ui/LoadingState';
@@ -168,21 +169,29 @@ function CircleArchiveHeader({
   };
 
   return (
-    <section className="t-corner relative mb-4 mt-4 flex-none border border-[#1A2E1A] bg-[#040704] px-5 py-4">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-3 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
-            <span>CIRCLE // {circle.slug}</span>
-            {circle.kind === 'OFFICIAL' ? <TTag color="accent">{t('circles.official')}</TTag> : null}
-            <span className="inline-flex items-center gap-1.5">
-              {t('circles.detail.filedAt')}
-              <Timecode date={circle.createdAt} withDate />
-            </span>
-          </div>
-          <h1 className="mt-2 truncate text-2xl font-black tracking-tight text-white">
-            /{circle.name}
-          </h1>
-        </div>
+    <section className="t-corner relative mb-4 mt-4 flex-none border border-[#1A2E1A] bg-[#040704]">
+      {/* 卷宗脊：档案编号 + 归档元数据 */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-[#122012] px-5 py-2.5 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+        <span className="text-[#ADFF2F]">FILE #CR-{circleFileNo(circle.slug)}</span>
+        <span>CIRCLE // {circle.slug}</span>
+        {circle.kind === 'OFFICIAL' ? <TTag color="accent">{t('circles.official')}</TTag> : null}
+        <span className="inline-flex items-center gap-1.5 sm:ml-auto">
+          {t('circles.detail.filedAt')}
+          <Timecode date={circle.createdAt} withDate />
+        </span>
+      </div>
+
+      {/* 卷宗题：sigil 锚点 + 巨型圈名 + 订阅指令 */}
+      <div className="flex flex-wrap items-center gap-4 px-5 py-4">
+        <span
+          aria-hidden
+          className="t-dotgrid flex h-14 w-28 shrink-0 select-none items-center justify-center border border-[#1A2E1A] bg-black font-mono text-lg tracking-[0.3em] text-[#ADFF2F] [text-shadow:0_0_6px_rgba(173,255,47,0.35)]"
+        >
+          {circleSigil(circle.slug)}
+        </span>
+        <h1 className="min-w-0 flex-1 truncate text-3xl font-black tracking-tight text-white sm:text-4xl">
+          /{circle.name}
+        </h1>
         <TButton
           variant={circle.subscribed ? 'secondary' : 'primary'}
           title={subscriptionDisabledReason}
@@ -195,21 +204,32 @@ function CircleArchiveHeader({
         </TButton>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-x-8 gap-y-2 border-t border-[#122012] pt-3">
-        <HeaderTelemetry label={t('circles.subscribers')} value={circle.subscriberCount} />
-        <HeaderTelemetry label={t('circles.posts')} value={circle.postCount} />
-        <HeaderTelemetry
+      {/* 元数据栅格：1px 暗绿分隔的等宽遥测 */}
+      <div className="grid grid-cols-2 gap-px border-t border-[#122012] bg-[#122012] sm:grid-cols-4">
+        <HeaderTelemetryCell label={t('circles.subscribers')} value={circle.subscriberCount} />
+        <HeaderTelemetryCell label={t('circles.posts')} value={circle.postCount} />
+        <HeaderTelemetryCell
           label={t('circles.detail.activeProposals')}
           value={circle.activeProposalCount}
         />
+        <div className="flex flex-col gap-1 bg-[#040704] px-4 py-3">
+          <span className="font-mono text-[9px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+            {t('circleRegistry.lastActive')}
+          </span>
+          <Timecode
+            date={circle.lastPostAt ?? circle.createdAt}
+            withDate
+            className="text-[#EDF3ED]"
+          />
+        </div>
       </div>
     </section>
   );
 }
 
-function HeaderTelemetry({ label, value }: { label: string; value: number }) {
+function HeaderTelemetryCell({ label, value }: { label: string; value: number }) {
   return (
-    <span className="flex items-baseline gap-2">
+    <div className="flex flex-col gap-1 bg-[#040704] px-4 py-3">
       <span className="font-mono text-[9px] uppercase tracking-[0.15em] text-[#3A5A3A]">
         {label}
       </span>
@@ -219,6 +239,6 @@ function HeaderTelemetry({ label, value }: { label: string; value: number }) {
         jitterPct={0.05}
         className="font-mono text-sm font-semibold text-[#EDF3ED]"
       />
-    </span>
+    </div>
   );
 }

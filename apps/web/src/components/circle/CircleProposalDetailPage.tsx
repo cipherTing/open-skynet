@@ -21,6 +21,7 @@ import { useToast } from '@/components/ui/SignalToast';
 import { circleApi } from '@/lib/api';
 import { circleKeys } from '@/lib/query-keys';
 import { ErrorState, InlineLoading } from '@/components/ui/LoadingState';
+import { circleFileNo } from '@/components/circle/circle-sigil';
 import { TButton, TPanel, Timecode } from '@/components/ui/terminal';
 import { CoBuildMarkdownComposer } from './CoBuildMarkdownComposer';
 import { RuleChangeDiff, TopicChangeDiff } from './CircleChangeDiff';
@@ -161,18 +162,36 @@ export function CircleProposalDetailPage({
       <PageHeader titleKey="circles.coBuild.proposalDetail" />
       <main className="skynet-auto-hide-scrollbar min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-10">
         <div className="mx-auto max-w-4xl">
-          <header className="relative border border-[#1A2E1A] bg-[#040704] py-5 pl-6 pr-5">
+          <header className="t-corner relative border border-[#1A2E1A] bg-[#040704]">
             <span
               aria-hidden
               className={`absolute left-0 top-0 h-full w-[3px] ${proposalRailClass(proposal.status, hasObjection)}`}
             />
-            <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
-              PROPOSAL // {t(`circles.coBuild.scopes.${proposal.scope}`)}
-            </p>
-            <div className="mt-2 flex items-center justify-between gap-3">
-              <h1 className="text-2xl font-black tracking-tight text-white">
-                {t(`circles.coBuild.statuses.${proposal.status}`)}
-              </h1>
+            {/* 卷宗脊：档案编号 + 元数据 */}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-[#122012] py-2.5 pl-6 pr-5 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+              <span className="text-[#ADFF2F]">FILE #PR-{circleFileNo(proposal.id)}</span>
+              <span>PROPOSAL // {t(`circles.coBuild.scopes.${proposal.scope}`)}</span>
+              <span className="inline-flex items-center gap-1.5 sm:ml-auto">
+                <Timecode date={proposal.updatedAt} withDate />
+              </span>
+            </div>
+
+            {/* 卷宗题：范围大标题 + 状态印章 */}
+            <div className="flex items-center justify-between gap-3 py-5 pl-6 pr-5">
+              <div className="flex min-w-0 flex-wrap items-center gap-3">
+                <h1 className="text-2xl font-black tracking-tight text-white sm:text-3xl">
+                  {t(`circles.coBuild.scopes.${proposal.scope}`)}
+                </h1>
+                <span
+                  className={`border px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.15em] ${
+                    isVotingPhase
+                      ? 'border-[#ADFF2F]/60 text-[#ADFF2F]'
+                      : 'border-[#3A5A3A] text-[#3A5A3A]'
+                  }`}
+                >
+                  {t(`circles.coBuild.statuses.${proposal.status}`)}
+                </span>
+              </div>
               {agent && agent.id !== proposal.creator.id ? (
                 <ReportDialog
                   targetType="CIRCLE_PROPOSAL"
@@ -183,20 +202,43 @@ export function CircleProposalDetailPage({
                 />
               ) : null}
             </div>
-            <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
-              {t('circles.coBuild.quorum', { count: proposal.quorum })} ·{' '}
-              {t('circles.coBuild.eligibleCount', { count: proposal.eligibleMemberCount })}
-            </p>
+
+            {/* 元数据栅格 */}
+            <div className="grid grid-cols-2 gap-px border-t border-[#122012] bg-[#122012] pl-[3px] sm:grid-cols-4">
+              <ProposalMetaCell label={t('circleDossier.creator')}>
+                <span className="truncate text-xs font-semibold text-[#EDF3ED]">
+                  {proposal.creator.name}
+                </span>
+              </ProposalMetaCell>
+              <ProposalMetaCell label={t('circleDossier.quorum')}>
+                <span className="font-mono text-sm font-semibold tabular-nums text-[#EDF3ED]">
+                  {proposal.quorum}
+                </span>
+              </ProposalMetaCell>
+              <ProposalMetaCell label={t('circleDossier.eligible')}>
+                <span className="font-mono text-sm font-semibold tabular-nums text-[#EDF3ED]">
+                  {proposal.eligibleMemberCount}
+                </span>
+              </ProposalMetaCell>
+              <ProposalMetaCell label={t('circleDossier.revisionNo')}>
+                <span className="font-mono text-sm font-semibold tabular-nums text-[#EDF3ED]">
+                  R{String(proposal.currentRevisionNumber).padStart(2, '0')}
+                </span>
+              </ProposalMetaCell>
+            </div>
+
             {proposal.status === 'VOTING' ? (
-              <VoteProgress
-                approve={proposal.voting.approveCount ?? 0}
-                reject={proposal.voting.rejectCount ?? 0}
-                caption={t('circles.coBuild.voteProgress')}
-                summary={t('circles.coBuild.voteSummary', {
-                  approve: proposal.voting.approveCount ?? 0,
-                  reject: proposal.voting.rejectCount ?? 0,
-                })}
-              />
+              <div className="border-t border-[#122012] px-5 pb-4 pl-6">
+                <VoteProgress
+                  approve={proposal.voting.approveCount ?? 0}
+                  reject={proposal.voting.rejectCount ?? 0}
+                  caption={t('circles.coBuild.voteProgress')}
+                  summary={t('circles.coBuild.voteSummary', {
+                    approve: proposal.voting.approveCount ?? 0,
+                    reject: proposal.voting.rejectCount ?? 0,
+                  })}
+                />
+              </div>
             ) : null}
           </header>
 
@@ -371,7 +413,12 @@ export function CircleProposalDetailPage({
               {commentsQuery.data?.items.map((item) => (
                 <article key={item.id} className="border-l border-[#1A2E1A] pl-3">
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs font-semibold text-white">{item.author.name}</p>
+                    <p className="text-xs font-semibold text-white">
+                      <span aria-hidden className="mr-1.5 font-mono text-[#ADFF2F]">
+                        &gt;
+                      </span>
+                      {item.author.name}
+                    </p>
                     <div className="flex shrink-0 items-center gap-3">
                       <Timecode date={item.createdAt} withDate />
                       {agent && agent.id !== item.author.id ? (
@@ -430,6 +477,18 @@ export function CircleProposalDetailPage({
           />
         ) : null}
       </main>
+    </div>
+  );
+}
+
+/** 卷宗元数据单元格：等宽微型标签 + 读数。 */
+function ProposalMetaCell({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1 bg-[#040704] px-4 py-3">
+      <span className="font-mono text-[9px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+        {label}
+      </span>
+      {children}
     </div>
   );
 }

@@ -54,6 +54,7 @@ export function AdminGovernanceCaseDialog({
       title={t('adminDialogs.caseTitle')}
       code="ADMIN.CASE"
       size="xl"
+      contentClassName="t-corner"
       footer={
         detail ? (
           <>
@@ -88,6 +89,9 @@ export function AdminGovernanceCaseDialog({
       }
     >
       <p className="text-xs text-[#3A5A3A]">{t('admin.governance.detailDescription')}</p>
+      <p aria-hidden className="mt-1 truncate font-mono text-[9px] uppercase tracking-[0.2em] text-[#1A2E1A]">
+        FILE #CASE-{caseId}
+      </p>
       {query.isPending ? (
         <div className="py-16">
           <AdminLoading />
@@ -100,7 +104,7 @@ export function AdminGovernanceCaseDialog({
         <div className="mt-6 space-y-7">
           <section className="grid gap-4 border-y border-[#1A2E1A] py-4 sm:grid-cols-2 lg:grid-cols-4">
             <div>
-              <div className="text-[10px] font-bold text-[#3A5A3A]">
+              <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
                 {t('admin.governance.status')}
               </div>
               <div className="mt-1 text-sm font-bold text-[#EDF3ED]">
@@ -108,7 +112,7 @@ export function AdminGovernanceCaseDialog({
               </div>
             </div>
             <div>
-              <div className="text-[10px] font-bold text-[#3A5A3A]">
+              <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
                 {t('admin.governance.reportCount')}
               </div>
               <div className="mt-1 text-sm font-bold text-[#EDF3ED]">
@@ -116,7 +120,7 @@ export function AdminGovernanceCaseDialog({
               </div>
             </div>
             <div>
-              <div className="text-[10px] font-bold text-[#3A5A3A]">
+              <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
                 {t('admin.governance.voteCount')}
               </div>
               <div className="mt-1 text-sm font-bold text-[#EDF3ED]">
@@ -124,7 +128,7 @@ export function AdminGovernanceCaseDialog({
               </div>
             </div>
             <div>
-              <div className="text-[10px] font-bold text-[#3A5A3A]">
+              <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
                 {t('admin.governance.currentDeadline')}
               </div>
               <div className="mt-1 text-sm font-bold text-[#EDF3ED]">
@@ -154,7 +158,7 @@ export function AdminGovernanceCaseDialog({
               ) : detail.targetSnapshot.kind === 'REPLY' ? (
                 <div className="space-y-5">
                   <div>
-                    <div className="mb-2 text-[10px] font-bold text-[#3A5A3A]">
+                    <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
                       {t('admin.governance.originalPost')}
                     </div>
                     <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -169,7 +173,7 @@ export function AdminGovernanceCaseDialog({
                   </div>
                   {detail.targetSnapshot.parentReply ? (
                     <div>
-                      <div className="mb-2 text-[10px] font-bold text-[#3A5A3A]">
+                      <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
                         {t('admin.governance.parentReply')}
                       </div>
                       <div className="mb-2 text-[10px] text-[#3A5A3A]">
@@ -181,7 +185,7 @@ export function AdminGovernanceCaseDialog({
                     </div>
                   ) : null}
                   <div>
-                    <div className="mb-2 text-[10px] font-bold text-[#ADFF2F]">
+                    <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[#ADFF2F]">
                       {t('admin.governance.reportedReply')}
                     </div>
                     <div className="mb-2 text-[10px] text-[#3A5A3A]">
@@ -214,7 +218,10 @@ export function AdminGovernanceCaseDialog({
 
           <section className="grid gap-6 md:grid-cols-2">
             <div>
-              <h3 className="text-sm font-bold text-[#EDF3ED]">
+              <h3 className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[#EDF3ED]">
+                <span aria-hidden className="text-[#ADFF2F]">
+                  {'//'}
+                </span>
                 {t('admin.governance.reportBasis')}
               </h3>
               <div className="mt-3 divide-y divide-[#1A2E1A] border-y border-[#1A2E1A]">
@@ -234,7 +241,10 @@ export function AdminGovernanceCaseDialog({
               </div>
             </div>
             <div>
-              <h3 className="text-sm font-bold text-[#EDF3ED]">
+              <h3 className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[#EDF3ED]">
+                <span aria-hidden className="text-[#ADFF2F]">
+                  {'//'}
+                </span>
                 {t('admin.governance.voteSummary')}
               </h3>
               <div className="mt-3 grid grid-cols-2 gap-3">
@@ -257,7 +267,10 @@ export function AdminGovernanceCaseDialog({
           </section>
 
           <section>
-            <h3 className="text-sm font-bold text-[#EDF3ED]">
+            <h3 className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[#EDF3ED]">
+              <span aria-hidden className="text-[#ADFF2F]">
+                {'//'}
+              </span>
               {t('admin.governance.timeline')}
             </h3>
             <ol className="mt-3 space-y-2 border-l border-[#1A2E1A] pl-4 text-xs text-white/60">

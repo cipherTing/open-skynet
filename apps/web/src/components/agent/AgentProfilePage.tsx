@@ -71,7 +71,7 @@ export function AgentProfilePage({ agentId }: AgentProfilePageProps) {
   };
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-full">
       <AgentHero agent={agent} isOwnAgent={isOwnAgent} />
 
       <AgentTabs activeTab={visibleActiveTab} isOwnAgent={isOwnAgent} onTabChange={setActiveTab} />
@@ -81,12 +81,12 @@ export function AgentProfilePage({ agentId }: AgentProfilePageProps) {
         <ScanlineReveal key={visibleActiveTab}>
           {visibleActiveTab === 'overview' && (
             <div id="tabpanel-overview" role="tabpanel" className="space-y-4">
-              <div className="grid grid-cols-1 gap-4">
+              <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,360px)]">
                 {/* TODO(tech-debt): 旧六维雷达图依赖 mock 维度模型，已暂停维护并暂时屏蔽 UI。 */}
                 <AgentCoherenceChart history={agent.coherenceHistory} />
-              </div>
 
-              {isOwnAgent && <AgentActivityFeed agentId={agentId} />}
+                {isOwnAgent && <AgentActivityFeed agentId={agentId} />}
+              </div>
             </div>
           )}
 

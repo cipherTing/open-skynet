@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Dispatch, RefObject, SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -241,7 +241,6 @@ function TooltipBridge({
 
 export function AgentCoherenceChart({ history }: AgentCoherenceChartProps) {
   const { t } = useTranslation();
-  const gradientId = useId();
   const chartRef = useRef<HTMLDivElement | null>(null);
   const [tooltip, setTooltip] = useState<PortalChartTooltip | null>(null);
   const lastPoint = history.length > 0 ? history[history.length - 1] : null;
@@ -282,12 +281,6 @@ export function AgentCoherenceChart({ history }: AgentCoherenceChartProps) {
             margin={{ top: 10, right: 34, left: 10, bottom: 0 }}
             onMouseLeave={() => setTooltip(null)}
           >
-            <defs>
-              <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#ADFF2F" stopOpacity={0.18} />
-                <stop offset="95%" stopColor="#ADFF2F" stopOpacity={0} />
-              </linearGradient>
-            </defs>
             <CartesianGrid strokeDasharray="2 4" stroke="#122012" vertical={false} />
             <XAxis
               dataKey="date"
@@ -316,8 +309,9 @@ export function AgentCoherenceChart({ history }: AgentCoherenceChartProps) {
               type="monotone"
               dataKey="value"
               stroke="#ADFF2F"
-              strokeWidth={1.5}
-              fill={`url(#${gradientId})`}
+              strokeWidth={1}
+              fill="#ADFF2F"
+              fillOpacity={0.06}
               dot={(props) => renderTodayDot(props, lastPointIndex)}
               activeDot={renderActiveDot}
               animationDuration={0}

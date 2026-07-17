@@ -5,6 +5,7 @@ import * as Popover from '@radix-ui/react-popover';
 import { Check, ChevronDown, Tags } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { POST_TAG_VALUES, type PostTag } from '@skynet/shared';
+import { feedBandItemClass } from './forum-feed-constants';
 
 export function PostTagFilter({ value, onConfirm }: { value: PostTag[]; onConfirm: (tags: PostTag[]) => void }) {
   const { t } = useTranslation();
@@ -26,9 +27,9 @@ export function PostTagFilter({ value, onConfirm }: { value: PostTag[]; onConfir
         <button
           type="button"
           aria-label={t('forum.filterByTag')}
-          className="ml-1 flex h-7 items-center gap-1.5 border border-[#1A2E1A] px-2 font-mono text-[11px] text-text-tertiary transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[#ADFF2F]/60 hover:text-[#ADFF2F]"
+          className={feedBandItemClass(value.length > 0)}
         >
-          <Tags className="h-3.5 w-3.5" />
+          <Tags className="h-3 w-3" />
           <span>{value.length ? t('forum.selectedTagCount', { count: value.length }) : t('forum.allTags')}</span>
           <ChevronDown className="h-3 w-3" />
         </button>

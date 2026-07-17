@@ -16,11 +16,16 @@ interface GovernanceTimelineProps {
 
 type TimelineTone = 'accent' | 'info' | 'danger';
 
-const TONE_DOT_CLASS: Record<TimelineTone, string> = {
-  accent: 'border-border-accent bg-accent-muted text-accent',
-  info: 'border-info/30 bg-info/10 text-info',
-  danger: 'border-danger/30 bg-danger/10 text-danger',
+/** 节点 = 1px 直角边框方块（无填充），色调仅由边框/图标承担。 */
+const TONE_NODE_CLASS: Record<TimelineTone, string> = {
+  accent: 'border-[#ADFF2F]/60 text-[#ADFF2F]',
+  info: 'border-[#3A5A3A] text-[#EDF3ED]/70',
+  danger: 'border-[#EF4444]/60 text-[#EF4444]/90',
 };
+
+function joinClasses(...classes: Array<string | false | null | undefined>): string {
+  return classes.filter(Boolean).join(' ');
+}
 
 function TimelineEvent({
   tone,
@@ -34,29 +39,36 @@ function TimelineEvent({
   children: React.ReactNode;
 }) {
   return (
-    <li className="relative grid grid-cols-[28px_minmax(0,1fr)] gap-2.5">
+    <li className="relative grid grid-cols-[24px_minmax(0,1fr)] gap-3">
       {isLast ? null : (
-        <span className="absolute bottom-[-13px] left-[13px] top-7 w-px bg-border-strong" />
+        <span aria-hidden className="absolute bottom-[-13px] left-[11px] top-6 w-px bg-[#1A2E1A]" />
       )}
       <span
-        className={`z-[1] flex h-7 w-7 items-center justify-center border ${TONE_DOT_CLASS[tone]}`}
+        className={joinClasses(
+          'z-[1] mt-0.5 flex h-6 w-6 items-center justify-center border bg-black',
+          TONE_NODE_CLASS[tone],
+        )}
       >
         {icon}
       </span>
-      <div className="border border-border-subtle bg-surface-3 p-3">{children}</div>
+      <div className={isLast ? 'pb-1' : 'border-b border-[#122012] pb-3'}>{children}</div>
     </li>
   );
 }
 
 function TimelineDate({ value }: { value: string }) {
-  return <p className="mb-1 font-mono text-[11px] tabular-nums text-accent-dim">{value}</p>;
+  return (
+    <p className="mb-1 font-mono text-[10px] tabular-nums tracking-[0.15em] text-[#3A5A3A]">
+      {value}
+    </p>
+  );
 }
 
 export function GovernanceTimeline({ events }: GovernanceTimelineProps) {
   const { t, i18n } = useTranslation();
   if (events.length === 0) {
     return (
-      <p className="font-mono text-sm text-text-tertiary">{t('governance.detail.loadingDetail')}</p>
+      <p className="font-mono text-sm text-[#3A5A3A]">{t('governance.detail.loadingDetail')}</p>
     );
   }
 
@@ -73,10 +85,10 @@ export function GovernanceTimeline({ events }: GovernanceTimelineProps) {
               isLast={isLast}
             >
               <TimelineDate value={event.date} />
-              <h4 className="text-[13px] font-bold text-text-primary">
+              <h4 className="text-[13px] font-bold text-white/90">
                 {t('governance.timeline.caseOpened')}
               </h4>
-              <p className="text-xs text-text-secondary">
+              <p className="mt-0.5 font-mono text-[11px] tabular-nums text-[#EDF3ED]/60">
                 {formatGovernanceDateTime(event.occurredAt, i18n.language)}
               </p>
             </TimelineEvent>
@@ -91,7 +103,7 @@ export function GovernanceTimeline({ events }: GovernanceTimelineProps) {
               isLast={isLast}
             >
               <TimelineDate value={event.date} />
-              <h4 className="text-[13px] font-bold text-text-primary">
+              <h4 className="text-[13px] font-bold text-white/90">
                 {t('governance.timeline.votesCast', { count: event.voterCount })}
               </h4>
               <GovernanceVoteCompare
@@ -101,7 +113,7 @@ export function GovernanceTimeline({ events }: GovernanceTimelineProps) {
                 violationLabel={t('governance.metrics.violationVotes')}
                 notViolationLabel={t('governance.metrics.notViolationVotes')}
               />
-              <p className="mt-2 font-mono text-[10px] tabular-nums text-text-tertiary">
+              <p className="mt-2 font-mono text-[10px] tabular-nums tracking-[0.12em] text-[#3A5A3A]">
                 {t('governance.timeline.voterCount', { count: event.violation.voterCount })} /{' '}
                 {t('governance.timeline.voterCount', { count: event.notViolation.voterCount })}
               </p>
@@ -117,10 +129,10 @@ export function GovernanceTimeline({ events }: GovernanceTimelineProps) {
               isLast={isLast}
             >
               <TimelineDate value={event.date} />
-              <h4 className="text-[13px] font-bold text-text-primary">
+              <h4 className="text-[13px] font-bold text-white/90">
                 {t('governance.timeline.adminCorrection')}
               </h4>
-              <p className="text-xs text-text-secondary">{event.publicReason}</p>
+              <p className="mt-0.5 text-xs leading-relaxed text-[#EDF3ED]/60">{event.publicReason}</p>
             </TimelineEvent>
           );
         }
@@ -138,10 +150,10 @@ export function GovernanceTimeline({ events }: GovernanceTimelineProps) {
             isLast={isLast}
           >
             <TimelineDate value={event.date} />
-            <h4 className="text-[13px] font-bold text-text-primary">
+            <h4 className="text-[13px] font-bold text-white/90">
               {t('governance.timeline.caseResolved')}
             </h4>
-            <p className="text-xs text-text-secondary">
+            <p className="mt-0.5 font-mono text-[11px] tabular-nums text-[#EDF3ED]/60">
               {t(`governance.results.${getGovernanceResultKey(event.result)}`)} ·{' '}
               {formatGovernanceDuration(event.durationMinutes, '—', t)}
             </p>

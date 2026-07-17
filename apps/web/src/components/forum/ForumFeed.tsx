@@ -4,21 +4,11 @@ import { useState, useCallback, useEffect, useRef, type UIEvent } from 'react';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
 import { useInView } from 'react-intersection-observer';
-import {
-  Bell,
-  Clock,
-  Columns2,
-  Columns3,
-  Flame,
-  Globe2,
-  List,
-  Plus,
-  RefreshCw,
-} from 'lucide-react';
+import { Bell, Clock, Flame, Globe2, Plus, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { PostCard } from './PostCard';
 import { ForumFeedContextProvider } from './ForumFeedContext';
-import { FORUM_FEED_PAGE_SIZE } from './forum-feed-constants';
+import { FORUM_FEED_PAGE_SIZE, feedBandItemClass } from './forum-feed-constants';
 import { ErrorState } from '@/components/ui/LoadingState';
 import { TEmpty, TSkeleton } from '@/components/ui/terminal';
 import { forumApi } from '@/lib/api';
@@ -42,8 +32,6 @@ import {
 } from '@/stores/forum-feed-store';
 import { useHomeNavigationStore } from '@/stores/home-navigation-store';
 import { PostTagFilter } from './PostTagFilter';
-import { MasonryPostGrid } from './MasonryPostGrid';
-import { useForumLayoutStore, type ForumLayoutMode } from '@/stores/forum-layout-store';
 
 const CreatePostModal = dynamic(
   () => import('./CreatePostModal').then((mod) => mod.CreatePostModal),
@@ -97,9 +85,7 @@ export function ForumFeed({
   const tagsByScope = useForumFeedStore((state) => state.tagsByScope);
   const selectedTags = tagsByScope[scopeKey] ?? [];
   const setTags = useForumFeedStore((state) => state.setTags);
-  const layout = useForumLayoutStore((state) => state.layout);
-  const setLayout = useForumLayoutStore((state) => state.setLayout);
-  const feedKey = `${scopeKey}:${sortMode}:${selectedTags.join(',') || 'all-tags'}:layout:${layout}:${FORUM_FEED_PAGE_SIZE}:search:${encodeURIComponent(search)}:${searchRevision}`;
+  const feedKey = `${scopeKey}:${sortMode}:${selectedTags.join(',') || 'all-tags'}:${FORUM_FEED_PAGE_SIZE}:search:${encodeURIComponent(search)}:${searchRevision}`;
   const setSortMode = useForumFeedStore((state) => state.setSortMode);
   const setScrollTop = useForumFeedStore((state) => state.setScrollTop);
   const resetScrollTop = useForumFeedStore((state) => state.resetScrollTop);
@@ -252,12 +238,6 @@ export function ForumFeed({
     setTags(scopeKey, tags);
   };
 
-  const handleLayoutChange = (next: ForumLayoutMode) => {
-    if (next === layout) return;
-    lastRestoredKeyRef.current = '';
-    setLayout(next);
-  };
-
   const handleFeedScroll = useCallback(
     (event: UIEvent<HTMLDivElement>) => {
       handleScroll();
@@ -322,75 +302,80 @@ export function ForumFeed({
   return (
     <ForumFeedContextProvider isCircleFeed={Boolean(circle)}>
       <div className="feed-overlay-shell">
-        {/* 排序标签 + 创建按钮 */}
+        {/* 频段选择器：排序 / 订阅域 / 标签 / 刷新 / 发帖 */}
         <div
           className={`home-feed-toolbar ${toolbarVisible ? '' : 'pointer-events-none invisible'}`}
         >
           <div className="forum-toolbar-controls">
-            <div className="flex max-w-full flex-wrap items-center gap-0.5 border border-border-subtle bg-surface-1 p-0.5">
-              <SortTab
-                icon={<Flame className="w-3.5 h-3.5" />}
-                label={t('forum.hot')}
-                active={sortMode === SORT_OPTIONS.HOT}
+            <div
+              role="group"
+              aria-label={t('feed.freqLabel')}
+              className="flex max-w-full flex-wrap items-stretch divide-x divide-[#1A2E1A] border border-[#1A2E1A]"
+            >
+              <span
+                aria-hidden
+                className="flex items-center px-2 font-mono text-[10px] uppercase tracking-[0.2em] text-[#3A5A3A]"
+              >
+                {t('feed.freqLabel')}
+              </span>
+              <button
+                type="button"
+                aria-pressed={sortMode === SORT_OPTIONS.HOT}
                 onClick={() => handleSortChange(SORT_OPTIONS.HOT)}
-              />
-              <SortTab
-                icon={<Clock className="w-3.5 h-3.5" />}
-                label={t('forum.latest')}
-                active={sortMode === SORT_OPTIONS.LATEST}
+                className={feedBandItemClass(sortMode === SORT_OPTIONS.HOT)}
+              >
+                <Flame className="h-3 w-3" />
+                {t('forum.hot')}
+              </button>
+              <button
+                type="button"
+                aria-pressed={sortMode === SORT_OPTIONS.LATEST}
                 onClick={() => handleSortChange(SORT_OPTIONS.LATEST)}
-              />
+                className={feedBandItemClass(sortMode === SORT_OPTIONS.LATEST)}
+              >
+                <Clock className="h-3 w-3" />
+                {t('forum.latest')}
+              </button>
+              <PostTagFilter value={selectedTags} onConfirm={handleTagChange} />
               <button
                 type="button"
                 aria-label={t('forum.refreshPosts')}
                 disabled={postsQuery.isFetching}
                 onClick={handleRefresh}
-                className="ml-0.5 flex h-7 w-7 items-center justify-center border-l border-border-subtle text-text-tertiary hover:bg-surface-hover hover:text-accent disabled:cursor-not-allowed disabled:opacity-60"
+                className={`${feedBandItemClass(false)} disabled:cursor-not-allowed disabled:opacity-40`}
               >
                 <RefreshCw
-                  className={`h-3.5 w-3.5 ${postsQuery.isFetching ? 'animate-spin' : ''}`}
+                  className={`h-3 w-3 ${postsQuery.isFetching ? '[animation:t-spin-step_0.8s_steps(8)_infinite]' : ''}`}
                 />
               </button>
-              <PostTagFilter value={selectedTags} onConfirm={handleTagChange} />
             </div>
 
             {!circle && isAuthenticated && (
-              <div className="flex max-w-full items-center gap-0.5 border border-border-subtle bg-surface-1 p-0.5">
-                <ScopeTab
-                  icon={<Globe2 className="h-3.5 w-3.5" />}
-                  label={t('forum.scopeAll')}
-                  active={effectiveScope === 'all'}
+              <div
+                role="group"
+                aria-label={t('feed.scopeLabel')}
+                className="flex max-w-full items-stretch divide-x divide-[#1A2E1A] border border-[#1A2E1A]"
+              >
+                <button
+                  type="button"
+                  aria-pressed={effectiveScope === 'all'}
                   onClick={() => setFeedScope('all')}
-                />
-                <ScopeTab
-                  icon={<Bell className="h-3.5 w-3.5" />}
-                  label={t('forum.scopeSubscribed')}
-                  active={effectiveScope === 'subscribed'}
+                  className={feedBandItemClass(effectiveScope === 'all')}
+                >
+                  <Globe2 className="h-3 w-3" />
+                  {t('forum.scopeAll')}
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={effectiveScope === 'subscribed'}
                   onClick={() => setFeedScope('subscribed')}
-                />
+                  className={feedBandItemClass(effectiveScope === 'subscribed')}
+                >
+                  <Bell className="h-3 w-3" />
+                  {t('forum.scopeSubscribed')}
+                </button>
               </div>
             )}
-
-            <div className="forum-layout-switch" aria-label={t('forum.layoutLabel')}>
-              {(
-                [
-                  [1, List, 'forum.layoutList'],
-                  [2, Columns2, 'forum.layoutTwo'],
-                  [3, Columns3, 'forum.layoutThree'],
-                ] as const
-              ).map(([value, Icon, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => handleLayoutChange(value)}
-                  className={layout === value ? 'is-active' : ''}
-                  aria-label={t(label)}
-                  title={t(label)}
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                </button>
-              ))}
-            </div>
 
             <button
               type="button"
@@ -416,7 +401,7 @@ export function ForumFeed({
           </div>
         )}
 
-        {/* 帖子列表 */}
+        {/* 帖子档案行 */}
         <div
           ref={bindScrollRoot}
           onScroll={handleFeedScroll}
@@ -439,7 +424,7 @@ export function ForumFeed({
 
           {!showingRefreshLoading && posts.length > 0 && (
             <>
-              <div className="mb-4 flex items-center gap-3 px-1">
+              <div className="mb-2 flex items-center gap-3 px-1">
                 <span className="font-mono text-[11px] tracking-[0.2em] text-[#ADFF2F]">
                   CH.01
                 </span>
@@ -448,12 +433,15 @@ export function ForumFeed({
                   {t('forum.chapterFeed')}
                 </span>
                 <span aria-hidden className="h-px flex-1 bg-[#1A2E1A]" />
+                <span className="font-mono text-[10px] tracking-[0.2em] text-[#3A5A3A]">
+                  {t('feed.recordCount', { count: posts.length })}
+                </span>
               </div>
-              <MasonryPostGrid layout={layout}>
+              <div className="border-t border-[#1A2E1A]">
                 {posts.map((post, index) => (
-                  <PostCard key={post.id} post={post} index={index} layout={layout} />
+                  <PostCard key={post.id} post={post} index={index} layout={1} />
                 ))}
-              </MasonryPostGrid>
+              </div>
             </>
           )}
 
@@ -494,9 +482,11 @@ export function ForumFeed({
 
 function FeedLoadingState({ label }: { label: string }) {
   return (
-    <div role="status" aria-label={label} className="flex min-h-full flex-col gap-6 px-1 py-6">
-      {[0, 1, 2].map((row) => (
-        <TSkeleton key={row} rows={2} />
+    <div role="status" aria-label={label} className="flex min-h-full flex-col py-2">
+      {[0, 1, 2, 3].map((row) => (
+        <div key={row} className="border-b border-[#1A2E1A] px-4 py-4 sm:px-5">
+          <TSkeleton rows={2} />
+        </div>
       ))}
     </div>
   );
@@ -507,59 +497,5 @@ function FeedEmptyState({ message }: { message: string }) {
     <div className="flex min-h-full items-center justify-center py-16">
       <TEmpty message={message} className="w-full" />
     </div>
-  );
-}
-
-function SortTab({
-  icon,
-  label,
-  active,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] uppercase tracking-deck-normal ${
-        active
-          ? 'bg-accent-muted text-accent'
-          : 'text-text-tertiary hover:bg-surface-hover hover:text-text-secondary'
-      }`}
-    >
-      {icon}
-      {label}
-    </button>
-  );
-}
-
-function ScopeTab({
-  icon,
-  label,
-  active,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex items-center gap-1.5 px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-deck-normal ${
-        active
-          ? 'bg-accent-muted text-accent'
-          : 'text-text-tertiary hover:bg-surface-hover hover:text-text-secondary'
-      }`}
-    >
-      {icon}
-      {label}
-    </button>
   );
 }

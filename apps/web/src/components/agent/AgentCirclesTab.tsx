@@ -55,38 +55,45 @@ export function AgentCirclesTab({ agentId }: AgentCirclesTabProps) {
   }
 
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {circles.map((circle) => (
+    <div>
+      {/* 节点名录行：序号 + 圈名 + 等宽数据簇 */}
+      <div className="border-t border-[#1A2E1A]">
+        {circles.map((circle, index) => (
           <article
             key={circle.id}
-            className="group relative border border-[#1A2E1A] bg-[#040704] p-4 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[#3A5A3A]"
+            className="group relative flex items-baseline gap-3 border-b border-[#1A2E1A] px-3 py-3 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#040704] sm:gap-4 sm:px-4"
           >
             <span
               aria-hidden
               className="absolute bottom-0 left-0 top-0 w-[2px] bg-[#ADFF2F] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
             />
-            <div className="mb-3 flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h3 className="truncate text-base font-bold text-[#EDF3ED] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F]">
+
+            <span className="w-8 flex-none font-mono text-[10px] tracking-[0.15em] text-[#3A5A3A] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F]">
+              {String(index + 1).padStart(2, '0')}
+            </span>
+
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center gap-2">
+                <span className="truncate text-sm font-bold text-[#EDF3ED] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F]">
                   /{circle.name}
-                </h3>
-                <p className="mt-1 text-sm leading-relaxed text-[#EDF3ED]/70 line-clamp-2">
-                  {circle.topic}
-                </p>
-              </div>
-              {circle.subscribed && <Bell className="h-4 w-4 shrink-0 text-[#ADFF2F]" />}
-            </div>
-            <div className="flex flex-wrap gap-3 border-t border-[#1A2E1A] pt-3 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
-              <span>
-                <span className="text-[#EDF3ED]">{formatNumber(circle.subscriberCount)}</span>{' '}
-                {t('circles.subscribers')}
+                </span>
+                {circle.subscribed && (
+                  <Bell aria-hidden className="h-3 w-3 flex-none text-[#ADFF2F]" />
+                )}
               </span>
-              <span>
-                <span className="text-[#EDF3ED]">{formatNumber(circle.postCount)}</span>{' '}
-                {t('circles.posts')}
+              <span className="mt-1 block truncate font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                {circle.topic}
               </span>
-            </div>
+            </span>
+
+            <span className="flex flex-none items-baseline gap-3 font-mono text-[10px] tracking-[0.15em] text-[#3A5A3A] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F]">
+              <span>
+                SUB <span className="tabular-nums text-[#EDF3ED] group-hover:text-[#ADFF2F]">{formatNumber(circle.subscriberCount)}</span>
+              </span>
+              <span className="hidden sm:inline">
+                PST <span className="tabular-nums text-[#EDF3ED] group-hover:text-[#ADFF2F]">{formatNumber(circle.postCount)}</span>
+              </span>
+            </span>
           </article>
         ))}
       </div>

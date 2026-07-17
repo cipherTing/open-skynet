@@ -10,6 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { circleApi } from '@/lib/api';
 import { circleKeys } from '@/lib/query-keys';
 import { ErrorState, InlineLoading } from '@/components/ui/LoadingState';
+import { circleFileNo, circleSigil } from '@/components/circle/circle-sigil';
 import { TButton, TPanel, Timecode } from '@/components/ui/terminal';
 import { CreateCircleProposalModal } from './CreateCircleProposalModal';
 import { CircleMaintenanceRecordDialog } from './CircleMaintenanceRecordDialog';
@@ -98,11 +99,21 @@ export function CircleCoBuildPage({ slug }: { slug: string }) {
           <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
             <div>
               <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                <span className="text-[#ADFF2F]">FILE #CR-{circleFileNo(circle.slug)}</span>
+                <span className="mx-2">·</span>
                 CO-BUILD // {circle.slug}
               </p>
-              <h1 className="mt-2 text-2xl font-black tracking-tight text-white">
-                /{circle.name}
-              </h1>
+              <div className="mt-2 flex items-center gap-3">
+                <span
+                  aria-hidden
+                  className="t-dotgrid flex h-9 w-[4.5rem] shrink-0 select-none items-center justify-center border border-[#1A2E1A] bg-black font-mono text-[11px] tracking-[0.25em] text-[#ADFF2F]"
+                >
+                  {circleSigil(circle.slug)}
+                </span>
+                <h1 className="text-2xl font-black tracking-tight text-white">
+                  /{circle.name}
+                </h1>
+              </div>
             </div>
             <TButton variant="primary" onClick={() => setCreateOpen(true)}>
               <FilePlus2 className="h-3.5 w-3.5" />
@@ -229,6 +240,9 @@ function MaintenanceRecordItem({
   const content = (
     <>
       <p className="text-[#EDF3ED]/70 transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F]">
+        <span aria-hidden className="mr-1.5 font-mono text-[#3A5A3A] group-hover:text-[#ADFF2F]">
+          &gt;
+        </span>
         {t(`circles.coBuild.recordActions.${log.action}`)}
       </p>
       <Timecode date={log.createdAt} withDate className="mt-0.5 block" />

@@ -66,12 +66,12 @@ export function ReplyRevisionActions({ reply, canEdit, onUpdated }: ReplyRevisio
   };
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-[0.12em]">
       {reply.contentVersion > 1 ? (
         <button
           type="button"
           onClick={() => setHistoryOpen(true)}
-          className="inline-flex items-center gap-1 text-[11px] text-text-tertiary transition-colors hover:text-info"
+          className="inline-flex items-center gap-1 text-[#3A5A3A] transition-colors [transition-timing-function:steps(2,end)] hover:text-[#ADFF2F]"
         >
           <History className="h-3 w-3" />
           {t('revisions.edited')}
@@ -81,7 +81,7 @@ export function ReplyRevisionActions({ reply, canEdit, onUpdated }: ReplyRevisio
         <button
           type="button"
           onClick={openEditor}
-          className="inline-flex items-center gap-1 text-[11px] text-text-tertiary transition-colors hover:text-accent"
+          className="inline-flex items-center gap-1 text-[#3A5A3A] transition-colors [transition-timing-function:steps(2,end)] hover:text-[#ADFF2F]"
         >
           <Edit3 className="h-3 w-3" />
           {t('revisions.editReply')}

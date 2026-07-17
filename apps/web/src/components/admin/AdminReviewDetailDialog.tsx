@@ -38,6 +38,7 @@ export function AdminReviewDetailDialog({
       title={t('adminDialogs.reviewTitle')}
       code="ADMIN.REVIEW"
       size="lg"
+      contentClassName="t-corner"
       footer={
         detail ? (
           <>
@@ -79,6 +80,9 @@ export function AdminReviewDetailDialog({
       }
     >
       <p className="text-xs text-[#3A5A3A]">{t('admin.reviews.detailDescription')}</p>
+      <p aria-hidden className="mt-1 truncate font-mono text-[9px] uppercase tracking-[0.2em] text-[#1A2E1A]">
+        FILE #REVIEW-{reviewId}
+      </p>
       {query.isPending ? (
         <div className="py-16">
           <AdminLoading />
@@ -100,13 +104,13 @@ export function AdminReviewDetailDialog({
           {detail.type === 'POST' && 'title' in detail.payload ? (
             <>
               <section>
-                <div className="text-[10px] font-bold text-[#3A5A3A]">
+                <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
                   {t('admin.reviews.postTitle')}
                 </div>
                 <h3 className="mt-1 text-lg font-bold text-[#EDF3ED]">{detail.payload.title}</h3>
               </section>
               <section>
-                <div className="text-[10px] font-bold text-[#3A5A3A]">
+                <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
                   {t('createPost.tags')}
                 </div>
                 <div className="mt-2">
@@ -114,7 +118,7 @@ export function AdminReviewDetailDialog({
                 </div>
               </section>
               <section>
-                <div className="text-[10px] font-bold text-[#3A5A3A]">
+                <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
                   {t('admin.reviews.postBody')}
                 </div>
                 <div className="prose prose-sm mt-3 max-w-none text-white/60">
@@ -124,7 +128,7 @@ export function AdminReviewDetailDialog({
                 </div>
               </section>
               <section className="border-l-2 border-[#3A5A3A] pl-3">
-                <div className="text-[10px] font-bold text-[#3A5A3A]">
+                <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
                   {t('admin.reviews.targetCircle')}
                 </div>
                 <p className="mt-1 text-sm text-white/60">
@@ -135,13 +139,13 @@ export function AdminReviewDetailDialog({
           ) : detail.type === 'CIRCLE' && 'name' in detail.payload ? (
             <>
               <section>
-                <div className="text-[10px] font-bold text-[#3A5A3A]">
+                <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
                   {t('admin.circles.name')}
                 </div>
                 <h3 className="mt-1 text-lg font-bold text-[#EDF3ED]">{detail.payload.name}</h3>
               </section>
               <section>
-                <div className="text-[10px] font-bold text-[#3A5A3A]">
+                <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
                   {t('admin.circles.topic')}
                 </div>
                 <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-white/60">
@@ -151,7 +155,7 @@ export function AdminReviewDetailDialog({
               <section
                 className={`border-l-2 pl-3 ${detail.duplicateCircle ? 'border-[#7F1D1D]' : 'border-[#ADFF2F]/45'}`}
               >
-                <div className="text-[10px] font-bold text-[#3A5A3A]">
+                <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
                   {t('admin.reviews.duplicateCheck')}
                 </div>
                 <p className="mt-1 text-sm text-white/60">
@@ -164,7 +168,7 @@ export function AdminReviewDetailDialog({
           ) : null}
           {detail.decisionReason ? (
             <section className="border-l-2 border-[#7F1D1D] pl-3">
-              <div className="text-[10px] font-bold text-[#3A5A3A]">
+              <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
                 {t('admin.reviews.decisionReason')}
               </div>
               <p className="mt-1 whitespace-pre-wrap text-sm text-white/60">

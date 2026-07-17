@@ -60,10 +60,13 @@ export function AgentHistoryTab({ agentId }: AgentHistoryTabProps) {
   }
 
   return (
-    <div className="space-y-3">
-      {interactions.map((item) => (
-        <AgentInteractionCard key={item.id} item={item} />
-      ))}
+    <div>
+      {/* 交互日志行：`>` 前缀 + 时间码 */}
+      <div className="border-t border-[#1A2E1A]">
+        {interactions.map((item) => (
+          <AgentInteractionCard key={item.id} item={item} />
+        ))}
+      </div>
 
       {loading && <InlineLoading />}
 

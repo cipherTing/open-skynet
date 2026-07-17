@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { LanguageToggle } from '@/components/ui/LanguageToggle';
 import { PortalTooltip } from '@/components/ui/FloatingPortal';
 import { AnnouncementMenu } from '@/components/system/AnnouncementMenu';
+import { DeckChannelBar } from '@/components/deck/DeckChannelBar';
 import { useUtcNow } from '@/components/home/terminal/terminal-hooks';
 import { useAuth } from '@/contexts/AuthContext';
 import { forumApi } from '@/lib/api';
@@ -39,6 +40,9 @@ interface TopBarProps {
   preferHistoryBack?: boolean;
   governanceControls?: TopBarGovernanceControls;
   onOpenNav?: () => void;
+  /** 顶部频道条：当前频道与切换回调（缺省时频道条自行回退到 home-navigation-store） */
+  activeSection?: HomeSection;
+  onSectionChange?: (section: HomeSection) => void;
 }
 
 const SECTION_CODE: Record<NonNullable<TopBarProps['mode']>, string> = {
@@ -69,6 +73,8 @@ export function TopBar({
   preferHistoryBack = false,
   governanceControls,
   onOpenNav,
+  activeSection,
+  onSectionChange,
 }: TopBarProps) {
   const { t } = useTranslation();
   const router = useRouter();
@@ -171,7 +177,7 @@ export function TopBar({
             : 'flex h-12 items-center justify-between gap-3 px-4 sm:px-6'
         }
       >
-        {/* 左: 移动导航开关 + 返回 + 频道标识 */}
+        {/* 左: 移动导航开关 + 返回（详情场景）或顶部频道条（工作台场景） */}
         <div className="flex min-w-0 items-center gap-3 pointer-events-auto">
           {onOpenNav ? (
             <button
@@ -184,42 +190,44 @@ export function TopBar({
             </button>
           ) : null}
           {hasBackLink ? (
-            preferHistoryBack ? (
-              <button
-                type="button"
-                onClick={() => {
-                  if (backSection) setHomeActiveSection(backSection);
-                  router.back();
-                }}
-                className={backControlClassName}
-              >
-                <ArrowLeft className="h-3.5 w-3.5 shrink-0 stroke-[1.5]" />
-                <span className="max-w-[30vw] truncate sm:max-w-none">{resolvedBackLabel}</span>
-              </button>
-            ) : (
-              <Link
-                href={backHref!}
-                onClick={() => {
-                  if (backSection) setHomeActiveSection(backSection);
-                }}
-                className={backControlClassName}
-              >
-                <ArrowLeft className="h-3.5 w-3.5 shrink-0 stroke-[1.5]" />
-                <span className="max-w-[30vw] truncate sm:max-w-none">{resolvedBackLabel}</span>
-              </Link>
-            )
-          ) : null}
-          <div
-            className={`${hasBackLink ? 'hidden sm:flex' : 'flex'} min-w-0 items-center gap-2.5`}
-          >
-            <span className="flex-none font-mono text-[10px] uppercase tracking-[0.15em] text-[#ADFF2F]">
-              {SECTION_CODE[mode]}
-            </span>
-            <span aria-hidden="true" className="h-3 w-px flex-none bg-[#3A5A3A]" />
-            <span className="truncate font-mono text-[11px] uppercase tracking-[0.15em] text-white">
-              {sectionLabel}
-            </span>
-          </div>
+            <>
+              {preferHistoryBack ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (backSection) setHomeActiveSection(backSection);
+                    router.back();
+                  }}
+                  className={backControlClassName}
+                >
+                  <ArrowLeft className="h-3.5 w-3.5 shrink-0 stroke-[1.5]" />
+                  <span className="max-w-[30vw] truncate sm:max-w-none">{resolvedBackLabel}</span>
+                </button>
+              ) : (
+                <Link
+                  href={backHref!}
+                  onClick={() => {
+                    if (backSection) setHomeActiveSection(backSection);
+                  }}
+                  className={backControlClassName}
+                >
+                  <ArrowLeft className="h-3.5 w-3.5 shrink-0 stroke-[1.5]" />
+                  <span className="max-w-[30vw] truncate sm:max-w-none">{resolvedBackLabel}</span>
+                </Link>
+              )}
+              <div className="hidden min-w-0 items-center gap-2.5 sm:flex">
+                <span className="flex-none font-mono text-[10px] uppercase tracking-[0.15em] text-[#ADFF2F]">
+                  {SECTION_CODE[mode]}
+                </span>
+                <span aria-hidden="true" className="h-3 w-px flex-none bg-[#3A5A3A]" />
+                <span className="truncate font-mono text-[11px] uppercase tracking-[0.15em] text-white">
+                  {sectionLabel}
+                </span>
+              </div>
+            </>
+          ) : (
+            <DeckChannelBar activeSection={activeSection} onSectionChange={onSectionChange} />
+          )}
         </div>
 
         {/* 中: 评审状态 */}

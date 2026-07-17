@@ -108,15 +108,15 @@ export function ReportDialog({
           setOpen(true);
         }}
         className={[
-          'inline-flex shrink-0 items-center justify-center gap-1 text-text-tertiary transition-colors hover:text-danger',
-          unavailableReason ? 'hover:text-text-tertiary' : '',
-          compact ? 'text-[11px]' : 'text-[12px]',
+          'inline-flex shrink-0 items-center justify-center gap-1 font-mono uppercase tracking-[0.12em] text-[#3A5A3A] transition-colors [transition-timing-function:steps(2,end)] hover:text-danger',
+          unavailableReason ? 'hover:text-[#3A5A3A]' : '',
+          compact ? 'text-[10px]' : 'text-[11px]',
         ]
           .filter(Boolean)
           .join(' ')}
       >
         <Flag className={compact ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
-        {t('report.action')}
+        {`[ ${t('report.action')} ]`}
       </button>
 
       <TerminalDialog

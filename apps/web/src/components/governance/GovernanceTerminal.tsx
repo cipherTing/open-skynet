@@ -34,13 +34,86 @@ const RAIL_TONE_CLASS: Record<GovernanceRailTone, string> = {
   admin: 'bg-[#EF4444]/60',
 };
 
-/** 告警色条：案件/结果条目左侧 3px 分级色条（待投票=荧光绿、已结案=暗绿、管理员介入=红系低饱和）。 */
+/** 告警色条：案件/结果条目左侧 2px 分级色条（待投票=荧光绿、已结案=暗绿、管理员介入=红系低饱和）。 */
 export function GovernanceAlertRail({ tone }: { tone: GovernanceRailTone }) {
   return (
     <span
       aria-hidden
-      className={joinClasses('absolute bottom-0 left-0 top-0 w-[3px]', RAIL_TONE_CLASS[tone])}
+      className={joinClasses('absolute bottom-0 left-0 top-0 w-[2px]', RAIL_TONE_CLASS[tone])}
     />
+  );
+}
+
+export type GovernanceVerdictTone = 'violation' | 'notViolation' | 'pending' | 'emergency' | 'admin';
+
+const VERDICT_STAMP_CLASS: Record<
+  GovernanceVerdictTone,
+  { outer: string; inner: string; text: string }
+> = {
+  violation: {
+    outer: 'border-[#EF4444]/70',
+    inner: 'border-[#EF4444]/35',
+    text: 'text-[#EF4444]',
+  },
+  notViolation: {
+    outer: 'border-[#ADFF2F]/70',
+    inner: 'border-[#ADFF2F]/35',
+    text: 'text-[#ADFF2F]',
+  },
+  pending: {
+    outer: 'border-[#ADFF2F]/70',
+    inner: 'border-[#ADFF2F]/35',
+    text: 'text-[#ADFF2F]',
+  },
+  emergency: {
+    outer: 'border-[#A16207]/80',
+    inner: 'border-[#A16207]/40',
+    text: 'text-[#A16207]',
+  },
+  admin: {
+    outer: 'border-[#EF4444]/70',
+    inner: 'border-[#EF4444]/35',
+    text: 'text-[#EF4444]/90',
+  },
+};
+
+/**
+ * 状态印章：直角双层边框章（外 1px + 内 1px），等宽大写。
+ * animate=true 时挂载触发一次 t-glitch-shift steps 盖印震动（reduced-motion 自动静止）；
+ * 列表批量行内请传 animate={false}，避免整列同时抖动。
+ */
+export function GovernanceVerdictStamp({
+  tone,
+  label,
+  animate = true,
+  className,
+}: {
+  tone: GovernanceVerdictTone;
+  label: string;
+  animate?: boolean;
+  className?: string;
+}) {
+  const stamp = VERDICT_STAMP_CLASS[tone];
+  return (
+    <span
+      className={joinClasses(
+        'inline-flex border p-[2px]',
+        stamp.outer,
+        animate && 'motion-safe:[animation:t-glitch-shift_0.3s_steps(1)_1]',
+        className,
+      )}
+    >
+      <span
+        className={joinClasses(
+          'inline-flex items-center gap-1.5 whitespace-nowrap border px-2 py-1',
+          'font-mono text-[10px] font-bold uppercase leading-none tracking-[0.2em]',
+          stamp.inner,
+          stamp.text,
+        )}
+      >
+        {label}
+      </span>
+    </span>
   );
 }
 
@@ -49,7 +122,7 @@ const COMPARE_SEGMENTS = 20;
 function SegmentTrack({ filled, tone }: { filled: number; tone: 'accent' | 'dim' }) {
   const litClass = tone === 'accent' ? 'bg-[#ADFF2F]' : 'bg-[#3A5A3A]';
   return (
-    <div aria-hidden className="flex h-px items-stretch gap-px">
+    <div aria-hidden className="flex h-[3px] items-stretch gap-px">
       {Array.from({ length: COMPARE_SEGMENTS }, (_, index) => (
         <span
           key={index}
@@ -61,7 +134,7 @@ function SegmentTrack({ filled, tone }: { filled: number; tone: 'accent' | 'dim'
 }
 
 /**
- * 投票对比条：赞成/反对两行直角 1px 段码进度条（荧光绿 vs 暗绿）。
+ * 投票对比条：赞成/反对两行直角段码进度条（荧光绿 vs 暗绿）。
  * 每行按占总票数的比例点亮 20 段刻度。
  */
 export function GovernanceVoteCompare({
@@ -90,7 +163,7 @@ export function GovernanceVoteCompare({
     >
       <div>
         <div className="mb-1 flex items-baseline justify-between gap-3">
-          <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-text-tertiary">
+          <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
             {violationLabel}
           </span>
           <TelemetryValue
@@ -103,7 +176,7 @@ export function GovernanceVoteCompare({
       </div>
       <div>
         <div className="mb-1 flex items-baseline justify-between gap-3">
-          <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-text-tertiary">
+          <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
             {notViolationLabel}
           </span>
           <TelemetryValue

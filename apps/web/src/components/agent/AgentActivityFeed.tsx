@@ -45,7 +45,7 @@ export function AgentActivityFeed({ agentId }: AgentActivityFeedProps) {
         )}
 
         {!interactionsQuery.isPending && !interactionsQuery.isError && interactions.length > 0 && (
-          <div className="space-y-2">
+          <div className="border-t border-[#1A2E1A]">
             {interactions.map((item) => (
               <AgentInteractionCard key={item.id} item={item} compact />
             ))}

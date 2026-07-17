@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { GovernanceCaseStamp } from '@/components/governance/GovernanceCaseStamp';
 import { TelemetryValue } from '@/components/home/terminal/TelemetryValue';
+import { circleFileNo, circleSigil } from '@/components/circle/circle-sigil';
 import { TPanel, TTag, Timecode } from '@/components/ui/terminal';
 import { circleApi } from '@/lib/api';
 import { formatNumber } from '@/lib/utils';
@@ -35,42 +36,59 @@ export function CircleInfoPanel({ circle, compact = false }: CircleInfoPanelProp
     >
       <TPanel
         title={t('circles.detail.panelTitle')}
-        meta={<Timecode date={circle.createdAt} withDate />}
+        meta={`FILE #CR-${circleFileNo(circle.slug)}`}
       >
         <div className="flex items-start justify-between gap-3">
-          <h2 className="min-w-0 truncate text-base font-black tracking-tight text-white">
-            /{circle.name}
-          </h2>
-          {circle.kind === 'OFFICIAL' ? <TTag color="accent">{t('circles.official')}</TTag> : null}
+          <span
+            aria-hidden
+            className="t-dotgrid flex h-10 w-20 shrink-0 select-none items-center justify-center border border-[#1A2E1A] bg-black font-mono text-xs tracking-[0.25em] text-[#ADFF2F]"
+          >
+            {circleSigil(circle.slug)}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="min-w-0 truncate text-base font-black tracking-tight text-white">
+                /{circle.name}
+              </h2>
+              {circle.kind === 'OFFICIAL' ? (
+                <TTag color="accent">{t('circles.official')}</TTag>
+              ) : null}
+            </div>
+            <Timecode date={circle.createdAt} withDate className="mt-1 block" />
+          </div>
         </div>
-        <p className="mt-2 text-sm leading-relaxed text-[#EDF3ED]/70">{circle.topic}</p>
+        <p className="mt-3 text-sm leading-relaxed text-[#EDF3ED]/70">{circle.topic}</p>
 
-        <div className="mt-4 grid grid-cols-2 gap-2">
-          <div className="border border-[#122012] bg-black p-3">
-            <div className="mb-1.5 flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+        <dl className="mt-4 divide-y divide-[#122012] border-y border-[#122012]">
+          <div className="flex items-center justify-between gap-3 py-2">
+            <dt className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.15em] text-[#3A5A3A]">
               <Users className="h-3 w-3" />
               {t('circles.subscribers')}
-            </div>
-            <TelemetryValue
-              value={circle.subscriberCount}
-              format={formatTelemetryCount}
-              jitterPct={0.05}
-              className="font-mono text-lg font-semibold text-white"
-            />
+            </dt>
+            <dd>
+              <TelemetryValue
+                value={circle.subscriberCount}
+                format={formatTelemetryCount}
+                jitterPct={0.05}
+                className="font-mono text-sm font-semibold text-white"
+              />
+            </dd>
           </div>
-          <div className="border border-[#122012] bg-black p-3">
-            <div className="mb-1.5 flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+          <div className="flex items-center justify-between gap-3 py-2">
+            <dt className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.15em] text-[#3A5A3A]">
               <MessageSquare className="h-3 w-3" />
               {t('circles.posts')}
-            </div>
-            <TelemetryValue
-              value={circle.postCount}
-              format={formatTelemetryCount}
-              jitterPct={0.05}
-              className="font-mono text-lg font-semibold text-white"
-            />
+            </dt>
+            <dd>
+              <TelemetryValue
+                value={circle.postCount}
+                format={formatTelemetryCount}
+                jitterPct={0.05}
+                className="font-mono text-sm font-semibold text-white"
+              />
+            </dd>
           </div>
-        </div>
+        </dl>
 
         <Link
           href={`/circles/${circle.slug}/co-build`}

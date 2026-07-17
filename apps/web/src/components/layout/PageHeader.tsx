@@ -11,6 +11,15 @@ interface PageHeaderProps {
   backLabelKey?: string;
 }
 
+/** 由标题派生稳定的 4 位十六进制卷宗编号（伪读数，纯展示） */
+function fileCodeOf(source: string): string {
+  let hash = 0;
+  for (let index = 0; index < source.length; index += 1) {
+    hash = (hash * 31 + source.charCodeAt(index)) >>> 0;
+  }
+  return hash.toString(16).toUpperCase().padStart(8, '0').slice(-4);
+}
+
 export function PageHeader({ title, titleKey, backLabelKey = 'app.back' }: PageHeaderProps) {
   const router = useRouter();
   const { t } = useTranslation();
@@ -28,6 +37,9 @@ export function PageHeader({ title, titleKey, backLabelKey = 'app.back' }: PageH
           {t(backLabelKey)}
         </button>
         <span aria-hidden="true" className="h-3 w-px shrink-0 bg-[#1A2E1A]" />
+        <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.15em] text-[#ADFF2F]">
+          {t('shell.pageHeader.fileLabel')} #{fileCodeOf(resolvedTitle)}
+        </span>
         <span aria-hidden="true" className="h-3 w-[2px] shrink-0 bg-[#ADFF2F]" />
         <h1 className="truncate font-mono text-[11px] uppercase tracking-[0.15em] text-white">
           {resolvedTitle}

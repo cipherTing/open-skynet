@@ -4,11 +4,21 @@ import { useState, type KeyboardEvent, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
-import { Bell, BellOff, Clock, Flame, Plus, RefreshCw, Search } from 'lucide-react';
+import {
+  ArrowRight,
+  Bell,
+  BellOff,
+  Clock,
+  Flame,
+  Plus,
+  RefreshCw,
+  Search,
+} from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { ErrorState, InlineLoading } from '@/components/ui/LoadingState';
 import { useToast } from '@/components/ui/SignalToast';
 import { TelemetryValue } from '@/components/home/terminal/TelemetryValue';
+import { circleFileNo, circleSigil } from '@/components/circle/circle-sigil';
 import { TButton, TEmpty, TTag, Timecode } from '@/components/ui/terminal';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOwnerOperation } from '@/contexts/OwnerOperationContext';
@@ -45,6 +55,7 @@ export function CircleGrid() {
   const [sortBy, setSortBy] = useState<CircleSortOption>(CIRCLE_SORT_OPTIONS.RECOMMENDED);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [busyCircleId, setBusyCircleId] = useState<string | null>(null);
+  const [selectedCircleId, setSelectedCircleId] = useState<string | null>(null);
   const progressionQuery = useQuery({
     queryKey: userKeys.progression(agent?.id),
     queryFn: () => userApi.getAgentProgression(),
@@ -97,6 +108,10 @@ export function CircleGrid() {
     : !agent
       ? t('forum.noAgent')
       : '';
+
+  // 名录选中态：派生自用户点选 id；若该圈已不在当前名录（排序/搜索/刷新），回退到首条。
+  const selectedCircle =
+    circles.find((circle) => circle.id === selectedCircleId) ?? circles[0] ?? null;
 
   const refreshCircleData = async () => {
     await Promise.all([
@@ -203,50 +218,76 @@ export function CircleGrid() {
         </TButton>
       </div>
 
-      <div className="skynet-auto-hide-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain pb-6">
-        {hasInitialError && (
-          <div className="flex min-h-full items-center justify-center py-16">
-            <ErrorState
-              message={t('circles.loadFailed')}
-              actionLabel={t('app.retry')}
-              onAction={() => void activeQuery.refetch()}
-            />
-          </div>
-        )}
+      <div className="flex min-h-0 flex-1">
+        <div className="skynet-auto-hide-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain pb-6">
+          {hasInitialError && (
+            <div className="flex min-h-full items-center justify-center py-16">
+              <ErrorState
+                message={t('circles.loadFailed')}
+                actionLabel={t('app.retry')}
+                onAction={() => void activeQuery.refetch()}
+              />
+            </div>
+          )}
 
-        {!hasInitialError && circles.length > 0 && (
-          <div className="divide-y divide-[#122012] border-y border-[#1A2E1A]">
-            {circles.map((circle, index) => (
-              <CircleArchiveRow
-                key={circle.id}
-                index={index}
-                circle={circle}
+          {selectedCircle ? (
+            <div className="mb-5 lg:hidden">
+              <CirclePreviewDossier
+                circle={selectedCircle}
                 canSubscribe={isAuthenticated && Boolean(agent)}
                 subscriptionDisabledReason={subscriptionDisabledReason}
-                busy={busyCircleId === circle.id}
-                onOpen={() => handleOpenCircle(circle)}
-                onSubscription={() => void handleSubscription(circle)}
+                busy={busyCircleId === selectedCircle.id}
+                onOpen={() => handleOpenCircle(selectedCircle)}
+                onSubscription={() => void handleSubscription(selectedCircle)}
               />
-            ))}
-          </div>
-        )}
+            </div>
+          ) : null}
 
-        {loading && <InlineLoading label={t('circles.loading')} />}
+          {!hasInitialError && circles.length > 0 && (
+            <div className="divide-y divide-[#122012] border-y border-[#1A2E1A]">
+              {circles.map((circle, index) => (
+                <CircleRegistryRow
+                  key={circle.id}
+                  index={index}
+                  circle={circle}
+                  selected={circle.id === selectedCircleId}
+                  onSelect={() => setSelectedCircleId(circle.id)}
+                  onOpen={() => handleOpenCircle(circle)}
+                />
+              ))}
+            </div>
+          )}
 
-        {!search && !loading && circleQuery.hasNextPage && (
-          <div className="mt-5 flex justify-center">
-            <TButton variant="secondary" onClick={() => void circleQuery.fetchNextPage()}>
-              {t('circles.loadMore')}
-            </TButton>
-          </div>
-        )}
+          {loading && <InlineLoading label={t('circles.loading')} />}
 
-        {isEmpty && (
-          <TEmpty
-            className="mt-6"
-            message={t(search ? 'circles.noSearchResults' : 'circles.empty')}
-          />
-        )}
+          {!search && !loading && circleQuery.hasNextPage && (
+            <div className="mt-5 flex justify-center">
+              <TButton variant="secondary" onClick={() => void circleQuery.fetchNextPage()}>
+                {t('circles.loadMore')}
+              </TButton>
+            </div>
+          )}
+
+          {isEmpty && (
+            <TEmpty
+              className="mt-6"
+              message={t(search ? 'circles.noSearchResults' : 'circles.empty')}
+            />
+          )}
+        </div>
+
+        {selectedCircle ? (
+          <aside className="hidden h-full min-h-0 w-[320px] shrink-0 border-l border-[#1A2E1A] lg:block">
+            <CirclePreviewDossier
+              circle={selectedCircle}
+              canSubscribe={isAuthenticated && Boolean(agent)}
+              subscriptionDisabledReason={subscriptionDisabledReason}
+              busy={busyCircleId === selectedCircle.id}
+              onOpen={() => handleOpenCircle(selectedCircle)}
+              onSubscription={() => void handleSubscription(selectedCircle)}
+            />
+          </aside>
+        ) : null}
       </div>
 
       {showCreateModal && (
@@ -260,25 +301,21 @@ export function CircleGrid() {
   );
 }
 
-function CircleArchiveRow({
+/** 名录行：sigil + 圈名 + 数据簇；单击选中，Enter/点击进入按钮打开档案。 */
+function CircleRegistryRow({
   index,
   circle,
-  canSubscribe,
-  subscriptionDisabledReason,
-  busy,
+  selected,
+  onSelect,
   onOpen,
-  onSubscription,
 }: {
   index: number;
   circle: Circle;
-  canSubscribe: boolean;
-  subscriptionDisabledReason: string;
-  busy: boolean;
+  selected: boolean;
+  onSelect: () => void;
   onOpen: () => void;
-  onSubscription: () => void;
 }) {
   const { t } = useTranslation();
-  const subscriptionLabel = circle.subscribed ? t('circles.unsubscribe') : t('circles.subscribe');
 
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.target !== event.currentTarget) return;
@@ -292,26 +329,48 @@ function CircleArchiveRow({
       role="link"
       tabIndex={0}
       aria-label={t('circles.detail.openCircle', { name: circle.name })}
-      onClick={onOpen}
+      aria-current={selected || undefined}
+      onClick={onSelect}
       onKeyDown={handleKeyDown}
-      className="group relative flex cursor-pointer items-center gap-4 py-4 pl-4 pr-2 outline-none transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#ADFF2F]/[0.04] focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[#ADFF2F]"
+      className={`group relative flex cursor-pointer items-center gap-3 py-3 pl-4 pr-2 outline-none transition-colors duration-100 [transition-timing-function:steps(2,end)] focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[#ADFF2F] ${
+        selected ? 'bg-[#ADFF2F]/[0.06]' : 'hover:bg-[#ADFF2F]/[0.04]'
+      }`}
     >
       <span
         aria-hidden
-        className="absolute left-0 top-0 h-full w-[2px] bg-[#ADFF2F] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
+        className={`absolute left-0 top-0 h-full w-[2px] bg-[#ADFF2F] transition-opacity duration-100 [transition-timing-function:steps(2,end)] ${
+          selected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+        }`}
       />
-      <span className="hidden w-12 shrink-0 font-mono text-[10px] tracking-[0.15em] text-[#3A5A3A] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F]/70 sm:block">
+      <span
+        aria-hidden
+        className={`w-14 shrink-0 font-mono text-[11px] tracking-[0.2em] transition-colors duration-100 [transition-timing-function:steps(2,end)] ${
+          selected ? 'text-[#ADFF2F]' : 'text-[#3A5A3A] group-hover:text-[#ADFF2F]/70'
+        }`}
+      >
+        {circleSigil(circle.slug)}
+      </span>
+      <span
+        aria-hidden
+        className={`hidden w-12 shrink-0 font-mono text-[10px] tracking-[0.15em] transition-colors duration-100 [transition-timing-function:steps(2,end)] sm:block ${
+          selected ? 'text-[#ADFF2F]/80' : 'text-[#3A5A3A] group-hover:text-[#ADFF2F]/70'
+        }`}
+      >
         N-{String(index + 1).padStart(3, '0')}
       </span>
 
       <div className="min-w-0 flex-1 transition-transform duration-100 [transition-timing-function:steps(2,end)] group-hover:translate-x-1">
         <div className="flex items-center gap-2">
-          <h3 className="truncate text-lg font-black tracking-tight text-white">
+          <h3
+            className={`truncate text-base font-black tracking-tight transition-colors duration-100 [transition-timing-function:steps(2,end)] ${
+              selected ? 'text-[#ADFF2F]' : 'text-white'
+            }`}
+          >
             /{circle.name}
           </h3>
           {circle.kind === 'OFFICIAL' ? <TTag color="accent">{t('circles.official')}</TTag> : null}
         </div>
-        <p className="mt-1 line-clamp-1 text-xs leading-5 text-[#EDF3ED]/50">{circle.topic}</p>
+        <p className="mt-0.5 line-clamp-1 text-xs leading-5 text-[#EDF3ED]/50">{circle.topic}</p>
       </div>
 
       <div className="hidden shrink-0 items-center gap-5 md:flex">
@@ -322,24 +381,136 @@ function CircleArchiveRow({
       <Timecode
         date={circle.lastPostAt ?? circle.createdAt}
         withDate
-        className="hidden shrink-0 transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F] lg:block"
+        className={`hidden shrink-0 transition-colors duration-100 [transition-timing-function:steps(2,end)] lg:block ${
+          selected ? 'text-[#ADFF2F]' : 'group-hover:text-[#ADFF2F]'
+        }`}
       />
 
-      <TButton
-        size="sm"
-        variant={circle.subscribed ? 'secondary' : 'primary'}
-        disabled={busy || !canSubscribe}
-        title={!canSubscribe ? subscriptionDisabledReason : undefined}
+      <button
+        type="button"
+        aria-label={t('circleRegistry.enter')}
         onClick={(event) => {
           event.stopPropagation();
-          onSubscription();
+          onOpen();
         }}
-        className="shrink-0"
+        className={`flex h-7 w-7 shrink-0 items-center justify-center border transition-colors duration-100 [transition-timing-function:steps(2,end)] ${
+          selected
+            ? 'border-[#ADFF2F]/60 text-[#ADFF2F] hover:bg-[#ADFF2F] hover:text-black'
+            : 'border-[#1A2E1A] text-[#3A5A3A] hover:border-[#ADFF2F]/60 hover:text-[#ADFF2F]'
+        }`}
       >
-        {circle.subscribed ? <BellOff className="h-3 w-3" /> : <Bell className="h-3 w-3" />}
-        {subscriptionLabel}
-      </TButton>
+        <ArrowRight className="h-3.5 w-3.5" />
+      </button>
     </article>
+  );
+}
+
+/** 选中圈的档案预览：sigil 锚点 + 等宽元数据账簿 + 进入/订阅指令。 */
+function CirclePreviewDossier({
+  circle,
+  canSubscribe,
+  subscriptionDisabledReason,
+  busy,
+  onOpen,
+  onSubscription,
+}: {
+  circle: Circle;
+  canSubscribe: boolean;
+  subscriptionDisabledReason: string;
+  busy: boolean;
+  onOpen: () => void;
+  onSubscription: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <section className="t-corner skynet-auto-hide-scrollbar relative flex h-full min-h-0 flex-col overflow-y-auto overscroll-contain border border-[#1A2E1A] bg-[#040704]">
+      <header className="flex flex-none items-center justify-between gap-3 border-b border-[#1A2E1A] px-4 py-2.5">
+        <span className="truncate font-mono text-[10px] uppercase tracking-[0.15em] text-white">
+          {t('circleRegistry.previewTitle')}
+        </span>
+        <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.15em] text-[#ADFF2F]">
+          FILE #CR-{circleFileNo(circle.slug)}
+        </span>
+      </header>
+
+      <div className="flex min-h-0 flex-1 flex-col p-4">
+        <div className="t-dotgrid flex h-20 items-center justify-center border border-[#1A2E1A] bg-black">
+          <span
+            aria-hidden
+            className="select-none font-mono text-2xl tracking-[0.35em] text-[#ADFF2F] [text-shadow:0_0_6px_rgba(173,255,47,0.35)]"
+          >
+            {circleSigil(circle.slug)}
+          </span>
+        </div>
+
+        <div className="mt-4 flex items-start justify-between gap-3">
+          <h3 className="min-w-0 truncate text-xl font-black tracking-tight text-white">
+            /{circle.name}
+          </h3>
+          {circle.kind === 'OFFICIAL' ? <TTag color="accent">{t('circles.official')}</TTag> : null}
+        </div>
+        <p className="mt-2 text-sm leading-6 text-[#EDF3ED]/70">{circle.topic}</p>
+
+        <dl className="mt-4 divide-y divide-[#122012] border-y border-[#122012]">
+          <DossierLedgerRow label={t('circles.subscribers')}>
+            <TelemetryValue
+              value={circle.subscriberCount}
+              format={formatTelemetryCount}
+              jitterPct={0.05}
+              className="font-mono text-sm font-semibold text-[#EDF3ED]"
+            />
+          </DossierLedgerRow>
+          <DossierLedgerRow label={t('circles.posts')}>
+            <TelemetryValue
+              value={circle.postCount}
+              format={formatTelemetryCount}
+              jitterPct={0.05}
+              className="font-mono text-sm font-semibold text-[#EDF3ED]"
+            />
+          </DossierLedgerRow>
+          <DossierLedgerRow label={t('circles.detail.activeProposals')}>
+            <TelemetryValue
+              value={circle.activeProposalCount}
+              format={formatTelemetryCount}
+              jitterPct={0.05}
+              className="font-mono text-sm font-semibold text-[#EDF3ED]"
+            />
+          </DossierLedgerRow>
+          <DossierLedgerRow label={t('circleRegistry.lastActive')}>
+            <Timecode date={circle.lastPostAt ?? circle.createdAt} withDate />
+          </DossierLedgerRow>
+          <DossierLedgerRow label={t('circles.detail.filedAt')}>
+            <Timecode date={circle.createdAt} withDate />
+          </DossierLedgerRow>
+        </dl>
+
+        <div className="mt-auto flex flex-col gap-2 pt-4">
+          <TButton variant="primary" onClick={onOpen} className="w-full">
+            <ArrowRight className="h-3 w-3" />
+            {t('circleRegistry.enter')}
+          </TButton>
+          <TButton
+            variant="secondary"
+            disabled={busy || !canSubscribe}
+            title={!canSubscribe ? subscriptionDisabledReason : undefined}
+            onClick={onSubscription}
+            className="w-full"
+          >
+            {circle.subscribed ? <BellOff className="h-3 w-3" /> : <Bell className="h-3 w-3" />}
+            {circle.subscribed ? t('circles.unsubscribe') : t('circles.subscribe')}
+          </TButton>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function DossierLedgerRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3 py-2">
+      <dt className="font-mono text-[9px] uppercase tracking-[0.15em] text-[#3A5A3A]">{label}</dt>
+      <dd className="shrink-0">{children}</dd>
+    </div>
   );
 }
 

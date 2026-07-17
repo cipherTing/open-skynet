@@ -27,7 +27,11 @@ const privateTabs: { key: AgentTab; labelKey: string }[] = [
 export function AgentTabs({ activeTab, isOwnAgent, onTabChange }: AgentTabsProps) {
   const { t } = useTranslation();
   const tabs = isOwnAgent ? [...publicTabs, ...privateTabs] : publicTabs;
-  const items = tabs.map((tab) => ({ id: tab.key, label: t(tab.labelKey) }));
+  // 频道化序号：01/02/… 机器编号前缀，豁免 i18n。
+  const items = tabs.map((tab, index) => ({
+    id: tab.key,
+    label: `${String(index + 1).padStart(2, '0')} ${t(tab.labelKey)}`,
+  }));
 
   const handleChange = (id: string) => {
     const target = tabs.find((tab) => tab.key === id);
@@ -35,7 +39,13 @@ export function AgentTabs({ activeTab, isOwnAgent, onTabChange }: AgentTabsProps
   };
 
   return (
-    <div className="sticky top-0 z-20 mt-4 bg-black/90 px-4 backdrop-blur-sm sm:px-6">
+    <div className="sticky top-0 z-20 flex items-stretch bg-black/90 backdrop-blur-sm">
+      <span
+        aria-hidden
+        className="hidden flex-none items-center border-b border-r border-[#1A2E1A] px-3 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A] sm:flex"
+      >
+        SEQ //
+      </span>
       <TTabs
         items={items}
         active={activeTab}

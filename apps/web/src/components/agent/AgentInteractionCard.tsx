@@ -1,9 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { CircleSlash, ExternalLink, FileText, MessageCircle } from 'lucide-react';
+import { CircleSlash, FileText, MessageCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { AgentAvatar } from '@/components/ui/AgentAvatar';
 import { FEEDBACK_ITEMS } from '@/components/forum/FeedbackBar';
 import { TTag, Timecode } from '@/components/ui/terminal';
 import type { AgentInteractionHistoryItem } from '@skynet/shared';
@@ -32,6 +31,7 @@ function HoverRail() {
   );
 }
 
+/** 交互记录 = 一行追加日志：`>` 前缀 + 时间码 + 信号标签 + 目标。 */
 export function AgentInteractionCard({
   item,
   compact = false,
@@ -52,68 +52,67 @@ export function AgentInteractionCard({
   const content = (
     <div
       className={[
-        'group relative flex gap-3 border border-[#1A2E1A] bg-[#040704] transition-colors duration-100 [transition-timing-function:steps(2,end)]',
-        available ? 'hover:border-[#3A5A3A]' : 'opacity-75',
-        compact ? 'px-3 py-2.5' : 'px-4 py-3.5',
+        'group relative border-b border-[#1A2E1A] transition-colors duration-100 [transition-timing-function:steps(2,end)]',
+        available ? 'hover:bg-[#040704]' : 'opacity-60',
+        compact ? 'px-3 py-2.5' : 'px-4 py-3',
       ].join(' ')}
     >
       {available && <HoverRail />}
 
-      <div className="flex-shrink-0 pt-0.5">
-        <AgentAvatar
-          agentId={item.targetAuthor.avatarSeed || item.targetAuthor.id}
-          agentName={item.targetAuthor.name}
-          size={compact ? 24 : 30}
+      {/* 日志头：`>` 前缀 + 时间码 + 信号 + 目标类型 */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10px] uppercase tracking-[0.15em]">
+        <span aria-hidden className="text-[#ADFF2F]">
+          {'>'}
+        </span>
+        <Timecode
+          date={item.createdAt}
+          withDate
+          className="transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F]"
         />
-      </div>
-
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <TTag color="accent">
-            <span aria-hidden="true" className="mr-1">{feedback.emoji}</span>
-            {feedbackLabel}
+        <TTag color="accent">
+          <span aria-hidden="true" className="mr-1">{feedback.emoji}</span>
+          {feedbackLabel}
+        </TTag>
+        <span className="inline-flex items-center gap-1 text-[#3A5A3A]">
+          <Icon className="h-3 w-3" />
+          {isReply ? t('feedback.replyFeedback') : t('feedback.postFeedback')}
+        </span>
+        {!available && (
+          <TTag color="amber">
+            <CircleSlash className="mr-1 h-3 w-3" />
+            {t('feedback.targetOffline')}
           </TTag>
-          <span className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
-            <Icon className="h-3 w-3" />
-            {isReply ? t('feedback.replyFeedback') : t('feedback.postFeedback')}
-          </span>
-          <Timecode date={item.createdAt} withDate />
-          {!available && (
-            <TTag color="amber">
-              <CircleSlash className="mr-1 h-3 w-3" />
-              {t('feedback.targetOffline')}
-            </TTag>
-          )}
-        </div>
-
-        <p
-          className={[
-            'mt-2 text-[#EDF3ED] transition-colors duration-100 [transition-timing-function:steps(2,end)]',
-            available ? 'group-hover:text-white' : '',
-            compact ? 'text-xs' : 'text-sm',
-          ].join(' ')}
-        >
-          {t('feedback.marked', {
-            name: item.targetAuthor.name,
-            target: isReply ? t('forum.replyTarget') : t('forum.postTarget'),
-          })}{' '}
-          <span className="font-bold text-[#ADFF2F]">
-            {feedback.emoji} {feedbackLabel}
-          </span>
-        </p>
-
-        <div className="mt-1.5 min-w-0">
-          <div className="flex items-center gap-1.5 text-[12px] text-[#EDF3ED]/70">
-            <span className="truncate">「{item.post.title}」</span>
-            {available && <ExternalLink className="h-3 w-3 flex-shrink-0 opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-70" />}
-          </div>
-          {item.reply && (
-            <p className="mt-1 border-l border-[#3A5A3A] bg-[#122012]/40 px-2 py-1.5 text-[12px] leading-relaxed text-[#EDF3ED]/60 line-clamp-2">
-              {item.reply.excerpt}
-            </p>
-          )}
-        </div>
+        )}
       </div>
+
+      {/* 日志正文 */}
+      <p
+        className={[
+          'mt-1.5 text-[#EDF3ED] transition-colors duration-100 [transition-timing-function:steps(2,end)]',
+          available ? 'group-hover:text-white' : '',
+          compact ? 'text-xs' : 'text-sm',
+        ].join(' ')}
+      >
+        {t('feedback.marked', {
+          name: item.targetAuthor.name,
+          target: isReply ? t('forum.replyTarget') : t('forum.postTarget'),
+        })}{' '}
+        <span className="font-bold text-[#ADFF2F]">
+          {feedback.emoji} {feedbackLabel}
+        </span>
+      </p>
+
+      {/* 目标引用 */}
+      <div className="mt-1 min-w-0 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+        <span className="truncate normal-case tracking-normal">
+          「{item.post.title}」
+        </span>
+      </div>
+      {item.reply && (
+        <p className="mt-1 border-l border-[#3A5A3A] pl-2 text-xs leading-relaxed text-[#EDF3ED]/60 line-clamp-2">
+          {item.reply.excerpt}
+        </p>
+      )}
     </div>
   );
 

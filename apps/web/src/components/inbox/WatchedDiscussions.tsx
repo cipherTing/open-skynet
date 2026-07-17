@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, BellOff, MessageSquare, Radio } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import LogStream from '@/components/home/terminal/LogStream';
 import { AgentAvatar } from '@/components/ui/AgentAvatar';
@@ -16,6 +17,10 @@ import type { WatchedPostItem } from '@skynet/shared';
 
 interface WatchedDiscussionsProps {
   onBack: () => void;
+}
+
+function joinClasses(...classes: Array<string | false | null | undefined>): string {
+  return classes.filter(Boolean).join(' ');
 }
 
 export function WatchedDiscussions({ onBack }: WatchedDiscussionsProps) {
@@ -114,6 +119,19 @@ export function WatchedDiscussions({ onBack }: WatchedDiscussionsProps) {
   );
 }
 
+/** 与收件箱一致的 steps(4) 挂载跳入（reduced-motion 瞬时呈现）。 */
+function useStepsEntry() {
+  const [entered, setEntered] = useState(false);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setEntered(true));
+    return () => cancelAnimationFrame(frame);
+  }, []);
+  return joinClasses(
+    'motion-safe:transition-[transform,opacity] motion-safe:duration-200 motion-safe:[transition-timing-function:steps(4,end)]',
+    !entered && 'motion-safe:-translate-x-1 motion-safe:opacity-0',
+  );
+}
+
 function WatchedRow({
   item,
   busy,
@@ -124,6 +142,7 @@ function WatchedRow({
   onUnwatch: () => void;
 }) {
   const { t } = useTranslation();
+  const entryClass = useStepsEntry();
   const hoverRail = (
     <span
       aria-hidden
@@ -132,7 +151,6 @@ function WatchedRow({
   );
   const frameRail = item.source.available ? (
     <span className="flex w-[92px] shrink-0 flex-col items-start gap-1 pt-0.5">
-      <span aria-hidden className="h-1.5 w-1.5 border border-[#3A5A3A] bg-transparent" />
       <Timecode
         date={item.source.post.updatedAt}
         withDate
@@ -142,7 +160,6 @@ function WatchedRow({
     </span>
   ) : (
     <span className="flex w-[92px] shrink-0 flex-col items-start gap-1 pt-0.5">
-      <span aria-hidden className="h-1.5 w-1.5 border border-[#3A5A3A] bg-transparent" />
       <span className="font-mono text-[9px] uppercase tracking-[0.15em] text-[#3A5A3A]">VOID</span>
     </span>
   );
@@ -160,7 +177,7 @@ function WatchedRow({
           size={34}
         />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-semibold text-white/90">
+          <span className="block truncate text-sm font-semibold text-white/85 transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-white">
             {item.source.post.title}
           </span>
           <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[11px] text-[#3A5A3A]">
@@ -181,10 +198,10 @@ function WatchedRow({
         <Radio className="h-4 w-4" />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-sm font-semibold text-white/60">
+        <span className="block text-sm font-semibold text-white/50">
           {t('inbox.sourceUnavailable')}
         </span>
-        <span className="mt-1 block text-xs text-[#EDF3ED]/55">
+        <span className="mt-1 block text-xs text-[#EDF3ED]/40">
           {t('inbox.watchUnavailableHint')}
         </span>
       </span>
@@ -192,7 +209,7 @@ function WatchedRow({
   );
 
   return (
-    <div className="group relative flex items-start gap-2 pr-2">
+    <div className={joinClasses('group relative flex items-start gap-2 pr-2', entryClass)}>
       {hoverRail}
       {body}
       <button

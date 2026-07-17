@@ -8,7 +8,7 @@ import type { GovernanceResultFeedItem, GovernanceResultsBatch } from '@skynet/s
 import { useAuth } from '@/contexts/AuthContext';
 import { TEmpty } from '@/components/ui/terminal/TEmpty';
 import { TSkeleton } from '@/components/ui/terminal/TSkeleton';
-import { isGovernanceAuthError } from './governance-format';
+import { Timecode } from '@/components/ui/terminal/Timecode';
 import { GovernanceResultCard } from './GovernanceResultCard';
 
 const GovernanceResultDetailModal = dynamic(
@@ -21,6 +21,10 @@ interface GovernanceResultGridProps {
   onDetailOpenChange: (open: boolean) => void;
 }
 
+/**
+ * 仲裁终端结果列表：档案卷宗式行记录（t-corner 框 + 1px 暗绿分隔），
+ * 顶部一档卷头（频道代号 + 标题 + 记录数 / 采样时间码）。信息架构保持不变。
+ */
 export function GovernanceResultGrid({ query, onDetailOpenChange }: GovernanceResultGridProps) {
   const { t } = useTranslation();
   const { isAuthenticated, isLoading: isAuthLoading, isUnavailable: isAuthUnavailable } = useAuth();
@@ -30,7 +34,6 @@ export function GovernanceResultGrid({ query, onDetailOpenChange }: GovernanceRe
   const data = query.data;
   const items = data?.items ?? [];
   const requiresLogin = !isAuthLoading && !isAuthUnavailable && !isAuthenticated;
-  const hasAuthError = isGovernanceAuthError(query.error);
 
   const openDetails = useCallback((result: GovernanceResultFeedItem, trigger: HTMLElement) => {
     returnFocusRef.current = trigger;
@@ -49,35 +52,56 @@ export function GovernanceResultGrid({ query, onDetailOpenChange }: GovernanceRe
     <div className="feed-overlay-shell">
       <div className="feed-overlay-scroll skynet-auto-hide-scrollbar">
         {isAuthUnavailable ? (
-          <div className="border border-danger/30 bg-surface-1 p-6 text-sm text-danger">
+          <div className="border border-[#7F1D1D] bg-[#040704] p-6 font-mono text-xs tracking-[0.1em] text-[#EF4444]/80">
             {t('governance.syncFailed')}
           </div>
         ) : requiresLogin ? (
-          <div className="border border-border bg-surface-1 p-8 text-center text-sm text-text-secondary">
-            <p className="text-base font-semibold text-text-primary">{t('governance.loginRequiredTitle')}</p>
-            <p className="mt-2">{t('governance.loginRequiredDescription')}</p>
+          <div className="t-corner border border-[#1A2E1A] bg-[#040704] p-8 text-center">
+            <p className="text-base font-semibold text-white">{t('governance.loginRequiredTitle')}</p>
+            <p className="mt-2 font-mono text-[11px] leading-5 tracking-[0.08em] text-[#3A5A3A]">
+              {t('governance.loginRequiredDescription')}
+            </p>
           </div>
         ) : isAuthLoading || query.isLoading ? (
-          <div className="border border-border-subtle bg-surface-1 p-6">
+          <div className="border border-[#1A2E1A] bg-[#040704] p-6">
             <TSkeleton rows={6} />
             <p className="mt-4 text-center font-mono text-[11px] uppercase tracking-[0.15em] text-[#3A5A3A]">
               {t('governance.loadingResults')}
             </p>
           </div>
         ) : query.isError && items.length === 0 ? (
-          <div className="border border-danger/30 bg-surface-1 p-6 text-sm text-danger">
+          <div className="border border-[#7F1D1D] bg-[#040704] p-6 font-mono text-xs tracking-[0.1em] text-[#EF4444]/80">
             {t('governance.syncFailed')}
           </div>
         ) : items.length === 0 && !query.isLoading ? (
           <TEmpty message={t('governance.emptyResults')} />
         ) : (
-          <div
-            key={data?.sampledAt ?? 'governance-batch'}
-            className="governance-result-masonry pb-3"
-          >
-            {items.map((result) => (
-              <GovernanceResultCard key={result.id} result={result} onOpen={openDetails} />
-            ))}
+          <div key={data?.sampledAt ?? 'governance-batch'} className="pb-3">
+            <div className="mb-2 flex items-center gap-2 px-1 pt-2">
+              <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.15em] text-[#ADFF2F]">
+                {t('sections.gov.code')}
+              </span>
+              <span className="shrink-0 font-mono text-[10px] tracking-[0.15em] text-[#3A5A3A]">
+                {'//'}
+              </span>
+              <span className="shrink-0 text-xs font-bold text-white">
+                {t('governance.plazaTitle')}
+              </span>
+              <span aria-hidden className="h-px min-w-6 flex-1 bg-[#1A2E1A]" />
+              {data ? (
+                <span className="flex shrink-0 items-center gap-2 font-mono text-[10px] tabular-nums tracking-[0.15em] text-[#3A5A3A]">
+                  <span>REC ×{items.length}</span>
+                  <Timecode date={data.sampledAt} withDate />
+                </span>
+              ) : null}
+            </div>
+            <div className="t-corner border border-[#1A2E1A]">
+              <div className="divide-y divide-[#122012]">
+                {items.map((result) => (
+                  <GovernanceResultCard key={result.id} result={result} onOpen={openDetails} />
+                ))}
+              </div>
+            </div>
           </div>
         )}
       </div>

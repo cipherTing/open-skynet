@@ -47,6 +47,7 @@ import {
   AdminError,
   AdminLoading,
   AdminPagination,
+  AdminSectionTitle,
   AdminTable,
   StatusText,
   formatAdminTime,
@@ -149,9 +150,7 @@ export function AnnouncementsSection() {
   return (
     <section>
       <div className="mb-5 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-        <h2 className="font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[#EDF3ED]">
-          {t('admin.announcements.title')}
-        </h2>
+        <AdminSectionTitle>{t('admin.announcements.title')}</AdminSectionTitle>
         <div className="flex flex-wrap items-center gap-2">
           <TInput
             value={search}
@@ -361,6 +360,7 @@ function AnnouncementEditor({
       title={item ? t('admin.announcements.editTitle') : t('admin.announcements.createTitle')}
       code="ADMIN.ANNOUNCE"
       size="xl"
+      contentClassName="t-corner"
     >
       <form
         onSubmit={(event) => {
@@ -526,8 +526,10 @@ function AnnouncementActionDialog({
       open={open}
       onOpenChange={onOpenChange}
       title={title}
+      code="ADMIN.ANNOUNCE"
       size="sm"
       variant="alert"
+      contentClassName="t-corner"
       footer={
         <>
           <button
@@ -590,9 +592,9 @@ function PublicAccessEditor({ config }: { config: AdminPublicAccessConfig }) {
 
   return (
     <section className="max-w-4xl">
-      <h2 className="text-sm font-bold text-[#EDF3ED]">{t('admin.publicAccess.title')}</h2>
+      <AdminSectionTitle>{t('admin.publicAccess.title')}</AdminSectionTitle>
       <p className="mt-1 text-xs leading-5 text-[#3A5A3A]">{t('admin.publicAccess.description')}</p>
-      <div className="mt-5 space-y-5 rounded-none border border-[#1A2E1A] bg-black/25 p-5">
+      <div className="t-corner mt-5 space-y-5 rounded-none border border-[#1A2E1A] bg-black/25 p-5">
         <AdminField label={t('admin.publicAccess.siteOrigin')}>
           <TInput
             value={siteOrigin}
@@ -684,7 +686,7 @@ export function FeatureFlagsSection() {
   return (
     <section>
       <div className="mb-5">
-        <h2 className="text-sm font-bold text-[#EDF3ED]">{t('admin.featureFlags.title')}</h2>
+        <AdminSectionTitle>{t('admin.featureFlags.title')}</AdminSectionTitle>
         <p className="mt-1 text-xs text-[#3A5A3A]">{t('admin.featureFlags.description')}</p>
       </div>
       {query.isPending ? (
@@ -696,7 +698,7 @@ export function FeatureFlagsSection() {
           {query.data.map((flag) => (
             <div
               key={flag.key}
-              className="grid gap-3 px-2 py-4 md:grid-cols-[minmax(0,1fr)_minmax(220px,0.55fr)_auto] md:items-center"
+              className="grid gap-3 px-2 py-4 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#040704] hover:shadow-[inset_2px_0_0_0_#ADFF2F] md:grid-cols-[minmax(0,1fr)_minmax(220px,0.55fr)_auto] md:items-center"
             >
               <div>
                 <div className="text-sm font-medium text-[#EDF3ED]">
@@ -770,9 +772,7 @@ export function SecurityEventsSection() {
         <div>
           <div className="flex items-center gap-2">
             <ShieldAlert className="h-4 w-4 text-[#A16207]" />
-            <h2 className="font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[#EDF3ED]">
-              {t('admin.security.title')}
-            </h2>
+            <AdminSectionTitle>{t('admin.security.title')}</AdminSectionTitle>
           </div>
           <p className="mt-1 text-xs text-[#3A5A3A]">{t('admin.security.description')}</p>
         </div>
@@ -947,9 +947,7 @@ export function AuthPolicySection() {
       <div>
         <div className="flex items-center gap-2">
           <KeyRound className="h-4 w-4 text-[#ADFF2F]" />
-          <h2 className="font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[#EDF3ED]">
-            {t('admin.authPolicy.title')}
-          </h2>
+          <AdminSectionTitle>{t('admin.authPolicy.title')}</AdminSectionTitle>
         </div>
         <p className="mt-1 text-xs text-[#3A5A3A]">{t('admin.authPolicy.description')}</p>
       </div>
@@ -1150,9 +1148,7 @@ export function InvitationCodesSection() {
     <section>
       <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[#EDF3ED]">
-            {t('admin.invitations.title')}
-          </h2>
+          <AdminSectionTitle>{t('admin.invitations.title')}</AdminSectionTitle>
           <p className="mt-1 text-xs text-[#3A5A3A]">{t('admin.invitations.description')}</p>
         </div>
         <div className="flex gap-2">

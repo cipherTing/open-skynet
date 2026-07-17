@@ -5,6 +5,8 @@ import { useQuery } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
 import { useTranslation } from 'react-i18next';
 import { isGovernanceAuthError } from '@/components/governance/governance-format';
+import { DeckBootSequence, DECK_BOOT_STORAGE_KEY } from '@/components/deck/DeckBootSequence';
+import { DeckNoiseTransition } from '@/components/deck/DeckNoiseTransition';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { type TopBarGovernanceControls } from '@/components/layout/TopBar';
 import { TopBar } from '@/components/layout/TopBar';
@@ -39,6 +41,14 @@ const GOVERNANCE_BATCH_SIZE = 10;
 const GOVERNANCE_AUTO_REFRESH_MS = 60_000;
 const COUNTDOWN_TICK_MS = 1_000;
 const MANUAL_REFRESH_COOLDOWN_MS = 1_000;
+
+/** 框架元数据条右侧的频道代号读数（机器文案，豁免 i18n） */
+const DECK_FRAME_CODES: Record<HomeSection, string> = {
+  feed: 'CH.01',
+  circles: 'CH.02',
+  governance: 'CH.03',
+  inbox: 'CH.04',
+};
 
 function usePrefersReducedMotion(): boolean {
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(
@@ -81,6 +91,48 @@ export function HomeShell() {
   const pauseRemainingMsRef = useRef<number | null>(null);
   const lastManualRefreshAtRef = useRef(0);
 
+  // 甲板框架：像素洗牌转场（renderedSection 滞后于 activeSection，在噪声全覆盖瞬间硬切）
+  const [renderedSection, setRenderedSection] = useState<HomeSection>(storedActiveSection);
+  const [noiseRun, setNoiseRun] = useState(0);
+  const pendingSectionRef = useRef<HomeSection | null>(null);
+  // 甲板框架：开机引导（pending = SSR/首帧，避免 hydration 不一致）
+  const [bootState, setBootState] = useState<'pending' | 'booting' | 'done'>('pending');
+
+  useEffect(() => {
+    // 延迟一个宏任务读取会话标记：避免 hydration 不一致与级联渲染
+    const timer = window.setTimeout(() => {
+      setBootState(
+        window.sessionStorage.getItem(DECK_BOOT_STORAGE_KEY) === '1' ? 'done' : 'booting',
+      );
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    // 兜底：store 被外部直接改写（非频道条回调路径）时同步内容区
+    if (activeSection === renderedSection) return;
+    if (pendingSectionRef.current === activeSection) return;
+    const timer = window.setTimeout(() => {
+      if (reducedMotionEnabled) {
+        setRenderedSection(activeSection);
+        return;
+      }
+      pendingSectionRef.current = activeSection;
+      setNoiseRun((run) => run + 1);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [activeSection, renderedSection, reducedMotionEnabled]);
+
+  const handleNoiseCover = useCallback(() => {
+    const pending = pendingSectionRef.current;
+    if (pending) setRenderedSection(pending);
+  }, []);
+
+  const handleBootComplete = useCallback(() => {
+    window.sessionStorage.setItem(DECK_BOOT_STORAGE_KEY, '1');
+    setBootState('done');
+  }, []);
+
   const handleSectionChange = useCallback(
     (section: HomeSection) => {
       if (section !== 'governance') {
@@ -91,9 +143,18 @@ export function HomeShell() {
         setNowMs(current);
         setNextRefreshAt(current + GOVERNANCE_AUTO_REFRESH_MS);
       }
+      // 像素洗牌转场：事件内直接触发（reduced-motion 瞬时切换）
+      if (section !== activeSection) {
+        if (reducedMotionEnabled) {
+          setRenderedSection(section);
+        } else {
+          pendingSectionRef.current = section;
+          setNoiseRun((run) => run + 1);
+        }
+      }
       setActiveSection(section);
     },
-    [setActiveSection],
+    [activeSection, reducedMotionEnabled, setActiveSection],
   );
 
   const governanceResultsQuery = useQuery({
@@ -261,22 +322,38 @@ export function HomeShell() {
           mode={topBarMode}
           governanceControls={governanceControls}
           onOpenNav={() => setIsNavOpen(true)}
+          activeSection={activeSection}
+          onSectionChange={handleSectionChange}
         />
-        <div className="min-h-0 flex-1 px-4 pt-0 sm:px-6">
-          {activeSection === 'governance' ? (
-            <div className="h-full pb-1">
-              <GovernanceResultGrid
-                query={governanceResultsQuery}
-                onDetailOpenChange={setIsGovernanceDetailOpen}
-              />
-            </div>
-          ) : activeSection === 'inbox' ? (
-            <SignalInbox />
-          ) : activeSection === 'circles' ? (
-            <CircleGrid />
-          ) : (
-            <ForumFeed />
-          )}
+        <div className="t-corner relative min-h-0 flex-1 bg-black">
+          <div aria-hidden="true" className="t-ambient-scan pointer-events-none absolute inset-0" />
+          <div className="relative h-full min-h-0 px-4 pb-6 pt-0 sm:px-6">
+            {bootState !== 'pending' ? (
+              renderedSection === 'governance' ? (
+                <div className="h-full pb-1">
+                  <GovernanceResultGrid
+                    query={governanceResultsQuery}
+                    onDetailOpenChange={setIsGovernanceDetailOpen}
+                  />
+                </div>
+              ) : renderedSection === 'inbox' ? (
+                <SignalInbox />
+              ) : renderedSection === 'circles' ? (
+                <CircleGrid />
+              ) : (
+                <ForumFeed />
+              )
+            ) : null}
+          </div>
+          {bootState === 'booting' ? <DeckBootSequence onComplete={handleBootComplete} /> : null}
+          <DeckNoiseTransition run={noiseRun} onCover={handleNoiseCover} />
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex items-center justify-between px-3 pb-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]"
+          >
+            <span>{'NODE:ONLINE // LINK:STABLE'}</span>
+            <span>{`${DECK_FRAME_CODES[activeSection]} // GRID:OK`}</span>
+          </div>
         </div>
       </main>
 

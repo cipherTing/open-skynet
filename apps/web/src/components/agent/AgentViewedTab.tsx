@@ -5,13 +5,9 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import { useInView } from 'react-intersection-observer';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Eye } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { AgentAvatar } from '@/components/ui/AgentAvatar';
-import { AgentLevelBadge } from '@/components/ui/AgentLevelBadge';
-import { CircleBadge } from '@/components/circle/CircleBadge';
 import { EmptyState, ErrorState, InlineLoading } from '@/components/ui/LoadingState';
-import { formatTimecode } from '@/components/ui/terminal';
+import { Timecode } from '@/components/ui/terminal';
 import { useAuth } from '@/contexts/AuthContext';
 import { forumApi } from '@/lib/api';
 import { forumKeys } from '@/lib/query-keys';
@@ -73,75 +69,53 @@ export function AgentViewedTab({ agentId }: AgentViewedTabProps) {
   }
 
   return (
-    <div className="space-y-3">
-      {histories.map((item) => {
-        const post = item.post;
-        if (!post) return null;
-        return (
-          <article
-            key={post.id + item.viewedAt}
-            className="group relative cursor-pointer border border-[#1A2E1A] bg-[#040704] p-4 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[#3A5A3A]"
-            onClick={(event) => handleCardClick(event, post.id)}
-          >
-            <span
-              aria-hidden
-              className="absolute bottom-0 left-0 top-0 w-[2px] bg-[#ADFF2F] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
-            />
-
-            {/* 帖子作者 + 标题 */}
-            <div className="mb-3 flex items-center gap-3">
-              <AgentAvatar
-                agentId={post.author?.avatarSeed || post.author?.id || ''}
-                agentName={post.author?.name}
-                size={28}
+    <div>
+      {/* 足迹档案行：浏览时间码 + 标题 + 等宽数据簇 */}
+      <div className="border-t border-[#1A2E1A]">
+        {histories.map((item) => {
+          const post = item.post;
+          if (!post) return null;
+          return (
+            <article
+              key={post.id + item.viewedAt}
+              className="group relative cursor-pointer border-b border-[#1A2E1A] px-3 py-3 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#040704] sm:px-4"
+              onClick={(event) => handleCardClick(event, post.id)}
+            >
+              <span
+                aria-hidden
+                className="absolute bottom-0 left-0 top-0 w-[2px] bg-[#ADFF2F] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
               />
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-bold text-[#ADFF2F]">{post.author?.name}</span>
-                  <AgentLevelBadge level={post.author?.level} compact />
-                  <CircleBadge
-                    circle={post.circle}
-                    compact
-                    href={`/circles/${encodeURIComponent(post.circle.slug)}`}
-                  />
-                  <Link
-                    href={`/post/${post.id}`}
-                    className="truncate text-xs text-[#EDF3ED]/60 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
-                    onClick={(event) => event.stopPropagation()}
-                  >
-                    {post.title}
-                  </Link>
+
+              <div className="flex items-baseline gap-3 sm:gap-4">
+                <Timecode
+                  date={item.viewedAt}
+                  withDate
+                  className="w-[92px] flex-none transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F]"
+                />
+
+                <div className="min-w-0 flex-1">
+                  <h3 className="truncate text-sm font-bold text-[#EDF3ED] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-white">
+                    <Link href={`/post/${post.id}`} onClick={(event) => event.stopPropagation()}>
+                      {post.title}
+                    </Link>
+                  </h3>
+                  <div className="mt-1 truncate font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                    <span className="text-[#ADFF2F]/80">{post.author?.name}</span>
+                    <span aria-hidden className="mx-1.5 text-[#1A2E1A]">{'//'}</span>/
+                    {post.circle.name}
+                  </div>
                 </div>
-              </div>
-            </div>
 
-            {/* 预览 */}
-            <p className="mb-3 text-sm text-[#EDF3ED]/70 line-clamp-2">
-              {post.content.length > 120
-                ? post.content
-                    .slice(0, 120)
-                    .replace(/[#`*\n]/g, ' ')
-                    .trim() + '...'
-                : post.content.replace(/[#`*\n]/g, ' ').trim()}
-            </p>
-
-            {/* 底部信息 */}
-            <div className="flex items-center justify-between text-xs text-[#3A5A3A]">
-              <div className="flex items-center gap-3">
-                <span className="flex items-center gap-1">
-                  <Eye className="h-3.5 w-3.5" />
-                  <span className="font-mono tabular-nums">
-                    {formatNumber(post.viewCount || 0)}
+                <span className="flex flex-none items-baseline gap-3 font-mono text-[10px] tracking-[0.15em] text-[#3A5A3A] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F]">
+                  <span>
+                    VWS <span className="tabular-nums text-[#EDF3ED] group-hover:text-[#ADFF2F]">{formatNumber(post.viewCount || 0)}</span>
                   </span>
                 </span>
-                <span className="font-mono text-[10px] uppercase tracking-[0.15em]">
-                  {t('agent.viewedAt', { time: formatTimecode(item.viewedAt, true) ?? '' })}
-                </span>
               </div>
-            </div>
-          </article>
-        );
-      })}
+            </article>
+          );
+        })}
+      </div>
 
       {loading && <InlineLoading />}
 

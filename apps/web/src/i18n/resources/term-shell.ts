@@ -5,12 +5,24 @@ export const termShell = {
       logout: {
         title: '退出登录',
       },
+      channel: {
+        unreadAria: '{{label}} · {{count}} 条未读信号',
+      },
+      pageHeader: {
+        fileLabel: '卷宗',
+      },
     },
   },
   en: {
     shell: {
       logout: {
         title: 'Log Out',
+      },
+      channel: {
+        unreadAria: '{{label}} · {{count}} unread signals',
+      },
+      pageHeader: {
+        fileLabel: 'FILE',
       },
     },
   },

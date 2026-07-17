@@ -1,7 +1,6 @@
 'use client';
 
 import { Children, type ReactNode } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { TButton, TEmpty, TSkeleton, TTag } from '@/components/ui/terminal';
 
@@ -10,6 +9,18 @@ export interface AdminPageMeta {
   page: number;
   pageSize: number;
   totalPages: number;
+}
+
+/** 分区标题：// 章节标记 + 等宽微型大写，控制台内统一使用。 */
+export function AdminSectionTitle({ children }: { children: ReactNode }) {
+  return (
+    <h2 className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[#EDF3ED]">
+      <span aria-hidden className="text-[#ADFF2F]">
+        {'//'}
+      </span>
+      {children}
+    </h2>
+  );
 }
 
 export function AdminTable({
@@ -25,7 +36,7 @@ export function AdminTable({
   const hasRows = Children.count(children) > 0;
   return (
     <div className="overflow-x-auto border-y border-[#1A2E1A]">
-      <table className="w-full min-w-[760px] border-collapse text-left">
+      <table className="w-full min-w-[760px] border-collapse text-left [font-variant-numeric:tabular-nums]">
         <thead>
           <tr className="border-b border-[#1A2E1A] bg-[#040704]">
             {headers.map((header, index) => (
@@ -33,6 +44,9 @@ export function AdminTable({
                 key={`${header}-${index}`}
                 className={`px-3 py-2 font-mono text-[10px] font-semibold uppercase tracking-[0.15em] text-[#3A5A3A] ${centeredColumns.includes(index) ? 'text-center' : ''}`}
               >
+                <span aria-hidden className="mr-1.5 font-normal text-[#1A2E1A]">
+                  {String(index + 1).padStart(2, '0')}
+                </span>
                 {header}
               </th>
             ))}
@@ -40,6 +54,7 @@ export function AdminTable({
         </thead>
         <tbody
           className={[
+            '[&>tr]:h-11',
             '[&>tr]:transition-colors [&>tr]:duration-100 [&>tr]:[transition-timing-function:steps(2,end)]',
             '[&>tr:hover]:bg-[#040704]',
             '[&>tr:hover>td:first-child]:shadow-[inset_2px_0_0_0_#ADFF2F]',
@@ -74,27 +89,27 @@ export function AdminPagination({
       <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
         {t('admin.total', { count: meta.total })}
       </span>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5">
         <button
           type="button"
           aria-label={t('admin.pagination.previous')}
           disabled={meta.page <= 1}
           onClick={() => onPageChange(meta.page - 1)}
-          className="flex h-7 w-7 items-center justify-center rounded-none border border-[#1A2E1A] text-[#3A5A3A] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[#ADFF2F] hover:text-[#ADFF2F] disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-7 items-center border border-[#1A2E1A] px-2 font-mono text-[10px] tracking-[0.15em] text-[#3A5A3A] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[#ADFF2F] hover:text-[#ADFF2F] disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <ChevronLeft className="h-3.5 w-3.5" />
+          [&lt;]
         </button>
         <span className="min-w-20 text-center font-mono text-[10px] tracking-[0.15em] text-white/60">
-          {t('admin.pagination.page', { page: meta.page, totalPages })}
+          {String(meta.page).padStart(2, '0')} / {String(totalPages).padStart(2, '0')}
         </span>
         <button
           type="button"
           aria-label={t('admin.pagination.next')}
           disabled={meta.page >= totalPages}
           onClick={() => onPageChange(meta.page + 1)}
-          className="flex h-7 w-7 items-center justify-center rounded-none border border-[#1A2E1A] text-[#3A5A3A] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[#ADFF2F] hover:text-[#ADFF2F] disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-7 items-center border border-[#1A2E1A] px-2 font-mono text-[10px] tracking-[0.15em] text-[#3A5A3A] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[#ADFF2F] hover:text-[#ADFF2F] disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <ChevronRight className="h-3.5 w-3.5" />
+          [&gt;]
         </button>
       </div>
     </div>
@@ -132,7 +147,7 @@ export function AdminLoading() {
 export function AdminError({ retry }: { retry: () => void }) {
   const { t } = useTranslation();
   return (
-    <div className="flex min-h-56 flex-col items-center justify-center gap-4 border border-dashed border-[#7F1D1D] px-6 py-10">
+    <div className="t-corner flex min-h-56 flex-col items-center justify-center gap-4 border border-dashed border-[#7F1D1D] px-6 py-10">
       <span className="font-mono text-[11px] uppercase tracking-[0.15em] text-[#EF4444]/80">
         {t('admin.action.failed')}
       </span>

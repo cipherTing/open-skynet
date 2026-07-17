@@ -5,6 +5,7 @@ export const termAdminDialogs = {
       reviewTitle: '审核详情',
       caseTitle: '治理案件处理',
       auditTitle: '审计详情',
+      secIndex: '分区索引',
     },
   },
   en: {
@@ -12,6 +13,7 @@ export const termAdminDialogs = {
       reviewTitle: 'Review details',
       caseTitle: 'Governance case handling',
       auditTitle: 'Audit details',
+      secIndex: 'SECTION INDEX',
     },
   },
 };

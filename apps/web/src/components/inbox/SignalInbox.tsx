@@ -11,7 +11,7 @@ import { ScanlineReveal } from '@/components/home/terminal/ScanlineReveal';
 import { AgentAvatar } from '@/components/ui/AgentAvatar';
 import { ErrorState } from '@/components/ui/LoadingState';
 import { useToast } from '@/components/ui/SignalToast';
-import { TButton, TEmpty, TSkeleton, TTabs, Timecode } from '@/components/ui/terminal';
+import { TButton, TEmpty, TSkeleton, Timecode } from '@/components/ui/terminal';
 import { useAuth } from '@/contexts/AuthContext';
 import { inboxApi } from '@/lib/api';
 import { inboxKeys } from '@/lib/query-keys';
@@ -38,14 +38,66 @@ function frameCode(item: AgentInboxItem): string {
   return FRAME_CODES[item.source.kind];
 }
 
+function joinClasses(...classes: Array<string | false | null | undefined>): string {
+  return classes.filter(Boolean).join(' ');
+}
+
+type InboxBand = 'all' | 'unread';
+
+/**
+ * 频段选择器：等宽 10px 小标签一排，激活项反色（荧光绿底黑字）。
+ * 收敛原 tabs 分组/筛选为机器频段语义。
+ */
+function BandSelector({ active, onChange }: { active: InboxBand; onChange: (band: InboxBand) => void }) {
+  const { t } = useTranslation();
+  const bands: Array<{ id: InboxBand; label: string }> = [
+    { id: 'all', label: t('inbox.all') },
+    { id: 'unread', label: t('inbox.unread') },
+  ];
+  return (
+    <div
+      role="group"
+      aria-label={t('sections.inbox.bandLabel')}
+      className="flex items-stretch border border-[#1A2E1A]"
+    >
+      <span
+        aria-hidden
+        className="flex items-center border-r border-[#1A2E1A] px-1.5 font-mono text-[9px] uppercase tracking-[0.15em] text-[#3A5A3A]"
+      >
+        BAND
+      </span>
+      {bands.map((band) => {
+        const isActive = band.id === active;
+        return (
+          <button
+            key={band.id}
+            type="button"
+            aria-pressed={isActive}
+            onClick={() => onChange(band.id)}
+            className={joinClasses(
+              'px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em]',
+              'transition-[color,background-color] duration-100 [transition-timing-function:steps(2,end)]',
+              'focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#ADFF2F]',
+              isActive ? 'bg-[#ADFF2F] font-bold text-black' : 'text-[#3A5A3A] hover:text-white/85',
+            )}
+          >
+            {band.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function SignalInbox() {
   const { t } = useTranslation();
   const { isAuthenticated, isLoading, isUnavailable, agent, retrySession } = useAuth();
-  const [unreadOnly, setUnreadOnly] = useState(false);
+  const [band, setBand] = useState<InboxBand>('all');
   const [showWatching, setShowWatching] = useState(false);
   const queryClient = useQueryClient();
   const toast = useToast();
   const agentId = agent?.id ?? 'none';
+  const unreadOnly = band === 'unread';
   const query = useInfiniteQuery({
     queryKey: inboxKeys.list(agentId, unreadOnly),
     queryFn: ({ pageParam, signal }) =>
@@ -159,14 +211,7 @@ export function SignalInbox() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <TTabs
-            items={[
-              { id: 'all', label: t('inbox.all') },
-              { id: 'unread', label: t('inbox.unread') },
-            ]}
-            active={unreadOnly ? 'unread' : 'all'}
-            onChange={(id) => setUnreadOnly(id === 'unread')}
-          />
+          <BandSelector active={band} onChange={setBand} />
           <TButton
             variant="secondary"
             size="sm"
@@ -204,7 +249,7 @@ export function SignalInbox() {
       </div>
 
       <div className="skynet-auto-hide-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain pr-2">
-        <ScanlineReveal key={unreadOnly ? 'unread' : 'all'}>
+        <ScanlineReveal key={band}>
           {query.isPending ? (
             <InboxSkeleton label={t('inbox.loading')} />
           ) : items.length === 0 ? (
@@ -247,9 +292,26 @@ function InboxSkeleton({ label }: { label: string }) {
   );
 }
 
+/**
+ * 挂载后 rAF 触发一次 steps(4) 跳入（位移 + 透明度硬切，禁滑动）；
+ * motion-safe 前缀保证 prefers-reduced-motion 时瞬时呈现。
+ */
+function useStepsEntry() {
+  const [entered, setEntered] = useState(false);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setEntered(true));
+    return () => cancelAnimationFrame(frame);
+  }, []);
+  return joinClasses(
+    'motion-safe:transition-[transform,opacity] motion-safe:duration-200 motion-safe:[transition-timing-function:steps(4,end)]',
+    !entered && 'motion-safe:-translate-x-1 motion-safe:opacity-0',
+  );
+}
+
 function InboxRow({ item, onRead }: { item: AgentInboxItem; onRead: (id: string) => void }) {
   const { t } = useTranslation();
   const isUnread = item.readAt === null;
+  const entryClass = useStepsEntry();
   const actorName = !item.source.available
     ? t('inbox.sourceUnavailable')
     : item.source.kind === 'REPLY'
@@ -257,13 +319,20 @@ function InboxRow({ item, onRead }: { item: AgentInboxItem; onRead: (id: string)
       : item.source.kind === 'CIRCLE_PROPOSAL'
         ? item.source.proposal.creatorName
         : t('inbox.systemSource');
+
+  /* 未读 = 常驻 2px 荧光绿前缀块；已读 = hover 时才切入 */
+  const rail = isUnread ? (
+    <span aria-hidden className="absolute inset-y-0 left-0 w-[2px] bg-[#ADFF2F]" />
+  ) : (
+    <span
+      aria-hidden
+      className="absolute inset-y-0 left-0 w-[2px] bg-[#ADFF2F] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
+    />
+  );
+
   const content = (
     <div className="flex min-w-0 flex-1 gap-3 px-3 py-3.5 transition-transform duration-100 [transition-timing-function:steps(2,end)] group-hover:translate-x-1">
       <div className="flex w-[92px] shrink-0 flex-col items-start gap-1 pt-0.5">
-        <span
-          aria-hidden
-          className={`h-1.5 w-1.5 ${isUnread ? 't-anim-blink bg-[#ADFF2F]' : 'border border-[#3A5A3A] bg-transparent'}`}
-        />
         <Timecode
           date={item.createdAt}
           withDate
@@ -273,16 +342,23 @@ function InboxRow({ item, onRead }: { item: AgentInboxItem; onRead: (id: string)
               : 'transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F]'
           }
         />
-        <span className="font-mono text-[9px] uppercase tracking-[0.15em] text-[#3A5A3A]">
-          {frameCode(item)}
+        <span
+          className={joinClasses(
+            'font-mono text-[9px] uppercase tracking-[0.15em]',
+            isUnread ? 'text-[#ADFF2F]' : 'text-[#3A5A3A]',
+          )}
+        >
+          {isUnread ? `[NEW] ${frameCode(item)}` : frameCode(item)}
         </span>
       </div>
       {item.source.available && item.source.kind === 'REPLY' ? (
-        <AgentAvatar
-          agentId={item.source.actor.avatarSeed || item.source.actor.id}
-          agentName={item.source.actor.name}
-          size={34}
-        />
+        <span className={isUnread ? '' : 'opacity-50'}>
+          <AgentAvatar
+            agentId={item.source.actor.avatarSeed || item.source.actor.id}
+            agentName={item.source.actor.name}
+            size={34}
+          />
+        </span>
       ) : (
         <span className="flex h-[34px] w-[34px] shrink-0 items-center justify-center border border-[#1A2E1A] text-[#3A5A3A]">
           <Radio className="h-4 w-4" />
@@ -291,57 +367,69 @@ function InboxRow({ item, onRead }: { item: AgentInboxItem; onRead: (id: string)
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span
-            className={`text-xs ${isUnread ? 'font-bold text-white' : 'font-semibold text-white/60'}`}
+            className={`text-xs ${isUnread ? 'font-bold text-white' : 'font-semibold text-white/45'}`}
           >
             {actorName}
           </span>
         </div>
-        <p className="mt-1 font-mono text-[11px] font-semibold text-[#ADFF2F]/70">
+        <p
+          className={`mt-1 font-mono text-[11px] font-semibold ${
+            isUnread ? 'text-[#ADFF2F]/80' : 'text-[#3A5A3A]'
+          }`}
+        >
           {item.reasons.map((reason) => t(reasonKey(reason))).join(' · ')}
         </p>
         {item.source.available && item.source.kind === 'REPLY' ? (
           <>
-            <p className="mt-1.5 truncate text-sm font-semibold text-white/90">
+            <p
+              className={`mt-1.5 truncate text-sm font-semibold ${
+                isUnread ? 'text-white/90' : 'text-white/40'
+              }`}
+            >
               {item.source.post.title}
             </p>
-            <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-[#EDF3ED]/55">
+            <p
+              className={`mt-1 line-clamp-2 text-xs leading-relaxed ${
+                isUnread ? 'text-[#EDF3ED]/55' : 'text-[#EDF3ED]/30'
+              }`}
+            >
               {item.source.reply.excerpt}
             </p>
           </>
         ) : item.source.available && item.source.kind === 'CIRCLE_PROPOSAL' ? (
           <>
-            <p className="mt-1.5 text-sm font-semibold text-white/90">
+            <p className={`mt-1.5 text-sm font-semibold ${isUnread ? 'text-white/90' : 'text-white/40'}`}>
               {t(`circles.coBuild.scopes.${item.source.proposal.scope}`)}
             </p>
-            <p className="mt-1 text-xs text-[#EDF3ED]/55">
+            <p className={`mt-1 text-xs ${isUnread ? 'text-[#EDF3ED]/55' : 'text-[#EDF3ED]/30'}`}>
               {t(`circles.coBuild.statuses.${item.source.proposal.status}`)}
             </p>
           </>
         ) : item.source.available && item.source.kind === 'REVIEW_REQUEST' ? (
           <>
-            <p className="mt-1.5 text-sm font-semibold text-white/90">{item.source.review.title}</p>
-            <p className="mt-1 text-xs text-[#EDF3ED]/55">{t(`inbox.review.${item.source.review.type}.${item.source.review.status}`)}</p>
+            <p className={`mt-1.5 text-sm font-semibold ${isUnread ? 'text-white/90' : 'text-white/40'}`}>{item.source.review.title}</p>
+            <p className={`mt-1 text-xs ${isUnread ? 'text-[#EDF3ED]/55' : 'text-[#EDF3ED]/30'}`}>{t(`inbox.review.${item.source.review.type}.${item.source.review.status}`)}</p>
             {item.source.review.reason ? <p className="mt-1 text-xs leading-relaxed text-[#EF4444]/80">{item.source.review.reason}</p> : null}
           </>
         ) : item.source.available && item.source.kind === 'GOVERNANCE_CASE' ? (
           <>
-            <p className="mt-1.5 text-sm font-semibold text-white/90">{t('inbox.governance.caseTitle')}</p>
-            <p className="mt-1 text-xs text-[#EDF3ED]/55">{t(`admin.governance.statuses.${item.source.governanceCase.status}`)}</p>
+            <p className={`mt-1.5 text-sm font-semibold ${isUnread ? 'text-white/90' : 'text-white/40'}`}>{t('inbox.governance.caseTitle')}</p>
+            <p className={`mt-1 text-xs ${isUnread ? 'text-[#EDF3ED]/55' : 'text-[#EDF3ED]/30'}`}>{t(`admin.governance.statuses.${item.source.governanceCase.status}`)}</p>
             {item.source.governanceCase.reason ? <p className="mt-1 text-xs leading-relaxed text-[#EF4444]/80">{item.source.governanceCase.reason}</p> : null}
           </>
         ) : item.source.available && item.source.kind === 'GOVERNANCE_CORRECTION' ? (
           <>
-            <p className="mt-1.5 text-sm font-semibold text-white/90">{t('inbox.governance.correctionTitle')}</p>
-            <p className="mt-1 text-xs leading-relaxed text-[#ADFF2F]">{item.source.correction.reason}</p>
+            <p className={`mt-1.5 text-sm font-semibold ${isUnread ? 'text-white/90' : 'text-white/40'}`}>{t('inbox.governance.correctionTitle')}</p>
+            <p className={`mt-1 text-xs leading-relaxed ${isUnread ? 'text-[#ADFF2F]' : 'text-[#3A5A3A]'}`}>{item.source.correction.reason}</p>
           </>
         ) : item.source.available && item.source.kind === 'AGENT_GOVERNANCE' ? (
           <>
-            <p className="mt-1.5 text-sm font-semibold text-white/90">{t(`inbox.governance.agent.${item.source.governance.source}`)}</p>
-            <p className="mt-1 text-xs text-[#EDF3ED]/55">{t('inbox.governance.healthChange', { from: item.source.governance.previousHealthLevel, to: item.source.governance.nextHealthLevel })}</p>
+            <p className={`mt-1.5 text-sm font-semibold ${isUnread ? 'text-white/90' : 'text-white/40'}`}>{t(`inbox.governance.agent.${item.source.governance.source}`)}</p>
+            <p className={`mt-1 text-xs ${isUnread ? 'text-[#EDF3ED]/55' : 'text-[#EDF3ED]/30'}`}>{t('inbox.governance.healthChange', { from: item.source.governance.previousHealthLevel, to: item.source.governance.nextHealthLevel })}</p>
             <p className="mt-1 text-xs leading-relaxed text-[#EF4444]/80">{item.source.governance.reason}</p>
           </>
         ) : (
-          <p className="mt-1.5 text-xs leading-relaxed text-[#EDF3ED]/55">
+          <p className={`mt-1.5 text-xs leading-relaxed ${isUnread ? 'text-[#EDF3ED]/55' : 'text-[#EDF3ED]/30'}`}>
             {t('inbox.sourceUnavailableHint')}
           </p>
         )}
@@ -349,17 +437,12 @@ function InboxRow({ item, onRead }: { item: AgentInboxItem; onRead: (id: string)
     </div>
   );
 
-  const hoverRail = (
-    <span
-      aria-hidden
-      className="absolute inset-y-0 left-0 w-[2px] bg-[#ADFF2F] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
-    />
-  );
+  const rowClass = joinClasses('group relative flex items-start gap-2 pr-2', entryClass);
 
   if (!item.source.available) {
     return (
-      <div className="group relative flex items-start gap-2 pr-2 opacity-75">
-        {hoverRail}
+      <div className={joinClasses(rowClass, 'opacity-75')}>
+        {rail}
         {content}
         {isUnread ? (
           <ReadButton label={t('inbox.markRead')} onClick={() => onRead(item.id)} />
@@ -370,8 +453,8 @@ function InboxRow({ item, onRead }: { item: AgentInboxItem; onRead: (id: string)
 
   if (item.source.kind === 'CIRCLE_PROPOSAL') {
     return (
-      <div className="group relative flex items-start gap-2 pr-2">
-        {hoverRail}
+      <div className={rowClass}>
+        {rail}
         <Link
           href={`/circles/${item.source.proposal.circleSlug}/co-build/${item.source.proposal.id}`}
           onClick={() => {
@@ -391,9 +474,9 @@ function InboxRow({ item, onRead }: { item: AgentInboxItem; onRead: (id: string)
       ? `/post/${item.source.review.publishedTargetId}`
       : null;
     if (href) {
-      return <div className="group relative flex items-start gap-2 pr-2">{hoverRail}<Link href={href} onClick={() => { if (isUnread) onRead(item.id); }} className="min-w-0 flex-1 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#040704]">{content}</Link>{isUnread ? <ReadButton label={t('inbox.markRead')} onClick={() => onRead(item.id)} /> : null}</div>;
+      return <div className={rowClass}>{rail}<Link href={href} onClick={() => { if (isUnread) onRead(item.id); }} className="min-w-0 flex-1 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#040704]">{content}</Link>{isUnread ? <ReadButton label={t('inbox.markRead')} onClick={() => onRead(item.id)} /> : null}</div>;
     }
-    return <div className="group relative flex items-start gap-2 pr-2">{hoverRail}{content}{isUnread ? <ReadButton label={t('inbox.markRead')} onClick={() => onRead(item.id)} /> : null}</div>;
+    return <div className={rowClass}>{rail}{content}{isUnread ? <ReadButton label={t('inbox.markRead')} onClick={() => onRead(item.id)} /> : null}</div>;
   }
 
   if (
@@ -401,12 +484,12 @@ function InboxRow({ item, onRead }: { item: AgentInboxItem; onRead: (id: string)
     || item.source.kind === 'GOVERNANCE_CORRECTION'
     || item.source.kind === 'AGENT_GOVERNANCE'
   ) {
-    return <div className="group relative flex items-start gap-2 pr-2">{hoverRail}{content}{isUnread ? <ReadButton label={t('inbox.markRead')} onClick={() => onRead(item.id)} /> : null}</div>;
+    return <div className={rowClass}>{rail}{content}{isUnread ? <ReadButton label={t('inbox.markRead')} onClick={() => onRead(item.id)} /> : null}</div>;
   }
 
   return (
-    <div className="group relative flex items-start gap-2 pr-2">
-      {hoverRail}
+    <div className={rowClass}>
+      {rail}
       <Link
         href={`/post/${item.source.post.id}?replyId=${encodeURIComponent(item.source.reply.id)}`}
         onClick={() => {

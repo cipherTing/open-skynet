@@ -58,7 +58,7 @@ function SmallIconButton({
       aria-label={label}
       title={label}
       onClick={onClick}
-      className={`flex h-8 w-8 shrink-0 items-center justify-center border transition-colors ${
+      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-none border transition-colors duration-100 [transition-timing-function:steps(2,end)] ${
         warning
           ? 'border-[#7F1D1D] text-[#EF4444] hover:bg-[#7F1D1D]/20'
           : 'border-[#1A2E1A] text-[#3A5A3A] hover:border-[#3A5A3A] hover:text-[#ADFF2F]'
@@ -117,6 +117,7 @@ function AdminCircleEditorDialogInstance({
         title={t('admin.circles.editTitle')}
         code="ADMIN.CIRCLE"
         size="md"
+        contentClassName="t-corner"
       >
         {detailQuery.isError ? (
           <p className="text-sm text-[#EF4444]">{t('admin.circles.loadDetailFailed')}</p>
@@ -245,6 +246,7 @@ function AdminCircleEditorForm({
       title={t(isEdit ? 'admin.circles.editTitle' : 'admin.circles.createTitle')}
       code="ADMIN.CIRCLE"
       size="xl"
+      contentClassName="t-corner"
       footer={
         <>
           <span className="mr-auto text-xs text-[#3A5A3A]">
@@ -300,7 +302,7 @@ function AdminCircleEditorForm({
                     key={value}
                     type="button"
                     onClick={() => setKind(value)}
-                    className={`border px-3 py-3 text-left transition-colors ${
+                    className={`rounded-none border px-3 py-3 text-left transition-colors duration-100 [transition-timing-function:steps(2,end)] ${
                       kind === value
                         ? 'border-[#ADFF2F] bg-[#ADFF2F]/10 text-[#ADFF2F]'
                         : 'border-[#1A2E1A] text-white/60 hover:border-[#3A5A3A]'
@@ -320,7 +322,12 @@ function AdminCircleEditorForm({
         ) : null}
 
         <section>
-          <h3 className="text-sm font-bold text-[#EDF3ED]">{t('admin.circles.topic')}</h3>
+          <h3 className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[#EDF3ED]">
+            <span aria-hidden className="text-[#ADFF2F]">
+              {'//'}
+            </span>
+            {t('admin.circles.topic')}
+          </h3>
           {isEdit && snapshot ? (
             <div className="mt-3 space-y-3">
               <p className="whitespace-pre-wrap border border-[#1A2E1A] bg-[#040704] px-3 py-2.5 text-sm leading-6 text-[#3A5A3A]">
@@ -356,7 +363,12 @@ function AdminCircleEditorForm({
           <section>
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h3 className="text-sm font-bold text-[#EDF3ED]">{t('admin.circles.rules')}</h3>
+                <h3 className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[#EDF3ED]">
+                  <span aria-hidden className="text-[#ADFF2F]">
+                    {'//'}
+                  </span>
+                  {t('admin.circles.rules')}
+                </h3>
                 <p className="mt-1 text-xs text-[#3A5A3A]">
                   {t('admin.circles.rulesEditHint')}
                 </p>
@@ -499,7 +511,10 @@ function AdminCircleEditorForm({
 
         {isEdit && snapshot ? (
           <section className="border-t border-[#1A2E1A] pt-5">
-            <h3 className="text-sm font-bold text-[#EDF3ED]">
+            <h3 className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[#EDF3ED]">
+              <span aria-hidden className="text-[#ADFF2F]">
+                {'//'}
+              </span>
               {t('admin.circles.changeSummary')}
             </h3>
             {changeSummary.length ? (

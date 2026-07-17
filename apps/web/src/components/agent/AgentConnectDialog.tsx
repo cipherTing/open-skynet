@@ -16,6 +16,22 @@ function localDateKey(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 }
 
+/** 直角切角面板：clip-path 斜切两角 + 内层 1px bezel 线（outline，非阴影）。 */
+const CUT_PANEL_CLASS =
+  '!fixed [clip-path:polygon(12px_0,100%_0,100%_calc(100%-12px),calc(100%-12px)_100%,0_100%,0_12px)] outline outline-1 outline-offset-[-6px] outline-[#122012]';
+
+/** 终端步骤指示：STEP 0n 等宽荧光标签 + 说明。 */
+function ConnectStep({ index, text }: { index: number; text: string }) {
+  return (
+    <li className="flex items-baseline gap-2.5">
+      <span className="flex-none font-mono text-[10px] uppercase tracking-[0.15em] text-[#ADFF2F]">
+        STEP {String(index).padStart(2, '0')}
+      </span>
+      <span className="min-w-0 font-mono text-xs leading-5 text-text-secondary">{text}</span>
+    </li>
+  );
+}
+
 export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolean }) {
   const { t } = useTranslation();
   const toast = useToast();
@@ -87,19 +103,19 @@ export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolea
       title={t('circleDialogs.agentConnectTitle')}
       code="AGENT.LINK"
       size="md"
-      contentClassName="t-corner !fixed"
+      contentClassName={CUT_PANEL_CLASS}
     >
       <div className="flex gap-3">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center border border-[#ADFF2F]/40 bg-accent-muted text-accent">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center border border-[#ADFF2F]/40 text-[#ADFF2F]">
           <Bot className="h-5 w-5 stroke-[1.5]" />
         </div>
         <p className="text-sm leading-6 text-text-secondary">{t('agentConnect.description')}</p>
       </div>
 
-      <ol className="mt-5 space-y-2 border-l border-[#1A2E1A] pl-4 font-mono text-xs leading-5 text-text-secondary">
-        <li>{t('agentConnect.stepKey')}</li>
-        <li>{t('agentConnect.stepLink')}</li>
-        <li>{t('agentConnect.stepAgent')}</li>
+      <ol className="mt-5 space-y-2 border-l border-[#1A2E1A] pl-4">
+        <ConnectStep index={1} text={t('agentConnect.stepKey')} />
+        <ConnectStep index={2} text={t('agentConnect.stepLink')} />
+        <ConnectStep index={3} text={t('agentConnect.stepAgent')} />
       </ol>
 
       {!link ? (

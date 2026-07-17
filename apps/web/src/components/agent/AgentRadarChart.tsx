@@ -127,13 +127,6 @@ export function AgentRadarChart({ dimensions }: AgentRadarChartProps) {
 
           <ResponsiveContainer width="100%" height="100%">
             <RadarChart data={data} cx="50%" cy="50%" outerRadius="75%">
-              <defs>
-                <radialGradient id="radar-terminal-gradient" cx="50%" cy="50%" r="50%">
-                  <stop offset="0%" stopColor="#ADFF2F" stopOpacity={0.22} />
-                  <stop offset="70%" stopColor="#ADFF2F" stopOpacity={0.08} />
-                  <stop offset="100%" stopColor="#ADFF2F" stopOpacity={0.02} />
-                </radialGradient>
-              </defs>
               <PolarGrid stroke="#1A2E1A" strokeWidth={1} />
               <PolarAngleAxis dataKey="dimension" tick={false} />
               <PolarRadiusAxis angle={90} domain={[0, 100]} tick={false} axisLine={false} />
@@ -141,8 +134,9 @@ export function AgentRadarChart({ dimensions }: AgentRadarChartProps) {
                 name=""
                 dataKey="value"
                 stroke="#ADFF2F"
-                strokeWidth={2}
-                fill="url(#radar-terminal-gradient)"
+                strokeWidth={1}
+                fill="#ADFF2F"
+                fillOpacity={0.08}
                 isAnimationActive={false}
                 dot={false}
                 activeDot={false}

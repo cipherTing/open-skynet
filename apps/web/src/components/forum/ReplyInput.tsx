@@ -6,7 +6,6 @@ import remarkGfm from 'remark-gfm';
 import { Eye, Send, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { ApiError } from '@/lib/api';
-import { TTextarea } from '@/components/ui/terminal';
 
 interface ReplyInputProps {
   onSubmit: (content: string) => Promise<void>;
@@ -52,25 +51,23 @@ export function ReplyInput({
   const inputPlaceholder = placeholder ?? t('forum.replyPlaceholder');
 
   return (
-    <div className="skynet-reply-composer t-corner relative overflow-visible">
+    <div className="t-corner relative overflow-visible border border-[#1A2E1A] bg-black transition-[border-color] duration-100 [transition-timing-function:steps(2,end)] focus-within:border-[#ADFF2F]">
       {/* 错误提示 */}
       {error && (
-        <div className="border-b border-danger/40 bg-danger/10 px-4 py-2 font-mono text-[11px] text-danger">
+        <div className="border-b border-danger/40 bg-danger/10 px-3 py-2 font-mono text-[11px] text-danger">
           {error}
         </div>
       )}
 
-      {/* 工具栏 */}
-      <div className="skynet-reply-divider flex items-center justify-between border-b px-4 py-2">
-        <span className="font-mono text-[11px] font-bold uppercase tracking-deck-normal text-accent-dim">
-          {t('replyInput.label')}
+      {/* 命令行头 */}
+      <div className="flex items-center justify-between border-b border-[#122012] px-3 py-1.5">
+        <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#3A5A3A]">
+          <span className="text-[#ADFF2F]">{'>'}</span> {t('replyInput.label')}
         </span>
         <button
           onClick={() => setShowPreview(!showPreview)}
-          className={`flex items-center gap-1 border px-2 py-1 font-mono text-[11px] tracking-wide transition-colors ${
-            showPreview
-              ? 'border-info/40 bg-info/10 text-info'
-              : 'border-transparent text-text-tertiary hover:text-info'
+          className={`flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.12em] transition-colors [transition-timing-function:steps(2,end)] ${
+            showPreview ? 'text-[#ADFF2F]' : 'text-[#3A5A3A] hover:text-[#ADFF2F]'
           }`}
         >
           <Eye className="w-3 h-3" />
@@ -78,47 +75,74 @@ export function ReplyInput({
         </button>
       </div>
 
-      {/* 输入 / 预览 */}
+      {/* 引用 */}
       {quoteText ? (
-        <div className="mx-4 mt-3 flex items-start justify-between gap-3 border border-info/40 bg-info/5 px-3 py-2 text-xs text-text-secondary">
+        <div className="mx-3 mt-2.5 flex items-start justify-between gap-3 border-l-2 border-l-[#3A5A3A] bg-[#040704] px-3 py-2 text-xs text-text-secondary">
           <span className="line-clamp-3 whitespace-pre-wrap">{quoteText}</span>
           {onClearQuote ? (
             <button
               type="button"
               onClick={onClearQuote}
               aria-label={t('replyInput.clearQuote')}
-              className="shrink-0 text-text-tertiary transition-colors hover:text-danger"
+              className="shrink-0 text-[#3A5A3A] transition-colors [transition-timing-function:steps(2,end)] hover:text-danger"
             >
               <X className="h-3.5 w-3.5" />
             </button>
           ) : null}
         </div>
       ) : null}
+
+      {/* 输入 / 预览：`>` 前缀 + 闪烁方块光标 */}
       {showPreview ? (
-        <div className="min-h-[80px] px-4 py-3">
-          <div className="prose-deck text-[13px]">
+        <div className="flex min-h-[80px] gap-2 px-3 py-2.5">
+          <span
+            aria-hidden
+            className="mt-[2px] shrink-0 font-mono text-[12px] leading-relaxed text-[#ADFF2F]"
+          >
+            {'>'}
+          </span>
+          <div className="prose-deck min-w-0 flex-1 text-[13px]">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
               {content || t('replyInput.emptyPreview')}
             </ReactMarkdown>
           </div>
         </div>
       ) : (
-        <div className="px-4 py-3">
-          <TTextarea
-            aria-label={t('replyInput.label')}
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            placeholder={inputPlaceholder}
-            rows={compact ? 3 : 4}
-            className={compact ? 'min-h-[76px]' : 'min-h-[96px]'}
-          />
+        <div className="flex gap-2 px-3 py-2.5">
+          <span
+            aria-hidden
+            className="mt-[2px] shrink-0 font-mono text-[12px] leading-relaxed text-[#ADFF2F]"
+          >
+            {'>'}
+          </span>
+          <div className="relative min-w-0 flex-1">
+            <textarea
+              aria-label={t('replyInput.label')}
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder={inputPlaceholder}
+              rows={compact ? 3 : 4}
+              className={`block w-full resize-none rounded-none border-0 bg-transparent px-0 py-0 pl-[16px] font-mono text-[12px] leading-relaxed tracking-[0.08em] text-white caret-[#ADFF2F] outline-none placeholder:text-[#3A5A3A] disabled:cursor-not-allowed disabled:opacity-45 ${
+                compact ? 'min-h-[76px]' : 'min-h-[96px]'
+              }`}
+            />
+            {content.length === 0 && (
+              <span
+                aria-hidden
+                className="t-anim-blink pointer-events-none absolute left-0 top-[3px] h-[14px] w-[8px] bg-[#ADFF2F]"
+              />
+            )}
+          </div>
         </div>
       )}
 
-      {/* 操作按钮 */}
-      <div className="skynet-reply-divider flex items-center justify-end gap-2 border-t px-4 py-2">
+      {/* 操作行：等宽小字 */}
+      <div className="flex items-center justify-end gap-3 border-t border-[#122012] px-3 py-2">
         {onCancel && (
-          <button onClick={onCancel} className="t-btn t-btn--ghost">
+          <button
+            onClick={onCancel}
+            className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A] transition-colors [transition-timing-function:steps(2,end)] hover:text-white"
+          >
             <X className="w-3 h-3" />
             {t('app.cancel')}
           </button>
@@ -126,10 +150,10 @@ export function ReplyInput({
         <button
           onClick={handleSubmit}
           disabled={submitting || !content.trim()}
-          className="t-btn t-btn--primary"
+          className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[#ADFF2F] transition-colors [transition-timing-function:steps(2,end)] hover:bg-[#ADFF2F]/10 disabled:cursor-not-allowed disabled:text-[#3A5A3A] disabled:hover:bg-transparent"
         >
           <Send className="w-3 h-3" />
-          {submitting ? t('replyInput.sending') : t('replyInput.send')}
+          {`[ ${submitting ? t('replyInput.sending') : t('replyInput.send')} ]`}
         </button>
       </div>
     </div>

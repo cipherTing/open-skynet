@@ -3,19 +3,22 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { TButton } from '@/components/ui/terminal/TButton';
-import { TTag } from '@/components/ui/terminal/TTag';
 import { Timecode } from '@/components/ui/terminal/Timecode';
 import { TerminalDialog } from '@/components/ui/TerminalDialog';
 import { governanceApi } from '@/lib/api';
+import { GovernanceVerdictStamp, type GovernanceVerdictTone } from './GovernanceTerminal';
 
-function statusTagColor(status: string): 'accent' | 'amber' | 'red' | 'default' {
-  if (status === 'OPEN') return 'accent';
-  if (status === 'EMERGENCY') return 'amber';
-  if (status === 'RESOLVED_VIOLATION') return 'red';
-  return 'default';
+function statusStampTone(status: string): GovernanceVerdictTone {
+  if (status === 'OPEN') return 'pending';
+  if (status === 'EMERGENCY') return 'emergency';
+  if (status === 'RESOLVED_VIOLATION') return 'violation';
+  return 'notViolation';
 }
 
+/**
+ * 「审理中」状态印章：直角双层边框章 + steps 盖印震动。
+ * 对外契约不变：caseId 必传；title 存在时渲染为行内摘要按钮，否则渲染为右上角悬浮印章。
+ */
 export function GovernanceCaseStamp({
   caseId,
   title,
@@ -39,35 +42,41 @@ export function GovernanceCaseStamp({
       {title ? (
         <button
           type="button"
-          className="flex w-full items-start justify-between gap-3 py-1 text-left text-xs transition-colors hover:bg-surface-2"
+          className="flex w-full items-start justify-between gap-3 py-1 text-left text-xs transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#040704]"
           onClick={(event) => {
             event.stopPropagation();
             setOpen(true);
           }}
         >
-          <span className="line-clamp-2 text-text-secondary">{title}</span>
+          <span className="line-clamp-2 text-[#EDF3ED]/70">{title}</span>
           {currentStatus ? (
-            <TTag color={statusTagColor(currentStatus)} className="shrink-0">
-              {t(`governance.inReview.statuses.${currentStatus}`)}
-            </TTag>
+            <GovernanceVerdictStamp
+              tone={statusStampTone(currentStatus)}
+              label={t(`governance.inReview.statuses.${currentStatus}`)}
+              animate={false}
+              className="shrink-0"
+            />
           ) : (
-            <TTag color="amber" className="shrink-0">
-              {t('governance.inReview.stamp')}
-            </TTag>
+            <GovernanceVerdictStamp
+              tone="pending"
+              label={t('governance.inReview.stamp')}
+              animate={false}
+              className="shrink-0"
+            />
           )}
         </button>
       ) : (
-        <TButton
-          variant="danger"
-          size="sm"
+        <button
+          type="button"
+          aria-label={t('governance.inReview.stamp')}
+          className="absolute right-4 top-14 z-10"
           onClick={(event) => {
             event.stopPropagation();
             setOpen(true);
           }}
-          className="absolute right-4 top-14 z-10"
         >
-          {t('governance.inReview.stamp')}
-        </TButton>
+          <GovernanceVerdictStamp tone="pending" label={t('governance.inReview.stamp')} />
+        </button>
       )}
 
       {/* Portal 事件沿 React 树冒泡，需阻断外层卡片点击 */}
@@ -79,55 +88,57 @@ export function GovernanceCaseStamp({
           code="GOV.CASE"
           size="md"
         >
-          <p className="text-xs leading-5 text-text-tertiary">
+          <p className="text-xs leading-5 text-[#3A5A3A]">
             {t('governance.inReview.description')}
           </p>
           {query.isPending ? (
-            <p className="mt-6 text-sm text-text-tertiary">{t('governance.inReview.loading')}</p>
+            <p className="mt-6 font-mono text-sm text-[#3A5A3A]">{t('governance.inReview.loading')}</p>
           ) : query.isError ? (
-            <p className="mt-6 text-sm text-danger">{t('governance.inReview.loadFailed')}</p>
+            <p className="mt-6 font-mono text-sm text-[#EF4444]/80">
+              {t('governance.inReview.loadFailed')}
+            </p>
           ) : query.data ? (
-            <div className="mt-5 space-y-4 border-t border-border-subtle pt-4">
+            <div className="mt-5 border-t border-[#1A2E1A] pt-4">
               <div>
-                <p className="text-sm font-semibold text-text-primary">
-                  {query.data.targetSummary.title}
-                </p>
-                <p className="mt-1 text-sm leading-6 text-text-secondary">
+                <p className="text-sm font-semibold text-white">{query.data.targetSummary.title}</p>
+                <p className="mt-1 text-sm leading-6 text-[#EDF3ED]/70">
                   {query.data.targetSummary.excerpt}
                 </p>
               </div>
-              <dl className="grid grid-cols-2 gap-x-5 gap-y-3 text-xs">
-                <div>
-                  <dt className="font-mono text-[11px] tracking-[0.12em] text-text-tertiary">
+              <dl className="mt-4 grid grid-cols-2 gap-px border border-[#1A2E1A] bg-[#1A2E1A]">
+                <div className="bg-black p-3">
+                  <dt className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
                     {t('governance.inReview.status')}
                   </dt>
-                  <dd className="mt-1">
-                    <TTag color={statusTagColor(query.data.status)}>
-                      {t(`governance.inReview.statuses.${query.data.status}`)}
-                    </TTag>
+                  <dd className="mt-2">
+                    <GovernanceVerdictStamp
+                      tone={statusStampTone(query.data.status)}
+                      label={t(`governance.inReview.statuses.${query.data.status}`)}
+                      animate={false}
+                    />
                   </dd>
                 </div>
-                <div>
-                  <dt className="font-mono text-[11px] tracking-[0.12em] text-text-tertiary">
+                <div className="bg-black p-3">
+                  <dt className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
                     {t('governance.inReview.trigger')}
                   </dt>
-                  <dd className="mt-1 font-mono tabular-nums text-text-secondary">
+                  <dd className="mt-2 font-mono text-sm font-bold tabular-nums text-white/85">
                     {query.data.triggerScore}/{query.data.triggerThreshold}
                   </dd>
                 </div>
-                <div>
-                  <dt className="font-mono text-[11px] tracking-[0.12em] text-text-tertiary">
+                <div className="bg-black p-3">
+                  <dt className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
                     {t('governance.inReview.openedAt')}
                   </dt>
-                  <dd className="mt-1">
-                    <Timecode date={query.data.openedAt} withDate className="text-text-secondary" />
+                  <dd className="mt-2">
+                    <Timecode date={query.data.openedAt} withDate className="text-white/70" />
                   </dd>
                 </div>
-                <div>
-                  <dt className="font-mono text-[11px] tracking-[0.12em] text-text-tertiary">
+                <div className="bg-black p-3">
+                  <dt className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
                     {t('governance.inReview.deadline')}
                   </dt>
-                  <dd className="mt-1">
+                  <dd className="mt-2">
                     <Timecode date={query.data.deadlineAt} withDate className="text-[#ADFF2F]" />
                   </dd>
                 </div>

@@ -3,11 +3,23 @@ export const termFeed = {
   zh: {
     feed: {
       hotBadge: '热帖',
+      freqLabel: '频段',
+      scopeLabel: '订阅域',
+      statReplies: '回复',
+      statViews: '热度',
+      underReview: '该帖正处于共治审议',
+      recordCount: '{{count}} 条记录',
     },
   },
   en: {
     feed: {
       hotBadge: 'HOT',
+      freqLabel: 'FREQ',
+      scopeLabel: 'SCOPE',
+      statReplies: 'RPL',
+      statViews: 'HEAT',
+      underReview: 'This post is under governance review',
+      recordCount: '{{count}} REC',
     },
   },
 };

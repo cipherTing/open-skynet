@@ -5,11 +5,7 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import { useInView } from 'react-intersection-observer';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { MessageSquare, CornerDownRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { AgentAvatar } from '@/components/ui/AgentAvatar';
-import { AgentLevelBadge } from '@/components/ui/AgentLevelBadge';
-import { CircleBadge } from '@/components/circle/CircleBadge';
 import { FeedbackBar, hasVisibleFeedback } from '@/components/forum/FeedbackBar';
 import { EmptyState, ErrorState, InlineLoading } from '@/components/ui/LoadingState';
 import { Timecode } from '@/components/ui/terminal';
@@ -82,111 +78,97 @@ export function AgentRepliesTab({ agentId }: AgentRepliesTabProps) {
   }
 
   return (
-    <div className="space-y-3">
-      {replies.map((reply) => {
-        const showFeedback = hasVisibleFeedback(reply.feedbackCounts);
-        const postContentPreview = reply.post?.content
-          ? sanitizePreview(reply.post.content, 120)
-          : '';
+    <div>
+      {/* 追加日志行：`>` 前缀 + 时间码 + 等宽数据簇 */}
+      <div className="border-t border-[#1A2E1A]">
+        {replies.map((reply) => {
+          const showFeedback = hasVisibleFeedback(reply.feedbackCounts);
+          const postContentPreview = reply.post?.content
+            ? sanitizePreview(reply.post.content, 120)
+            : '';
 
-        return (
-          <article
-            key={reply.id}
-            className="group relative cursor-pointer border border-[#1A2E1A] bg-[#040704] p-4 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[#3A5A3A]"
-            onClick={(event) => handleCardClick(event, reply.postId, reply.id)}
-          >
-            <span
-              aria-hidden
-              className="absolute bottom-0 left-0 top-0 w-[2px] bg-[#ADFF2F] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
-            />
+          return (
+            <article
+              key={reply.id}
+              className="group relative cursor-pointer border-b border-[#1A2E1A] px-3 py-3 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#040704] sm:px-4"
+              onClick={(event) => handleCardClick(event, reply.postId, reply.id)}
+            >
+              <span
+                aria-hidden
+                className="absolute bottom-0 left-0 top-0 w-[2px] bg-[#ADFF2F] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
+              />
 
-            {/* 顶部：帖子作者头像 + 帖子标题 */}
-            {reply.post && (
-              <div className="mb-3 flex items-center gap-2.5 border-b border-[#1A2E1A] pb-3">
-                <AgentAvatar
-                  agentId={reply.post.author?.avatarSeed || reply.post.author?.id || ''}
-                  agentName={reply.post.author?.name}
-                  size={24}
-                />
+              <div className="flex items-start gap-2.5">
+                <span aria-hidden className="mt-px flex-none font-mono text-xs text-[#ADFF2F]">
+                  {'>'}
+                </span>
+
                 <div className="min-w-0 flex-1">
-                  <span className="text-xs font-bold text-[#ADFF2F]">{reply.post.author?.name}</span>
-                  <AgentLevelBadge level={reply.post.author?.level} compact />
-                  <CircleBadge
-                    circle={reply.post.circle}
-                    compact
-                    href={`/circles/${encodeURIComponent(reply.post.circle.slug)}`}
-                  />
-                  <span className="mx-1.5 text-xs text-[#3A5A3A]">·</span>
+                  {/* 回复内容 */}
                   <Link
                     href={`/post/${reply.postId}?replyId=${encodeURIComponent(reply.id)}`}
-                    className="truncate text-xs text-[#EDF3ED]/70 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
+                    className="text-sm leading-relaxed text-[#EDF3ED] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white line-clamp-2"
                     onClick={(event) => event.stopPropagation()}
                   >
-                    {reply.post.title}
+                    {sanitizePreview(reply.content)}
                   </Link>
-                </div>
-                <MessageSquare className="h-3.5 w-3.5 text-[#3A5A3A]" />
-              </div>
-            )}
 
-            {/* 回复对象 */}
-            <div className="mb-3 flex items-start gap-2 border border-[#1A2E1A] bg-[#122012]/40 px-2.5 py-2">
-              {reply.parentReply ? (
-                <>
-                  <CornerDownRight className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-[#3A5A3A]" />
-                  <div className="min-w-0">
-                    <div className="mb-1 flex min-w-0 items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
-                      <span className="truncate">
-                        {t('replyThread.replyTo', {
-                          name: reply.parentReply.author?.name || t('agent.unknownAgent'),
-                        })}
+                  {/* 回复对象：等宽上下文行 */}
+                  <div className="mt-1.5 truncate font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                    {reply.parentReply ? (
+                      <>
+                        <span className="text-[#3A5A3A]">
+                          {t('replyThread.replyTo', {
+                            name: reply.parentReply.author?.name || t('agent.unknownAgent'),
+                          })}
+                        </span>
+                        <span aria-hidden className="mx-1.5 text-[#1A2E1A]">{'//'}</span>
+                        <span className="normal-case tracking-normal text-[#3A5A3A]/80">
+                          {sanitizePreview(reply.parentReply.content, 60)}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-[#ADFF2F]">{t('agent.replyMainPost')}</span>
+                        <span aria-hidden className="mx-1.5 text-[#1A2E1A]">{'//'}</span>
+                        <span className="normal-case tracking-normal text-[#3A5A3A]/80">
+                          {postContentPreview || reply.post?.title || t('agent.mainPostUnavailable')}
+                        </span>
+                      </>
+                    )}
+                  </div>
+
+                  {/* 元数据行：主帖 + 反馈簇 + 时间码 */}
+                  <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                    {reply.post && (
+                      <span className="min-w-0 truncate font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                        RE // <span className="text-[#EDF3ED]/70">{reply.post.title}</span>
+                        <span aria-hidden className="mx-1.5 text-[#1A2E1A]">{'//'}</span>/
+                        {reply.post.circle.name}
                       </span>
-                      <AgentLevelBadge level={reply.parentReply.author?.level} compact />
-                    </div>
-                    <p className="text-xs text-[#EDF3ED]/60 line-clamp-2">
-                      {reply.parentReply.content}
-                    </p>
+                    )}
+                    <span className="ml-auto flex items-center gap-3">
+                      {showFeedback && (
+                        <FeedbackBar
+                          counts={reply.feedbackCounts}
+                          currentFeedback={reply.currentUserFeedback}
+                          canInteract={false}
+                          density="compact"
+                        />
+                      )}
+                      <Timecode
+                        date={reply.createdAt}
+                        withDate
+                        className="transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F]"
+                      />
+                    </span>
                   </div>
-                </>
-              ) : (
-                <>
-                  <CornerDownRight className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-[#3A5A3A]" />
-                  <div className="min-w-0">
-                    <div className="mb-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[#ADFF2F]">
-                      {t('agent.replyMainPost')}
-                    </div>
-                    <p className="text-xs text-[#EDF3ED]/60 line-clamp-2">
-                      {postContentPreview || reply.post?.title || t('agent.mainPostUnavailable')}
-                    </p>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* 回复内容 */}
-            <Link
-              href={`/post/${reply.postId}?replyId=${encodeURIComponent(reply.id)}`}
-              className="mb-3 text-sm text-[#EDF3ED] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white line-clamp-3"
-              onClick={(event) => event.stopPropagation()}
-            >
-              {sanitizePreview(reply.content)}
-            </Link>
-
-            {/* 底部 */}
-            <div className="flex flex-col gap-2 text-xs text-[#3A5A3A] sm:flex-row sm:items-center sm:justify-between">
-              <Timecode date={reply.createdAt} withDate />
-              {showFeedback && (
-                <FeedbackBar
-                  counts={reply.feedbackCounts}
-                  currentFeedback={reply.currentUserFeedback}
-                  canInteract={false}
-                  density="compact"
-                />
-              )}
-            </div>
-          </article>
-        );
-      })}
+                </div>
+              </div>
+            </article>
+          );
+        })}
+      </div>
 
       {loading && <InlineLoading />}
 

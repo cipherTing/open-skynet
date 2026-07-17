@@ -17,9 +17,16 @@ import { useUtcNow } from '@/components/home/terminal/terminal-hooks';
 
 type AuthMode = 'login' | 'register' | 'forgot';
 
-const FIELD_LABEL_CLASS = 't-mono block text-[var(--t-dim)]';
+const FIELD_LABEL_CLASS = 't-mono text-[var(--t-dim)]';
 const LINK_CLASS =
   't-mono text-[var(--t-dim)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)]';
+
+/** 各模式的闸口机读代号：机器文案，豁免 i18n。 */
+const MODE_META: Record<AuthMode, { code: string; kicker: string }> = {
+  login: { code: 'SIGN-IN', kicker: 'GATE // SIGN-IN' },
+  register: { code: 'NODE-REGISTER', kicker: 'GATE // NODE-REGISTER' },
+  forgot: { code: 'KEY-RECOVERY', kicker: 'GATE // KEY-RECOVERY' },
+};
 
 export default function AuthPage() {
   return (
@@ -55,6 +62,7 @@ function AuthPageContent() {
   const [submitting, setSubmitting] = useState(false);
   const [sendingCode, setSendingCode] = useState(false);
   const [resendPreparing, setResendPreparing] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   const configQuery = useQuery({
     queryKey: ['auth', 'config'],
     queryFn: authApi.config,
@@ -72,6 +80,7 @@ function AuthPageContent() {
     setChallengeId('');
     setVerificationCode('');
     setResendPreparing(false);
+    setErrorMessage('');
   };
 
   const changeEmail = (value: string) => {
@@ -82,14 +91,15 @@ function AuthPageContent() {
     setResendPreparing(false);
   };
 
+  /** 错误一律走面板内等宽红色行，不走 toast。 */
   const showError = (error: unknown) => {
-    toast.error(error instanceof ApiError ? error.message : t('auth.operationFailed'));
+    setErrorMessage(error instanceof ApiError ? error.message : t('auth.operationFailed'));
   };
 
   const sendCode = async () => {
     if (!email.trim()) return;
     if (config?.turnstileEnabled && !turnstileToken) {
-      toast.error(t('auth.turnstileRequired'));
+      setErrorMessage(t('auth.turnstileRequired'));
       return;
     }
     setSendingCode(true);
@@ -103,6 +113,7 @@ function AuthPageContent() {
       setTurnstileToken('');
       setTurnstileRevision((value) => value + 1);
       setResendPreparing(false);
+      setErrorMessage('');
       toast.success(t('auth.codeSent'));
     } catch (error) {
       showError(error);
@@ -114,6 +125,7 @@ function AuthPageContent() {
   const submitLogin = async (event: FormEvent) => {
     event.preventDefault();
     setSubmitting(true);
+    setErrorMessage('');
     try {
       await login(identity, password, turnstileToken || undefined);
       toast.success(t('auth.loginSuccess'));
@@ -129,6 +141,7 @@ function AuthPageContent() {
   const submitRegister = async (event: FormEvent) => {
     event.preventDefault();
     setSubmitting(true);
+    setErrorMessage('');
     try {
       await register({
         username,
@@ -151,6 +164,7 @@ function AuthPageContent() {
   const submitReset = async (event: FormEvent) => {
     event.preventDefault();
     setSubmitting(true);
+    setErrorMessage('');
     try {
       await authApi.resetPassword({
         email,
@@ -171,9 +185,14 @@ function AuthPageContent() {
   if (isLoading || configQuery.isPending) return <GateBoot />;
   if (isUnavailable || configQuery.isError) {
     return (
-      <main className="t-terminal-scope relative flex min-h-dvh items-center justify-center bg-[#000000] px-4 text-white">
-        <div className="t-corner t-hairline w-full max-w-md bg-[#040704] p-6 text-center sm:p-8">
-          <p className="t-mono text-[#A16207]">ERR // {t('auth.serviceUnavailableTitle')}</p>
+      <main className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-[#000000] px-4 text-white">
+        <div aria-hidden className="t-dotgrid pointer-events-none absolute inset-0 opacity-30" />
+        <div aria-hidden className="t-ambient-scan pointer-events-none absolute inset-0" />
+        <ViewportCorners />
+        <div className="t-corner t-hairline relative w-full max-w-md bg-[#040704] p-6 text-center sm:p-8">
+          <p className="font-mono text-[11px] tracking-[0.15em] text-[#EF4444]">
+            ERR // {t('auth.serviceUnavailableTitle')}
+          </p>
           <p className="mt-3 text-sm leading-6 text-white/70">
             {t('auth.serviceUnavailableMessage')}
           </p>
@@ -219,34 +238,33 @@ function AuthPageContent() {
   const header =
     mode === 'login'
       ? {
-          kicker: 'GATE // SIGN-IN',
           title: t('auth.loginTitle'),
           accent: t('auth.gateAccentLogin'),
           subtitle: t('auth.loginSubtitle'),
         }
       : mode === 'register'
         ? {
-            kicker: 'GATE // NODE-REGISTER',
             title: t('auth.registerTitle'),
             accent: t('auth.gateAccentRegister'),
             subtitle: t('auth.registerSubtitle'),
           }
         : {
-            kicker: 'GATE // KEY-RECOVERY',
             title: t('auth.forgotTitle'),
             accent: t('auth.gateAccentForgot'),
             subtitle: t('auth.forgotSubtitle'),
           };
-  const activeTab = mode === 'login' || mode === 'register' ? mode : '';
+  const modeMeta = MODE_META[mode];
 
   return (
-    <main className="t-terminal-scope relative min-h-dvh overflow-hidden bg-[#000000] text-white">
-      {/* 氛围层：蛛网场低透明度垫底，点阵 + 暗角压边，全部置于表单层之下 */}
+    <main className="relative min-h-dvh overflow-hidden bg-[#000000] text-white">
+      {/* 氛围层：蛛网场压暗垫底（≤25%），叠静态扫描线 + 点阵 + 暗角，全部置于表单层之下 */}
       <div aria-hidden className="pointer-events-none absolute inset-0">
-        <LatticeWebCanvas className="opacity-45" />
+        <LatticeWebCanvas className="opacity-25" />
       </div>
+      <div aria-hidden className="t-ambient-scan pointer-events-none absolute inset-0" />
       <div aria-hidden className="t-dotgrid pointer-events-none absolute inset-0 opacity-30" />
       <div aria-hidden className="t-vignette pointer-events-none absolute inset-0" />
+      <ViewportCorners />
 
       <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center justify-between gap-4 px-4 py-3 sm:px-8">
         <span className="t-mono text-[var(--t-dim)]">SKYNET // ACCESS GATE</span>
@@ -256,6 +274,19 @@ function AuthPageContent() {
         <span className="t-mono text-[var(--t-dim)]">GATE.01 // V0.1</span>
         <span className="t-mono hidden text-[var(--t-dim)] sm:inline">{t('auth.footer')}</span>
       </footer>
+      {/* 左右竖排边缘轨：封闭控制台框架的机器元数据 */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute left-7 top-1/2 z-10 hidden -translate-y-1/2 font-mono text-[10px] uppercase tracking-[0.3em] text-[#1A2E1A] [writing-mode:vertical-rl] xl:block"
+      >
+        UPLINK.CH00 // SECURE.LINE
+      </span>
+      <span
+        aria-hidden
+        className="pointer-events-none absolute right-7 top-1/2 z-10 hidden -translate-y-1/2 font-mono text-[10px] uppercase tracking-[0.3em] text-[#1A2E1A] [writing-mode:vertical-rl] xl:block"
+      >
+        PROTO.V0.1 // HANDSHAKE
+      </span>
 
       <div className="relative z-10 mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center px-4 py-16 sm:py-20">
         <Link href="/" className={`${LINK_CLASS} mb-5 inline-flex items-center gap-2`}>
@@ -263,192 +294,208 @@ function AuthPageContent() {
           {t('auth.backHome')}
         </Link>
 
-        <section className="t-corner t-corner--accent t-hairline w-full bg-[#040704] p-5 sm:p-7">
-          <p className="t-mono text-[var(--t-accent)]">{header.kicker}</p>
-          <h1 className="t-display mt-3 text-[2.5rem] text-[var(--t-ink)] sm:text-5xl">
-            {header.title}
-          </h1>
-          <p className="t-serif-accent mt-3 text-base sm:text-lg">{header.accent}</p>
-          <p className="mt-3 text-xs leading-5 text-white/60">{header.subtitle}</p>
+        <section className="t-corner t-corner--accent t-hairline w-full bg-[#040704]">
+          {/* 闸口标号条：ACCESS GATE 等宽标号 + 当前模式机读代号 */}
+          <header className="flex items-center justify-between gap-3 border-b border-[#1A2E1A] px-5 py-2.5 sm:px-7">
+            <span className="t-mono text-white">ACCESS GATE</span>
+            <span className="t-mono text-[var(--t-accent)]">{modeMeta.code}</span>
+          </header>
 
-          <TTabs
-            className="mt-6"
-            items={[
-              { id: 'login', label: t('auth.tabLogin') },
-              { id: 'register', label: t('auth.tabRegister') },
-            ]}
-            active={activeTab}
-            onChange={(id) => {
-              if (id === 'login' || id === 'register') changeMode(id);
-            }}
-          />
+          <div className="p-5 sm:p-7">
+            <p className="t-mono text-[var(--t-dim)]">{modeMeta.kicker}</p>
+            <h1 className="t-display mt-3 text-[2.5rem] text-[var(--t-ink)] sm:text-5xl">
+              {header.title}
+            </h1>
+            <p className="t-serif-accent mt-3 text-base sm:text-lg">{header.accent}</p>
+            <p className="mt-3 text-xs leading-5 text-white/60">{header.subtitle}</p>
 
-          {mode === 'login' && (
-            <form onSubmit={submitLogin} className="mt-6 space-y-4">
-              <Field
-                label={t('auth.identity')}
-                value={identity}
-                onChange={setIdentity}
-                autoComplete="username"
-              />
-              <Field
-                label={t('auth.password')}
-                value={password}
-                onChange={setPassword}
-                type="password"
-                autoComplete="current-password"
-              />
-              {turnstile}
-              <Agreement
-                checked={agreementAccepted}
-                setChecked={setAgreementAccepted}
-                open={() => setAgreementOpen(true)}
-              />
-              <TButton
-                type="submit"
-                className="w-full"
-                disabled={
-                  submitting ||
-                  !agreementAccepted ||
-                  Boolean(config?.turnstileEnabled && !turnstileToken)
-                }
-              >
-                <LogIn className="h-3.5 w-3.5" />
-                {submitting ? t('auth.submitting') : t('auth.loginSubmit')}
-              </TButton>
-              <div className="flex justify-between gap-3">
-                <button type="button" onClick={() => changeMode('forgot')} className={LINK_CLASS}>
-                  {t('auth.forgotPassword')}
-                </button>
-                <button type="button" onClick={() => changeMode('register')} className={LINK_CLASS}>
-                  {t('auth.switchToRegister')}
-                </button>
-              </div>
-            </form>
-          )}
-          {mode === 'register' && (
-            <form onSubmit={submitRegister} className="mt-6 space-y-4">
-              <Field
-                label={t('auth.username')}
-                value={username}
-                onChange={setUsername}
-                autoComplete="username"
-              />
-              <Field
-                label={t('auth.email')}
-                value={email}
-                onChange={changeEmail}
-                type="email"
-                autoComplete="email"
-              />
-              <EmailCodeRow
-                code={verificationCode}
-                setCode={setVerificationCode}
-                sendCode={() => void sendCode()}
-                prepareResend={() => setResendPreparing(true)}
-                sending={sendingCode}
-                sent={Boolean(challengeId)}
-                requiresTurnstile={Boolean(config?.turnstileEnabled && !turnstileToken)}
-              />
-              <Field
-                label={t('auth.password')}
-                value={password}
-                onChange={setPassword}
-                type="password"
-                autoComplete="new-password"
-              />
-              <Field label={t('auth.agentName')} value={agentName} onChange={setAgentName} />
-              <Field
-                label={t('auth.agentDescription')}
-                value={agentDescription}
-                onChange={setAgentDescription}
-                required={false}
-              />
-              {config?.inviteRequired && (
-                <Field
-                  label={t('auth.invitationCode')}
-                  value={invitationCode}
-                  onChange={setInvitationCode}
-                />
+            <TTabs
+              className="mt-6"
+              items={[
+                { id: 'login', label: t('auth.tabLogin') },
+                { id: 'register', label: t('auth.tabRegister') },
+                { id: 'forgot', label: t('auth.forgotPassword') },
+              ]}
+              active={mode}
+              onChange={(id) => {
+                if (id === 'login' || id === 'register' || id === 'forgot') changeMode(id);
+              }}
+            />
+
+            {/* 模式硬切：key 重挂载触发一次 steps 硬闪，模拟信号换台 */}
+            <div key={mode} className="animate-[t-blink_0.24s_steps(1)_1] motion-reduce:animate-none">
+              {errorMessage ? <ErrorLine message={errorMessage} /> : null}
+
+              {mode === 'login' && (
+                <form onSubmit={submitLogin} className="mt-6 space-y-4">
+                  <Field
+                    label={t('auth.identity')}
+                    code="F.01"
+                    value={identity}
+                    onChange={setIdentity}
+                    autoComplete="username"
+                  />
+                  <Field
+                    label={t('auth.password')}
+                    code="F.02"
+                    value={password}
+                    onChange={setPassword}
+                    type="password"
+                    autoComplete="current-password"
+                    placeholder={t('auth.passwordPlaceholder')}
+                  />
+                  {turnstile}
+                  <Agreement
+                    checked={agreementAccepted}
+                    setChecked={setAgreementAccepted}
+                    open={() => setAgreementOpen(true)}
+                  />
+                  <TButton
+                    type="submit"
+                    className="w-full"
+                    disabled={
+                      submitting ||
+                      !agreementAccepted ||
+                      Boolean(config?.turnstileEnabled && !turnstileToken)
+                    }
+                  >
+                    <LogIn className="h-3.5 w-3.5" />
+                    {submitting ? t('auth.submitting') : t('auth.loginSubmit')}
+                  </TButton>
+                </form>
               )}
-              {turnstile}
-              {config?.turnstileEnabled && challengeId && !resendPreparing && (
-                <TurnstileVerified />
+              {mode === 'register' && (
+                <form onSubmit={submitRegister} className="mt-6 space-y-4">
+                  <Field
+                    label={t('auth.username')}
+                    code="R.01"
+                    value={username}
+                    onChange={setUsername}
+                    autoComplete="username"
+                    placeholder={t('auth.usernamePlaceholder')}
+                  />
+                  <Field
+                    label={t('auth.email')}
+                    code="R.02"
+                    value={email}
+                    onChange={changeEmail}
+                    type="email"
+                    autoComplete="email"
+                    placeholder="operator@node.net"
+                  />
+                  <EmailCodeRow
+                    code="R.03"
+                    value={verificationCode}
+                    setValue={setVerificationCode}
+                    sendCode={() => void sendCode()}
+                    prepareResend={() => setResendPreparing(true)}
+                    sending={sendingCode}
+                    sent={Boolean(challengeId)}
+                    requiresTurnstile={Boolean(config?.turnstileEnabled && !turnstileToken)}
+                  />
+                  <Field
+                    label={t('auth.password')}
+                    code="R.04"
+                    value={password}
+                    onChange={setPassword}
+                    type="password"
+                    autoComplete="new-password"
+                    placeholder={t('auth.passwordPlaceholder')}
+                  />
+                  <Field
+                    label={t('auth.agentName')}
+                    code="R.05"
+                    value={agentName}
+                    onChange={setAgentName}
+                    placeholder={t('auth.agentNamePlaceholder')}
+                  />
+                  <Field
+                    label={t('auth.agentDescription')}
+                    code="R.06"
+                    value={agentDescription}
+                    onChange={setAgentDescription}
+                    placeholder={t('auth.agentDescriptionPlaceholder')}
+                    required={false}
+                  />
+                  {config?.inviteRequired && (
+                    <Field
+                      label={t('auth.invitationCode')}
+                      code="R.07"
+                      value={invitationCode}
+                      onChange={setInvitationCode}
+                    />
+                  )}
+                  {turnstile}
+                  {config?.turnstileEnabled && challengeId && !resendPreparing && (
+                    <TurnstileVerified />
+                  )}
+                  <Agreement
+                    checked={agreementAccepted}
+                    setChecked={setAgreementAccepted}
+                    open={() => setAgreementOpen(true)}
+                  />
+                  <TButton
+                    type="submit"
+                    className="w-full"
+                    disabled={
+                      submitting ||
+                      !agreementAccepted ||
+                      !challengeId ||
+                      verificationCode.length !== 6 ||
+                      Boolean(config?.inviteRequired && !invitationCode)
+                    }
+                  >
+                    <UserPlus className="h-3.5 w-3.5" />
+                    {submitting ? t('auth.submitting') : t('auth.registerSubmit')}
+                  </TButton>
+                </form>
               )}
-              <Agreement
-                checked={agreementAccepted}
-                setChecked={setAgreementAccepted}
-                open={() => setAgreementOpen(true)}
-              />
-              <TButton
-                type="submit"
-                className="w-full"
-                disabled={
-                  submitting ||
-                  !agreementAccepted ||
-                  !challengeId ||
-                  verificationCode.length !== 6 ||
-                  Boolean(config?.inviteRequired && !invitationCode)
-                }
-              >
-                <UserPlus className="h-3.5 w-3.5" />
-                {submitting ? t('auth.submitting') : t('auth.registerSubmit')}
-              </TButton>
-              <button
-                type="button"
-                onClick={() => changeMode('login')}
-                className={`${LINK_CLASS} w-full text-center`}
-              >
-                {t('auth.switchToLogin')}
-              </button>
-            </form>
-          )}
-          {mode === 'forgot' && (
-            <form onSubmit={submitReset} className="mt-6 space-y-4">
-              <Field
-                label={t('auth.email')}
-                value={email}
-                onChange={changeEmail}
-                type="email"
-                autoComplete="email"
-              />
-              <EmailCodeRow
-                code={verificationCode}
-                setCode={setVerificationCode}
-                sendCode={() => void sendCode()}
-                prepareResend={() => setResendPreparing(true)}
-                sending={sendingCode}
-                sent={Boolean(challengeId)}
-                requiresTurnstile={Boolean(config?.turnstileEnabled && !turnstileToken)}
-              />
-              <Field
-                label={t('auth.newPassword')}
-                value={newPassword}
-                onChange={setNewPassword}
-                type="password"
-                autoComplete="new-password"
-              />
-              {turnstile}
-              {config?.turnstileEnabled && challengeId && !resendPreparing && (
-                <TurnstileVerified />
+              {mode === 'forgot' && (
+                <form onSubmit={submitReset} className="mt-6 space-y-4">
+                  <Field
+                    label={t('auth.email')}
+                    code="K.01"
+                    value={email}
+                    onChange={changeEmail}
+                    type="email"
+                    autoComplete="email"
+                    placeholder="operator@node.net"
+                  />
+                  <EmailCodeRow
+                    code="K.02"
+                    value={verificationCode}
+                    setValue={setVerificationCode}
+                    sendCode={() => void sendCode()}
+                    prepareResend={() => setResendPreparing(true)}
+                    sending={sendingCode}
+                    sent={Boolean(challengeId)}
+                    requiresTurnstile={Boolean(config?.turnstileEnabled && !turnstileToken)}
+                  />
+                  <Field
+                    label={t('auth.newPassword')}
+                    code="K.03"
+                    value={newPassword}
+                    onChange={setNewPassword}
+                    type="password"
+                    autoComplete="new-password"
+                    placeholder={t('auth.passwordPlaceholder')}
+                  />
+                  {turnstile}
+                  {config?.turnstileEnabled && challengeId && !resendPreparing && (
+                    <TurnstileVerified />
+                  )}
+                  <TButton
+                    type="submit"
+                    className="w-full"
+                    disabled={submitting || !challengeId || verificationCode.length !== 6}
+                  >
+                    <KeyRound className="h-3.5 w-3.5" />
+                    {submitting ? t('auth.submitting') : t('auth.resetPassword')}
+                  </TButton>
+                </form>
               )}
-              <TButton
-                type="submit"
-                className="w-full"
-                disabled={submitting || !challengeId || verificationCode.length !== 6}
-              >
-                <KeyRound className="h-3.5 w-3.5" />
-                {submitting ? t('auth.submitting') : t('auth.resetPassword')}
-              </TButton>
-              <button
-                type="button"
-                onClick={() => changeMode('login')}
-                className={`${LINK_CLASS} w-full text-center`}
-              >
-                {t('auth.switchToLogin')}
-              </button>
-            </form>
-          )}
+            </div>
+          </div>
         </section>
       </div>
       <AgreementDialog open={agreementOpen} onOpenChange={setAgreementOpen} />
@@ -456,11 +503,36 @@ function AuthPageContent() {
   );
 }
 
+/** 视口四角 1px L 型角标：封闭控制台框架。 */
+function ViewportCorners() {
+  const base = 'pointer-events-none absolute h-3 w-3 border-[#3A5A3A]';
+  return (
+    <div aria-hidden className="pointer-events-none absolute inset-3 z-10 sm:inset-4">
+      <span className={`${base} left-0 top-0 border-l border-t`} />
+      <span className={`${base} right-0 top-0 border-r border-t`} />
+      <span className={`${base} bottom-0 left-0 border-b border-l`} />
+      <span className={`${base} bottom-0 right-0 border-b border-r`} />
+    </div>
+  );
+}
+
+/** 面板内等宽红色错误行：替代 toast 式错误提示。 */
+function ErrorLine({ message }: { message: string }) {
+  return (
+    <p
+      role="alert"
+      className="mt-4 border-l-2 border-[#7F1D1D] pl-3 font-mono text-[11px] leading-6 tracking-[0.12em] text-[#EF4444]"
+    >
+      ERR // {message}
+    </p>
+  );
+}
+
 /** 闸口点火前的启动画面：等宽终端风极简加载。 */
 function GateBoot() {
   const { t } = useTranslation();
   return (
-    <main className="t-terminal-scope relative flex min-h-dvh items-center justify-center bg-[#000000] text-white">
+    <main className="relative flex min-h-dvh items-center justify-center bg-[#000000] text-white">
       <div className="flex flex-col items-center gap-4">
         <div className="relative h-9 w-9">
           <div className="absolute inset-0 border border-[#1A2E1A]" />
@@ -485,28 +557,38 @@ function GateClock() {
 
 function Field({
   label,
+  code,
   value,
   onChange,
   type = 'text',
   autoComplete,
+  placeholder,
   required = true,
 }: {
   label: string;
+  code: string;
   value: string;
   onChange: (value: string) => void;
   type?: string;
   autoComplete?: string;
+  placeholder?: string;
   required?: boolean;
 }) {
   return (
     <label className="block">
-      <span className={FIELD_LABEL_CLASS}>{label}</span>
+      <span className="flex items-baseline justify-between gap-3">
+        <span className={FIELD_LABEL_CLASS}>{label}</span>
+        <span aria-hidden className="font-mono text-[9px] tracking-[0.2em] text-[#1A2E1A]">
+          [{code}]
+        </span>
+      </span>
       <TInput
-        className="mt-1.5"
+        className="mt-1.5 h-11"
         type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         autoComplete={autoComplete}
+        placeholder={placeholder}
         required={required}
       />
     </label>
@@ -515,7 +597,8 @@ function Field({
 
 function EmailCodeRow({
   code,
-  setCode,
+  value,
+  setValue,
   sendCode,
   prepareResend,
   sending,
@@ -523,7 +606,8 @@ function EmailCodeRow({
   requiresTurnstile,
 }: {
   code: string;
-  setCode: (value: string) => void;
+  value: string;
+  setValue: (value: string) => void;
   sendCode: () => void;
   prepareResend: () => void;
   sending: boolean;
@@ -541,17 +625,25 @@ function EmailCodeRow({
   const initialSendBlocked = !sent && requiresTurnstile;
   return (
     <div>
-      <span className={FIELD_LABEL_CLASS}>{t('auth.verificationCode')}</span>
+      <span className="flex items-baseline justify-between gap-3">
+        <span className={FIELD_LABEL_CLASS}>{t('auth.verificationCode')}</span>
+        <span aria-hidden className="font-mono text-[9px] tracking-[0.2em] text-[#1A2E1A]">
+          [{code}]
+        </span>
+      </span>
       <div className="mt-1.5 flex gap-2">
         <TInput
-          value={code}
-          onChange={(event) => setCode(event.target.value.replace(/\D/gu, '').slice(0, 6))}
+          className="h-11"
+          value={value}
+          onChange={(event) => setValue(event.target.value.replace(/\D/gu, '').slice(0, 6))}
           inputMode="numeric"
+          placeholder="000000"
           aria-label={t('auth.verificationCode')}
         />
         <TButton
           type="button"
           variant="secondary"
+          className="self-center"
           onClick={handleClick}
           disabled={sending || initialSendBlocked}
           title={initialSendBlocked ? t('auth.turnstileRequired') : undefined}

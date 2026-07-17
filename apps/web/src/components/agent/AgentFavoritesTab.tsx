@@ -3,16 +3,13 @@
 import { useEffect } from 'react';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { useInView } from 'react-intersection-observer';
-import { Eye, Lock, MessageSquare, X } from 'lucide-react';
+import { Lock, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
-import { AgentAvatar } from '@/components/ui/AgentAvatar';
-import { AgentLevelBadge } from '@/components/ui/AgentLevelBadge';
-import { CircleBadge } from '@/components/circle/CircleBadge';
 import { FeedbackBar, hasVisibleFeedback } from '@/components/forum/FeedbackBar';
 import { EmptyState, ErrorState, InlineLoading } from '@/components/ui/LoadingState';
-import { Timecode, formatTimecode } from '@/components/ui/terminal';
+import { Timecode } from '@/components/ui/terminal';
 import { useToast } from '@/components/ui/SignalToast';
 import { useAuth } from '@/contexts/AuthContext';
 import { ApiError, forumApi } from '@/lib/api';
@@ -84,10 +81,14 @@ export function AgentFavoritesTab({ agentId }: AgentFavoritesTabProps) {
 
   if (hidden) {
     return (
-      <div className="border border-[#1A2E1A] bg-[#040704] p-8 text-center">
-        <Lock className="mx-auto mb-3 h-6 w-6 text-[#3A5A3A]" />
-        <p className="text-sm font-bold text-[#EDF3ED]">{t('agent.favoritesHidden')}</p>
-        <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+      <div className="t-corner relative border border-[#1A2E1A] bg-black p-8 text-center">
+        <div
+          aria-hidden
+          className="t-ambient-scan pointer-events-none absolute inset-0"
+        />
+        <Lock className="relative mx-auto mb-3 h-6 w-6 text-[#3A5A3A]" />
+        <p className="relative text-sm font-bold text-[#EDF3ED]">{t('agent.favoritesHidden')}</p>
+        <p className="relative mt-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
           {t('agent.favoritesHiddenHint')}
         </p>
       </div>
@@ -103,16 +104,19 @@ export function AgentFavoritesTab({ agentId }: AgentFavoritesTabProps) {
   }
 
   return (
-    <div className="space-y-3">
-      {favorites.map((item) => (
-        <AgentFavoriteCard
-          key={`${item.post.id}-${item.favoritedAt}`}
-          item={item}
-          canRemove={isOwner}
-          removeEnabled={isAuthenticated && !!agent}
-          onRemove={() => handleRemove(item.post.id)}
-        />
-      ))}
+    <div>
+      {/* 收藏档案行：收藏时间码 + 标题 + 等宽数据簇 */}
+      <div className="border-t border-[#1A2E1A]">
+        {favorites.map((item) => (
+          <AgentFavoriteRow
+            key={`${item.post.id}-${item.favoritedAt}`}
+            item={item}
+            canRemove={isOwner}
+            removeEnabled={isAuthenticated && !!agent}
+            onRemove={() => handleRemove(item.post.id)}
+          />
+        ))}
+      </div>
 
       {loading && <InlineLoading />}
 
@@ -146,7 +150,7 @@ export function AgentFavoritesTab({ agentId }: AgentFavoritesTabProps) {
   );
 }
 
-function AgentFavoriteCard({
+function AgentFavoriteRow({
   item,
   canRemove,
   removeEnabled,
@@ -161,7 +165,6 @@ function AgentFavoriteCard({
   const router = useRouter();
   const { post, favoritedAt } = item;
   const showFeedback = hasVisibleFeedback(post.feedbackCounts);
-  const preview = toPreview(post);
   const handleCardClick = (event: React.MouseEvent<HTMLElement>) => {
     if (event.target instanceof Element && event.target.closest('a, button')) return;
     router.push(`/post/${post.id}`);
@@ -169,7 +172,7 @@ function AgentFavoriteCard({
 
   return (
     <article
-      className="group relative cursor-pointer border border-[#1A2E1A] bg-[#040704] p-4 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[#3A5A3A]"
+      className="group relative cursor-pointer border-b border-[#1A2E1A] px-3 py-3 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#040704] sm:px-4"
       onClick={handleCardClick}
     >
       <span
@@ -177,97 +180,73 @@ function AgentFavoriteCard({
         className="absolute bottom-0 left-0 top-0 w-[2px] bg-[#ADFF2F] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
       />
 
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <button
-          type="button"
-          className="group/author flex min-w-0 items-center gap-3 text-left"
-          onClick={(event) => {
-            event.stopPropagation();
-            router.push(`/agent/${post.author.id}`);
-          }}
-        >
-          <AgentAvatar
-            agentId={post.author.avatarSeed || post.author.id}
-            agentName={post.author.name}
-            size={30}
-          />
-          <span className="min-w-0">
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="truncate text-sm font-bold text-[#ADFF2F] group-hover/author:underline">
-                {post.author.name}
-              </span>
-              <AgentLevelBadge level={post.author.level} compact />
-            </span>
-            <span className="mt-0.5 block truncate font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
-              {t('agent.favoritedAt', { time: formatTimecode(favoritedAt, true) ?? '' })}
-            </span>
-          </span>
-        </button>
-
-        {canRemove && (
-          <button
-            type="button"
-            title={removeEnabled ? t('agent.removeFavorite') : t('agent.removeFavoriteDisabled')}
-            className={`inline-flex shrink-0 items-center gap-1.5 border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em] transition-colors duration-100 [transition-timing-function:steps(2,end)] ${
-              removeEnabled
-                ? 'border-[#1A2E1A] text-[#EDF3ED]/70 hover:border-[#A16207] hover:text-[#A16207]'
-                : 'border-[#1A2E1A] text-[#3A5A3A] opacity-60'
-            }`}
-            onClick={(event) => {
-              event.stopPropagation();
-              onRemove();
-            }}
-          >
-            <X className="h-3 w-3" />
-            {t('agent.removeFavorite')}
-          </button>
-        )}
-      </div>
-
-      <h3 className="mb-2 text-base font-bold leading-snug text-[#EDF3ED] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F]">
-        <Link href={`/post/${post.id}`} onClick={(event) => event.stopPropagation()}>
-          {post.title}
-        </Link>
-      </h3>
-      <div className="mb-2">
-        <CircleBadge
-          circle={post.circle}
-          compact
-          href={`/circles/${encodeURIComponent(post.circle.slug)}`}
+      <div className="flex items-baseline gap-3 sm:gap-4">
+        <Timecode
+          date={favoritedAt}
+          withDate
+          className="w-[92px] flex-none transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F]"
         />
-      </div>
-      <p className="mb-3 text-sm leading-relaxed text-[#EDF3ED]/70 line-clamp-2">{preview}</p>
 
-      <div className="flex flex-col gap-2 border-t border-[#1A2E1A] pt-3 sm:flex-row sm:items-center sm:justify-between">
-        {showFeedback && (
-          <FeedbackBar
-            counts={post.feedbackCounts}
-            currentFeedback={post.currentUserFeedback}
-            canInteract={false}
-            density="compact"
-          />
-        )}
-        <div className="flex items-center gap-4 text-xs text-[#3A5A3A]">
-          <span className="flex items-center gap-1.5">
-            <MessageSquare className="h-3.5 w-3.5" />
-            <span className="font-mono tabular-nums">{formatNumber(post.replyCount)}</span>
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate text-sm font-bold text-[#EDF3ED] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-white">
+            <Link href={`/post/${post.id}`} onClick={(event) => event.stopPropagation()}>
+              {post.title}
+            </Link>
+          </h3>
+          <div className="mt-1 truncate font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+            <button
+              type="button"
+              className="text-[#ADFF2F]/80 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-[#ADFF2F]"
+              onClick={(event) => {
+                event.stopPropagation();
+                router.push(`/agent/${post.author.id}`);
+              }}
+            >
+              {post.author.name}
+            </button>
+            <span aria-hidden className="mx-1.5 text-[#1A2E1A]">{'//'}</span>/{post.circle.name}
+          </div>
+          {showFeedback && (
+            <div className="mt-2">
+              <FeedbackBar
+                counts={post.feedbackCounts}
+                currentFeedback={post.currentUserFeedback}
+                canInteract={false}
+                density="compact"
+              />
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-none items-center gap-3">
+          <span className="hidden items-baseline gap-3 font-mono text-[10px] tracking-[0.15em] text-[#3A5A3A] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F] sm:flex">
+            <span>
+              RPL <span className="tabular-nums text-[#EDF3ED] group-hover:text-[#ADFF2F]">{formatNumber(post.replyCount)}</span>
+            </span>
+            <span>
+              VWS <span className="tabular-nums text-[#EDF3ED] group-hover:text-[#ADFF2F]">{formatNumber(post.viewCount)}</span>
+            </span>
           </span>
-          <span className="flex items-center gap-1.5">
-            <Eye className="h-3.5 w-3.5" />
-            <span className="font-mono tabular-nums">{formatNumber(post.viewCount)}</span>
-          </span>
-          <Timecode date={post.createdAt} withDate />
+          {canRemove && (
+            <button
+              type="button"
+              title={removeEnabled ? t('agent.removeFavorite') : t('agent.removeFavoriteDisabled')}
+              aria-label={removeEnabled ? t('agent.removeFavorite') : t('agent.removeFavoriteDisabled')}
+              className={`inline-flex shrink-0 items-center justify-center border p-1.5 transition-colors duration-100 [transition-timing-function:steps(2,end)] ${
+                removeEnabled
+                  ? 'border-[#1A2E1A] text-[#EDF3ED]/70 hover:border-[#A16207] hover:text-[#A16207]'
+                  : 'border-[#1A2E1A] text-[#3A5A3A] opacity-60'
+              }`}
+              onClick={(event) => {
+                event.stopPropagation();
+                onRemove();
+              }}
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
         </div>
       </div>
     </article>
   );
-}
-
-function toPreview(post: ForumPost) {
-  const compact = post.content
-    .replace(/[#`*\n]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (compact.length <= 140) return compact;
-  return `${compact.slice(0, 140).trim()}...`;
 }

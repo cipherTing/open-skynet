@@ -31,7 +31,64 @@ function MetaLine({ text, className }: { text: string; className?: string }) {
 const CTA_BASE =
   't-mono px-7 py-3.5 transition-colors duration-100 [transition-timing-function:steps(2,end)]';
 
-/** 首屏：ASCII 神经核心背景 + 四角元数据 + 巨型标题 + 双 CTA。 */
+/** 入口门户：直角黑底面板 + 四角 L 型角标，首屏全部行动入口收进这里。 */
+function HeroPortal({ isAuthenticated, onConnectAgent }: HeroSectionProps) {
+  const { t } = useTranslation();
+
+  return (
+    <div className="relative w-full border border-[var(--t-dim)] bg-black/85 px-6 py-8 md:px-10 md:py-12">
+      {/* 四角 L 型角标 */}
+      <span
+        aria-hidden
+        className="absolute -left-px -top-px h-4 w-4 border-l-2 border-t-2 border-[var(--t-accent)]"
+      />
+      <span
+        aria-hidden
+        className="absolute -right-px -top-px h-4 w-4 border-r-2 border-t-2 border-[var(--t-accent)]"
+      />
+      <span
+        aria-hidden
+        className="absolute -bottom-px -left-px h-4 w-4 border-b-2 border-l-2 border-[var(--t-accent)]"
+      />
+      <span
+        aria-hidden
+        className="absolute -bottom-px -right-px h-4 w-4 border-b-2 border-r-2 border-[var(--t-accent)]"
+      />
+
+      <p className="t-mono text-[10px] text-[var(--t-dim)]">{t('landing.hero.portalLabel')}</p>
+
+      <Link
+        href="/workspace"
+        onClick={() => emitGlitch()}
+        className="mt-6 block border border-[var(--t-accent)] px-6 py-6 text-[var(--t-accent)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[var(--t-accent)] hover:text-black md:px-8 md:py-8"
+      >
+        <ScrambleText
+          className="t-display block text-[clamp(2.5rem,4.5vw,4.5rem)]"
+          text={t('landing.hero.ctaPrimary')}
+        />
+      </Link>
+
+      {isAuthenticated ? (
+        <button
+          type="button"
+          onClick={onConnectAgent}
+          className={`${CTA_BASE} mt-4 block w-full border border-[var(--t-dim)] text-center text-[var(--t-ink)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]`}
+        >
+          <ScrambleText text={t('landing.hero.ctaSecondary')} />
+        </button>
+      ) : (
+        <Link
+          href="/auth?mode=register"
+          className={`${CTA_BASE} mt-4 block w-full border border-[var(--t-dim)] text-center text-[var(--t-ink)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]`}
+        >
+          <ScrambleText text={t('landing.hero.ctaRegister')} />
+        </Link>
+      )}
+    </div>
+  );
+}
+
+/** 首屏：ASCII 神经核心背景 + 四角元数据 + 巨型标题 + 右侧入口门户。 */
 export function HeroSection({ isAuthenticated, onConnectAgent }: HeroSectionProps) {
   const { t } = useTranslation();
 
@@ -54,42 +111,27 @@ export function HeroSection({ isAuthenticated, onConnectAgent }: HeroSectionProp
           </div>
         </div>
 
-        {/* 左下巨型标题区 */}
-        <div className="max-w-full">
-          <p className="t-mono text-[var(--t-accent)]">{t('landing.hero.kicker')}</p>
-          <h1 className="t-display mt-4 text-[clamp(4rem,14vw,12rem)] text-[var(--t-ink)]">
-            {t('landing.hero.title')}
-          </h1>
-          <p className="t-serif-accent mt-4 text-lg md:text-2xl">{t('landing.hero.accent')}</p>
-          <p className="mt-6 max-w-xl text-sm leading-relaxed text-white/85 md:text-base">
-            {t('landing.hero.subtitle')}
-          </p>
+        {/* 主体：左侧巨型标题区 + 右侧入口门户（桌面端独立列，门户压在神经核心画布之上） */}
+        <div className="grid items-center gap-12 md:grid-cols-[minmax(0,1fr)_minmax(0,38%)]">
+          <div className="max-w-full">
+            <p className="t-mono text-[var(--t-accent)]">{t('landing.hero.kicker')}</p>
+            <h1 className="t-display mt-4 text-[clamp(4rem,14vw,12rem)] text-[var(--t-ink)]">
+              {t('landing.hero.title')}
+            </h1>
+            <p className="t-serif-accent mt-4 text-lg md:text-2xl">{t('landing.hero.accent')}</p>
+            <p className="mt-6 max-w-xl text-sm leading-relaxed text-white/85 md:text-base">
+              {t('landing.hero.subtitle')}
+            </p>
 
-          {/* CTA 组 */}
-          <div className="mt-10 flex flex-wrap items-center gap-4">
-            <Link
-              href="/workspace"
-              onClick={() => emitGlitch()}
-              className={`${CTA_BASE} border border-[var(--t-accent)] text-[var(--t-accent)] hover:bg-[var(--t-accent)] hover:text-black`}
-            >
-              <ScrambleText text={t('landing.hero.ctaPrimary')} />
-            </Link>
-            {isAuthenticated ? (
-              <button
-                type="button"
-                onClick={onConnectAgent}
-                className={`${CTA_BASE} border border-[var(--t-dim)] text-[var(--t-ink)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]`}
-              >
-                <ScrambleText text={t('landing.hero.ctaSecondary')} />
-              </button>
-            ) : (
-              <Link
-                href="/auth?mode=register"
-                className={`${CTA_BASE} border border-[var(--t-dim)] text-[var(--t-ink)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]`}
-              >
-                <ScrambleText text={t('landing.hero.ctaRegister')} />
-              </Link>
-            )}
+            {/* 移动端门户：堆在标题区下方、全宽 */}
+            <div className="mt-10 md:hidden">
+              <HeroPortal isAuthenticated={isAuthenticated} onConnectAgent={onConnectAgent} />
+            </div>
+          </div>
+
+          {/* 桌面端门户列 */}
+          <div className="hidden md:block">
+            <HeroPortal isAuthenticated={isAuthenticated} onConnectAgent={onConnectAgent} />
           </div>
         </div>
       </div>
