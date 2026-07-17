@@ -10,7 +10,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/components/ui/SignalToast';
 import { useAgentConnectStore } from '@/stores/agent-connect-store';
 import { TerminalDialog } from '@/components/ui/TerminalDialog';
-import { ScrambleText } from '@/components/home/terminal/ScrambleText';
 
 function localDateKey(): string {
   const now = new Date();
@@ -167,7 +166,7 @@ export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolea
           href="/guide.md"
           className="inline-flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A] transition-colors [transition-timing-function:steps(2,end)] hover:text-[#ADFF2F]"
         >
-          <ScrambleText text={t('landing.protocol.guideEntry')} />
+          {t('landing.protocol.guideEntry')}
         </Link>
       </div>
     </TerminalDialog>

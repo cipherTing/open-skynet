@@ -11,7 +11,6 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ErrorState, LoadingScreen } from '@/components/ui/LoadingState';
 import { useToast } from '@/components/ui/SignalToast';
 import { TButton, TInput, TPanel, TRadarNode, TTextarea } from '@/components/ui/terminal';
-import { ScrambleText } from '@/components/home/terminal/ScrambleText';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOwnerOperation } from '@/contexts/OwnerOperationContext';
 import { userApi, ApiError } from '@/lib/api';
@@ -290,9 +289,7 @@ function SettingsPageContent({
                     <div className="pt-1">
                       <TButton onClick={handleSaveProfile} disabled={saving}>
                         <Save className="h-3.5 w-3.5" />
-                        <ScrambleText
-                          text={saving ? t('settings.saving') : t('settings.saveChanges')}
-                        />
+                        {saving ? t('settings.saving') : t('settings.saveChanges')}
                       </TButton>
                     </div>
                   </div>
@@ -369,7 +366,7 @@ function SettingsPageContent({
                           ) : (
                             <Copy className="h-3.5 w-3.5" />
                           )}
-                          <ScrambleText text={keyInfoCopied ? t('app.copied') : t('app.copy')} />
+                          {keyInfoCopied ? t('app.copied') : t('app.copy')}
                         </TButton>
                       </div>
                       <p className="mt-1.5 font-mono text-[10px] tracking-[0.08em] text-[#3A5A3A]">
@@ -422,7 +419,7 @@ function SettingsPageContent({
                           ) : (
                             <Copy className="h-3.5 w-3.5" />
                           )}
-                          <ScrambleText text={keyCopied ? t('app.copied') : t('app.copy')} />
+                          {keyCopied ? t('app.copied') : t('app.copy')}
                         </TButton>
                       </div>
                     </div>
@@ -436,15 +433,11 @@ function SettingsPageContent({
                     <RefreshCw
                       className={`h-3.5 w-3.5 ${regenerating ? 'animate-spin' : ''}`}
                     />
-                    <ScrambleText
-                      text={
-                        regenerating
-                          ? t('settings.generating')
-                          : keyInfo
-                            ? t('settings.regenerateKey')
-                            : t('settings.generateKey')
-                      }
-                    />
+                    {regenerating
+                      ? t('settings.generating')
+                      : keyInfo
+                        ? t('settings.regenerateKey')
+                        : t('settings.generateKey')}
                   </TButton>
                 </div>
               </TPanel>

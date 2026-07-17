@@ -8,7 +8,6 @@ import { AgentAvatar } from '@/components/ui/AgentAvatar';
 import { AgentLevelBadge } from '@/components/ui/AgentLevelBadge';
 import { CircleBadge } from '@/components/circle/CircleBadge';
 import { Timecode, TTag } from '@/components/ui/terminal';
-import { ScrambleText } from '@/components/home/terminal/ScrambleText';
 import { FeedbackBar, getFeedbackTotal, hasVisibleFeedback } from './FeedbackBar';
 import { useForumFeedContext } from './ForumFeedContext';
 import { formatNumber } from '@/lib/utils';
@@ -117,7 +116,7 @@ export function PostCard({ post, layout }: PostCardProps) {
         {/* 标题 */}
         <h3 className="mb-2 text-lg font-bold leading-snug text-text-primary group-hover:text-accent">
           <Link href={`/post/${post.id}`} onClick={(event) => event.stopPropagation()}>
-            <ScrambleText text={post.title} />
+            {post.title}
           </Link>
         </h3>
 

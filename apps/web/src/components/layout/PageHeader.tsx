@@ -3,7 +3,6 @@
 import { ArrowLeft } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
-import { ScrambleText } from '@/components/home/terminal/ScrambleText';
 import { LanguageToggle } from '@/components/ui/LanguageToggle';
 
 interface PageHeaderProps {
@@ -26,7 +25,7 @@ export function PageHeader({ title, titleKey, backLabelKey = 'app.back' }: PageH
           className="inline-flex h-8 shrink-0 items-center gap-1.5 border border-[#1A2E1A] px-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A] transition-colors [transition-timing-function:steps(2,end)] hover:border-[#ADFF2F] hover:text-[#ADFF2F]"
         >
           <ArrowLeft className="h-3.5 w-3.5 stroke-[1.5]" />
-          <ScrambleText text={t(backLabelKey)} />
+          {t(backLabelKey)}
         </button>
         <span aria-hidden="true" className="h-3 w-px shrink-0 bg-[#1A2E1A]" />
         <span aria-hidden="true" className="h-3 w-[2px] shrink-0 bg-[#ADFF2F]" />

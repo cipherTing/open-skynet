@@ -1,13 +1,16 @@
 'use client';
 
+import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { Bot, Gavel, Inbox, Orbit, Radio, Scale } from 'lucide-react';
+import { Bot, Inbox, Orbit, Radio, Scale } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/contexts/AuthContext';
-import { ScrambleText } from '@/components/home/terminal/ScrambleText';
+import { TerminalDialog } from '@/components/ui/TerminalDialog';
+import { UserDropdown } from '@/components/ui/UserDropdown';
+import { useToast } from '@/components/ui/SignalToast';
 import { useHomeNavigationStore, type HomeSection } from '@/stores/home-navigation-store';
 import { inboxApi } from '@/lib/api';
 import { inboxKeys } from '@/lib/query-keys';
@@ -30,7 +33,6 @@ const tabItems: SidebarTabItem[] = [
   { icon: Radio, labelKey: 'sidebar.feed', section: 'feed' },
   { icon: Orbit, labelKey: 'sidebar.circles', section: 'circles' },
   { icon: Scale, labelKey: 'sidebar.governance', section: 'governance' },
-  { icon: Gavel, labelKey: 'sidebar.governanceConsole', href: '/governance' },
 ];
 
 const NAV_LABEL_CLASS = 'font-mono text-[10px] uppercase tracking-[0.15em]';
@@ -62,9 +64,13 @@ export function Sidebar({
 }: SidebarProps) {
   const { t } = useTranslation();
   const pathname = usePathname();
-  const { isAuthenticated, isLoading, agent } = useAuth();
+  const router = useRouter();
+  const toast = useToast();
+  const { isAuthenticated, isLoading, agent, logout } = useAuth();
   const setHomeActiveSection = useHomeNavigationStore((state) => state.setActiveSection);
   const setAgentConnectOpen = useAgentConnectStore((state) => state.setOpen);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [logoutBusy, setLogoutBusy] = useState(false);
   const unreadQuery = useQuery({
     queryKey: inboxKeys.summary(agent?.id ?? 'none'),
     queryFn: ({ signal }) => inboxApi.list({ limit: 1, unreadOnly: true }, signal),
@@ -87,6 +93,22 @@ export function Sidebar({
     onRequestClose?.();
   };
 
+  const handleLogoutConfirm = () => {
+    void (async () => {
+      setLogoutBusy(true);
+      try {
+        await logout();
+        setShowLogoutConfirm(false);
+        router.replace('/workspace');
+      } catch (error) {
+        console.error('Logout failed:', error);
+        toast.error(t('auth.operationFailed'));
+      } finally {
+        setLogoutBusy(false);
+      }
+    })();
+  };
+
   const inboxContent = (
     <>
       {isInboxActive && <ActiveIndicator />}
@@ -94,7 +116,7 @@ export function Sidebar({
         <Inbox className="h-5 w-5 stroke-[1.5]" />
         {unreadCount > 0 ? <UnreadBadge count={unreadCount} /> : null}
       </span>
-      <ScrambleText text={t('sidebar.inbox')} className={NAV_LABEL_CLASS} />
+      <span className={NAV_LABEL_CLASS}>{t('sidebar.inbox')}</span>
     </>
   );
 
@@ -147,7 +169,7 @@ export function Sidebar({
                 <>
                   {isActive && <ActiveIndicator />}
                   <Icon className="h-5 w-5 stroke-[1.5]" />
-                  <ScrambleText text={t(item.labelKey)} className={NAV_LABEL_CLASS} />
+                  <span className={NAV_LABEL_CLASS}>{t(item.labelKey)}</span>
                 </>
               );
 
@@ -226,12 +248,46 @@ export function Sidebar({
                 aria-label={t('sidebar.connectAgent')}
               >
                 <Bot className="h-5 w-5 stroke-[1.5]" />
-                <ScrambleText text={t('sidebar.connectAgent')} className={NAV_LABEL_CLASS} />
+                <span className={NAV_LABEL_CLASS}>{t('sidebar.connectAgent')}</span>
               </button>
+              <div className="deck-divider my-2 w-10 flex-none" />
+              <UserDropdown agent={agent} onLogout={() => setShowLogoutConfirm(true)} />
             </div>
           ) : null}
         </div>
       </aside>
+
+      <TerminalDialog
+        open={showLogoutConfirm}
+        onOpenChange={setShowLogoutConfirm}
+        title={t('sidebar.logoutTitle')}
+        code="AUTH.LOGOUT"
+        size="sm"
+        variant="alert"
+        footer={
+          <>
+            <button
+              type="button"
+              className="t-btn t-btn--ghost"
+              onClick={() => setShowLogoutConfirm(false)}
+            >
+              {t('app.cancel')}
+            </button>
+            <button
+              type="button"
+              disabled={logoutBusy}
+              className="t-btn t-btn--danger"
+              onClick={handleLogoutConfirm}
+            >
+              {t('sidebar.logoutConfirm')}
+            </button>
+          </>
+        }
+      >
+        <p className="text-sm leading-relaxed text-text-secondary">
+          {t('sidebar.logoutQuestion')}
+        </p>
+      </TerminalDialog>
     </>
   );
 }

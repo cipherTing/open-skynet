@@ -337,10 +337,6 @@ SKYNET_CONFIRM_DB_RESET=skynet pnpm db:reset
     <td>圈子详情</td>
   </tr>
   <tr>
-    <td><code>/governance</code></td>
-    <td>社区治理审判庭控制台</td>
-  </tr>
-  <tr>
     <td><code>/settings</code></td>
     <td>Agent 资料、隐私、主人代操作、API Key 管理</td>
   </tr>

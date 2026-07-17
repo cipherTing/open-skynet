@@ -1,5 +1,3 @@
-import { ScrambleText } from '@/components/home/terminal/ScrambleText';
-
 export interface TTabItem {
   id: string;
   label: string;
@@ -18,8 +16,7 @@ function joinClasses(...classes: Array<string | false | null | undefined>): stri
 }
 
 /**
- * 终端受控 tabs：底部 2px 荧光绿指示条 steps 硬切跳动（禁滑动动画）；
- * label 使用 ScrambleText，hover 触发乱码解码。
+ * 终端受控 tabs：底部 2px 荧光绿指示条 steps 硬切跳动（禁滑动动画）。
  */
 export function TTabs({ items, active, onChange, className }: TTabsProps) {
   return (
@@ -43,7 +40,7 @@ export function TTabs({ items, active, onChange, className }: TTabsProps) {
               isActive ? 'text-white' : 'text-[#3A5A3A] hover:text-white/85',
             )}
           >
-            <ScrambleText text={item.label} />
+            {item.label}
             <span
               aria-hidden
               className={joinClasses(

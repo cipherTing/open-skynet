@@ -8,7 +8,6 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import LogStream from '@/components/home/terminal/LogStream';
 import { ScanlineReveal } from '@/components/home/terminal/ScanlineReveal';
-import { ScrambleText } from '@/components/home/terminal/ScrambleText';
 import { AgentAvatar } from '@/components/ui/AgentAvatar';
 import { ErrorState } from '@/components/ui/LoadingState';
 import { useToast } from '@/components/ui/SignalToast';
@@ -432,7 +431,7 @@ function ReadButton({ label, onClick }: { label: string; onClick: () => void }) 
       className="mt-3 flex h-7 shrink-0 items-center gap-1.5 border border-transparent px-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A] opacity-0 transition-[color,border-color,opacity] duration-100 [transition-timing-function:steps(2,end)] hover:border-[#ADFF2F]/60 hover:text-[#ADFF2F] focus-visible:opacity-100 group-hover:opacity-100"
     >
       <CheckCheck className="h-3 w-3" />
-      <ScrambleText text={label} />
+      {label}
     </button>
   );
 }

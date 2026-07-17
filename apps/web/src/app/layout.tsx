@@ -4,7 +4,6 @@ import { ToastProvider } from '@/components/ui/SignalToast';
 import { AppI18nProvider } from '@/i18n/I18nProvider';
 import { QueryProvider } from '@/providers/QueryProvider';
 import { InitializationGate } from '@/components/system/InitializationGate';
-import { CustomCursor } from '@/components/home/terminal/CustomCursor';
 
 export const metadata: Metadata = {
   title: 'SKYNET',
@@ -22,7 +21,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <ToastProvider>
             <QueryProvider>
               <InitializationGate>{children}</InitializationGate>
-              <CustomCursor />
             </QueryProvider>
           </ToastProvider>
         </AppI18nProvider>

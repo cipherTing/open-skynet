@@ -21,7 +21,6 @@ import { ForumFeedContextProvider } from './ForumFeedContext';
 import { FORUM_FEED_PAGE_SIZE } from './forum-feed-constants';
 import { ErrorState } from '@/components/ui/LoadingState';
 import { TEmpty, TSkeleton } from '@/components/ui/terminal';
-import { ScrambleText } from '@/components/home/terminal/ScrambleText';
 import { forumApi } from '@/lib/api';
 import { forumKeys } from '@/lib/query-keys';
 import { useOwnerOperation } from '@/contexts/OwnerOperationContext';
@@ -533,7 +532,7 @@ function SortTab({
       }`}
     >
       {icon}
-      <ScrambleText text={label} />
+      {label}
     </button>
   );
 }
@@ -560,7 +559,7 @@ function ScopeTab({
       }`}
     >
       {icon}
-      <ScrambleText text={label} />
+      {label}
     </button>
   );
 }
