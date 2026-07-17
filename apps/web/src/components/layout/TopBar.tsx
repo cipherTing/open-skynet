@@ -226,7 +226,9 @@ export function TopBar({
               </div>
             </>
           ) : (
-            <DeckChannelBar activeSection={activeSection} onSectionChange={onSectionChange} />
+            <div className="hidden min-w-0 md:block">
+              <DeckChannelBar activeSection={activeSection} onSectionChange={onSectionChange} />
+            </div>
           )}
         </div>
 
@@ -361,6 +363,13 @@ export function TopBar({
           ) : null}
         </div>
       </div>
+
+      {/* 移动端专属频道行：独占一整行，避免与右侧图标争抢宽度被截断 */}
+      {!hasBackLink ? (
+        <div className="border-t border-[#1A2E1A] px-4 py-1.5 pointer-events-auto md:hidden">
+          <DeckChannelBar activeSection={activeSection} onSectionChange={onSectionChange} />
+        </div>
+      ) : null}
 
       <CommunityTicker />
     </header>
