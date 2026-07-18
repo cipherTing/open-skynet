@@ -10,9 +10,10 @@ type Rgb = [number, number, number];
 
 const CHAR_RAMP = ['.', '1', ':', '0', '=', '+', '%', 'S', '#', '@'] as const;
 
-const COLOR_DARK: Rgb = [0x1a, 0x2e, 0x1a]; // #1A2E1A
-const COLOR_MID: Rgb = [0x3a, 0x5a, 0x3a]; // #3A5A3A
-const COLOR_NEON: Rgb = [0xad, 0xff, 0x2f]; // #ADFF2F
+// canvas 无法消费 CSS var（模块加载期无 DOM），下列数值与对应 token 等值，需保持同步
+const COLOR_DARK: Rgb = [0x1a, 0x2e, 0x1a]; // var(--t-noise) 等值
+const COLOR_MID: Rgb = [0x74, 0x8a, 0x70]; // var(--t-faint) 等值
+const COLOR_NEON: Rgb = [0xad, 0xff, 0x2f]; // var(--t-accent) 等值
 
 const MAX_DPR = 1.5;
 const TORUS_POINTS = 1300;
@@ -25,6 +26,12 @@ const SATELLITE_SPREAD = 0.45;
 const DEPTH_RANGE = SATELLITE_MIN_RADIUS + SATELLITE_SPREAD; // 1.73
 const PERSPECTIVE = 3;
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
+
+// 球体在画布内的定位/尺寸比例（相对画布宽高）
+const CORE_CENTER_X_LANDSCAPE = 0.54; // 横向画布：中心略偏右
+const CORE_CENTER_Y = 0.3; // 中心偏上，下方留出入口门户的负空间
+const CORE_RADIUS_RATIO_LANDSCAPE = 0.28; // 横向画布半径占 min(w,h) 的比例
+const CORE_RADIUS_RATIO_PORTRAIT = 0.34; // 竖屏全宽画布保持原有占比
 
 // 鼠标凹陷交互参数
 const DENT_RADIUS = 120; // px，凹陷作用半径（余弦衰减）
@@ -183,9 +190,15 @@ export default function AsciiCoreCanvas({ className }: AsciiCoreCanvasProps) {
       const cosX = Math.cos(tiltX);
       const sinX = Math.sin(tiltX);
 
-      const cx = width / 2 + mouseCurrent.x * 10;
-      const cy = height / 2 + mouseCurrent.y * 8;
-      const radius = Math.min(width, height) * 0.34;
+      // 横向画布（桌面右侧 62% 区域）：球体偏上偏右，避开右下停靠的门户；
+      // 竖向画布（移动端全宽）：球体居中偏上，避开下方堆叠的标题与门户。
+      const landscape = width >= height;
+      const cx =
+        width * (landscape ? CORE_CENTER_X_LANDSCAPE : 0.5) + mouseCurrent.x * 10;
+      const cy = height * CORE_CENTER_Y + mouseCurrent.y * 8;
+      const radius =
+        Math.min(width, height) *
+        (landscape ? CORE_RADIUS_RATIO_LANDSCAPE : CORE_RADIUS_RATIO_PORTRAIT);
       const half = cellPx / 2;
       const maxLevel = LEVELS.length - 1;
 
@@ -329,9 +342,8 @@ export default function AsciiCoreCanvas({ className }: AsciiCoreCanvasProps) {
   return (
     <canvas
       ref={canvasRef}
-      className={className}
+      className={className ? `block bg-transparent ${className}` : 'block bg-transparent'}
       aria-hidden="true"
-      style={{ display: 'block', background: 'transparent' }}
     />
   );
 }

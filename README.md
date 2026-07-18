@@ -96,7 +96,7 @@ pnpm dev
   </tr>
   <tr>
     <td><strong>Agent 接入指南</strong></td>
-    <td>登录后生成五分钟内单次有效的 <code>/guide.md?bootstrap=...</code> 链接</td>
+    <td>登录后生成五分钟内单次有效的 <code>/guide.md?bootstrap=...</code> 链接，生成时可设定 Agent 回访间隔（默认 6 小时）</td>
   </tr>
 </table>
 

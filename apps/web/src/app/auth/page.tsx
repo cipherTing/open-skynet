@@ -17,9 +17,7 @@ import { useUtcNow } from '@/components/home/terminal/terminal-hooks';
 
 type AuthMode = 'login' | 'register' | 'forgot';
 
-const FIELD_LABEL_CLASS = 't-mono text-[var(--t-dim)]';
-const LINK_CLASS =
-  't-mono text-[var(--t-dim)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)]';
+const FIELD_LABEL_CLASS = 't-mono text-[var(--t-faint)]';
 
 /** 各模式的闸口机读代号：机器文案，豁免 i18n。 */
 const MODE_META: Record<AuthMode, { code: string; kicker: string }> = {
@@ -189,8 +187,8 @@ function AuthPageContent() {
         <div aria-hidden className="t-dotgrid pointer-events-none absolute inset-0 opacity-30" />
         <div aria-hidden className="t-ambient-scan pointer-events-none absolute inset-0" />
         <ViewportCorners />
-        <div className="t-corner t-hairline relative w-full max-w-md bg-[#040704] p-6 text-center sm:p-8">
-          <p className="font-mono text-[11px] tracking-[0.15em] text-[#EF4444]">
+        <div className="t-corner t-hairline relative w-full max-w-md bg-[var(--t-panel)] p-6 text-center sm:p-8">
+          <p className="font-mono text-[11px] tracking-[0.15em] text-[var(--t-hazard)]">
             ERR // {t('auth.serviceUnavailableTitle')}
           </p>
           <p className="mt-3 text-sm leading-6 text-white/70">
@@ -215,7 +213,7 @@ function AuthPageContent() {
     config?.turnstileEnabled && (mode === 'login' || !challengeId || resendPreparing),
   );
   const turnstile = showTurnstile ? (
-    <div className="flex justify-center border border-[#1A2E1A] bg-black p-2">
+    <div className="flex justify-center border border-[var(--t-noise)] bg-black p-2">
       <Turnstile
         key={`${mode}-${email}-${turnstileRevision}`}
         siteKey={config?.turnstileSiteKey ?? ''}
@@ -267,42 +265,46 @@ function AuthPageContent() {
       <ViewportCorners />
 
       <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center justify-between gap-4 px-4 py-3 sm:px-8">
-        <span className="t-mono text-[var(--t-dim)]">SKYNET // ACCESS GATE</span>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/"
+            className="pointer-events-auto inline-flex h-8 items-center gap-1.5 border border-[var(--t-noise)] px-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-sub)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]"
+          >
+            <ArrowLeft className="h-3.5 w-3.5 stroke-[1.5]" />
+            {t('auth.backHome')}
+          </Link>
+          <span className="t-mono text-[var(--t-faint)]">SKYNET // ACCESS GATE</span>
+        </div>
         <GateClock />
       </header>
       <footer className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex items-center justify-between gap-4 px-4 py-3 sm:px-8">
-        <span className="t-mono text-[var(--t-dim)]">GATE.01 // V0.1</span>
-        <span className="t-mono hidden text-[var(--t-dim)] sm:inline">{t('auth.footer')}</span>
+        <span className="t-mono text-[var(--t-faint)]">GATE.01 // V0.1</span>
+        <span className="t-mono hidden text-[var(--t-faint)] sm:inline">{t('auth.footer')}</span>
       </footer>
       {/* 左右竖排边缘轨：封闭控制台框架的机器元数据 */}
       <span
         aria-hidden
-        className="pointer-events-none absolute left-7 top-1/2 z-10 hidden -translate-y-1/2 font-mono text-[10px] uppercase tracking-[0.3em] text-[#1A2E1A] [writing-mode:vertical-rl] xl:block"
+        className="pointer-events-none absolute left-7 top-1/2 z-10 hidden -translate-y-1/2 font-mono text-[10px] uppercase tracking-[0.3em] text-[var(--t-faint)] [writing-mode:vertical-rl] xl:block"
       >
         UPLINK.CH00 // SECURE.LINE
       </span>
       <span
         aria-hidden
-        className="pointer-events-none absolute right-7 top-1/2 z-10 hidden -translate-y-1/2 font-mono text-[10px] uppercase tracking-[0.3em] text-[#1A2E1A] [writing-mode:vertical-rl] xl:block"
+        className="pointer-events-none absolute right-7 top-1/2 z-10 hidden -translate-y-1/2 font-mono text-[10px] uppercase tracking-[0.3em] text-[var(--t-faint)] [writing-mode:vertical-rl] xl:block"
       >
         PROTO.V0.1 // HANDSHAKE
       </span>
 
       <div className="relative z-10 mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center px-4 py-16 sm:py-20">
-        <Link href="/" className={`${LINK_CLASS} mb-5 inline-flex items-center gap-2`}>
-          <ArrowLeft className="h-3.5 w-3.5" />
-          {t('auth.backHome')}
-        </Link>
-
-        <section className="t-corner t-corner--accent t-hairline w-full bg-[#040704]">
+        <section className="t-corner t-corner--accent t-hairline w-full bg-[var(--t-panel)]">
           {/* 闸口标号条：ACCESS GATE 等宽标号 + 当前模式机读代号 */}
-          <header className="flex items-center justify-between gap-3 border-b border-[#1A2E1A] px-5 py-2.5 sm:px-7">
+          <header className="flex items-center justify-between gap-3 border-b border-[var(--t-noise)] px-5 py-2.5 sm:px-7">
             <span className="t-mono text-white">ACCESS GATE</span>
             <span className="t-mono text-[var(--t-accent)]">{modeMeta.code}</span>
           </header>
 
           <div className="p-5 sm:p-7">
-            <p className="t-mono text-[var(--t-dim)]">{modeMeta.kicker}</p>
+            <p className="t-mono text-[var(--t-faint)]">{modeMeta.kicker}</p>
             <h1 className="t-display mt-3 text-[2.5rem] text-[var(--t-ink)] sm:text-5xl">
               {header.title}
             </h1>
@@ -505,7 +507,7 @@ function AuthPageContent() {
 
 /** 视口四角 1px L 型角标：封闭控制台框架。 */
 function ViewportCorners() {
-  const base = 'pointer-events-none absolute h-3 w-3 border-[#3A5A3A]';
+  const base = 'pointer-events-none absolute h-3 w-3 border-[var(--t-faint)]';
   return (
     <div aria-hidden className="pointer-events-none absolute inset-3 z-10 sm:inset-4">
       <span className={`${base} left-0 top-0 border-l border-t`} />
@@ -521,7 +523,7 @@ function ErrorLine({ message }: { message: string }) {
   return (
     <p
       role="alert"
-      className="mt-4 border-l-2 border-[#7F1D1D] pl-3 font-mono text-[11px] leading-6 tracking-[0.12em] text-[#EF4444]"
+      className="mt-4 border-l-2 border-[var(--t-hazard)] pl-3 font-mono text-[11px] leading-6 tracking-[0.12em] text-[var(--t-hazard)]"
     >
       ERR // {message}
     </p>
@@ -535,12 +537,12 @@ function GateBoot() {
     <main className="relative flex min-h-dvh items-center justify-center bg-[#000000] text-white">
       <div className="flex flex-col items-center gap-4">
         <div className="relative h-9 w-9">
-          <div className="absolute inset-0 border border-[#1A2E1A]" />
-          <div className="absolute inset-0 animate-[t-spin-step_1s_steps(8)_infinite] border-t border-[#ADFF2F] motion-reduce:animate-none" />
-          <div className="absolute inset-[7px] animate-[t-blink_1.6s_steps(1)_infinite] bg-[#ADFF2F]/20 motion-reduce:animate-none" />
+          <div className="absolute inset-0 border border-[var(--t-noise)]" />
+          <div className="absolute inset-0 animate-[t-spin-step_1s_steps(8)_infinite] border-t border-[var(--t-accent)] motion-reduce:animate-none" />
+          <div className="absolute inset-[7px] animate-[t-blink_1.6s_steps(1)_infinite] bg-[var(--t-accent)]/20 motion-reduce:animate-none" />
         </div>
-        <span className="t-mono text-[var(--t-dim)]">{t('app.loading')}</span>
-        <span className="t-mono text-[var(--t-noise)]">SYS // GATE.BOOT</span>
+        <span className="t-mono text-[var(--t-faint)]">{t('app.loading')}</span>
+        <span className="t-mono text-[var(--t-faint)]">SYS // GATE.BOOT</span>
       </div>
     </main>
   );
@@ -552,7 +554,7 @@ function GateClock() {
   const text = now
     ? `${String(now.getUTCHours()).padStart(2, '0')}:${String(now.getUTCMinutes()).padStart(2, '0')}:${String(now.getUTCSeconds()).padStart(2, '0')} UTC`
     : '--:--:-- UTC';
-  return <span className="t-mono text-[var(--t-dim)]">{text}</span>;
+  return <span className="t-mono text-[var(--t-faint)]">{text}</span>;
 }
 
 function Field({
@@ -578,7 +580,7 @@ function Field({
     <label className="block">
       <span className="flex items-baseline justify-between gap-3">
         <span className={FIELD_LABEL_CLASS}>{label}</span>
-        <span aria-hidden className="font-mono text-[9px] tracking-[0.2em] text-[#1A2E1A]">
+        <span aria-hidden className="font-mono text-[9px] tracking-[0.2em] text-[var(--t-faint)]">
           [{code}]
         </span>
       </span>
@@ -627,7 +629,7 @@ function EmailCodeRow({
     <div>
       <span className="flex items-baseline justify-between gap-3">
         <span className={FIELD_LABEL_CLASS}>{t('auth.verificationCode')}</span>
-        <span aria-hidden className="font-mono text-[9px] tracking-[0.2em] text-[#1A2E1A]">
+        <span aria-hidden className="font-mono text-[9px] tracking-[0.2em] text-[var(--t-faint)]">
           [{code}]
         </span>
       </span>
@@ -652,7 +654,7 @@ function EmailCodeRow({
         </TButton>
       </div>
       {initialSendBlocked && (
-        <span className="mt-1 block text-[11px] text-[#A16207]">{t('auth.turnstileRequired')}</span>
+        <span className="mt-1 block text-[11px] text-[var(--t-signal)]">{t('auth.turnstileRequired')}</span>
       )}
     </div>
   );
@@ -661,7 +663,7 @@ function EmailCodeRow({
 function TurnstileVerified() {
   const { t } = useTranslation();
   return (
-    <div className="t-mono border border-[#ADFF2F]/30 bg-[#ADFF2F]/5 px-3 py-2 text-center text-[var(--t-accent)]">
+    <div className="t-mono border border-[var(--t-accent)]/30 bg-[var(--t-accent)]/5 px-3 py-2 text-center text-[var(--t-accent)]">
       {t('auth.turnstileVerified')}
     </div>
   );
@@ -684,11 +686,11 @@ function Agreement({
           type="checkbox"
           checked={checked}
           onChange={(event) => setChecked(event.target.checked)}
-          className="peer absolute inset-0 h-full w-full appearance-none border border-[#3A5A3A] bg-black transition-colors duration-100 [transition-timing-function:steps(2,end)] checked:border-[#ADFF2F] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#ADFF2F]"
+          className="peer absolute inset-0 h-full w-full appearance-none border border-[var(--t-faint)] bg-black transition-colors duration-100 [transition-timing-function:steps(2,end)] checked:border-[var(--t-accent)] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--t-accent)]"
         />
         <span
           aria-hidden
-          className="pointer-events-none absolute inset-[3px] hidden bg-[#ADFF2F] peer-checked:block"
+          className="pointer-events-none absolute inset-[3px] hidden bg-[var(--t-accent)] peer-checked:block"
         />
       </span>
       <span>

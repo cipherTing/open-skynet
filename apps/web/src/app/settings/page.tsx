@@ -51,16 +51,16 @@ function joinClasses(...classes: Array<string | false | null | undefined>): stri
 function SectionMarker({ index, title, code }: { index: string; title: string; code: string }) {
   return (
     <div className="mb-4 flex items-center gap-3">
-      <span className="font-mono text-[11px] font-semibold tracking-[0.15em] text-[#ADFF2F]">
+      <span className="font-mono text-[11px] font-semibold tracking-[0.15em] text-[var(--t-accent)]">
         [{index}]
       </span>
       <h2 className="font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-white">
         {title}
       </h2>
-      <span aria-hidden className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+      <span aria-hidden className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
         {code}
       </span>
-      <span aria-hidden className="h-px flex-1 bg-[#1A2E1A]" />
+      <span aria-hidden className="h-px flex-1 bg-[var(--t-noise)]" />
     </div>
   );
 }
@@ -86,10 +86,10 @@ function CopyIconButton({
       className={joinClasses(
         'inline-flex h-7 w-7 flex-none items-center justify-center border bg-transparent',
         'transition-[color,border-color] duration-100 [transition-timing-function:steps(2,end)]',
-        'focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[#ADFF2F]',
+        'focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[var(--t-accent)]',
         copied
-          ? 'border-[#ADFF2F] text-[#ADFF2F]'
-          : 'border-[#1A2E1A] text-white/60 hover:border-[#ADFF2F] hover:text-[#ADFF2F]',
+          ? 'border-[var(--t-accent)] text-[var(--t-accent)]'
+          : 'border-[var(--t-noise)] text-white/60 hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]',
       )}
     >
       {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
@@ -335,12 +335,12 @@ function SettingsPageContent({
 
       <main className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
         {/* 左侧章节索引轨 */}
-        <aside className="hidden w-[224px] flex-none flex-col border-r border-[#1A2E1A] bg-black md:flex">
-          <div className="flex items-baseline justify-between gap-2 border-b border-[#1A2E1A] px-4 py-3">
-            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+        <aside className="hidden w-[224px] flex-none flex-col border-r border-[var(--t-noise)] bg-black md:flex">
+          <div className="flex items-baseline justify-between gap-2 border-b border-[var(--t-noise)] px-4 py-3">
+            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
               SYS.CONFIG
             </span>
-            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
               INDEX ×{CONFIG_SECTIONS.length}
             </span>
           </div>
@@ -356,21 +356,21 @@ function SettingsPageContent({
                   className={joinClasses(
                     'group relative flex items-baseline gap-2.5 px-4 py-2.5 text-left',
                     'transition-colors duration-100 [transition-timing-function:steps(2,end)]',
-                    'focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#ADFF2F]',
-                    isActive ? 'bg-[#040704]' : 'hover:bg-[#040704]',
+                    'focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--t-accent)]',
+                    isActive ? 'bg-[var(--t-panel)]' : 'hover:bg-[var(--t-panel)]',
                   )}
                 >
                   <span
                     aria-hidden
                     className={joinClasses(
                       'absolute inset-y-0 left-0 w-[2px]',
-                      isActive ? 'bg-[#ADFF2F]' : 'bg-transparent',
+                      isActive ? 'bg-[var(--t-accent)]' : 'bg-transparent',
                     )}
                   />
                   <span
                     className={joinClasses(
                       'font-mono text-[10px] tracking-[0.15em]',
-                      isActive ? 'text-[#ADFF2F]' : 'text-[#3A5A3A] group-hover:text-white/60',
+                      isActive ? 'text-[var(--t-accent)]' : 'text-[var(--t-faint)] group-hover:text-white/60',
                     )}
                   >
                     {section.index}
@@ -378,7 +378,7 @@ function SettingsPageContent({
                   <span
                     className={joinClasses(
                       'font-mono text-[11px] uppercase tracking-[0.15em]',
-                      isActive ? 'text-white' : 'text-[#3A5A3A] group-hover:text-white/70',
+                      isActive ? 'text-white' : 'text-[var(--t-faint)] group-hover:text-white/70',
                     )}
                   >
                     {t(section.titleKey)}
@@ -388,17 +388,17 @@ function SettingsPageContent({
             })}
           </nav>
           {/* 索引轨底部：边缘元数据（UTC 时钟 / 节点状态） */}
-          <div className="mt-auto space-y-1.5 border-t border-[#1A2E1A] px-4 py-3">
-            <p className="flex items-center justify-between gap-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+          <div className="mt-auto space-y-1.5 border-t border-[var(--t-noise)] px-4 py-3">
+            <p className="flex items-center justify-between gap-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
               <span>UTC</span>
               <span className="text-white/60">{utcText}</span>
             </p>
-            <p className="flex items-center justify-between gap-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+            <p className="flex items-center justify-between gap-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
               <span>NODE</span>
-              <span className="flex items-center gap-1.5 text-[#ADFF2F]">
+              <span className="flex items-center gap-1.5 text-[var(--t-accent)]">
                 <span
                   aria-hidden
-                  className="t-anim-blink h-1 w-1 bg-[#ADFF2F] motion-reduce:animate-none"
+                  className="t-anim-blink h-1 w-1 bg-[var(--t-accent)] motion-reduce:animate-none"
                 />
                 {t('settings.online')}
               </span>
@@ -413,12 +413,12 @@ function SettingsPageContent({
         >
           <div className="mx-auto max-w-2xl px-6 py-8 sm:px-8">
             {/* 页面标题 */}
-            <header className="mb-10 border-b border-[#1A2E1A] pb-5">
+            <header className="mb-10 border-b border-[var(--t-noise)] pb-5">
               <div className="flex items-baseline justify-between gap-3">
-                <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                   SYS.CONFIG // NODE
                 </p>
-                <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                   SEC ×{CONFIG_SECTIONS.length}
                 </p>
               </div>
@@ -426,7 +426,7 @@ function SettingsPageContent({
                 {t('settings.title')}
               </h1>
               <p className="mt-1 text-sm text-white/50">{t('settings.subtitle')}</p>
-              <p className="mt-3 truncate font-mono text-[10px] tracking-[0.15em] text-[#3A5A3A]">
+              <p className="mt-3 truncate font-mono text-[10px] tracking-[0.15em] text-[var(--t-faint)]">
                 NODE.ID // {agent.id}
               </p>
             </header>
@@ -453,9 +453,9 @@ function SettingsPageContent({
                     <div className="flex items-center gap-1.5">
                       <span
                         aria-hidden
-                        className="t-anim-blink h-1.5 w-1.5 bg-[#ADFF2F] motion-reduce:animate-none"
+                        className="t-anim-blink h-1.5 w-1.5 bg-[var(--t-accent)] motion-reduce:animate-none"
                       />
-                      <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#ADFF2F]">
+                      <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)]">
                         {t('settings.online')}
                       </span>
                     </div>
@@ -466,7 +466,7 @@ function SettingsPageContent({
                     <div>
                       <label
                         htmlFor="settings-agent-name"
-                        className="mb-2 block font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]"
+                        className="mb-2 block font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]"
                       >
                         {t('settings.agentName')}
                       </label>
@@ -482,7 +482,7 @@ function SettingsPageContent({
                     <div>
                       <label
                         htmlFor="settings-agent-description"
-                        className="mb-2 block font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]"
+                        className="mb-2 block font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]"
                       >
                         {t('settings.description')}
                       </label>
@@ -559,11 +559,11 @@ function SettingsPageContent({
                   {/* 当前密钥：只读等宽代码块 + 图标化复制 */}
                   {keyLoaded && keyInfo && (
                     <div>
-                      <label className="mb-2 block font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                      <label className="mb-2 block font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                         {t('settings.currentKey')}
                       </label>
-                      <div className="flex items-center gap-2 border border-[#1A2E1A] bg-black py-1.5 pl-3 pr-1.5">
-                        <code className="flex-1 truncate font-mono text-[11px] tracking-[0.15em] text-[#ADFF2F]">
+                      <div className="flex items-center gap-2 border border-[var(--t-noise)] bg-black py-1.5 pl-3 pr-1.5">
+                        <code className="flex-1 truncate font-mono text-[11px] tracking-[0.15em] text-[var(--t-accent)]">
                           {keyInfo.prefix}...{keyInfo.lastFour}
                         </code>
                         <CopyIconButton
@@ -573,7 +573,7 @@ function SettingsPageContent({
                           copiedLabel={t('app.copied')}
                         />
                       </div>
-                      <p className="mt-1.5 font-mono text-[10px] tracking-[0.08em] text-[#3A5A3A]">
+                      <p className="mt-1.5 font-mono text-[10px] tracking-[0.08em] text-[var(--t-faint)]">
                         {t('settings.createdAt', {
                           time: new Date(keyInfo.createdAt).toLocaleString(
                             i18n.resolvedLanguage === 'zh' ? 'zh-CN' : 'en-US',
@@ -584,7 +584,7 @@ function SettingsPageContent({
                   )}
 
                   {keyLoaded && !keyInfo && !newKey && (
-                    <div className="border border-dashed border-[#1A2E1A] bg-black px-3 py-2.5">
+                    <div className="border border-dashed border-[var(--t-noise)] bg-black px-3 py-2.5">
                       <p className="font-mono text-[11px] tracking-[0.08em] text-white/50">
                         {t('settings.noKey')}
                       </p>
@@ -592,8 +592,8 @@ function SettingsPageContent({
                   )}
 
                   {keyInfoState.status === 'error' && !newKey && (
-                    <div className="border border-[#A16207]/40 bg-[#A16207]/5 px-3 py-2.5">
-                      <p className="font-mono text-[11px] tracking-[0.08em] text-[#A16207]">
+                    <div className="border border-[var(--t-signal)]/40 bg-[var(--t-signal)]/5 px-3 py-2.5">
+                      <p className="font-mono text-[11px] tracking-[0.08em] text-[var(--t-signal)]">
                         {t('settings.keyInfoLoadFailed')}
                       </p>
                     </div>
@@ -601,15 +601,15 @@ function SettingsPageContent({
 
                   {/* 新生成的密钥 */}
                   {newKey && (
-                    <div className="border border-[#A16207]/40 border-l-2 border-l-[#A16207] bg-[#A16207]/5 px-4 py-4">
+                    <div className="border border-[var(--t-signal)]/40 border-l-2 border-l-[var(--t-signal)] bg-[var(--t-signal)]/5 px-4 py-4">
                       <div className="mb-2 flex items-center gap-2">
-                        <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-[#A16207]" />
-                        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.15em] text-[#A16207]">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-[var(--t-signal)]" />
+                        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.15em] text-[var(--t-signal)]">
                           {t('settings.keyReady')}
                         </span>
                       </div>
-                      <div className="flex items-center gap-2 border border-[#1A2E1A] bg-black py-1.5 pl-3 pr-1.5">
-                        <code className="flex-1 break-all font-mono text-[11px] leading-relaxed tracking-[0.08em] text-[#ADFF2F]">
+                      <div className="flex items-center gap-2 border border-[var(--t-noise)] bg-black py-1.5 pl-3 pr-1.5">
+                        <code className="flex-1 break-all font-mono text-[11px] leading-relaxed tracking-[0.08em] text-[var(--t-accent)]">
                           {newKey}
                         </code>
                         <CopyIconButton
@@ -624,15 +624,15 @@ function SettingsPageContent({
 
                   {/* 危险操作区：已有密钥时的重生成（不可撤销） */}
                   {keyLoaded && keyInfo ? (
-                    <div className="border border-[#7F1D1D]/70 bg-[#7F1D1D]/5 px-4 py-4">
+                    <div className="border border-[var(--t-hazard-dim)]/70 bg-[var(--t-hazard-dim)]/5 px-4 py-4">
                       <div className="mb-1.5 flex items-center gap-2">
-                        <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-[#EF4444]/70" />
-                        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.15em] text-[#EF4444]/80">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-[var(--t-hazard)]/70" />
+                        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.15em] text-[var(--t-hazard)]/80">
                           {t('settingsSys.dangerZone')}
                         </span>
                         <span
                           aria-hidden
-                          className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#7F1D1D]"
+                          className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-hazard)]/60"
                         >
                           {'// IRREVOCABLE'}
                         </span>
@@ -702,11 +702,11 @@ function SettingsPageContent({
         }
       >
         <div className="flex items-start gap-3">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#EF4444]/80" />
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[var(--t-hazard)]/80" />
           <div className="min-w-0 space-y-2">
             <p className="text-sm leading-6 text-white/70">{t('settings.regenerateConfirm')}</p>
             {keyInfo ? (
-              <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+              <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                 {t('settings.currentKey')} {'//'} {keyInfo.prefix}...{keyInfo.lastFour}
               </p>
             ) : null}

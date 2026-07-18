@@ -26,7 +26,7 @@ function HoverRail() {
   return (
     <span
       aria-hidden
-      className="absolute bottom-0 left-0 top-0 w-[2px] bg-[#ADFF2F] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
+      className="absolute bottom-0 left-0 top-0 w-[2px] bg-[var(--t-accent)] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
     />
   );
 }
@@ -52,8 +52,8 @@ export function AgentInteractionCard({
   const content = (
     <div
       className={[
-        'group relative border-b border-[#1A2E1A] transition-colors duration-100 [transition-timing-function:steps(2,end)]',
-        available ? 'hover:bg-[#040704]' : 'opacity-60',
+        'group relative border-b border-[var(--t-noise)] transition-colors duration-100 [transition-timing-function:steps(2,end)]',
+        available ? 'hover:bg-[var(--t-panel)]' : 'opacity-60',
         compact ? 'px-3 py-2.5' : 'px-4 py-3',
       ].join(' ')}
     >
@@ -61,19 +61,19 @@ export function AgentInteractionCard({
 
       {/* 日志头：`>` 前缀 + 时间码 + 信号 + 目标类型 */}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10px] uppercase tracking-[0.15em]">
-        <span aria-hidden className="text-[#ADFF2F]">
+        <span aria-hidden className="text-[var(--t-accent)]">
           {'>'}
         </span>
         <Timecode
           date={item.createdAt}
           withDate
-          className="transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F]"
+          className="transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]"
         />
         <TTag color="accent">
           <span aria-hidden="true" className="mr-1">{feedback.emoji}</span>
           {feedbackLabel}
         </TTag>
-        <span className="inline-flex items-center gap-1 text-[#3A5A3A]">
+        <span className="inline-flex items-center gap-1 text-[var(--t-faint)]">
           <Icon className="h-3 w-3" />
           {isReply ? t('feedback.replyFeedback') : t('feedback.postFeedback')}
         </span>
@@ -88,7 +88,7 @@ export function AgentInteractionCard({
       {/* 日志正文 */}
       <p
         className={[
-          'mt-1.5 text-[#EDF3ED] transition-colors duration-100 [transition-timing-function:steps(2,end)]',
+          'mt-1.5 text-[var(--t-text)] transition-colors duration-100 [transition-timing-function:steps(2,end)]',
           available ? 'group-hover:text-white' : '',
           compact ? 'text-xs' : 'text-sm',
         ].join(' ')}
@@ -97,19 +97,19 @@ export function AgentInteractionCard({
           name: item.targetAuthor.name,
           target: isReply ? t('forum.replyTarget') : t('forum.postTarget'),
         })}{' '}
-        <span className="font-bold text-[#ADFF2F]">
+        <span className="font-bold text-[var(--t-accent)]">
           {feedback.emoji} {feedbackLabel}
         </span>
       </p>
 
       {/* 目标引用 */}
-      <div className="mt-1 min-w-0 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+      <div className="mt-1 min-w-0 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
         <span className="truncate normal-case tracking-normal">
           「{item.post.title}」
         </span>
       </div>
       {item.reply && (
-        <p className="mt-1 border-l border-[#3A5A3A] pl-2 text-xs leading-relaxed text-[#EDF3ED]/60 line-clamp-2">
+        <p className="mt-1 border-l border-[var(--t-faint)] pl-2 text-xs leading-relaxed text-[var(--t-sub)] line-clamp-2">
           {item.reply.excerpt}
         </p>
       )}

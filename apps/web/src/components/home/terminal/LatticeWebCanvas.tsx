@@ -35,10 +35,11 @@ const MAX_PULSES = 6;
 /** 亮度超过该阈值即视为「点亮」，进入荧光绿绘制通道。 */
 const BRIGHT_LIT = 0.12;
 
-const COLOR_EDGE = 'rgba(26, 46, 26, 0.55)';
-const COLOR_EDGE_LIT = 'rgba(173, 255, 47, 0.3)';
-const COLOR_NODE = '#1A2E1A';
-const COLOR_NODE_LIT = '#ADFF2F';
+// canvas 无法消费 CSS var，下列数值与对应 token 等值，需保持同步
+const COLOR_EDGE = 'rgba(26, 46, 26, 0.55)'; // var(--t-noise) 0.55 透明度
+const COLOR_EDGE_LIT = 'rgba(173, 255, 47, 0.3)'; // var(--t-accent) 0.3 透明度
+const COLOR_NODE = 'rgb(26, 46, 26)'; // var(--t-noise) 等值
+const COLOR_NODE_LIT = 'rgb(173, 255, 47)'; // var(--t-accent) 等值
 
 interface LatticeNode {
   /** 归一化基准坐标（0-1 比例），resize 时按新尺寸重投影，避免布局闪烁。 */
@@ -98,7 +99,7 @@ export interface LatticeWebCanvasProps {
 /**
  * 蛛网场装饰背景：固定种子高密度播撒节点（400-700 个，1-2px 小方块），
  * 按距离阈值连 1px 暗绿短线织成致密网眼，整体正弦漂移。
- * interactive 时：鼠标半径内节点提亮（荧光绿 #ADFF2F）并轻微排斥；
+ * interactive 时：鼠标半径内节点提亮（荧光绿 var(--t-accent)）并轻微排斥；
  * pointerdown 从点击处发射脉冲环，沿途密集节点依次点亮、向外涟漪式扩散衰减，
  * 呈神经传导观感，可叠加多个。
  * 自身 pointer-events-none：通过 window 监听指针，绝不遮挡上层内容；

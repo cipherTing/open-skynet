@@ -20,11 +20,6 @@ function toStringArray(value: unknown): string[] {
 /* 右侧微型装饰视觉：纯 SVG，暗绿为主、荧光绿点睛，与条目一一对应         */
 /* ------------------------------------------------------------------ */
 
-const INK_DIM = '#3A5A3A';
-const INK_DARK = '#1A2E1A';
-const INK_DEEP = '#122012';
-const ACCENT = '#ADFF2F';
-
 /** 社区共治：上方天平刻度 + 投票进度条，荧光绿段为已计票比例。 */
 function TribunalGlyph() {
   const ticks = Array.from({ length: 11 }, (_, index) => index * 7.2);
@@ -37,13 +32,13 @@ function TribunalGlyph() {
           y1={2}
           x2={x}
           y2={index === 5 ? 9 : 6}
-          stroke={INK_DIM}
+          className="stroke-[var(--t-faint)]"
           strokeWidth={1}
         />
       ))}
-      <rect x={0} y={16} width={72} height={5} fill={INK_DEEP} />
-      <rect x={0} y={16} width={46} height={5} fill={ACCENT} opacity={0.9} />
-      <line x1={46} y1={13} x2={46} y2={24} stroke={ACCENT} strokeWidth={1} />
+      <rect x={0} y={16} width={72} height={5} className="fill-[var(--t-noise2)]" />
+      <rect x={0} y={16} width={46} height={5} className="fill-[var(--t-accent)]" opacity={0.9} />
+      <line x1={46} y1={13} x2={46} y2={24} className="stroke-[var(--t-accent)]" strokeWidth={1} />
     </svg>
   );
 }
@@ -55,21 +50,21 @@ function CommonsGlyph() {
       <path
         d="M7 14 H18 M18 14 V4 H30 M18 14 H30 M18 14 V24 H30"
         fill="none"
-        stroke={INK_DIM}
+        className="stroke-[var(--t-faint)]"
         strokeWidth={1}
       />
       <path
         d="M35 14 H44 M44 14 V8 H52 M44 14 V20 H52"
         fill="none"
-        stroke={INK_DARK}
+        className="stroke-[var(--t-noise)]"
         strokeWidth={1}
       />
-      <rect x={2} y={11.5} width={5} height={5} fill={ACCENT} />
-      <rect x={30} y={1.5} width={5} height={5} fill={INK_DARK} />
-      <rect x={30} y={11.5} width={5} height={5} fill={INK_DARK} />
-      <rect x={30} y={21.5} width={5} height={5} fill={INK_DARK} />
-      <rect x={52} y={5.5} width={4} height={4} fill="none" stroke={INK_DIM} strokeWidth={1} />
-      <rect x={52} y={17.5} width={4} height={4} fill="none" stroke={INK_DIM} strokeWidth={1} />
+      <rect x={2} y={11.5} width={5} height={5} className="fill-[var(--t-accent)]" />
+      <rect x={30} y={1.5} width={5} height={5} className="fill-[var(--t-noise)]" />
+      <rect x={30} y={11.5} width={5} height={5} className="fill-[var(--t-noise)]" />
+      <rect x={30} y={21.5} width={5} height={5} className="fill-[var(--t-noise)]" />
+      <rect x={52} y={5.5} width={4} height={4} fill="none" className="stroke-[var(--t-faint)]" strokeWidth={1} />
+      <rect x={52} y={17.5} width={4} height={4} fill="none" className="stroke-[var(--t-faint)]" strokeWidth={1} />
     </svg>
   );
 }
@@ -95,10 +90,10 @@ function SignalsGlyph() {
           y={26 - bar.height}
           width={6}
           height={bar.height}
-          fill={bar.hot ? ACCENT : INK_DARK}
+          className={bar.hot ? 'fill-[var(--t-accent)]' : 'fill-[var(--t-noise)]'}
         />
       ))}
-      <line x1={0} y1={26.5} x2={70} y2={26.5} stroke={INK_DIM} strokeWidth={1} />
+      <line x1={0} y1={26.5} x2={70} y2={26.5} className="stroke-[var(--t-faint)]" strokeWidth={1} />
     </svg>
   );
 }
@@ -126,8 +121,13 @@ function AscentGlyph() {
           y={23 - index * 2.5}
           width={5}
           height={5}
-          fill={cell === 'done' ? INK_DARK : cell === 'current' ? ACCENT : 'none'}
-          stroke={cell === 'current' ? ACCENT : INK_DIM}
+          className={
+            cell === 'current'
+              ? 'fill-[var(--t-accent)] stroke-[var(--t-accent)]'
+              : cell === 'done'
+                ? 'fill-[var(--t-noise)] stroke-[var(--t-faint)]'
+                : 'fill-none stroke-[var(--t-faint)]'
+          }
           strokeWidth={1}
         />
       ))}
@@ -152,24 +152,24 @@ export function SystemsSection() {
   const { t } = useTranslation();
 
   return (
-    <section id="systems" className="relative border-t border-[#1A2E1A]">
+    <section id="systems" className="relative border-t border-[var(--t-noise)]">
       <SectionBackdrop variant="field" />
       <ScanlineReveal>
         <div className="mx-auto max-w-7xl px-6 py-20 md:px-10 md:py-28 lg:px-16">
           <div className="flex flex-col gap-8 md:flex-row md:items-end md:justify-between">
             <div>
-              <p className="t-mono text-[#3A5A3A]">{t('landing.systems.index')}</p>
-              <p className="t-mono mt-2 text-[#ADFF2F]">{t('landing.systems.eyebrow')}</p>
+              <p className="t-mono text-[var(--t-faint)]">{t('landing.systems.index')}</p>
+              <p className="t-mono mt-2 text-[var(--t-accent)]">{t('landing.systems.eyebrow')}</p>
               <h2 className="t-display mt-4 max-w-xl text-4xl text-white md:text-6xl">
                 {t('landing.systems.title')}
               </h2>
             </div>
-            <p className="t-mono max-w-xs text-[#3A5A3A] md:text-right">
+            <p className="t-mono max-w-xs text-[var(--t-sub)] md:text-right">
               {t('landing.systems.description')}
             </p>
           </div>
 
-          <div className="mt-14 border-y border-[#1A2E1A]">
+          <div className="mt-14 border-y border-[var(--t-noise)]">
             {ENTRY_KEYS.map((entryKey, index) => {
               const code = t(`landing.systems.entries.${entryKey}.code`);
               const name = t(`landing.systems.entries.${entryKey}.name`);
@@ -180,7 +180,7 @@ export function SystemsSection() {
               return (
                 <article
                   key={entryKey}
-                  className="group relative border-b border-[#1A2E1A] last:border-b-0"
+                  className="group relative border-b border-[var(--t-noise)] last:border-b-0"
                 >
                   <div
                     aria-hidden="true"
@@ -188,19 +188,19 @@ export function SystemsSection() {
                   />
                   <div
                     aria-hidden="true"
-                    className="pointer-events-none absolute inset-y-0 left-0 w-0.5 bg-[#ADFF2F] opacity-0 transition-opacity duration-150 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
+                    className="pointer-events-none absolute inset-y-0 left-0 w-0.5 bg-[var(--t-accent)] opacity-0 transition-opacity duration-150 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
                   />
                   <div className="relative grid grid-cols-1 gap-6 px-2 py-10 md:grid-cols-12 md:gap-8 md:px-6 md:py-14">
                     <div className="flex items-baseline gap-4 md:col-span-3 md:flex-col md:items-start md:gap-2">
                       <span
                         aria-hidden="true"
-                        className="t-display text-6xl text-transparent [-webkit-text-stroke:1px_#3A5A3A] md:text-8xl lg:text-9xl"
+                        className="t-display text-6xl text-transparent [-webkit-text-stroke:1px_var(--t-faint)] md:text-8xl lg:text-9xl"
                       >
                         {String(index + 1).padStart(2, '0')}
                       </span>
                       <ScrambleText
                         text={code}
-                        className="t-mono text-[#3A5A3A] transition-colors duration-150 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F]"
+                        className="t-mono text-[var(--t-sub)] transition-colors duration-150 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]"
                       />
                     </div>
 
@@ -220,9 +220,9 @@ export function SystemsSection() {
                             .map((part) => part.trim());
                           return (
                             <li key={spec} className="t-mono">
-                              <span className="text-[#3A5A3A]">{label}</span>
+                              <span className="text-[var(--t-faint)]">{label}</span>
                               {value ? (
-                                <span className="text-[#ADFF2F]">{` // ${value}`}</span>
+                                <span className="text-[var(--t-accent)]">{` // ${value}`}</span>
                               ) : null}
                             </li>
                           );

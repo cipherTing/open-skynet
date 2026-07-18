@@ -76,16 +76,16 @@ export function AgentsSection({ onAction }: { onAction: (action: AdminAction) =>
             {query.data.items.map((agent) => (
               <tr
                 key={agent.id}
-                className="border-b border-[#1A2E1A] align-top hover:bg-[#040704]"
+                className="border-b border-[var(--t-noise)] align-top hover:bg-[var(--t-panel)]"
               >
                 <td className="px-3 py-3">
                   <Link
                     href={`/agent/${agent.id}`}
-                    className="font-medium text-[#EDF3ED] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-[#ADFF2F]"
+                    className="font-medium text-[var(--t-text)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)]"
                   >
                     {agent.name}
                   </Link>
-                  <div className="mt-1 max-w-xs truncate text-xs text-[#3A5A3A]">
+                  <div className="mt-1 max-w-xs truncate text-xs text-[var(--t-sub)]">
                     {agent.description}
                   </div>
                 </td>
@@ -98,7 +98,7 @@ export function AgentsSection({ onAction }: { onAction: (action: AdminAction) =>
                     {agent.adminBanned ? t('admin.agents.suspended') : `${agent.healthLevel}/4`}
                   </StatusText>
                 </td>
-                <td className="px-3 py-3 font-mono text-xs text-[#3A5A3A]">
+                <td className="px-3 py-3 font-mono text-xs text-[var(--t-sub)]">
                   {agent.keyPrefix
                     ? `${agent.keyPrefix}...${agent.keyLastFour}`
                     : t('admin.agents.noKey')}
@@ -109,7 +109,7 @@ export function AgentsSection({ onAction }: { onAction: (action: AdminAction) =>
                       <Link
                         href={`/agent/${agent.id}`}
                         aria-label={t('admin.agents.view')}
-                        className="flex h-8 w-8 items-center justify-center rounded-none border border-[#1A2E1A] text-[#3A5A3A] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[#3A5A3A] hover:bg-[#ADFF2F]/10 hover:text-[#ADFF2F]"
+                        className="flex h-8 w-8 items-center justify-center rounded-none border border-[var(--t-noise)] text-[var(--t-sub)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent-dim)] hover:bg-[var(--t-accent-wash)] hover:text-[var(--t-accent)]"
                       >
                         <Eye className="h-4 w-4" />
                       </Link>
@@ -133,7 +133,7 @@ export function AgentsSection({ onAction }: { onAction: (action: AdminAction) =>
                           <button
                             type="button"
                             aria-label={t('admin.agents.moreActions')}
-                            className="flex h-8 w-8 items-center justify-center rounded-none border border-[#1A2E1A] text-[#3A5A3A] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[#3A5A3A] hover:bg-[#ADFF2F]/10 hover:text-[#ADFF2F]"
+                            className="flex h-8 w-8 items-center justify-center rounded-none border border-[var(--t-noise)] text-[var(--t-sub)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent-dim)] hover:bg-[var(--t-accent-wash)] hover:text-[var(--t-accent)]"
                           >
                             <Ellipsis className="h-4 w-4" />
                           </button>
@@ -149,7 +149,7 @@ export function AgentsSection({ onAction }: { onAction: (action: AdminAction) =>
                             actionFromMenuRef.current = false;
                             event.preventDefault();
                           }}
-                          className="z-[100] min-w-44 border border-[#1A2E1A] bg-[#040704] p-1"
+                          className="z-[100] min-w-44 border border-[var(--t-noise)] bg-[var(--t-panel)] p-1"
                         >
                           <AgentMenuItem
                             icon={TrendingUp}

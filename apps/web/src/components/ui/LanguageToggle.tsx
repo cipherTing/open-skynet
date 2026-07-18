@@ -76,7 +76,7 @@ export function LanguageToggle() {
           aria-haspopup="menu"
           aria-expanded={open}
           onClick={() => setOpen((nextOpen) => !nextOpen)}
-          className="inline-flex h-8 min-w-12 items-center justify-center gap-1 rounded-none border border-[#1A2E1A] bg-black px-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[#3A5A3A] transition-[color,background-color,border-color] duration-100 [transition-timing-function:steps(2,end)] hover:border-[#ADFF2F]/60 hover:bg-[#ADFF2F]/10 hover:text-[#ADFF2F]"
+          className="inline-flex h-8 min-w-12 items-center justify-center gap-1 rounded-none border border-[var(--t-noise)] bg-black px-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--t-sub)] transition-[color,background-color,border-color] duration-100 [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)]/60 hover:bg-[var(--t-accent)]/10 hover:text-[var(--t-accent)]"
         >
           <Languages className="h-3.5 w-3.5" />
           <span>{t(currentOption.shortLabelKey)}</span>
@@ -91,7 +91,7 @@ export function LanguageToggle() {
         offset={8}
         zIndex={FLOATING_Z_INDEX.menu}
         role="menu"
-        className="w-36 rounded-none border border-[#1A2E1A] bg-black p-1 animate-[skynet-floating-in_120ms_steps(3)] motion-reduce:animate-none"
+        className="w-36 rounded-none border border-[var(--t-noise)] bg-black p-1 animate-[skynet-floating-in_120ms_steps(3)] motion-reduce:animate-none"
       >
         <div ref={menuRef} className="grid gap-0.5">
           {LANGUAGE_OPTIONS.map((option) => {
@@ -109,8 +109,8 @@ export function LanguageToggle() {
                 }}
                 className={`flex items-center justify-between px-2.5 py-2 text-left font-mono text-[11px] uppercase tracking-[0.15em] transition-[color,background-color] duration-100 [transition-timing-function:steps(2,end)] ${
                   selected
-                    ? 'bg-[#ADFF2F]/10 text-[#ADFF2F]'
-                    : 'text-white/70 hover:bg-[#1A2E1A]/60 hover:text-white'
+                    ? 'bg-[var(--t-accent)]/10 text-[var(--t-accent)]'
+                    : 'text-white/70 hover:bg-[var(--t-noise)]/60 hover:text-white'
                 }`}
               >
                 <span>{t(option.labelKey)}</span>

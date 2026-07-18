@@ -10,7 +10,6 @@ import { useTranslation } from 'react-i18next';
 import { LanguageToggle } from '@/components/ui/LanguageToggle';
 import { PortalTooltip } from '@/components/ui/FloatingPortal';
 import { AnnouncementMenu } from '@/components/system/AnnouncementMenu';
-import { DeckChannelBar } from '@/components/deck/DeckChannelBar';
 import { useUtcNow } from '@/components/home/terminal/terminal-hooks';
 import { useAuth } from '@/contexts/AuthContext';
 import { forumApi } from '@/lib/api';
@@ -40,9 +39,6 @@ interface TopBarProps {
   preferHistoryBack?: boolean;
   governanceControls?: TopBarGovernanceControls;
   onOpenNav?: () => void;
-  /** 顶部频道条：当前频道与切换回调（缺省时频道条自行回退到 home-navigation-store） */
-  activeSection?: HomeSection;
-  onSectionChange?: (section: HomeSection) => void;
 }
 
 const SECTION_CODE: Record<NonNullable<TopBarProps['mode']>, string> = {
@@ -73,8 +69,6 @@ export function TopBar({
   preferHistoryBack = false,
   governanceControls,
   onOpenNav,
-  activeSection,
-  onSectionChange,
 }: TopBarProps) {
   const { t } = useTranslation();
   const router = useRouter();
@@ -117,7 +111,7 @@ export function TopBar({
   const resolvedBackLabel = backLabel ?? (backLabelKey ? t(backLabelKey) : '');
   const hasBackLink = Boolean(resolvedBackLabel && (backHref || preferHistoryBack));
   const backControlClassName =
-    'inline-flex min-w-0 items-center gap-1.5 border border-[#1A2E1A] bg-black px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A] transition-colors [transition-timing-function:steps(2,end)] hover:border-[#ADFF2F] hover:text-[#ADFF2F] sm:max-w-none';
+    'inline-flex min-w-0 items-center gap-1.5 border border-[var(--t-noise)] bg-black px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-sub)] transition-colors [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)] sm:max-w-none';
   const sectionLabel = isGovernanceMode
     ? t('governance.plazaTitle')
     : mode === 'inbox'
@@ -166,7 +160,7 @@ export function TopBar({
 
   return (
     <header
-      className={`${position === 'sticky' ? 'sticky top-0' : 'relative flex-none'} pointer-events-none z-30 border-b border-[#1A2E1A] bg-[rgba(0,0,0,0.72)] backdrop-blur-md ${
+      className={`${position === 'sticky' ? 'sticky top-0' : 'relative flex-none'} pointer-events-none z-30 border-b border-[var(--t-noise)] bg-[rgba(0,0,0,0.72)] backdrop-blur-md ${
         effectiveScrolled ? '-translate-y-2 opacity-0' : ''
       }`}
     >
@@ -177,59 +171,55 @@ export function TopBar({
             : 'flex h-12 items-center justify-between gap-3 px-4 sm:px-6'
         }
       >
-        {/* 左: 移动导航开关 + 返回（详情场景）或顶部频道条（工作台场景） */}
+        {/* 左: 移动导航开关 + 返回（详情场景）+ 频道标识 */}
         <div className="flex min-w-0 items-center gap-3 pointer-events-auto">
           {onOpenNav ? (
             <button
               type="button"
               onClick={onOpenNav}
               aria-label={t('sidebar.navigation')}
-              className="flex h-8 w-8 flex-none items-center justify-center border border-[#1A2E1A] text-[#3A5A3A] transition-colors [transition-timing-function:steps(2,end)] hover:border-[#ADFF2F] hover:text-[#ADFF2F] md:hidden"
+              className="flex h-8 w-8 flex-none items-center justify-center border border-[var(--t-noise)] text-[var(--t-sub)] transition-colors [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)] md:hidden"
             >
               <Menu className="h-4 w-4 stroke-[1.5]" />
             </button>
           ) : null}
           {hasBackLink ? (
-            <>
-              {preferHistoryBack ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (backSection) setHomeActiveSection(backSection);
-                    router.back();
-                  }}
-                  className={backControlClassName}
-                >
-                  <ArrowLeft className="h-3.5 w-3.5 shrink-0 stroke-[1.5]" />
-                  <span className="max-w-[30vw] truncate sm:max-w-none">{resolvedBackLabel}</span>
-                </button>
-              ) : (
-                <Link
-                  href={backHref!}
-                  onClick={() => {
-                    if (backSection) setHomeActiveSection(backSection);
-                  }}
-                  className={backControlClassName}
-                >
-                  <ArrowLeft className="h-3.5 w-3.5 shrink-0 stroke-[1.5]" />
-                  <span className="max-w-[30vw] truncate sm:max-w-none">{resolvedBackLabel}</span>
-                </Link>
-              )}
-              <div className="hidden min-w-0 items-center gap-2.5 sm:flex">
-                <span className="flex-none font-mono text-[10px] uppercase tracking-[0.15em] text-[#ADFF2F]">
-                  {SECTION_CODE[mode]}
-                </span>
-                <span aria-hidden="true" className="h-3 w-px flex-none bg-[#3A5A3A]" />
-                <span className="truncate font-mono text-[11px] uppercase tracking-[0.15em] text-white">
-                  {sectionLabel}
-                </span>
-              </div>
-            </>
-          ) : (
-            <div className="hidden min-w-0 md:block">
-              <DeckChannelBar activeSection={activeSection} onSectionChange={onSectionChange} />
-            </div>
-          )}
+            preferHistoryBack ? (
+              <button
+                type="button"
+                onClick={() => {
+                  if (backSection) setHomeActiveSection(backSection);
+                  router.back();
+                }}
+                className={backControlClassName}
+              >
+                <ArrowLeft className="h-3.5 w-3.5 shrink-0 stroke-[1.5]" />
+                <span className="max-w-[30vw] truncate sm:max-w-none">{resolvedBackLabel}</span>
+              </button>
+            ) : (
+              <Link
+                href={backHref!}
+                onClick={() => {
+                  if (backSection) setHomeActiveSection(backSection);
+                }}
+                className={backControlClassName}
+              >
+                <ArrowLeft className="h-3.5 w-3.5 shrink-0 stroke-[1.5]" />
+                <span className="max-w-[30vw] truncate sm:max-w-none">{resolvedBackLabel}</span>
+              </Link>
+            )
+          ) : null}
+          <div
+            className={`${hasBackLink ? 'hidden sm:flex' : 'flex'} min-w-0 items-center gap-2.5`}
+          >
+            <span className="flex-none font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)]">
+              {SECTION_CODE[mode]}
+            </span>
+            <span aria-hidden="true" className="h-3 w-px flex-none bg-[var(--t-noise)]" />
+            <span className="truncate font-mono text-[11px] uppercase tracking-[0.15em] text-white">
+              {sectionLabel}
+            </span>
+          </div>
         </div>
 
         {/* 中: 评审状态 */}
@@ -241,7 +231,7 @@ export function TopBar({
           }`}
         >
           {governanceControls ? (
-            <div className="flex min-w-0 items-center gap-2 border border-[#1A2E1A] bg-black px-2 py-1.5 sm:px-2.5">
+            <div className="flex min-w-0 items-center gap-2 border border-[var(--t-noise)] bg-black px-2 py-1.5 sm:px-2.5">
               <span className="min-w-0 max-w-[12rem] truncate font-mono text-[11px] text-text-secondary sm:max-w-48">
                 {governanceControls.statusLabel}
               </span>
@@ -249,7 +239,7 @@ export function TopBar({
                 value={governanceControls.progressValue}
                 max={1}
                 aria-label={governanceControls.statusLabel}
-                className={`agent-stamina-progress h-1.5 w-14 shrink-0 border border-[#1A2E1A] sm:w-20 ${
+                className={`agent-stamina-progress h-1.5 w-14 shrink-0 border border-[var(--t-noise)] sm:w-20 ${
                   governanceControls.isProgressPaused ? 'opacity-45' : ''
                 }`}
               />
@@ -259,7 +249,7 @@ export function TopBar({
                   aria-label={governanceControls.refreshLabel}
                   disabled={governanceControls.refreshDisabled}
                   onClick={governanceControls.onRefresh}
-                  className="flex h-7 w-7 shrink-0 items-center justify-center border border-[#1A2E1A] text-[#3A5A3A] transition-colors [transition-timing-function:steps(2,end)] hover:border-[#ADFF2F] hover:text-[#ADFF2F] disabled:cursor-not-allowed disabled:opacity-45"
+                  className="flex h-7 w-7 shrink-0 items-center justify-center border border-[var(--t-noise)] text-[var(--t-sub)] transition-colors [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)] disabled:cursor-not-allowed disabled:opacity-45"
                 >
                   <RefreshCw
                     className={`h-3.5 w-3.5 stroke-[1.5] ${governanceControls.isRefreshing ? 'animate-spin' : ''}`}
@@ -296,7 +286,7 @@ export function TopBar({
                     <button
                       type="button"
                       aria-label={t('app.openSearch')}
-                      className="flex h-8 w-8 items-center justify-center border border-[#1A2E1A] text-[#3A5A3A] transition-colors [transition-timing-function:steps(2,end)] hover:border-[#ADFF2F] hover:text-[#ADFF2F] xl:hidden"
+                      className="flex h-8 w-8 items-center justify-center border border-[var(--t-noise)] text-[var(--t-sub)] transition-colors [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)] xl:hidden"
                     >
                       {searchOpen ? (
                         <X className="h-4 w-4 stroke-[1.5]" />
@@ -310,7 +300,7 @@ export function TopBar({
                   <Popover.Content
                     align="end"
                     sideOffset={8}
-                    className="skynet-floating-content z-[100] border border-[#1A2E1A] bg-black p-2 xl:hidden"
+                    className="skynet-floating-content z-[100] border border-[var(--t-noise)] bg-black p-2 xl:hidden"
                   >
                     <SearchForm
                       className="flex"
@@ -337,24 +327,24 @@ export function TopBar({
           <AnnouncementMenu />
           <LanguageToggle />
 
-          <span aria-hidden="true" className="h-3 w-px bg-[#3A5A3A]" />
+          <span aria-hidden="true" className="h-3 w-px bg-[var(--t-noise)]" />
 
           {/* UTC 时钟 + 在线状态点 */}
           <div className="hidden items-center gap-2 sm:flex">
-            <span aria-hidden="true" className="t-anim-blink h-1.5 w-1.5 bg-[#ADFF2F]" />
-            <span className="font-mono text-[11px] tabular-nums tracking-[0.15em] text-[#ADFF2F]">
+            <span aria-hidden="true" className="t-anim-blink h-1.5 w-1.5 bg-[var(--t-accent)]" />
+            <span className="font-mono text-[11px] tabular-nums tracking-[0.15em] text-[var(--t-accent)]">
               {utcTimeLabel}
             </span>
-            <span className="font-mono text-[10px] tracking-[0.15em] text-[#3A5A3A]">UTC</span>
+            <span className="font-mono text-[10px] tracking-[0.15em] text-[var(--t-faint)]">UTC</span>
           </div>
 
           {!isAuthenticated || !agent ? (
             <>
-              <span aria-hidden="true" className="hidden h-3 w-px bg-[#3A5A3A] sm:block" />
+              <span aria-hidden="true" className="hidden h-3 w-px bg-[var(--t-noise)] sm:block" />
               <Link
                 href="/auth"
                 aria-label={t('sidebar.login')}
-                className="flex h-8 items-center gap-1.5 border border-[#1A2E1A] px-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A] transition-colors [transition-timing-function:steps(2,end)] hover:border-[#ADFF2F] hover:text-[#ADFF2F]"
+                className="flex h-8 items-center gap-1.5 border border-[var(--t-noise)] px-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-sub)] transition-colors [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]"
               >
                 <LogIn className="h-3.5 w-3.5 stroke-[1.5]" />
                 <span className="hidden sm:inline">{t('sidebar.login')}</span>
@@ -363,13 +353,6 @@ export function TopBar({
           ) : null}
         </div>
       </div>
-
-      {/* 移动端专属频道行：独占一整行，避免与右侧图标争抢宽度被截断 */}
-      {!hasBackLink ? (
-        <div className="border-t border-[#1A2E1A] px-4 py-1.5 pointer-events-auto md:hidden">
-          <DeckChannelBar activeSection={activeSection} onSectionChange={onSectionChange} />
-        </div>
-      ) : null}
 
       <CommunityTicker />
     </header>
@@ -395,10 +378,10 @@ function CommunityTicker() {
   ];
 
   return (
-    <div className="flex items-stretch border-t border-[#1A2E1A] pointer-events-auto">
-      <div className="flex flex-none items-center gap-2 border-r border-[#1A2E1A] px-3 py-1">
-        <span aria-hidden="true" className="t-anim-blink h-1.5 w-1.5 bg-[#ADFF2F]" />
-        <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#ADFF2F]">
+    <div className="flex items-stretch border-t border-[var(--t-noise)] pointer-events-auto">
+      <div className="flex flex-none items-center gap-2 border-r border-[var(--t-noise)] px-3 py-1">
+        <span aria-hidden="true" className="t-anim-blink h-1.5 w-1.5 bg-[var(--t-accent)]" />
+        <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)]">
           {t('app.ticker.label')}
         </span>
       </div>
@@ -413,9 +396,9 @@ function CommunityTicker() {
                 >
                   {readings.map((reading) => (
                     <span key={reading.label} className="flex items-center">
-                      <span className="px-2 text-[#3A5A3A]">{reading.label}</span>
-                      <span className="tabular-nums text-[#ADFF2F]">{reading.value}</span>
-                      <span aria-hidden="true" className="px-3 text-[#1A2E1A]">
+                      <span className="px-2 text-[var(--t-faint)]">{reading.label}</span>
+                      <span className="tabular-nums text-[var(--t-accent)]">{reading.value}</span>
+                      <span aria-hidden="true" className="px-3 text-[var(--t-faint)]">
                         {'//'}
                       </span>
                     </span>
@@ -484,7 +467,7 @@ function SearchForm({
       {error ? (
         <span
           id={errorId}
-          className="absolute right-0 top-full mt-1 whitespace-nowrap border border-[#1A2E1A] bg-black px-2 py-1 font-mono text-[11px] text-warning"
+          className="absolute right-0 top-full mt-1 whitespace-nowrap border border-[var(--t-noise)] bg-black px-2 py-1 font-mono text-[11px] text-warning"
         >
           {error}
         </span>

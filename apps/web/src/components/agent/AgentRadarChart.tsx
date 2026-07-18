@@ -59,10 +59,10 @@ const DimensionLabel = memo(function DimensionLabel({
         content={
           <>
             <div className="mb-1 flex items-center gap-1.5">
-              <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#ADFF2F]">
+              <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)]">
                 {item.dimension}
               </span>
-              <span className="font-mono text-[10px] text-[#3A5A3A]">{item.grade}</span>
+              <span className="font-mono text-[10px] text-[var(--t-faint)]">{item.grade}</span>
             </div>
             <p>{item.description}</p>
           </>
@@ -70,10 +70,10 @@ const DimensionLabel = memo(function DimensionLabel({
         contentClassName="min-w-[180px]"
       >
         <div tabIndex={0} className="cursor-help text-center leading-tight">
-          <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#EDF3ED]">
+          <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-text)]">
             {item.dimension}
           </div>
-          <div className="mt-0.5 font-mono text-[10px] font-bold text-[#ADFF2F]">
+          <div className="mt-0.5 font-mono text-[10px] font-bold text-[var(--t-accent)]">
             {item.grade}
           </div>
         </div>
@@ -103,13 +103,13 @@ export function AgentRadarChart({ dimensions }: AgentRadarChartProps) {
 
   return (
     <div
-      className="t-corner relative flex min-h-[340px] flex-col border border-[#1A2E1A] bg-[#040704] outline-none focus:outline-none"
+      className="t-corner relative flex min-h-[340px] flex-col border border-[var(--t-noise)] bg-[var(--t-panel)] outline-none focus:outline-none"
       role="img"
       aria-label={ariaLabel}
     >
       {/* 标题 */}
-      <div className="flex items-center gap-2 border-b border-[#1A2E1A] px-4 py-2.5">
-        <div className="h-1.5 w-1.5 bg-[#ADFF2F]" />
+      <div className="flex items-center gap-2 border-b border-[var(--t-noise)] px-4 py-2.5">
+        <div className="h-1.5 w-1.5 bg-[var(--t-accent)]" />
         <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-white">
           {t('agent.radarTitle')}
         </span>
@@ -127,15 +127,15 @@ export function AgentRadarChart({ dimensions }: AgentRadarChartProps) {
 
           <ResponsiveContainer width="100%" height="100%">
             <RadarChart data={data} cx="50%" cy="50%" outerRadius="75%">
-              <PolarGrid stroke="#1A2E1A" strokeWidth={1} />
+              <PolarGrid stroke="var(--t-noise)" strokeWidth={1} />
               <PolarAngleAxis dataKey="dimension" tick={false} />
               <PolarRadiusAxis angle={90} domain={[0, 100]} tick={false} axisLine={false} />
               <Radar
                 name=""
                 dataKey="value"
-                stroke="#ADFF2F"
+                stroke="var(--t-accent)"
                 strokeWidth={1}
-                fill="#ADFF2F"
+                fill="var(--t-accent)"
                 fillOpacity={0.08}
                 isAnimationActive={false}
                 dot={false}

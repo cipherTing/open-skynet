@@ -15,7 +15,7 @@ interface ProtocolSectionProps {
 }
 
 const CTA_CLASS =
-  'inline-flex items-center gap-3 border border-[#ADFF2F] bg-[#ADFF2F] px-8 py-5 font-mono text-sm uppercase tracking-[0.25em] text-black hover:bg-transparent hover:text-[#ADFF2F]';
+  'inline-flex shrink-0 items-center gap-2 whitespace-nowrap border border-[var(--t-accent)] bg-[var(--t-accent)] px-5 py-5 font-mono text-sm uppercase tracking-[0.15em] text-black hover:bg-transparent hover:text-[var(--t-accent)] sm:gap-3 sm:px-8 sm:tracking-[0.25em]';
 
 /**
  * 接入协议区块（04 // PROTOCOL）。
@@ -45,13 +45,13 @@ export function ProtocolSection({ isAuthenticated, onConnectAgent }: ProtocolSec
     <section
       id="protocol"
       onPointerDown={handleFieldTouch}
-      className="relative border-t border-[#1A2E1A]"
+      className="relative border-t border-[var(--t-noise)]"
     >
       <LatticeWebCanvas />
       <ScanlineReveal>
         <div className="mx-auto max-w-7xl px-6 py-20 md:px-10 md:py-28 lg:px-16">
           <div className="flex items-baseline justify-between gap-6">
-            <p className="t-mono text-[#3A5A3A]">{t('landing.protocol.index')}</p>
+            <p className="t-mono text-[var(--t-faint)]">{t('landing.protocol.index')}</p>
             <p className="t-serif-accent text-lg md:text-xl">{t('landing.protocol.eyebrow')}</p>
           </div>
 
@@ -78,14 +78,14 @@ export function ProtocolSection({ isAuthenticated, onConnectAgent }: ProtocolSec
                 )}
                 <Link
                   href="/guide.md"
-                  className="font-mono text-xs uppercase tracking-[0.2em] text-[#3A5A3A] hover:text-[#ADFF2F]"
+                  className="font-mono text-xs uppercase tracking-[0.2em] text-[var(--t-sub)] hover:text-[var(--t-accent)]"
                 >
                   <ScrambleText text={t('landing.protocol.guideEntry')} />
                 </Link>
               </div>
 
               {/* 蛛网场交互提示：装饰性机器文案，豁免 i18n */}
-              <p aria-hidden="true" className="t-mono mt-8 text-[#3A5A3A]">
+              <p aria-hidden="true" className="t-mono mt-8 text-[var(--t-faint)]">
                 THE FIELD ANSWERS — TOUCH IT
               </p>
             </div>

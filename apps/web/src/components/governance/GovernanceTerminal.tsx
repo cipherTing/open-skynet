@@ -1,5 +1,3 @@
-import { TelemetryValue } from '@/components/home/terminal/TelemetryValue';
-
 function joinClasses(...classes: Array<string | false | null | undefined>): string {
   return classes.filter(Boolean).join(' ');
 }
@@ -16,12 +14,12 @@ export function GovernanceChapterTitle({
 }) {
   return (
     <div className={joinClasses('flex items-center gap-2', className)}>
-      <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.15em] text-[#ADFF2F]">
+      <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)]">
         {chapter}
       </span>
-      <span className="shrink-0 font-mono text-[10px] tracking-[0.15em] text-[#3A5A3A]">{'//'}</span>
+      <span className="shrink-0 font-mono text-[10px] tracking-[0.15em] text-[var(--t-faint)]">{'//'}</span>
       <span className="shrink-0 text-xs font-bold text-white">{title}</span>
-      <span aria-hidden className="h-px min-w-6 flex-1 bg-[#1A2E1A]" />
+      <span aria-hidden className="h-px min-w-6 flex-1 bg-[var(--t-noise)]" />
     </div>
   );
 }
@@ -29,9 +27,9 @@ export function GovernanceChapterTitle({
 export type GovernanceRailTone = 'pending' | 'closed' | 'admin';
 
 const RAIL_TONE_CLASS: Record<GovernanceRailTone, string> = {
-  pending: 'bg-[#ADFF2F]',
-  closed: 'bg-[#3A5A3A]',
-  admin: 'bg-[#EF4444]/60',
+  pending: 'bg-[var(--t-accent)]',
+  closed: 'bg-[var(--t-faint)]',
+  admin: 'bg-[var(--t-hazard)]/60',
 };
 
 /** 告警色条：案件/结果条目左侧 2px 分级色条（待投票=荧光绿、已结案=暗绿、管理员介入=红系低饱和）。 */
@@ -51,29 +49,29 @@ const VERDICT_STAMP_CLASS: Record<
   { outer: string; inner: string; text: string }
 > = {
   violation: {
-    outer: 'border-[#EF4444]/70',
-    inner: 'border-[#EF4444]/35',
-    text: 'text-[#EF4444]',
+    outer: 'border-[var(--t-hazard)]/70',
+    inner: 'border-[var(--t-hazard)]/35',
+    text: 'text-[var(--t-hazard)]',
   },
   notViolation: {
-    outer: 'border-[#ADFF2F]/70',
-    inner: 'border-[#ADFF2F]/35',
-    text: 'text-[#ADFF2F]',
+    outer: 'border-[var(--t-accent)]/70',
+    inner: 'border-[var(--t-accent)]/35',
+    text: 'text-[var(--t-accent)]',
   },
   pending: {
-    outer: 'border-[#ADFF2F]/70',
-    inner: 'border-[#ADFF2F]/35',
-    text: 'text-[#ADFF2F]',
+    outer: 'border-[var(--t-accent)]/70',
+    inner: 'border-[var(--t-accent)]/35',
+    text: 'text-[var(--t-accent)]',
   },
   emergency: {
-    outer: 'border-[#A16207]/80',
-    inner: 'border-[#A16207]/40',
-    text: 'text-[#A16207]',
+    outer: 'border-[var(--t-signal)]/80',
+    inner: 'border-[var(--t-signal)]/40',
+    text: 'text-[var(--t-signal)]',
   },
   admin: {
-    outer: 'border-[#EF4444]/70',
-    inner: 'border-[#EF4444]/35',
-    text: 'text-[#EF4444]/90',
+    outer: 'border-[var(--t-hazard)]/70',
+    inner: 'border-[var(--t-hazard)]/35',
+    text: 'text-[var(--t-hazard)]/90',
   },
 };
 
@@ -117,25 +115,47 @@ export function GovernanceVerdictStamp({
   );
 }
 
-const COMPARE_SEGMENTS = 20;
-
-function SegmentTrack({ filled, tone }: { filled: number; tone: 'accent' | 'dim' }) {
-  const litClass = tone === 'accent' ? 'bg-[#ADFF2F]' : 'bg-[#3A5A3A]';
+function SegmentTrack({
+  filled,
+  total,
+  tone,
+}: {
+  filled: number;
+  total: number;
+  tone: 'accent' | 'dim';
+}) {
+  const litClass = tone === 'accent' ? 'bg-[var(--t-accent)]' : 'bg-[var(--t-faint)]';
+  const partialClass = tone === 'accent' ? 't-vote-cell-partial' : 't-vote-cell-partial--dim';
+  if (total <= 0) {
+    return (
+      <div aria-hidden className="flex h-[3px] items-stretch">
+        <span className="h-full flex-1 bg-[var(--t-noise2)]" />
+      </div>
+    );
+  }
+  const cellCount = Math.ceil(total);
+  const fullCells = Math.floor(filled);
+  const hasPartialCell = filled - fullCells > 0.01;
   return (
     <div aria-hidden className="flex h-[3px] items-stretch gap-px">
-      {Array.from({ length: COMPARE_SEGMENTS }, (_, index) => (
-        <span
-          key={index}
-          className={joinClasses('h-full flex-1', index < filled ? litClass : 'bg-[#122012]')}
-        />
-      ))}
+      {Array.from({ length: cellCount }, (_, index) => {
+        const cellClass =
+          index < fullCells
+            ? litClass
+            : index === fullCells && hasPartialCell
+              ? partialClass
+              : 'bg-[var(--t-noise2)]';
+        return <span key={index} className={joinClasses('h-full flex-1', cellClass)} />;
+      })}
     </div>
   );
 }
 
 /**
  * 投票对比条：赞成/反对两行直角段码进度条（荧光绿 vs 暗绿）。
- * 每行按占总票数的比例点亮 20 段刻度。
+ * 整票 = 1 格：每行总格数 = ceil(本案总票数)，整票部分点亮整格；
+ * 加权产生的小数票追加一个半亮格（t-vote-cell-partial），格数始终跟随实际票数；
+ * 总票数为 0 时渲染一条全静音基线。数字为静态等宽文本，不跳动。
  */
 export function GovernanceVoteCompare({
   violation,
@@ -151,10 +171,6 @@ export function GovernanceVoteCompare({
   className?: string;
 }) {
   const total = violation + notViolation;
-  const violationFilled =
-    total > 0 ? Math.round((violation / total) * COMPARE_SEGMENTS) : 0;
-  const notViolationFilled =
-    total > 0 ? Math.round((notViolation / total) * COMPARE_SEGMENTS) : 0;
   return (
     <div
       className={joinClasses('grid gap-2', className)}
@@ -163,29 +179,25 @@ export function GovernanceVoteCompare({
     >
       <div>
         <div className="mb-1 flex items-baseline justify-between gap-3">
-          <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+          <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
             {violationLabel}
           </span>
-          <TelemetryValue
-            value={violation}
-            format={(current) => String(Math.round(current))}
-            className="font-mono text-[11px] text-[#ADFF2F]"
-          />
+          <span className="inline-block whitespace-nowrap font-mono text-[11px] tabular-nums text-[var(--t-accent)]">
+            {violation}
+          </span>
         </div>
-        <SegmentTrack filled={violationFilled} tone="accent" />
+        <SegmentTrack filled={violation} total={total} tone="accent" />
       </div>
       <div>
         <div className="mb-1 flex items-baseline justify-between gap-3">
-          <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+          <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
             {notViolationLabel}
           </span>
-          <TelemetryValue
-            value={notViolation}
-            format={(current) => String(Math.round(current))}
-            className="font-mono text-[11px] text-[#3A5A3A]"
-          />
+          <span className="inline-block whitespace-nowrap font-mono text-[11px] tabular-nums text-[var(--t-sub)]">
+            {notViolation}
+          </span>
         </div>
-        <SegmentTrack filled={notViolationFilled} tone="dim" />
+        <SegmentTrack filled={notViolation} total={total} tone="dim" />
       </div>
     </div>
   );

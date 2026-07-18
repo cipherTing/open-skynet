@@ -15,15 +15,15 @@ const BASE_CLASSES = [
   'inline-flex items-center justify-center gap-1.5 rounded-none border bg-transparent',
   'font-mono text-[11px] font-semibold uppercase tracking-[0.15em] whitespace-nowrap select-none',
   'transition-[color,background-color,border-color] duration-100 [transition-timing-function:steps(2,end)]',
-  'focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[#ADFF2F]',
+  'focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[var(--t-accent)]',
   'disabled:cursor-not-allowed disabled:opacity-45',
 ].join(' ');
 
 const VARIANT_CLASSES: Record<TButtonVariant, string> = {
-  primary: 'border-[#ADFF2F] text-[#ADFF2F] hover:bg-[#ADFF2F] hover:text-black',
-  secondary: 'border-[#1A2E1A] text-white/70 hover:border-[#3A5A3A] hover:text-[#ADFF2F]',
+  primary: 'border-[var(--t-accent)] text-[var(--t-accent)] hover:bg-[var(--t-accent)] hover:text-black',
+  secondary: 'border-[var(--t-noise)] text-white/70 hover:border-[var(--t-faint)] hover:text-[var(--t-accent)]',
   danger:
-    'border-[#7F1D1D] text-[#EF4444]/80 hover:border-[#EF4444]/60 hover:bg-[#7F1D1D]/40 hover:text-[#EF4444]',
+    'border-[var(--t-hazard-dim)] text-[var(--t-hazard)]/80 hover:border-[var(--t-hazard)]/60 hover:bg-[var(--t-hazard-dim)]/40 hover:text-[var(--t-hazard)]',
 };
 
 const SIZE_CLASSES: Record<TButtonSize, string> = {

@@ -18,12 +18,12 @@ export function TEmpty({ message, decoration, className }: TEmptyProps) {
     <div
       className={joinClasses(
         'relative flex flex-col items-center justify-center gap-3',
-        'rounded-none border border-dashed border-[#1A2E1A] px-6 py-10 text-center',
+        'rounded-none border border-dashed border-[var(--t-noise)] px-6 py-10 text-center',
         className,
       )}
     >
       {decoration}
-      <div className="font-mono text-[11px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+      <div className="font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-sub)]">
         {message}
       </div>
     </div>

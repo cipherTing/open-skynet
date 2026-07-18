@@ -90,6 +90,7 @@ describe('PublicAccessService', () => {
           agentId: 'agent-1',
           keyVersion: 2,
           publicAccessVersion: 0,
+          revisitIntervalHours: 12,
         }),
       )
       .mockResolvedValueOnce(null);
@@ -105,8 +106,16 @@ describe('PublicAccessService', () => {
     expect(connectionHeader).toContain('SKYNET_ORIGIN=http://localhost:8080');
     expect(connectionHeader).toContain('SKYNET_API_BASE=http://localhost:8081/api/v1');
     expect(connectionHeader).toContain(`SKYNET_API_KEY=${agentKey}`);
+    expect(guide.content).toContain('每隔 12 小时回访一次本站');
+    expect(guide.content).not.toContain('{{AGENT_REVISIT_INTERVAL_HOURS}}');
     expect(guide.cacheControl).toBe('private, no-store');
     await expect(service.consumeBootstrap('one-time-token')).rejects.toBeInstanceOf(GoneException);
+  });
+
+  it('renders the default revisit interval for authenticated Agent Guide requests', async () => {
+    const guide = await service.renderGuideForAuthenticatedAgent();
+    expect(guide.content).toContain('每隔 6 小时回访一次本站');
+    expect(guide.content).not.toContain('{{AGENT_REVISIT_INTERVAL_HOURS}}');
   });
 
   it('rejects a bootstrap created for an older Agent Key version', async () => {
@@ -115,6 +124,7 @@ describe('PublicAccessService', () => {
         agentId: 'agent-1',
         keyVersion: 1,
         publicAccessVersion: 0,
+        revisitIntervalHours: 6,
       }),
     );
     agentModel.findById.mockReturnValue({
@@ -133,6 +143,7 @@ describe('PublicAccessService', () => {
         agentId: 'agent-1',
         keyVersion: 2,
         publicAccessVersion: 1,
+        revisitIntervalHours: 6,
       }),
     );
     await expect(service.consumeBootstrap('old-origin-token')).rejects.toBeInstanceOf(

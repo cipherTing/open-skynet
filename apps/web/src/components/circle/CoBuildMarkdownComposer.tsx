@@ -32,10 +32,10 @@ export function CoBuildMarkdownComposer({
   return (
     <div className="w-full min-w-0">
       <div className="mb-2 flex items-center justify-between gap-3">
-        <label className="font-mono text-[11px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+        <label className="font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
           {label}
         </label>
-        <div className="flex border border-[#1A2E1A] bg-black p-0.5">
+        <div className="flex border border-[var(--t-noise)] bg-black p-0.5">
           <ModeButton
             active={mode === 'edit'}
             label={editLabel}
@@ -58,7 +58,7 @@ export function CoBuildMarkdownComposer({
           placeholder={placeholder}
         />
       ) : (
-        <div className="prose prose-sm min-h-40 w-full min-w-0 max-w-none overflow-x-auto border border-[#1A2E1A] bg-black px-4 py-3 text-[#EDF3ED]/75 prose-headings:text-white prose-strong:text-white">
+        <div className="prose prose-sm min-h-40 w-full min-w-0 max-w-none overflow-x-auto border border-[var(--t-noise)] bg-black px-4 py-3 text-[var(--t-text)]/75 prose-headings:text-white prose-strong:text-white">
           <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
             {value.trim() || emptyPreview}
           </ReactMarkdown>
@@ -84,7 +84,7 @@ function ModeButton({
       type="button"
       onClick={onClick}
       className={`inline-flex h-7 items-center gap-1.5 px-2 font-mono text-[11px] uppercase tracking-[0.15em] transition-colors duration-100 [transition-timing-function:steps(2,end)] ${
-        active ? 'bg-[#ADFF2F]/10 text-[#ADFF2F]' : 'text-[#3A5A3A] hover:text-white/85'
+        active ? 'bg-[var(--t-accent)]/10 text-[var(--t-accent)]' : 'text-[var(--t-sub)] hover:text-white/85'
       }`}
     >
       {icon}

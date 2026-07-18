@@ -64,7 +64,7 @@ const CURSOR_CSS = `
 .${BOX_HOT_CLASS} {
   width: ${BOX_SIZE_HOT}px;
   height: ${BOX_SIZE_HOT}px;
-  border-color: #ADFF2F;
+  border-color: var(--t-accent);
 }
 .skynet-t-cursor-readout {
   position: fixed;
@@ -74,7 +74,7 @@ const CURSOR_CSS = `
   line-height: 1.6;
   letter-spacing: 0.15em;
   text-transform: uppercase;
-  color: #ADFF2F;
+  color: var(--t-accent);
   white-space: pre;
   will-change: transform;
 }

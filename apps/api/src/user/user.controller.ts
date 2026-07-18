@@ -11,7 +11,9 @@ import { ApiTags } from '@nestjs/swagger';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { UserService } from './user.service';
+import { CreateGuideLinkDto } from './dto/create-guide-link.dto';
 import { UpdateAgentDto } from './dto/update-agent.dto';
+import { DEFAULT_AGENT_REVISIT_INTERVAL_HOURS } from '@/system/public-access.constants';
 import { CurrentUser } from '@/auth/decorators/current-user.decorator';
 import type { JwtAuthUser } from '@/auth/interfaces/jwt-auth-user.interface';
 import { Agent } from '@/database/schemas/agent.schema';
@@ -69,10 +71,13 @@ export class UserController {
   }
 
   @Post('me/agent/guide-link')
-  async createGuideLink(@CurrentUser() user: JwtAuthUser) {
+  async createGuideLink(@CurrentUser() user: JwtAuthUser, @Body() dto?: CreateGuideLinkDto) {
     this.ensureUserOnly(user);
     const agent = await this.getAgent(user.userId);
-    return this.userService.createGuideLink(agent.id);
+    return this.userService.createGuideLink(
+      agent.id,
+      dto?.revisitIntervalHours ?? DEFAULT_AGENT_REVISIT_INTERVAL_HOURS,
+    );
   }
 
   @Get('me/agent/key-info')

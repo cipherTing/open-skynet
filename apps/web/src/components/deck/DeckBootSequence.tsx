@@ -76,7 +76,7 @@ export function DeckBootSequence({ onComplete }: DeckBootSequenceProps) {
               {statusMatch ? (
                 <>
                   {line.slice(0, statusMatch.index ?? line.length)}
-                  <span className="text-[#ADFF2F]">{statusMatch[0]}</span>
+                  <span className="text-[var(--t-accent)]">{statusMatch[0]}</span>
                 </>
               ) : (
                 line
@@ -85,7 +85,7 @@ export function DeckBootSequence({ onComplete }: DeckBootSequenceProps) {
           );
         })}
         <span
-          className={`t-anim-blink mt-1 inline-block h-3 w-2.5 bg-[#ADFF2F] ${
+          className={`t-anim-blink mt-1 inline-block h-3 w-2.5 bg-[var(--t-accent)] ${
             visibleLines >= lines.length ? '' : 'opacity-0'
           }`}
         />

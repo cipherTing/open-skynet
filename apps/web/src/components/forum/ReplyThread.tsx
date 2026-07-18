@@ -58,7 +58,7 @@ function ReplyQuoteBlock({
   if (!quote) return null;
   if (!quote.available || !quote.text) {
     return (
-      <div className="mb-2.5 border border-[#1A2E1A] px-3 py-2 font-mono text-[10px] tracking-[0.1em] text-[#3A5A3A]">
+      <div className="mb-2.5 border border-[var(--t-noise)] px-3 py-2 font-mono text-[10px] tracking-[0.1em] text-[var(--t-faint)]">
         {'> '}
         {t('replyThread.quoteUnavailable')}
       </div>
@@ -71,9 +71,9 @@ function ReplyQuoteBlock({
   return (
     <Link
       href={href}
-      className="mb-2.5 block border-l-2 border-l-[#3A5A3A] bg-[#040704] px-3 py-2 text-[11px] text-text-secondary transition-colors [transition-timing-function:steps(2,end)] hover:border-l-[#ADFF2F]"
+      className="mb-2.5 block border-l-2 border-l-[var(--t-faint)] bg-[var(--t-panel)] px-3 py-2 text-[11px] text-text-secondary transition-colors [transition-timing-function:steps(2,end)] hover:border-l-[var(--t-accent)]"
     >
-      <span className="block font-mono text-[10px] tracking-[0.12em] text-[#ADFF2F]">
+      <span className="block font-mono text-[10px] tracking-[0.12em] text-[var(--t-accent)]">
         {'>> '}
         {quote.sourceAuthor?.name ?? t('replyThread.quoteSource')}
       </span>
@@ -351,14 +351,14 @@ export function ReplyThread({
     >
       {/* 追加日志行：`>` 前缀 + 时间码 + 作者 */}
       <div
-        className={`flex gap-3 border-b border-[#122012] px-1 py-3 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#040704] ${
-          highlighted ? 'border-l-2 border-l-[#ADFF2F] bg-[#ADFF2F]/5 pl-2' : ''
+        className={`flex gap-3 border-b border-[var(--t-noise2)] px-1 py-3 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[var(--t-panel)] ${
+          highlighted ? 'border-l-2 border-l-[var(--t-accent)] bg-accent/5 pl-2' : ''
         }`}
       >
         <span
           aria-hidden
           className={`mt-[3px] shrink-0 font-mono text-[13px] leading-none ${
-            highlighted ? 'text-[#ADFF2F]' : 'text-[#3A5A3A]'
+            highlighted ? 'text-[var(--t-accent)]' : 'text-[var(--t-faint)]'
           }`}
         >
           {'>'}
@@ -376,7 +376,7 @@ export function ReplyThread({
                 agentName={reply.author?.name}
                 size={20}
               />
-              <span className="truncate text-[12px] font-bold text-white transition-colors [transition-timing-function:steps(2,end)] group-hover/author:text-[#ADFF2F]">
+              <span className="truncate text-[12px] font-bold text-white transition-colors [transition-timing-function:steps(2,end)] group-hover/author:text-[var(--t-accent)]">
                 {reply.author?.name}
               </span>
               <AgentLevelBadge level={reply.author?.level} compact />
@@ -436,7 +436,7 @@ export function ReplyThread({
                   <button
                     type="button"
                     onClick={handleQuoteSelection}
-                    className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[#3A5A3A] transition-colors [transition-timing-function:steps(2,end)] hover:text-[#ADFF2F]"
+                    className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)]"
                   >
                     <Quote className="h-3 w-3" />
                     {t('replyInput.quoteSelection')}
@@ -445,7 +445,7 @@ export function ReplyThread({
                     type="button"
                     aria-expanded={isReplyInputVisible}
                     onClick={handleReplyToggle}
-                    className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[#3A5A3A] transition-colors [transition-timing-function:steps(2,end)] hover:text-[#ADFF2F]"
+                    className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)]"
                   >
                     <Reply className="w-3 h-3" />
                     {t('replyThread.reply')}
@@ -471,7 +471,7 @@ export function ReplyThread({
 
       {/* 嵌套回复：缩进竖线 */}
       {children.length > 0 && (
-        <div className="ml-4 space-y-1 border-l border-[#1A2E1A] py-2 pl-3 sm:ml-6 sm:pl-4">
+        <div className="ml-4 space-y-1 border-l border-[var(--t-noise)] py-2 pl-3 sm:ml-6 sm:pl-4">
           {children.map((child: ForumReply) => (
             <ChildReplyItem
               key={child.id}
@@ -488,7 +488,7 @@ export function ReplyThread({
               type="button"
               disabled={childrenBusy}
               onClick={() => void handleLoadMoreChildren()}
-              className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#3A5A3A] transition-colors [transition-timing-function:steps(2,end)] hover:text-[#ADFF2F] disabled:cursor-wait disabled:opacity-50"
+              className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)] disabled:cursor-wait disabled:opacity-50"
             >
               {childrenBusy
                 ? t('replyThread.loadingMoreChildren')
@@ -567,14 +567,14 @@ function ChildReplyItem({
     <div
       id={`${domIdPrefix}-${child.id}`}
       data-testid={`${domIdPrefix}-${child.id}`}
-      className={`relative flex scroll-mt-28 gap-2 px-1 py-2 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#040704] ${
-        highlighted ? 'border-l-2 border-l-[#ADFF2F] bg-[#ADFF2F]/5' : ''
+      className={`relative flex scroll-mt-28 gap-2 px-1 py-2 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[var(--t-panel)] ${
+        highlighted ? 'border-l-2 border-l-[var(--t-accent)] bg-accent/5' : ''
       }`}
     >
       <span
         aria-hidden
         className={`mt-[3px] shrink-0 font-mono text-[11px] leading-none ${
-          highlighted ? 'text-[#ADFF2F]' : 'text-[#3A5A3A]'
+          highlighted ? 'text-[var(--t-accent)]' : 'text-[var(--t-faint)]'
         }`}
       >
         {'>>'}
@@ -592,13 +592,13 @@ function ChildReplyItem({
               agentName={child.author?.name}
               size={18}
             />
-            <span className="truncate text-[11px] font-bold text-white transition-colors [transition-timing-function:steps(2,end)] group-hover/author:text-[#ADFF2F]">
+            <span className="truncate text-[11px] font-bold text-white transition-colors [transition-timing-function:steps(2,end)] group-hover/author:text-[var(--t-accent)]">
               {child.author?.name}
             </span>
             <AgentLevelBadge level={child.author?.level} compact />
           </button>
           {parentAuthorName && (
-            <span className="text-[#3A5A3A]">{t('replyThread.replyTo', { name: parentAuthorName })}</span>
+            <span className="text-[var(--t-sub)]">{t('replyThread.replyTo', { name: parentAuthorName })}</span>
           )}
           {(child.contentVersion > 1 || isOwnReply) && (
             <span className="ml-auto">

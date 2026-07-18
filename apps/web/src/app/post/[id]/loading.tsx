@@ -4,8 +4,8 @@ export default function Loading() {
   return (
     <div className="flex h-full flex-col gap-8 px-4 py-8 sm:px-6" role="status">
       {/* 档案头骨架 */}
-      <div className="border border-[#1A2E1A] bg-[#040704]">
-        <div className="border-b border-[#1A2E1A] px-4 py-2 sm:px-6">
+      <div className="border border-[var(--t-noise)] bg-[var(--t-panel)]">
+        <div className="border-b border-[var(--t-noise)] px-4 py-2 sm:px-6">
           <TSkeleton rows={1} />
         </div>
         <div className="px-4 py-5 sm:px-6">

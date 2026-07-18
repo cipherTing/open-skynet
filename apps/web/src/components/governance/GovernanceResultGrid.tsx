@@ -52,25 +52,25 @@ export function GovernanceResultGrid({ query, onDetailOpenChange }: GovernanceRe
     <div className="feed-overlay-shell">
       <div className="feed-overlay-scroll skynet-auto-hide-scrollbar">
         {isAuthUnavailable ? (
-          <div className="border border-[#7F1D1D] bg-[#040704] p-6 font-mono text-xs tracking-[0.1em] text-[#EF4444]/80">
+          <div className="border border-[var(--t-hazard-dim)] bg-[var(--t-panel)] p-6 font-mono text-xs tracking-[0.1em] text-[var(--t-hazard)]/80">
             {t('governance.syncFailed')}
           </div>
         ) : requiresLogin ? (
-          <div className="t-corner border border-[#1A2E1A] bg-[#040704] p-8 text-center">
+          <div className="t-corner border border-[var(--t-noise)] bg-[var(--t-panel)] p-8 text-center">
             <p className="text-base font-semibold text-white">{t('governance.loginRequiredTitle')}</p>
-            <p className="mt-2 font-mono text-[11px] leading-5 tracking-[0.08em] text-[#3A5A3A]">
+            <p className="mt-2 font-mono text-[11px] leading-5 tracking-[0.08em] text-[var(--t-sub)]">
               {t('governance.loginRequiredDescription')}
             </p>
           </div>
         ) : isAuthLoading || query.isLoading ? (
-          <div className="border border-[#1A2E1A] bg-[#040704] p-6">
+          <div className="border border-[var(--t-noise)] bg-[var(--t-panel)] p-6">
             <TSkeleton rows={6} />
-            <p className="mt-4 text-center font-mono text-[11px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+            <p className="mt-4 text-center font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
               {t('governance.loadingResults')}
             </p>
           </div>
         ) : query.isError && items.length === 0 ? (
-          <div className="border border-[#7F1D1D] bg-[#040704] p-6 font-mono text-xs tracking-[0.1em] text-[#EF4444]/80">
+          <div className="border border-[var(--t-hazard-dim)] bg-[var(--t-panel)] p-6 font-mono text-xs tracking-[0.1em] text-[var(--t-hazard)]/80">
             {t('governance.syncFailed')}
           </div>
         ) : items.length === 0 && !query.isLoading ? (
@@ -78,25 +78,25 @@ export function GovernanceResultGrid({ query, onDetailOpenChange }: GovernanceRe
         ) : (
           <div key={data?.sampledAt ?? 'governance-batch'} className="pb-3">
             <div className="mb-2 flex items-center gap-2 px-1 pt-2">
-              <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.15em] text-[#ADFF2F]">
+              <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)]">
                 {t('sections.gov.code')}
               </span>
-              <span className="shrink-0 font-mono text-[10px] tracking-[0.15em] text-[#3A5A3A]">
+              <span className="shrink-0 font-mono text-[10px] tracking-[0.15em] text-[var(--t-faint)]">
                 {'//'}
               </span>
               <span className="shrink-0 text-xs font-bold text-white">
                 {t('governance.plazaTitle')}
               </span>
-              <span aria-hidden className="h-px min-w-6 flex-1 bg-[#1A2E1A]" />
+              <span aria-hidden className="h-px min-w-6 flex-1 bg-[var(--t-noise)]" />
               {data ? (
-                <span className="flex shrink-0 items-center gap-2 font-mono text-[10px] tabular-nums tracking-[0.15em] text-[#3A5A3A]">
+                <span className="flex shrink-0 items-center gap-2 font-mono text-[10px] tabular-nums tracking-[0.15em] text-[var(--t-faint)]">
                   <span>REC ×{items.length}</span>
                   <Timecode date={data.sampledAt} withDate />
                 </span>
               ) : null}
             </div>
-            <div className="t-corner border border-[#1A2E1A]">
-              <div className="divide-y divide-[#122012]">
+            <div className="t-corner border border-[var(--t-noise)]">
+              <div className="divide-y divide-[var(--t-noise2)]">
                 {items.map((result) => (
                   <GovernanceResultCard key={result.id} result={result} onOpen={openDetails} />
                 ))}

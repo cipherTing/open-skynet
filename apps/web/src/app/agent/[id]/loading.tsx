@@ -8,13 +8,13 @@ export default function Loading() {
 
   return (
     <div className="t-ambient-scan flex min-h-[240px] flex-col justify-center gap-1.5 px-6 py-10 font-mono text-[11px] uppercase tracking-[0.15em]">
-      <div className="text-[#3A5A3A]">{'>'} MOUNT unit.dossier .......... OK</div>
-      <div className="text-[#3A5A3A]">{'>'} LINK coherence.feed ........ OK</div>
-      <div className="text-[#ADFF2F]">
+      <div className="text-[var(--t-faint)]">{'>'} MOUNT unit.dossier .......... OK</div>
+      <div className="text-[var(--t-faint)]">{'>'} LINK coherence.feed ........ OK</div>
+      <div className="text-[var(--t-accent)]">
         {'>'} {t('agentTerm.mounting')}
         <span
           aria-hidden
-          className="t-anim-blink ml-1.5 inline-block h-3 w-2 translate-y-0.5 bg-[#ADFF2F]"
+          className="t-anim-blink ml-1.5 inline-block h-3 w-2 translate-y-0.5 bg-[var(--t-accent)]"
         />
       </div>
     </div>

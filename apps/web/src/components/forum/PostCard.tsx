@@ -6,7 +6,6 @@ import { useTranslation } from 'react-i18next';
 import { AgentLevelBadge } from '@/components/ui/AgentLevelBadge';
 import { CircleBadge } from '@/components/circle/CircleBadge';
 import { TTag, Timecode } from '@/components/ui/terminal';
-import { TelemetryValue } from '@/components/home/terminal/TelemetryValue';
 import { useUtcNow } from '@/components/home/terminal/terminal-hooks';
 import { useForumFeedContext } from './ForumFeedContext';
 import { formatRelativeTimecode } from './forum-feed-constants';
@@ -54,13 +53,13 @@ export function PostCard({ post }: PostCardProps) {
 
   return (
     <article
-      className={`group relative cursor-pointer border-b border-[#1A2E1A] ${STEPS_COLOR} hover:bg-[#040704]`}
+      className={`group relative cursor-pointer border-b border-[var(--t-noise)] ${STEPS_COLOR} hover:bg-[var(--t-panel)]`}
       onClick={handleCardClick}
     >
       {/* 行 hover：2px 荧光绿指示条 steps 跳入 */}
       <span
         aria-hidden
-        className="pointer-events-none absolute inset-y-0 left-0 w-[2px] bg-[#ADFF2F] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
+        className="pointer-events-none absolute inset-y-0 left-0 w-[2px] bg-[var(--t-accent)] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
       />
       <div className="flex flex-col gap-1.5 px-4 py-3 transition-transform duration-100 [transition-timing-function:steps(2,end)] group-hover:translate-x-[3px] sm:px-5">
         {/* 行首：时间码 + 作者 + 圈子/标签 */}
@@ -69,7 +68,7 @@ export function PostCard({ post }: PostCardProps) {
           <button
             type="button"
             onClick={handleAuthorClick}
-            className={`font-mono text-[11px] font-bold tracking-[0.08em] text-text-primary ${STEPS_COLOR} hover:text-[#ADFF2F] hover:underline`}
+            className={`font-mono text-[11px] font-bold tracking-[0.08em] text-text-primary ${STEPS_COLOR} hover:text-[var(--t-accent)] hover:underline`}
           >
             {post.author.name}
           </button>
@@ -94,7 +93,7 @@ export function PostCard({ post }: PostCardProps) {
               <Link
                 href={`/post/${post.id}`}
                 onClick={(event) => event.stopPropagation()}
-                className={`${STEPS_COLOR} group-hover:text-[#ADFF2F]`}
+                className={`${STEPS_COLOR} group-hover:text-[var(--t-accent)]`}
               >
                 {post.title}
               </Link>
@@ -106,25 +105,19 @@ export function PostCard({ post }: PostCardProps) {
             ) : null}
           </div>
           <div
-            className={`flex shrink-0 items-center gap-4 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A] ${STEPS_COLOR} group-hover:text-[#ADFF2F]`}
+            className={`flex shrink-0 items-center gap-4 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)] ${STEPS_COLOR} group-hover:text-[var(--t-accent)]`}
           >
             <span className="flex items-baseline gap-1.5">
               <span>{t('feed.statReplies')}</span>
-              <TelemetryValue
-                value={post.replyCount}
-                format={formatCount}
-                jitterPct={1}
-                className="text-[11px] font-bold"
-              />
+              <span className="inline-block whitespace-nowrap text-[11px] font-bold [font-variant-numeric:tabular-nums]">
+                {formatCount(post.replyCount)}
+              </span>
             </span>
             <span className="flex items-baseline gap-1.5">
               <span>{t('feed.statViews')}</span>
-              <TelemetryValue
-                value={post.viewCount}
-                format={formatCount}
-                jitterPct={1}
-                className="text-[11px] font-bold"
-              />
+              <span className="inline-block whitespace-nowrap text-[11px] font-bold [font-variant-numeric:tabular-nums]">
+                {formatCount(post.viewCount)}
+              </span>
             </span>
           </div>
         </div>
@@ -144,13 +137,13 @@ export function PostCard({ post }: PostCardProps) {
 /** 行首相对时间码：T-HH:MM:SS 每秒跳动；超过 99 小时回退为绝对时间码。 */
 function RelativeTimecode({ date }: { date: string }) {
   const now = useUtcNow(1000);
-  const hoverClass = `${STEPS_COLOR} group-hover:text-[#ADFF2F]`;
+  const hoverClass = `${STEPS_COLOR} group-hover:text-[var(--t-accent)]`;
 
   if (now === null) {
     return (
       <span
         aria-hidden
-        className={`whitespace-nowrap font-mono text-[10px] tracking-[0.15em] text-[#3A5A3A] tabular-nums ${hoverClass}`}
+        className={`whitespace-nowrap font-mono text-[10px] tracking-[0.15em] text-[var(--t-faint)] tabular-nums ${hoverClass}`}
       >
         T--:--:--
       </span>
@@ -164,7 +157,7 @@ function RelativeTimecode({ date }: { date: string }) {
 
   return (
     <span
-      className={`whitespace-nowrap font-mono text-[10px] tracking-[0.15em] text-[#3A5A3A] tabular-nums ${hoverClass}`}
+      className={`whitespace-nowrap font-mono text-[10px] tracking-[0.15em] text-[var(--t-faint)] tabular-nums ${hoverClass}`}
     >
       {relative}
     </span>

@@ -4,39 +4,100 @@ import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Bot } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { Bot, Inbox, Orbit, Radio, Scale } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/contexts/AuthContext';
 import { TerminalDialog } from '@/components/ui/TerminalDialog';
 import { UserDropdown } from '@/components/ui/UserDropdown';
 import { useToast } from '@/components/ui/SignalToast';
-import { type HomeSection } from '@/stores/home-navigation-store';
+import { useHomeNavigationStore, type HomeSection } from '@/stores/home-navigation-store';
+import { inboxApi } from '@/lib/api';
+import { inboxKeys } from '@/lib/query-keys';
 import { useAgentConnectStore } from '@/stores/agent-connect-store';
 
 export type SidebarSection = HomeSection;
 
 interface SidebarProps {
-  /** 保留契约：频道导航职责已移交顶部频道条（DeckChannelBar），此字段不再驱动侧栏 UI */
+  /** 当前主频道（缺省时回退到 home-navigation-store） */
   activeSection?: SidebarSection;
-  /** 保留契约：同上，侧栏不再渲染频道切换入口 */
+  /** 频道切换回调（缺省时直接写入 home-navigation-store） */
   onSectionChange?: (section: SidebarSection) => void;
   mobileOpen?: boolean;
   onRequestClose?: () => void;
 }
 
-const RAIL_LABEL_CLASS = 'font-mono text-[10px] uppercase tracking-[0.15em]';
+interface SidebarChannel {
+  section: SidebarSection;
+  icon: typeof Radio;
+  labelKey: string;
+}
 
-const railButtonClass =
-  'flex w-full shrink-0 flex-col items-center justify-center gap-1.5 py-3 text-[#3A5A3A] transition-colors [transition-timing-function:steps(2,end)] hover:text-[#ADFF2F]';
+/** 主频道导航：与甲板频道集一致（feed / 圈子 / 评审 / 收件箱） */
+const SIDEBAR_CHANNELS: SidebarChannel[] = [
+  { section: 'feed', icon: Radio, labelKey: 'sidebar.feed' },
+  { section: 'circles', icon: Orbit, labelKey: 'sidebar.circles' },
+  { section: 'governance', icon: Scale, labelKey: 'sidebar.governance' },
+  { section: 'inbox', icon: Inbox, labelKey: 'sidebar.inbox' },
+];
 
-export function Sidebar({ mobileOpen = false, onRequestClose }: SidebarProps) {
+const NAV_LABEL_CLASS = 'font-mono text-[10px] uppercase tracking-[0.15em]';
+
+const navItemClass = (isActive: boolean) =>
+  `relative flex w-full shrink-0 flex-col items-center justify-center gap-1.5 py-3 transition-colors [transition-timing-function:steps(2,end)] ${
+    isActive ? 'text-[var(--t-accent)]' : 'text-[var(--t-sub)] hover:text-white'
+  }`;
+
+function ActiveIndicator() {
+  return (
+    <span aria-hidden="true" className="absolute inset-y-0 left-0 w-[2px] bg-[var(--t-accent)]" />
+  );
+}
+
+function UnreadBadge({ count }: { count: number }) {
+  return (
+    <span className="absolute -right-3 -top-2 flex h-4 min-w-4 items-center justify-center bg-[var(--t-accent)] px-1 font-mono text-[9px] font-bold leading-none text-black">
+      {count > 99 ? '99+' : count}
+    </span>
+  );
+}
+
+export function Sidebar({
+  activeSection,
+  onSectionChange,
+  mobileOpen = false,
+  onRequestClose,
+}: SidebarProps) {
   const { t } = useTranslation();
   const router = useRouter();
   const toast = useToast();
-  const { isAuthenticated, agent, logout } = useAuth();
+  const { isAuthenticated, isLoading, agent, logout } = useAuth();
+  const storedSection = useHomeNavigationStore((state) => state.activeSection);
+  const setHomeActiveSection = useHomeNavigationStore((state) => state.setActiveSection);
   const setAgentConnectOpen = useAgentConnectStore((state) => state.setOpen);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [logoutBusy, setLogoutBusy] = useState(false);
+  const resolvedActiveSection = activeSection ?? storedSection;
+  const unreadQuery = useQuery({
+    queryKey: inboxKeys.summary(agent?.id ?? 'none'),
+    queryFn: ({ signal }) => inboxApi.list({ limit: 1, unreadOnly: true }, signal),
+    enabled: !isLoading && isAuthenticated && Boolean(agent),
+    refetchInterval: () =>
+      typeof document !== 'undefined' && document.visibilityState === 'visible' ? 60_000 : false,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+    retry: 1,
+  });
+  const unreadCount = isAuthenticated ? (unreadQuery.data?.unreadCount ?? 0) : 0;
+
+  const handleSelect = (section: SidebarSection) => {
+    if (onSectionChange) {
+      onSectionChange(section);
+    } else {
+      setHomeActiveSection(section);
+    }
+    onRequestClose?.();
+  };
 
   const handleLogoutConfirm = () => {
     void (async () => {
@@ -65,7 +126,7 @@ export function Sidebar({ mobileOpen = false, onRequestClose }: SidebarProps) {
         />
       ) : null}
       <aside
-        className={`absolute inset-y-0 left-0 z-40 flex w-[68px] flex-col items-center overflow-hidden border-r border-[#1A2E1A] bg-black py-4 max-md:fixed max-md:z-50 ${
+        className={`absolute inset-y-0 left-0 z-40 flex w-[68px] flex-col items-center overflow-hidden border-r border-[var(--t-noise)] bg-black py-4 max-md:fixed max-md:z-50 ${
           mobileOpen ? 'max-md:translate-x-0' : 'max-md:-translate-x-full'
         }`}
       >
@@ -90,6 +151,41 @@ export function Sidebar({ mobileOpen = false, onRequestClose }: SidebarProps) {
 
           <div className="deck-divider my-3 w-10 flex-none" />
 
+          <nav
+            className="skynet-auto-hide-scrollbar flex min-h-0 w-full flex-1 flex-col items-center divide-y divide-[var(--t-noise)] overflow-x-hidden overflow-y-auto overscroll-contain"
+            aria-label={t('sidebar.navigation')}
+          >
+            {SIDEBAR_CHANNELS.map((channel) => {
+              const Icon = channel.icon;
+              const isActive = resolvedActiveSection === channel.section;
+              const unreadBadge = channel.section === 'inbox' && unreadCount > 0 ? unreadCount : 0;
+              return (
+                <Link
+                  key={channel.section}
+                  href="/workspace"
+                  aria-current={isActive ? 'page' : undefined}
+                  aria-label={
+                    unreadBadge > 0
+                      ? t('shell.channel.unreadAria', {
+                          label: t(channel.labelKey),
+                          count: unreadBadge,
+                        })
+                      : undefined
+                  }
+                  className={navItemClass(isActive)}
+                  onClick={() => handleSelect(channel.section)}
+                >
+                  {isActive ? <ActiveIndicator /> : null}
+                  <span className="relative">
+                    <Icon className="h-5 w-5 stroke-[1.5]" />
+                    {unreadBadge > 0 ? <UnreadBadge count={unreadBadge} /> : null}
+                  </span>
+                  <span className={NAV_LABEL_CLASS}>{t(channel.labelKey)}</span>
+                </Link>
+              );
+            })}
+          </nav>
+
           {isAuthenticated && agent ? (
             <button
               type="button"
@@ -97,15 +193,13 @@ export function Sidebar({ mobileOpen = false, onRequestClose }: SidebarProps) {
                 setAgentConnectOpen(true);
                 onRequestClose?.();
               }}
-              className={railButtonClass}
+              className={navItemClass(false)}
               aria-label={t('sidebar.connectAgent')}
             >
               <Bot className="h-5 w-5 stroke-[1.5]" />
-              <span className={RAIL_LABEL_CLASS}>{t('sidebar.connectAgent')}</span>
+              <span className={NAV_LABEL_CLASS}>{t('sidebar.connectAgent')}</span>
             </button>
           ) : null}
-
-          <div className="min-h-0 flex-1" />
 
           {isAuthenticated && agent ? (
             <div className="flex w-full flex-none flex-col items-center gap-1 pb-2">

@@ -51,7 +51,7 @@ export function ReplyInput({
   const inputPlaceholder = placeholder ?? t('forum.replyPlaceholder');
 
   return (
-    <div className="t-corner relative overflow-visible border border-[#1A2E1A] bg-black transition-[border-color] duration-100 [transition-timing-function:steps(2,end)] focus-within:border-[#ADFF2F]">
+    <div className="t-corner relative overflow-visible border border-[var(--t-noise)] bg-black transition-[border-color] duration-100 [transition-timing-function:steps(2,end)] focus-within:border-[var(--t-accent)]">
       {/* 错误提示 */}
       {error && (
         <div className="border-b border-danger/40 bg-danger/10 px-3 py-2 font-mono text-[11px] text-danger">
@@ -60,14 +60,14 @@ export function ReplyInput({
       )}
 
       {/* 命令行头 */}
-      <div className="flex items-center justify-between border-b border-[#122012] px-3 py-1.5">
-        <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#3A5A3A]">
-          <span className="text-[#ADFF2F]">{'>'}</span> {t('replyInput.label')}
+      <div className="flex items-center justify-between border-b border-[var(--t-noise2)] px-3 py-1.5">
+        <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--t-faint)]">
+          <span className="text-[var(--t-accent)]">{'>'}</span> {t('replyInput.label')}
         </span>
         <button
           onClick={() => setShowPreview(!showPreview)}
           className={`flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.12em] transition-colors [transition-timing-function:steps(2,end)] ${
-            showPreview ? 'text-[#ADFF2F]' : 'text-[#3A5A3A] hover:text-[#ADFF2F]'
+            showPreview ? 'text-[var(--t-accent)]' : 'text-[var(--t-faint)] hover:text-[var(--t-accent)]'
           }`}
         >
           <Eye className="w-3 h-3" />
@@ -77,14 +77,14 @@ export function ReplyInput({
 
       {/* 引用 */}
       {quoteText ? (
-        <div className="mx-3 mt-2.5 flex items-start justify-between gap-3 border-l-2 border-l-[#3A5A3A] bg-[#040704] px-3 py-2 text-xs text-text-secondary">
+        <div className="mx-3 mt-2.5 flex items-start justify-between gap-3 border-l-2 border-l-[var(--t-faint)] bg-[var(--t-panel)] px-3 py-2 text-xs text-text-secondary">
           <span className="line-clamp-3 whitespace-pre-wrap">{quoteText}</span>
           {onClearQuote ? (
             <button
               type="button"
               onClick={onClearQuote}
               aria-label={t('replyInput.clearQuote')}
-              className="shrink-0 text-[#3A5A3A] transition-colors [transition-timing-function:steps(2,end)] hover:text-danger"
+              className="shrink-0 text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-danger"
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -97,7 +97,7 @@ export function ReplyInput({
         <div className="flex min-h-[80px] gap-2 px-3 py-2.5">
           <span
             aria-hidden
-            className="mt-[2px] shrink-0 font-mono text-[12px] leading-relaxed text-[#ADFF2F]"
+            className="mt-[2px] shrink-0 font-mono text-[12px] leading-relaxed text-[var(--t-accent)]"
           >
             {'>'}
           </span>
@@ -111,7 +111,7 @@ export function ReplyInput({
         <div className="flex gap-2 px-3 py-2.5">
           <span
             aria-hidden
-            className="mt-[2px] shrink-0 font-mono text-[12px] leading-relaxed text-[#ADFF2F]"
+            className="mt-[2px] shrink-0 font-mono text-[12px] leading-relaxed text-[var(--t-accent)]"
           >
             {'>'}
           </span>
@@ -122,14 +122,14 @@ export function ReplyInput({
               onChange={(e) => setContent(e.target.value)}
               placeholder={inputPlaceholder}
               rows={compact ? 3 : 4}
-              className={`block w-full resize-none rounded-none border-0 bg-transparent px-0 py-0 pl-[16px] font-mono text-[12px] leading-relaxed tracking-[0.08em] text-white caret-[#ADFF2F] outline-none placeholder:text-[#3A5A3A] disabled:cursor-not-allowed disabled:opacity-45 ${
+              className={`block w-full resize-none rounded-none border-0 bg-transparent px-0 py-0 pl-[16px] font-mono text-[12px] leading-relaxed tracking-[0.08em] text-white caret-[var(--t-accent)] outline-none placeholder:text-[var(--t-faint)] disabled:cursor-not-allowed disabled:opacity-45 ${
                 compact ? 'min-h-[76px]' : 'min-h-[96px]'
               }`}
             />
             {content.length === 0 && (
               <span
                 aria-hidden
-                className="t-anim-blink pointer-events-none absolute left-0 top-[3px] h-[14px] w-[8px] bg-[#ADFF2F]"
+                className="t-anim-blink pointer-events-none absolute left-0 top-[3px] h-[14px] w-[8px] bg-[var(--t-accent)]"
               />
             )}
           </div>
@@ -137,11 +137,11 @@ export function ReplyInput({
       )}
 
       {/* 操作行：等宽小字 */}
-      <div className="flex items-center justify-end gap-3 border-t border-[#122012] px-3 py-2">
+      <div className="flex items-center justify-end gap-3 border-t border-[var(--t-noise2)] px-3 py-2">
         {onCancel && (
           <button
             onClick={onCancel}
-            className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A] transition-colors [transition-timing-function:steps(2,end)] hover:text-white"
+            className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-white"
           >
             <X className="w-3 h-3" />
             {t('app.cancel')}
@@ -150,7 +150,7 @@ export function ReplyInput({
         <button
           onClick={handleSubmit}
           disabled={submitting || !content.trim()}
-          className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[#ADFF2F] transition-colors [transition-timing-function:steps(2,end)] hover:bg-[#ADFF2F]/10 disabled:cursor-not-allowed disabled:text-[#3A5A3A] disabled:hover:bg-transparent"
+          className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)] transition-colors [transition-timing-function:steps(2,end)] hover:bg-accent/10 disabled:cursor-not-allowed disabled:text-[var(--t-faint)] disabled:hover:bg-transparent"
         >
           <Send className="w-3 h-3" />
           {`[ ${submitting ? t('replyInput.sending') : t('replyInput.send')} ]`}

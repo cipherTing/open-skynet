@@ -42,13 +42,13 @@ export function GovernanceCaseStamp({
       {title ? (
         <button
           type="button"
-          className="flex w-full items-start justify-between gap-3 py-1 text-left text-xs transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#040704]"
+          className="flex w-full items-start justify-between gap-3 py-1 text-left text-xs transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[var(--t-panel)]"
           onClick={(event) => {
             event.stopPropagation();
             setOpen(true);
           }}
         >
-          <span className="line-clamp-2 text-[#EDF3ED]/70">{title}</span>
+          <span className="line-clamp-2 text-[var(--t-sub)]">{title}</span>
           {currentStatus ? (
             <GovernanceVerdictStamp
               tone={statusStampTone(currentStatus)}
@@ -88,26 +88,26 @@ export function GovernanceCaseStamp({
           code="GOV.CASE"
           size="md"
         >
-          <p className="text-xs leading-5 text-[#3A5A3A]">
+          <p className="text-xs leading-5 text-[var(--t-sub)]">
             {t('governance.inReview.description')}
           </p>
           {query.isPending ? (
-            <p className="mt-6 font-mono text-sm text-[#3A5A3A]">{t('governance.inReview.loading')}</p>
+            <p className="mt-6 font-mono text-sm text-[var(--t-sub)]">{t('governance.inReview.loading')}</p>
           ) : query.isError ? (
-            <p className="mt-6 font-mono text-sm text-[#EF4444]/80">
+            <p className="mt-6 font-mono text-sm text-[var(--t-hazard)]/80">
               {t('governance.inReview.loadFailed')}
             </p>
           ) : query.data ? (
-            <div className="mt-5 border-t border-[#1A2E1A] pt-4">
+            <div className="mt-5 border-t border-[var(--t-noise)] pt-4">
               <div>
                 <p className="text-sm font-semibold text-white">{query.data.targetSummary.title}</p>
-                <p className="mt-1 text-sm leading-6 text-[#EDF3ED]/70">
+                <p className="mt-1 text-sm leading-6 text-[var(--t-sub)]">
                   {query.data.targetSummary.excerpt}
                 </p>
               </div>
-              <dl className="mt-4 grid grid-cols-2 gap-px border border-[#1A2E1A] bg-[#1A2E1A]">
+              <dl className="mt-4 grid grid-cols-2 gap-px border border-[var(--t-noise)] bg-[var(--t-noise)]">
                 <div className="bg-black p-3">
-                  <dt className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                  <dt className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                     {t('governance.inReview.status')}
                   </dt>
                   <dd className="mt-2">
@@ -119,7 +119,7 @@ export function GovernanceCaseStamp({
                   </dd>
                 </div>
                 <div className="bg-black p-3">
-                  <dt className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                  <dt className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                     {t('governance.inReview.trigger')}
                   </dt>
                   <dd className="mt-2 font-mono text-sm font-bold tabular-nums text-white/85">
@@ -127,7 +127,7 @@ export function GovernanceCaseStamp({
                   </dd>
                 </div>
                 <div className="bg-black p-3">
-                  <dt className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                  <dt className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                     {t('governance.inReview.openedAt')}
                   </dt>
                   <dd className="mt-2">
@@ -135,11 +135,11 @@ export function GovernanceCaseStamp({
                   </dd>
                 </div>
                 <div className="bg-black p-3">
-                  <dt className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                  <dt className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                     {t('governance.inReview.deadline')}
                   </dt>
                   <dd className="mt-2">
-                    <Timecode date={query.data.deadlineAt} withDate className="text-[#ADFF2F]" />
+                    <Timecode date={query.data.deadlineAt} withDate className="text-[var(--t-accent)]" />
                   </dd>
                 </div>
               </dl>

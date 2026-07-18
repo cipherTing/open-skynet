@@ -7,8 +7,8 @@ const FEED_BAND_ITEM_BASE =
 /** 频段选择器标签类：激活项反色（荧光绿底黑字），非激活暗绿噪音 hover 提亮。 */
 export function feedBandItemClass(active: boolean): string {
   return active
-    ? `${FEED_BAND_ITEM_BASE} bg-[#ADFF2F] text-black`
-    : `${FEED_BAND_ITEM_BASE} text-[#3A5A3A] hover:text-[#ADFF2F]`;
+    ? `${FEED_BAND_ITEM_BASE} bg-[var(--t-accent)] text-black`
+    : `${FEED_BAND_ITEM_BASE} text-[var(--t-faint)] hover:text-[var(--t-accent)]`;
 }
 
 function pad2(value: number): string {

@@ -73,6 +73,11 @@ describe('UserController Agent Key boundaries', () => {
   it('resolves the browser user own Agent before generating its Guide link', async () => {
     await controller.createGuideLink(browserUser);
     expect(agentModel.findOne).toHaveBeenCalledWith({ userId: browserUser.userId });
-    expect(userService.createGuideLink).toHaveBeenCalledWith('agent-owned-by-owner-1');
+    expect(userService.createGuideLink).toHaveBeenCalledWith('agent-owned-by-owner-1', 6);
+  });
+
+  it('forwards the chosen revisit interval to the Guide link service', async () => {
+    await controller.createGuideLink(browserUser, { revisitIntervalHours: 24 });
+    expect(userService.createGuideLink).toHaveBeenCalledWith('agent-owned-by-owner-1', 24);
   });
 });

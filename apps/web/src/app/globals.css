@@ -235,7 +235,6 @@
     --highlight-inset: rgba(237, 243, 237, 0.04);
     --highlight-strong: rgba(237, 243, 237, 0.06);
 
-    --glow-alpha: 0.18;
     --top-glow-alpha: 0.025;
     --noise-alpha: 0.008;
   }
@@ -275,6 +274,14 @@
     outline: 1px solid var(--accent);
     outline-offset: 2px;
     box-shadow: none;
+  }
+
+  /* 隐藏 WebKit 原生搜索框装饰（原生清除钮会与组件自绘清除钮重复渲染） */
+  input[type='search']::-webkit-search-cancel-button,
+  input[type='search']::-webkit-search-decoration,
+  input[type='search']::-webkit-search-results-button {
+    -webkit-appearance: none;
+    appearance: none;
   }
 
   html {
@@ -407,65 +414,6 @@
     color: var(--accent);
   }
 
-  .skynet-latest-post-card {
-    border: 1px solid var(--border-default);
-    background: var(--surface-1);
-    transition:
-      background-color 100ms steps(2),
-      border-color 100ms steps(2);
-  }
-
-  .skynet-latest-post-card:hover {
-    border-color: var(--border-accent);
-    background: var(--surface-2);
-  }
-
-  .skynet-latest-post-card:focus-visible {
-    border-color: var(--border-accent);
-    background: var(--surface-2);
-  }
-
-  .skynet-latest-post-card-skeleton {
-    border: 1px solid var(--border-subtle);
-    background: var(--surface-1);
-  }
-
-  .skynet-reply-card {
-    border: 1px solid var(--border-subtle);
-    background: var(--surface-1);
-  }
-
-  .skynet-reply-branch-card {
-    border: 1px solid var(--border-subtle);
-    background: var(--bg-app);
-  }
-
-  .skynet-reply-composer {
-    border: 1px solid var(--border-default);
-    background: var(--surface-1);
-    transition:
-      border-color 100ms steps(2),
-      background-color 100ms steps(2);
-  }
-
-  .skynet-reply-composer:hover,
-  .skynet-reply-composer:focus-within {
-    border-color: var(--border-accent);
-    background: var(--surface-2);
-  }
-
-  .skynet-reply-divider {
-    border-color: var(--border-subtle);
-  }
-
-  .skynet-reply-branch-line {
-    border-color: color-mix(in srgb, var(--accent-dim) 45%, transparent);
-  }
-
-  .skynet-reply-branch-connector {
-    background: color-mix(in srgb, var(--accent-dim) 45%, transparent);
-  }
-
   .selected-reply-shell {
     --selected-reply-rest: var(--surface-2);
     --selected-reply-flash: color-mix(in srgb, var(--surface-2) 70%, var(--accent) 30%);
@@ -549,202 +497,9 @@
     gap: 8px;
   }
 
-  .forum-layout-switch {
-    @apply flex items-center gap-0.5 border border-border-subtle bg-surface-1 p-0.5;
-  }
-
-  .forum-layout-switch button {
-    @apply flex h-7 w-7 items-center justify-center text-ink-muted transition-colors hover:bg-surface-hover hover:text-accent;
-  }
-  .forum-layout-switch button.is-active {
-    @apply bg-accent-muted text-accent;
-  }
-
-  .post-masonry-grid {
-    display: grid;
-    grid-auto-rows: 8px;
-    gap: 16px;
-  }
-
-  .post-masonry-grid--one {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .post-masonry-grid--two {
-    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
-  }
-  .post-masonry-grid--three {
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  }
-  .post-masonry-item {
-    min-width: 0;
-  }
-
-  @media (max-width: 760px) {
-    .post-masonry-grid--two,
-    .post-masonry-grid--three {
-      grid-template-columns: minmax(0, 1fr);
-    }
-  }
-
-  .governance-result-masonry {
-    column-count: 1;
-    column-gap: 14px;
-  }
-
-  @media (min-width: 1024px) {
-    .governance-result-masonry {
-      column-count: 2;
-    }
-  }
-
-  .governance-result-card {
-    position: relative;
-    display: inline-block;
-    width: 100%;
-    break-inside: avoid;
-    overflow: hidden;
-    border: 1px solid var(--border-subtle);
-    background: var(--surface-1);
-    margin: 0 0 12px;
-    padding: 10px 12px;
-    color: var(--ink-primary);
-    text-align: left;
-    transition:
-      border-color 100ms steps(2),
-      background-color 100ms steps(2);
-  }
-
-  .governance-result-card-interactive:hover {
-    border-color: var(--border-strong);
-    background: var(--surface-2);
-  }
-
-  .governance-result-card-interactive:focus-visible {
-    outline: 1px solid var(--accent);
-    outline-offset: 2px;
-    border-color: var(--border-accent);
-  }
-
-  .governance-verdict-pill,
-  .governance-panel-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    border: 1px solid currentColor;
-    padding: 2px 6px;
-    font-family: var(
-      --font-mono,
-      'SF Mono',
-      'SFMono-Regular',
-      'Menlo',
-      'Monaco',
-      'Courier New',
-      monospace
-    );
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    line-height: 1.4;
-    white-space: nowrap;
-  }
-
-  .governance-verdict-pill--violation,
-  .governance-panel-pill--violation {
-    background: color-mix(in srgb, var(--danger) 12%, transparent);
-    color: var(--danger);
-  }
-
-  .governance-verdict-pill--not-violation,
-  .governance-panel-pill--not-violation {
-    background: var(--accent-muted);
-    color: var(--accent);
-  }
-
-  .governance-card-context {
-    margin-top: 7px;
-    border-left: 2px solid var(--border-subtle);
-    padding-left: 9px;
-    color: var(--ink-muted);
-    font-size: 11px;
-    line-height: 1.55;
-    display: -webkit-box;
-    overflow: hidden;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-  }
-
-  .governance-card-content {
-    display: -webkit-box;
-    margin-top: 7px;
-    max-height: 11.6em;
-    overflow: hidden;
-    -webkit-line-clamp: 7;
-    -webkit-box-orient: vertical;
-    color: var(--ink-secondary);
-    font-size: 12.5px;
-    line-height: 1.66;
-    overflow-wrap: anywhere;
-  }
-
-  .governance-card-inline-meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px 10px;
-    margin-top: 10px;
-    border-top: 1px solid var(--border-subtle);
-    padding-top: 8px;
-    font-size: 11px;
-    color: var(--ink-muted);
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .governance-result-card,
-    .governance-result-card-interactive:hover {
-      transition: none;
-      transform: none;
-    }
-  }
-
-  .deck-panel {
-    background: var(--surface-1);
-    border: 1px solid var(--border-subtle);
-  }
-
   .deck-divider {
     height: 1px;
     background: var(--border-subtle);
-  }
-
-  .deck-label {
-    font-family: var(
-      --font-mono,
-      'SF Mono',
-      'SFMono-Regular',
-      'Menlo',
-      'Monaco',
-      'Courier New',
-      monospace
-    );
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--text-tertiary);
-  }
-
-  .deck-value {
-    font-family: var(
-      --font-mono,
-      'SF Mono',
-      'SFMono-Regular',
-      'Menlo',
-      'Monaco',
-      'Courier New',
-      monospace
-    );
-    font-variant-numeric: tabular-nums;
-    color: var(--accent);
   }
 
   .skynet-auto-hide-scrollbar {
@@ -789,76 +544,6 @@
     background: var(--accent);
   }
 
-  .agent-hero-glow {
-    background: radial-gradient(ellipse 800px 300px at 20% 0%, var(--copper), transparent);
-  }
-
-  .agent-overview-chart-grid {
-    min-height: 320px;
-  }
-
-  .agent-score-chart-panel {
-    background: var(--void-deep);
-  }
-
-  .agent-score-crosshair line {
-    stroke: rgba(56, 189, 248, 0.55);
-    stroke-width: 1;
-    stroke-dasharray: 4 4;
-    vector-effect: non-scaling-stroke;
-  }
-
-  .agent-score-today-dot,
-  .agent-score-active-dot {
-    fill: var(--surface-3);
-    stroke: var(--moss);
-    stroke-width: 2;
-    filter: drop-shadow(0 0 5px rgba(53, 208, 127, 0.34));
-    filter: drop-shadow(0 0 5px color-mix(in srgb, var(--moss) 34%, transparent));
-  }
-
-  .agent-score-active-dot {
-    stroke: var(--steel);
-  }
-
-  .post-topic-card {
-    background: var(--surface-1);
-    border-color: var(--border-default);
-    box-shadow: none;
-    color: var(--text-secondary);
-  }
-
-  .post-topic-accent-top {
-    background: var(--accent);
-  }
-
-  .post-topic-accent-side {
-    background: var(--accent-dim);
-  }
-
-  .post-topic-card-header,
-  .post-topic-feedback {
-    border-color: var(--border-subtle);
-  }
-
-  .post-topic-title {
-    color: var(--text-primary);
-  }
-
-  .post-topic-muted {
-    color: var(--text-tertiary);
-  }
-
-  .post-topic-author-name {
-    color: var(--accent);
-  }
-
-  .post-topic-prose-panel {
-    background: var(--surface-3);
-    border-color: var(--border-subtle);
-    box-shadow: none;
-  }
-
   .composer-textarea {
     appearance: none;
     outline: none;
@@ -901,116 +586,9 @@
     );
   }
 
-  .initial-page-veil {
-    position: fixed;
-    inset: 0;
-    z-index: 9999;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    pointer-events: none;
-    background: var(--bg-canvas);
-    transition:
-      opacity 240ms steps(3),
-      visibility 240ms steps(3);
-  }
-
-  .initial-page-veil-visible {
-    opacity: 1;
-    visibility: visible;
-  }
-
-  .initial-page-veil-hidden {
-    opacity: 0;
-    visibility: hidden;
-  }
-
-  .initial-page-veil-core {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 16px;
-    transform: translateY(-10px);
-  }
-
-  .initial-page-veil-mark {
-    width: 56px;
-    height: 56px;
-    border: 1px solid var(--border-strong);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--accent);
-    background: var(--surface-1);
-    font-family:
-      'Avenir Next',
-      'Inter',
-      ui-sans-serif,
-      system-ui,
-      -apple-system,
-      BlinkMacSystemFont,
-      'Segoe UI',
-      sans-serif;
-    font-size: 21px;
-    font-weight: 800;
-    letter-spacing: 0;
-  }
-
   .brand-logo-tile {
     border-color: var(--border-strong);
     background: var(--surface-1);
-  }
-
-  .initial-page-veil-label {
-    color: var(--text-tertiary);
-    font-size: 12px;
-    font-weight: 600;
-    letter-spacing: 0;
-  }
-
-  .initial-page-veil-line {
-    width: 96px;
-    height: 1px;
-    overflow: hidden;
-    background: var(--border-subtle);
-    position: relative;
-  }
-
-  .initial-page-veil-line::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    width: 38px;
-    background: var(--accent);
-    animation: initial-page-veil-scan 900ms steps(8) infinite;
-  }
-}
-
-@keyframes initial-page-veil-scan {
-  from {
-    transform: translateX(-40px);
-  }
-  to {
-    transform: translateX(100px);
-  }
-}
-
-@layer utilities {
-  .text-glow-copper {
-    text-shadow: 0 0 12px rgba(173, 255, 47, var(--glow-alpha));
-  }
-  .text-glow-moss {
-    text-shadow: 0 0 12px rgba(173, 255, 47, var(--glow-alpha));
-  }
-  .text-glow-steel {
-    text-shadow: 0 0 12px rgba(111, 179, 255, var(--glow-alpha));
-  }
-
-  .text-gradient-copper {
-    background: linear-gradient(135deg, var(--copper-bright), var(--copper));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
   }
 }
 
@@ -1148,40 +726,51 @@
 /* ==========================================================================
    赛博格终端 · 设计系统（Digital Cyborg Terminal）
    作用域：.t-terminal-scope 容器内生效
-   硬约束：零圆角、steps() 步进动画、纯黑 + 荧光黄绿 + 暗绿噪音
+   硬约束：零圆角、steps() 步进动画、纯黑 + 四级文字（白→灰绿）+
+   荧光黄绿主激活 + 暗绿噪音线 + 警戒红/信号琥珀点缀标识
    ========================================================================== */
 
 .t-terminal-scope {
+  /* 底色 */
   --t-bg: #000000;
   --t-panel: #040704;
-  --t-accent: #ADFF2F;
-  --t-accent2: #A7FC00;
-  --t-ink: #FFFFFF;
-  --t-noise: #1A2E1A;
+
+  /* 文字层级 L1-L4（黑底 WCAG 对比度：21.0 / 17.7 / 10.3 / 5.6）
+     禁止再引入本四级之外的文字色 */
+  --t-ink: #ffffff; /* L1 权威主文本：标题、关键宣告 */
+  --t-text: #e6eee3; /* L2 正文：长文阅读 */
+  --t-sub: #a9baa5; /* L3 次级：摘要、元信息 */
+  --t-faint: #748a70; /* L4 三级：装饰遥测、时间码、角标签名 */
+
+  /* 主激活绿（#ADFF2F 不动）与唯二派生态 */
+  --t-accent: #adff2f; /* 主激活：CTA、激活态、关键数据 */
+  --t-accent-dim: #92d41e; /* 次级激活：hover/按下 */
+  --t-accent-wash: rgb(173 255 47 / 0.12); /* 选中/聚焦底色，禁止他用 */
+
+  /* 线条噪音：只做线条/点阵/分隔，禁止用于任何文字 */
+  --t-noise: #1a2e1a;
   --t-noise2: #122012;
-  --t-dim: #3A5A3A;
+
+  /* 点缀色：装饰标识专用（警戒纹、状态章、错误/危险标识），
+     禁止大面积填充、禁止正文文字、禁止与 --t-accent 相邻竞争主 CTA */
+  --t-hazard: #ff4b3e; /* 警戒红：错误行、危险/删除态、离线状态章（可作小字文字） */
+  --t-hazard-dim: #8a2318; /* 警戒红暗档：警戒斜纹、危险描边，禁止文字 */
+  --t-signal: #ffb000; /* 信号琥珀：警示/降级状态章、告警色条（可作小字文字） */
+  --t-signal-dim: #7a5200; /* 琥珀暗档：装饰线、条纹，禁止文字 */
+
   background: var(--t-bg);
   color: var(--t-ink);
-  cursor: none;
 }
 
 .t-terminal-scope *,
 .t-terminal-scope *::before,
 .t-terminal-scope *::after {
   border-radius: 0;
-  cursor: none;
 }
 
 .t-terminal-scope ::selection {
   background: var(--t-accent);
   color: var(--t-bg);
-}
-
-@media (hover: none) {
-  .t-terminal-scope,
-  .t-terminal-scope * {
-    cursor: auto;
-  }
 }
 
 /* 等宽微型遥测文本 */
@@ -1245,7 +834,7 @@
 
 /* L 型四角角标（12px 边长，1px） */
 .t-corner {
-  --t-corner-color: var(--t-dim);
+  --t-corner-color: var(--t-faint);
   position: relative;
 }
 
@@ -1288,11 +877,32 @@
   --t-corner-color: var(--t-accent);
 }
 
+/* 警戒斜纹：硬色标 45° 条纹（图案豁免，非柔渐变）。
+   仅作边缘条、分隔带、危险区标识等装饰用途，禁止垫在正文下 */
+.t-hazard-stripes {
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--t-hazard-dim) 0,
+    var(--t-hazard-dim) 8px,
+    transparent 8px,
+    transparent 16px
+  );
+}
+
+/* 段码条半票格：加权票产生小数票时，小数部分追加一个半亮格（45% 混合） */
+.t-vote-cell-partial {
+  background: color-mix(in srgb, var(--t-accent) 45%, var(--t-noise2));
+}
+
+.t-vote-cell-partial--dim {
+  background: color-mix(in srgb, var(--t-faint) 45%, var(--t-noise2));
+}
+
 /* 十字准星装饰 */
 .t-crosshair {
   background:
-    linear-gradient(var(--t-dim), var(--t-dim)) center / 1px 100% no-repeat,
-    linear-gradient(var(--t-dim), var(--t-dim)) center / 100% 1px no-repeat;
+    linear-gradient(var(--t-faint), var(--t-faint)) center / 1px 100% no-repeat,
+    linear-gradient(var(--t-faint), var(--t-faint)) center / 100% 1px no-repeat;
 }
 
 /* 硬闪烁 */
@@ -1399,20 +1009,28 @@
 /* ==========================================================================
    终端 UI Kit 扩展（components/ui/terminal/ 配套）
    追加区：t-* 变量兜底、全局滚动条、氛围层、磁带滚动、骨架脉冲
-   硬约束：零圆角、steps() 步进、纯黑 #000 / 荧光绿 #ADFF2F / 暗绿 #1A2E1A
+   硬约束：零圆角、steps() 步进、纯黑 #000 / 荧光绿 #ADFF2F /
+   暗绿噪音线 #1A2E1A / 点缀 #FF4B3E #FFB000（仅装饰标识）
    ========================================================================== */
 
 /* t-* 变量在非 .t-terminal-scope 场景（应用页面）的兜底值；
-   .t-terminal-scope 内的同名变量优先级更高，不受影响 */
+   与 .t-terminal-scope 内同名变量保持一致，scope 内优先级更高 */
 :root {
   --t-bg: #000000;
   --t-panel: #040704;
-  --t-accent: #adff2f;
-  --t-accent2: #a7fc00;
   --t-ink: #ffffff;
+  --t-text: #e6eee3;
+  --t-sub: #a9baa5;
+  --t-faint: #748a70;
+  --t-accent: #adff2f;
+  --t-accent-dim: #92d41e;
+  --t-accent-wash: rgb(173 255 47 / 0.12);
   --t-noise: #1a2e1a;
   --t-noise2: #122012;
-  --t-dim: #3a5a3a;
+  --t-hazard: #ff4b3e;
+  --t-hazard-dim: #8a2318;
+  --t-signal: #ffb000;
+  --t-signal-dim: #7a5200;
 }
 
 /* 全局滚动条：6px、轨道纯黑、滑块暗绿、hover 荧光绿 */
@@ -1522,11 +1140,6 @@ html {
 
 .t-anim-pulse-dot {
   animation: t-pulse-dot 2s steps(1) infinite;
-}
-
-/* 像素洗牌转场画布：强制最近邻放大，保持瓦片锯齿 */
-.t-noise-canvas {
-  image-rendering: pixelated;
 }
 
 @media (prefers-reduced-motion: reduce) {

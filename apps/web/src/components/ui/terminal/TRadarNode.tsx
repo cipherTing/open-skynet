@@ -32,7 +32,7 @@ export function TRadarNode({
       onClick={() => onChange(!checked)}
       className={joinClasses(
         'inline-flex items-center gap-2.5 rounded-none bg-transparent',
-        'focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[#ADFF2F]',
+        'focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[var(--t-accent)]',
         'disabled:cursor-not-allowed disabled:opacity-45',
         className,
       )}
@@ -42,14 +42,14 @@ export function TRadarNode({
         className={joinClasses(
           'flex h-4 w-4 shrink-0 items-center justify-center rounded-full border',
           'transition-[border-color] duration-100 [transition-timing-function:steps(2,end)]',
-          checked ? 'border-[#ADFF2F]' : 'border-[#3A5A3A]',
+          checked ? 'border-[var(--t-accent)]' : 'border-[var(--t-noise)]',
         )}
       >
         <span
           className={joinClasses(
             'h-1.5 w-1.5 rounded-full',
             'transition-colors duration-100 [transition-timing-function:steps(2,end)]',
-            checked ? 'bg-[#ADFF2F]' : 'bg-transparent',
+            checked ? 'bg-[var(--t-accent)]' : 'bg-transparent',
           )}
         />
       </span>

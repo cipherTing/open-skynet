@@ -223,13 +223,13 @@ export function AnnouncementsSection() {
             {query.data.items.map((item) => (
               <tr
                 key={item.id}
-                className="border-b border-[#1A2E1A] align-top hover:bg-[#040704]"
+                className="border-b border-[var(--t-noise)] align-top hover:bg-[var(--t-panel)]"
               >
                 <td className="px-3 py-3">
-                  <div className="font-medium text-[#EDF3ED]">{item.title}</div>
+                  <div className="font-medium text-[var(--t-text)]">{item.title}</div>
                   <AnnouncementMarkdown
                     content={item.body}
-                    className="mt-2 line-clamp-2 max-w-xl text-xs text-[#3A5A3A]"
+                    className="mt-2 line-clamp-2 max-w-xl text-xs text-[var(--t-sub)]"
                     compact
                   />
                 </td>
@@ -241,7 +241,7 @@ export function AnnouncementsSection() {
                     {t(`admin.announcements.status.${item.status}`)}
                   </StatusText>
                 </td>
-                <td className="px-3 py-3 text-xs text-[#3A5A3A]">
+                <td className="px-3 py-3 text-xs text-[var(--t-sub)]">
                   <div>
                     <Timecode date={item.startsAt} withDate />
                   </div>
@@ -391,11 +391,11 @@ function AnnouncementEditor({
               <div className="text-xs font-medium text-white/60">
                 {t('admin.announcements.preview')}
               </div>
-              <div className="mt-2 min-h-[300px] overflow-auto border border-[#1A2E1A] bg-[#040704] px-4 py-3 text-sm text-white/60">
+              <div className="mt-2 min-h-[300px] overflow-auto border border-[var(--t-noise)] bg-[var(--t-panel)] px-4 py-3 text-sm text-white/60">
                 {body.trim() ? (
                   <AnnouncementMarkdown content={body} />
                 ) : (
-                  <p className="text-[#3A5A3A]">{t('admin.announcements.emptyPreview')}</p>
+                  <p className="text-[var(--t-sub)]">{t('admin.announcements.emptyPreview')}</p>
                 )}
               </div>
             </section>
@@ -435,7 +435,7 @@ function AnnouncementEditor({
             />
           </div>
 
-          <div className="flex flex-col gap-4 border-t border-[#1A2E1A] pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-4 border-t border-[var(--t-noise)] pt-4 sm:flex-row sm:items-center sm:justify-between">
             <TRadarNode
               checked={dismissible}
               onChange={setDismissible}
@@ -449,7 +449,7 @@ function AnnouncementEditor({
               {mutation.isPending ? t('admin.action.running') : t('admin.announcements.saveDraft')}
             </button>
           </div>
-          {mutation.isError && <p className="text-xs text-[#EF4444]">{t('admin.action.failed')}</p>}
+          {mutation.isError && <p className="text-xs text-[var(--t-hazard)]">{t('admin.action.failed')}</p>}
         </div>
       </form>
     </TerminalDialog>
@@ -478,8 +478,8 @@ function AnnouncementDateTimeField({
     <div>
       <span className="block text-xs font-medium text-white/60">{label}</span>
       <div className="mt-2 flex gap-2">
-        <label className="relative flex h-10 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-none border border-[#1A2E1A] bg-[#040704] px-3 font-mono text-[12px] text-[#EDF3ED] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[#3A5A3A] focus-within:border-[#ADFF2F]">
-          <CalendarClock className="h-4 w-4 shrink-0 text-[#ADFF2F]" />
+        <label className="relative flex h-10 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-none border border-[var(--t-noise)] bg-[var(--t-panel)] px-3 font-mono text-[12px] text-[var(--t-text)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent-dim)] focus-within:border-[var(--t-accent)]">
+          <CalendarClock className="h-4 w-4 shrink-0 text-[var(--t-accent)]" />
           <span className="truncate">{formattedValue}</span>
           <input
             type="datetime-local"
@@ -495,7 +495,7 @@ function AnnouncementDateTimeField({
             onClick={() => onChange('')}
             aria-label={t('admin.announcements.clearEnd')}
             title={t('admin.announcements.clearEnd')}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-none border border-[#1A2E1A] text-[#3A5A3A] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[#ADFF2F] hover:text-[#ADFF2F]"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-none border border-[var(--t-noise)] text-[var(--t-sub)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]"
           >
             <X className="h-4 w-4" />
           </button>
@@ -552,7 +552,7 @@ function AnnouncementActionDialog({
       }
     >
       {error !== null && error !== undefined && (
-        <p className="text-xs text-[#EF4444]">
+        <p className="text-xs text-[var(--t-hazard)]">
           {error instanceof ApiError && error.statusCode === 409
             ? t('admin.action.conflict')
             : t('admin.action.failed')}
@@ -593,8 +593,8 @@ function PublicAccessEditor({ config }: { config: AdminPublicAccessConfig }) {
   return (
     <section className="max-w-4xl">
       <AdminSectionTitle>{t('admin.publicAccess.title')}</AdminSectionTitle>
-      <p className="mt-1 text-xs leading-5 text-[#3A5A3A]">{t('admin.publicAccess.description')}</p>
-      <div className="t-corner mt-5 space-y-5 rounded-none border border-[#1A2E1A] bg-black/25 p-5">
+      <p className="mt-1 text-xs leading-5 text-[var(--t-sub)]">{t('admin.publicAccess.description')}</p>
+      <div className="t-corner mt-5 space-y-5 rounded-none border border-[var(--t-noise)] bg-black/25 p-5">
         <AdminField label={t('admin.publicAccess.siteOrigin')}>
           <TInput
             value={siteOrigin}
@@ -613,15 +613,15 @@ function PublicAccessEditor({ config }: { config: AdminPublicAccessConfig }) {
           <h3 className="text-xs font-bold text-white/60">
             {t('admin.publicAccess.preview')}
           </h3>
-          <div className="mt-2 space-y-2 rounded-none border border-[#1A2E1A] bg-[#040704] p-3 font-mono text-[11px] leading-5 text-[#3A5A3A]">
+          <div className="mt-2 space-y-2 rounded-none border border-[var(--t-noise)] bg-[var(--t-panel)] p-3 font-mono text-[11px] leading-5 text-[var(--t-sub)]">
             <p>curl -s {previewGuideUrl}</p>
             <p>export SKYNET_ORIGIN=&quot;{siteOrigin.trim()}&quot;</p>
             <p>export SKYNET_API_BASE=&quot;{apiBaseUrl.trim()}&quot;</p>
           </div>
         </div>
         {changed ? (
-          <div className="rounded-none border border-[#ADFF2F]/25 bg-[#ADFF2F]/5 px-3 py-2 text-xs text-white/60">
-            <p className="font-bold text-[#ADFF2F]">{t('admin.publicAccess.changes')}</p>
+          <div className="rounded-none border border-[var(--t-accent-dim)] bg-[var(--t-accent-wash)] px-3 py-2 text-xs text-white/60">
+            <p className="font-bold text-[var(--t-accent)]">{t('admin.publicAccess.changes')}</p>
             {siteOrigin.trim() !== config.siteOrigin ? (
               <p className="mt-1 break-all">
                 {config.siteOrigin} → {siteOrigin.trim()}
@@ -635,7 +635,7 @@ function PublicAccessEditor({ config }: { config: AdminPublicAccessConfig }) {
           </div>
         ) : null}
         <div className="flex items-center justify-between gap-3">
-          <span className="text-[11px] text-[#3A5A3A]">
+          <span className="text-[11px] text-[var(--t-sub)]">
             {config.updatedAt
               ? t('admin.publicAccess.updatedAt', { time: formatAdminTime(config.updatedAt) })
               : t('admin.publicAccess.defaultValue')}
@@ -687,28 +687,28 @@ export function FeatureFlagsSection() {
     <section>
       <div className="mb-5">
         <AdminSectionTitle>{t('admin.featureFlags.title')}</AdminSectionTitle>
-        <p className="mt-1 text-xs text-[#3A5A3A]">{t('admin.featureFlags.description')}</p>
+        <p className="mt-1 text-xs text-[var(--t-sub)]">{t('admin.featureFlags.description')}</p>
       </div>
       {query.isPending ? (
         <AdminLoading />
       ) : query.isError ? (
         <AdminError retry={() => void query.refetch()} />
       ) : (
-        <div className="divide-y divide-[#1A2E1A] border-y border-[#1A2E1A]">
+        <div className="divide-y divide-[var(--t-noise)] border-y border-[var(--t-noise)]">
           {query.data.map((flag) => (
             <div
               key={flag.key}
-              className="grid gap-3 px-2 py-4 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#040704] hover:shadow-[inset_2px_0_0_0_#ADFF2F] md:grid-cols-[minmax(0,1fr)_minmax(220px,0.55fr)_auto] md:items-center"
+              className="grid gap-3 px-2 py-4 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[var(--t-panel)] hover:shadow-[inset_2px_0_0_0_var(--t-accent)] md:grid-cols-[minmax(0,1fr)_minmax(220px,0.55fr)_auto] md:items-center"
             >
               <div>
-                <div className="text-sm font-medium text-[#EDF3ED]">
+                <div className="text-sm font-medium text-[var(--t-text)]">
                   {t(`admin.featureFlags.items.${flag.key}.title`)}
                 </div>
-                <p className="mt-1 text-xs leading-5 text-[#3A5A3A]">
+                <p className="mt-1 text-xs leading-5 text-[var(--t-sub)]">
                   {t(`admin.featureFlags.items.${flag.key}.description`)}
                 </p>
               </div>
-              <div className="text-xs text-[#3A5A3A]">
+              <div className="text-xs text-[var(--t-sub)]">
                 {flag.updatedAt
                   ? t('admin.featureFlags.updatedAt', {
                       time: formatTimecode(flag.updatedAt, true) ?? '',
@@ -724,8 +724,8 @@ export function FeatureFlagsSection() {
                 onClick={() => mutation.mutate(flag)}
                 className={`inline-flex h-8 items-center gap-2 rounded-none border px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.15em] transition-colors duration-100 [transition-timing-function:steps(2,end)] disabled:cursor-not-allowed disabled:opacity-45 ${
                   flag.enabled
-                    ? 'border-[#ADFF2F]/60 text-[#ADFF2F] hover:bg-[#ADFF2F]/10'
-                    : 'border-[#713F12] text-[#A16207] hover:bg-[#713F12]/20'
+                    ? 'border-[var(--t-accent)] text-[var(--t-accent)] hover:bg-[var(--t-accent-wash)]'
+                    : 'border-[var(--t-signal-dim)] text-[var(--t-signal)] hover:bg-[var(--t-signal-dim)]'
                 }`}
               >
                 {flag.enabled ? (
@@ -771,10 +771,10 @@ export function SecurityEventsSection() {
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <ShieldAlert className="h-4 w-4 text-[#A16207]" />
+            <ShieldAlert className="h-4 w-4 text-[var(--t-signal)]" />
             <AdminSectionTitle>{t('admin.security.title')}</AdminSectionTitle>
           </div>
-          <p className="mt-1 text-xs text-[#3A5A3A]">{t('admin.security.description')}</p>
+          <p className="mt-1 text-xs text-[var(--t-sub)]">{t('admin.security.description')}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <AdminSelect
@@ -827,10 +827,10 @@ export function SecurityEventsSection() {
             {query.data.items.map((event) => (
               <tr
                 key={event.id}
-                className="border-b border-[#1A2E1A] align-top hover:bg-[#040704]"
+                className="border-b border-[var(--t-noise)] align-top hover:bg-[var(--t-panel)]"
               >
                 <td className="px-3 py-3">
-                  <div className="font-mono text-xs text-[#EDF3ED]">
+                  <div className="font-mono text-xs text-[var(--t-text)]">
                     {t(`admin.security.types.${event.type}`, {
                       defaultValue: t('admin.security.unknown'),
                     })}
@@ -849,7 +849,7 @@ export function SecurityEventsSection() {
                         defaultValue: t('admin.security.unknown'),
                       })}
                     </TTag>
-                    <span className="text-[11px] text-[#3A5A3A]">
+                    <span className="text-[11px] text-[var(--t-sub)]">
                       {event.details.reason
                         ? t(`admin.security.reasons.${event.details.reason}`, {
                             defaultValue: t('admin.security.unknown'),
@@ -859,11 +859,11 @@ export function SecurityEventsSection() {
                   </div>
                 </td>
                 <td className="px-3 py-3 font-mono text-xs text-white/60">{event.route}</td>
-                <td className="px-3 py-3 font-mono text-xs text-[#3A5A3A]">{event.fingerprint}</td>
+                <td className="px-3 py-3 font-mono text-xs text-[var(--t-sub)]">{event.fingerprint}</td>
                 <td className="px-3 py-3 font-mono text-sm text-white/60">
                   {event.sampleCount}
                 </td>
-                <td className="px-3 py-3 text-xs text-[#3A5A3A]">
+                <td className="px-3 py-3 text-xs text-[var(--t-sub)]">
                   <Timecode date={event.lastSeenAt} withDate />
                 </td>
               </tr>
@@ -946,14 +946,14 @@ export function AuthPolicySection() {
     <section className="space-y-8">
       <div>
         <div className="flex items-center gap-2">
-          <KeyRound className="h-4 w-4 text-[#ADFF2F]" />
+          <KeyRound className="h-4 w-4 text-[var(--t-accent)]" />
           <AdminSectionTitle>{t('admin.authPolicy.title')}</AdminSectionTitle>
         </div>
-        <p className="mt-1 text-xs text-[#3A5A3A]">{t('admin.authPolicy.description')}</p>
+        <p className="mt-1 text-xs text-[var(--t-sub)]">{t('admin.authPolicy.description')}</p>
       </div>
       <div className="grid gap-5 lg:grid-cols-2">
-        <div className="space-y-4 border-t border-[#1A2E1A] pt-4">
-          <h3 className="font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[#EDF3ED]">
+        <div className="space-y-4 border-t border-[var(--t-noise)] pt-4">
+          <h3 className="font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--t-text)]">
             {t('admin.authPolicy.smtp')}
           </h3>
           <AdminField label={t('admin.authPolicy.smtpHost')}>
@@ -1035,8 +1035,8 @@ export function AuthPolicySection() {
             </TButton>
           </div>
         </div>
-        <div className="space-y-4 border-t border-[#1A2E1A] pt-4">
-          <h3 className="font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[#EDF3ED]">
+        <div className="space-y-4 border-t border-[var(--t-noise)] pt-4">
+          <h3 className="font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--t-text)]">
             {t('admin.authPolicy.turnstile')}
           </h3>
           <AdminField label={t('admin.authPolicy.siteKey')}>
@@ -1054,7 +1054,7 @@ export function AuthPolicySection() {
             />
           </AdminField>
           {form.turnstileSiteKey && (
-            <div className="rounded-none border border-[#1A2E1A] p-2">
+            <div className="rounded-none border border-[var(--t-noise)] p-2">
               <Turnstile
                 siteKey={form.turnstileSiteKey}
                 onSuccess={setTurnstileToken}
@@ -1072,7 +1072,7 @@ export function AuthPolicySection() {
           >
             {t('admin.authPolicy.verifyTurnstile')}
           </TButton>
-          <div className="flex items-center justify-between gap-4 rounded-none border border-[#1A2E1A] px-3 py-3">
+          <div className="flex items-center justify-between gap-4 rounded-none border border-[var(--t-noise)] px-3 py-3">
             <span className="text-sm text-white/60">{t('admin.authPolicy.enableTurnstile')}</span>
             <span
               title={
@@ -1092,7 +1092,7 @@ export function AuthPolicySection() {
               />
             </span>
           </div>
-          <div className="flex items-center justify-between gap-4 rounded-none border border-[#1A2E1A] px-3 py-3">
+          <div className="flex items-center justify-between gap-4 rounded-none border border-[var(--t-noise)] px-3 py-3">
             <span className="text-sm text-white/60">{t('admin.authPolicy.requireInvite')}</span>
             <TRadarNode
               checked={form.inviteRequired}
@@ -1149,7 +1149,7 @@ export function InvitationCodesSection() {
       <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
           <AdminSectionTitle>{t('admin.invitations.title')}</AdminSectionTitle>
-          <p className="mt-1 text-xs text-[#3A5A3A]">{t('admin.invitations.description')}</p>
+          <p className="mt-1 text-xs text-[var(--t-sub)]">{t('admin.invitations.description')}</p>
         </div>
         <div className="flex gap-2">
           <TInput
@@ -1171,15 +1171,15 @@ export function InvitationCodesSection() {
         </div>
       </div>
       {createdCode && (
-        <div className="t-corner mb-4 flex items-center gap-3 rounded-none border border-[#ADFF2F]/30 bg-[#ADFF2F]/5 p-3">
-          <code className="min-w-0 flex-1 break-all font-mono text-sm text-[#ADFF2F]">
+        <div className="t-corner mb-4 flex items-center gap-3 rounded-none border border-[var(--t-accent-dim)] bg-[var(--t-accent-wash)] p-3">
+          <code className="min-w-0 flex-1 break-all font-mono text-sm text-[var(--t-accent)]">
             {createdCode}
           </code>
           <button
             type="button"
             aria-label={t('admin.invitations.created')}
             onClick={() => void navigator.clipboard.writeText(createdCode)}
-            className="text-[#ADFF2F] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
+            className="text-[var(--t-accent)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
           >
             <Copy className="h-4 w-4" />
           </button>
@@ -1187,7 +1187,7 @@ export function InvitationCodesSection() {
             type="button"
             aria-label={t('app.cancel')}
             onClick={() => setCreatedCode('')}
-            className="text-[#3A5A3A] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white/85"
+            className="text-[var(--t-sub)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white/85"
           >
             <X className="h-4 w-4" />
           </button>
@@ -1227,7 +1227,7 @@ export function InvitationCodesSection() {
             centeredColumns={[4]}
           >
             {query.data.items.map((item) => (
-              <tr key={item.id} className="border-b border-[#1A2E1A]">
+              <tr key={item.id} className="border-b border-[var(--t-noise)]">
                 <td className="px-3 py-3 font-mono text-xs text-white/60">
                   {item.maskedCode}
                 </td>
@@ -1246,7 +1246,7 @@ export function InvitationCodesSection() {
                     {t(`admin.invitations.statuses.${item.status}`)}
                   </TTag>
                 </td>
-                <td className="px-3 py-3 text-xs text-[#3A5A3A]">
+                <td className="px-3 py-3 text-xs text-[var(--t-sub)]">
                   {item.expiresAt ? (
                     <Timecode date={item.expiresAt} withDate />
                   ) : (
@@ -1257,7 +1257,7 @@ export function InvitationCodesSection() {
                   {item.usedByAgentId ? (
                     <Link
                       href={`/agent/${item.usedByAgentId}`}
-                      className="text-[#3A5A3A] hover:text-[#ADFF2F]"
+                      className="text-[var(--t-sub)] hover:text-[var(--t-accent)]"
                     >
                       {t('admin.invitations.viewAgent')}
                     </Link>
@@ -1289,7 +1289,7 @@ export function InvitationCodesSection() {
 
 function AdminField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="block font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+    <label className="block font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
       {label}
       <span className="mt-2 block normal-case tracking-normal">{children}</span>
     </label>

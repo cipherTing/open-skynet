@@ -14,8 +14,8 @@ export interface AdminPageMeta {
 /** 分区标题：// 章节标记 + 等宽微型大写，控制台内统一使用。 */
 export function AdminSectionTitle({ children }: { children: ReactNode }) {
   return (
-    <h2 className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[#EDF3ED]">
-      <span aria-hidden className="text-[#ADFF2F]">
+    <h2 className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--t-text)]">
+      <span aria-hidden className="text-[var(--t-accent)]">
         {'//'}
       </span>
       {children}
@@ -35,16 +35,16 @@ export function AdminTable({
   const { t } = useTranslation();
   const hasRows = Children.count(children) > 0;
   return (
-    <div className="overflow-x-auto border-y border-[#1A2E1A]">
+    <div className="overflow-x-auto border-y border-[var(--t-noise)]">
       <table className="w-full min-w-[760px] border-collapse text-left [font-variant-numeric:tabular-nums]">
         <thead>
-          <tr className="border-b border-[#1A2E1A] bg-[#040704]">
+          <tr className="border-b border-[var(--t-noise)] bg-[var(--t-panel)]">
             {headers.map((header, index) => (
               <th
                 key={`${header}-${index}`}
-                className={`px-3 py-2 font-mono text-[10px] font-semibold uppercase tracking-[0.15em] text-[#3A5A3A] ${centeredColumns.includes(index) ? 'text-center' : ''}`}
+                className={`px-3 py-2 font-mono text-[10px] font-semibold uppercase tracking-[0.15em] text-[var(--t-faint)] ${centeredColumns.includes(index) ? 'text-center' : ''}`}
               >
-                <span aria-hidden className="mr-1.5 font-normal text-[#1A2E1A]">
+                <span aria-hidden className="mr-1.5 font-normal text-[var(--t-faint)]">
                   {String(index + 1).padStart(2, '0')}
                 </span>
                 {header}
@@ -56,8 +56,8 @@ export function AdminTable({
           className={[
             '[&>tr]:h-11',
             '[&>tr]:transition-colors [&>tr]:duration-100 [&>tr]:[transition-timing-function:steps(2,end)]',
-            '[&>tr:hover]:bg-[#040704]',
-            '[&>tr:hover>td:first-child]:shadow-[inset_2px_0_0_0_#ADFF2F]',
+            '[&>tr:hover]:bg-[var(--t-panel)]',
+            '[&>tr:hover>td:first-child]:shadow-[inset_2px_0_0_0_var(--t-accent)]',
           ].join(' ')}
         >
           {hasRows ? (
@@ -85,8 +85,8 @@ export function AdminPagination({
   const { t } = useTranslation();
   const totalPages = Math.max(1, meta.totalPages);
   return (
-    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#1A2E1A] pt-4">
-      <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--t-noise)] pt-4">
+      <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
         {t('admin.total', { count: meta.total })}
       </span>
       <div className="flex items-center gap-1.5">
@@ -95,7 +95,7 @@ export function AdminPagination({
           aria-label={t('admin.pagination.previous')}
           disabled={meta.page <= 1}
           onClick={() => onPageChange(meta.page - 1)}
-          className="flex h-7 items-center border border-[#1A2E1A] px-2 font-mono text-[10px] tracking-[0.15em] text-[#3A5A3A] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[#ADFF2F] hover:text-[#ADFF2F] disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-7 items-center border border-[var(--t-noise)] px-2 font-mono text-[10px] tracking-[0.15em] text-[var(--t-sub)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)] disabled:cursor-not-allowed disabled:opacity-40"
         >
           [&lt;]
         </button>
@@ -107,7 +107,7 @@ export function AdminPagination({
           aria-label={t('admin.pagination.next')}
           disabled={meta.page >= totalPages}
           onClick={() => onPageChange(meta.page + 1)}
-          className="flex h-7 items-center border border-[#1A2E1A] px-2 font-mono text-[10px] tracking-[0.15em] text-[#3A5A3A] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[#ADFF2F] hover:text-[#ADFF2F] disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-7 items-center border border-[var(--t-noise)] px-2 font-mono text-[10px] tracking-[0.15em] text-[var(--t-sub)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)] disabled:cursor-not-allowed disabled:opacity-40"
         >
           [&gt;]
         </button>
@@ -147,8 +147,9 @@ export function AdminLoading() {
 export function AdminError({ retry }: { retry: () => void }) {
   const { t } = useTranslation();
   return (
-    <div className="t-corner flex min-h-56 flex-col items-center justify-center gap-4 border border-dashed border-[#7F1D1D] px-6 py-10">
-      <span className="font-mono text-[11px] uppercase tracking-[0.15em] text-[#EF4444]/80">
+    <div className="t-corner flex min-h-56 flex-col items-center justify-center gap-4 border border-dashed border-[var(--t-hazard-dim)] px-6 py-10">
+      <span aria-hidden className="t-hazard-stripes absolute inset-x-0 top-0 h-1" />
+      <span className="font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-hazard)]">
         {t('admin.action.failed')}
       </span>
       <TButton type="button" size="sm" variant="secondary" onClick={retry}>

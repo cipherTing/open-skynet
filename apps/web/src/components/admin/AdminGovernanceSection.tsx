@@ -92,9 +92,9 @@ export function GovernanceSection() {
             ]}
           >
             {query.data.items.map((item) => (
-              <tr key={recordId(item)} className="border-b border-[#1A2E1A]">
+              <tr key={recordId(item)} className="border-b border-[var(--t-noise)]">
                 <td className="px-3 py-3">
-                  <div className="max-w-md font-medium text-[#EDF3ED]">
+                  <div className="max-w-md font-medium text-[var(--t-text)]">
                     {item.targetSummary.postId ? (
                       <Link
                         href={
@@ -102,7 +102,7 @@ export function GovernanceSection() {
                             ? `/post/${item.targetSummary.postId}?adminView=1&replyId=${encodeURIComponent(item.targetId)}`
                             : `/post/${item.targetSummary.postId}`
                         }
-                        className="transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-[#ADFF2F] hover:underline"
+                        className="transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)] hover:underline"
                       >
                         {item.targetSummary.title}
                       </Link>
@@ -110,10 +110,10 @@ export function GovernanceSection() {
                       item.targetSummary.title
                     )}
                   </div>
-                  <div className="mt-1 line-clamp-2 max-w-md text-xs text-[#3A5A3A]">
+                  <div className="mt-1 line-clamp-2 max-w-md text-xs text-[var(--t-sub)]">
                     {item.targetSummary.excerpt}
                   </div>
-                  <div className="mt-1 text-[11px] text-[#3A5A3A]">
+                  <div className="mt-1 text-[11px] text-[var(--t-sub)]">
                     {t(`admin.governance.targetTypes.${item.targetType}`)}
                   </div>
                 </td>
@@ -122,7 +122,7 @@ export function GovernanceSection() {
                     {t(`admin.governance.statuses.${item.status}`)}
                   </StatusText>
                   {item.resolutionSource === 'ADMIN' ? (
-                    <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[#ADFF2F]">
+                    <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--t-accent)]">
                       {t('admin.governance.adminDecision')}
                     </div>
                   ) : null}
@@ -130,10 +130,10 @@ export function GovernanceSection() {
                 <td className="px-3 py-3 font-mono text-sm text-white/60">
                   {item.triggerScore}/{item.triggerThreshold}
                 </td>
-                <td className="px-3 py-3 text-xs text-[#3A5A3A]">
+                <td className="px-3 py-3 text-xs text-[var(--t-sub)]">
                   <Timecode date={item.openedAt} withDate />
                 </td>
-                <td className="px-3 py-3 text-xs text-[#3A5A3A]">
+                <td className="px-3 py-3 text-xs text-[var(--t-sub)]">
                   {item.deadlineAt ? <Timecode date={item.deadlineAt} withDate /> : '-'}
                 </td>
                 <td className="px-3 py-3">

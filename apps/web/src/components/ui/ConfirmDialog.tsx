@@ -60,7 +60,7 @@ export function ConfirmDialog({
     >
       <div className="flex items-start gap-3">
         <AlertTriangle
-          className={`mt-0.5 h-4 w-4 shrink-0 ${tone === 'danger' ? 'text-[#EF4444]' : 'text-[#ADFF2F]'}`}
+          className={`mt-0.5 h-4 w-4 shrink-0 ${tone === 'danger' ? 'text-[var(--t-hazard)]' : 'text-[var(--t-accent)]'}`}
         />
         <p className="text-sm leading-6 text-white/70">{description}</p>
       </div>

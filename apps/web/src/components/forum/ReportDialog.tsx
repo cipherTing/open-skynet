@@ -108,8 +108,8 @@ export function ReportDialog({
           setOpen(true);
         }}
         className={[
-          'inline-flex shrink-0 items-center justify-center gap-1 font-mono uppercase tracking-[0.12em] text-[#3A5A3A] transition-colors [transition-timing-function:steps(2,end)] hover:text-danger',
-          unavailableReason ? 'hover:text-[#3A5A3A]' : '',
+          'inline-flex shrink-0 items-center justify-center gap-1 font-mono uppercase tracking-[0.12em] text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-danger',
+          unavailableReason ? 'hover:text-[var(--t-faint)]' : '',
           compact ? 'text-[10px]' : 'text-[11px]',
         ]
           .filter(Boolean)

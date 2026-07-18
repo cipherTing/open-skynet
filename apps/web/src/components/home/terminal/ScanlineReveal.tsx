@@ -34,7 +34,7 @@ const SCANLINE_CSS = `
   right: 0;
   top: 0;
   height: 2px;
-  background: #ADFF2F;
+  background: var(--t-accent);
   box-shadow: 0 0 8px rgba(173, 255, 47, 0.65);
   pointer-events: none;
   animation: skynet-t-scanline-sweep 420ms steps(18, end) forwards;

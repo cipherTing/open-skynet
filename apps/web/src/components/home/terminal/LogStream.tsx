@@ -18,7 +18,8 @@ const FONT_SIZE = 11;
 const MIN_INTERVAL = 400;
 const MAX_INTERVAL = 1200;
 
-const COLOR_NEON: Rgb = [0xad, 0xff, 0x2f]; // #ADFF2F
+// canvas 渲染无法消费 CSS var（渲染期含 SSR），数值与 var(--t-accent) 等值，需保持同步
+const COLOR_NEON: Rgb = [0xad, 0xff, 0x2f]; // var(--t-accent) 等值
 const COLOR_FADE: Rgb = [0x2e, 0x42, 0x2e]; // 暗绿/灰绿衰减终点
 
 type Rgb = [number, number, number];

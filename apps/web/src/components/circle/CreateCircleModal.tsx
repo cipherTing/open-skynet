@@ -142,23 +142,23 @@ export function CreateCircleModal({
     >
       {reviewPending ? (
         <div className="py-6 text-center">
-          <div className="font-mono text-[11px] uppercase tracking-[0.15em] text-[#ADFF2F]">
+          <div className="font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-accent)]">
             {t('circles.reviewPendingTitle')}
           </div>
-          <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-[#EDF3ED]/70">
+          <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-[var(--t-text)]/70">
             {t('circles.reviewPendingDescription')}
           </p>
         </div>
       ) : (
         <div className="space-y-4">
           {error && (
-            <div className="border border-[#7F1D1D] bg-[#7F1D1D]/20 px-3 py-2 font-mono text-[12px] text-[#EF4444]">
+            <div className="border border-[var(--t-hazard-dim)] bg-[var(--t-hazard-dim)]/20 px-3 py-2 font-mono text-[12px] text-[var(--t-hazard)]">
               {error}
             </div>
           )}
 
           <div>
-            <label className="mb-1.5 block font-mono text-[11px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+            <label className="mb-1.5 block font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
               {t('circles.name')}
             </label>
             <TInput
@@ -170,7 +170,7 @@ export function CreateCircleModal({
           </div>
 
           <div>
-            <label className="mb-1.5 block font-mono text-[11px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+            <label className="mb-1.5 block font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
               {t('circles.topic')}
             </label>
             <TTextarea
@@ -182,14 +182,14 @@ export function CreateCircleModal({
           </div>
 
           {debouncedName && (
-            <div className="border border-[#1A2E1A] bg-black p-3">
+            <div className="border border-[var(--t-noise)] bg-black p-3">
               {searchQuery.isFetching ? (
-                <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                   {t('circles.searching')}
                 </p>
               ) : exactMatch ? (
                 <div className="space-y-2">
-                  <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-[#EF4444]/80">
+                  <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-[var(--t-hazard)]/80">
                     {t('circles.exactExists')}
                   </p>
                   <CircleMatchButton
@@ -199,7 +199,7 @@ export function CreateCircleModal({
                 </div>
               ) : fuzzyMatches.length > 0 ? (
                 <div className="space-y-2">
-                  <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-[#A16207]">
+                  <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-[var(--t-signal)]">
                     {t('circles.relatedMatches')}
                   </p>
                   {fuzzyMatches.slice(0, 5).map((circle) => (
@@ -211,7 +211,7 @@ export function CreateCircleModal({
                   ))}
                 </div>
               ) : (
-                <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-[#ADFF2F]">
+                <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-accent)]">
                   {t('circles.noDuplicate')}
                 </p>
               )}
@@ -229,13 +229,13 @@ function CircleMatchButton({ circle, onClick }: { circle: ForumCircle; onClick: 
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full items-center justify-between gap-3 border border-[#1A2E1A] bg-[#040704] px-3 py-2 text-left transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[#ADFF2F]/50 hover:bg-[#ADFF2F]/5"
+      className="flex w-full items-center justify-between gap-3 border border-[var(--t-noise)] bg-[var(--t-panel)] px-3 py-2 text-left transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)]/50 hover:bg-[var(--t-accent)]/5"
     >
       <span className="min-w-0">
         <span className="block truncate text-sm font-bold text-white">/{circle.name}</span>
-        <span className="mt-0.5 block line-clamp-1 text-xs text-[#EDF3ED]/50">{circle.topic}</span>
+        <span className="mt-0.5 block line-clamp-1 text-xs text-[var(--t-text)]/50">{circle.topic}</span>
       </span>
-      <span className="inline-flex shrink-0 items-center gap-1 font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-[#ADFF2F]">
+      <span className="inline-flex shrink-0 items-center gap-1 font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-[var(--t-accent)]">
         <Check className="h-3.5 w-3.5" />
         {t('circles.selectExisting')}
       </span>

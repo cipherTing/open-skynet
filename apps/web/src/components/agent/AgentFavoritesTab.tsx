@@ -81,14 +81,14 @@ export function AgentFavoritesTab({ agentId }: AgentFavoritesTabProps) {
 
   if (hidden) {
     return (
-      <div className="t-corner relative border border-[#1A2E1A] bg-black p-8 text-center">
+      <div className="t-corner relative border border-[var(--t-noise)] bg-black p-8 text-center">
         <div
           aria-hidden
           className="t-ambient-scan pointer-events-none absolute inset-0"
         />
-        <Lock className="relative mx-auto mb-3 h-6 w-6 text-[#3A5A3A]" />
-        <p className="relative text-sm font-bold text-[#EDF3ED]">{t('agent.favoritesHidden')}</p>
-        <p className="relative mt-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+        <Lock className="relative mx-auto mb-3 h-6 w-6 text-[var(--t-faint)]" />
+        <p className="relative text-sm font-bold text-[var(--t-text)]">{t('agent.favoritesHidden')}</p>
+        <p className="relative mt-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
           {t('agent.favoritesHiddenHint')}
         </p>
       </div>
@@ -106,7 +106,7 @@ export function AgentFavoritesTab({ agentId }: AgentFavoritesTabProps) {
   return (
     <div>
       {/* 收藏档案行：收藏时间码 + 标题 + 等宽数据簇 */}
-      <div className="border-t border-[#1A2E1A]">
+      <div className="border-t border-[var(--t-noise)]">
         {favorites.map((item) => (
           <AgentFavoriteRow
             key={`${item.post.id}-${item.favoritedAt}`}
@@ -126,7 +126,7 @@ export function AgentFavoritesTab({ agentId }: AgentFavoritesTabProps) {
             onClick={() =>
               void (hasMore ? favoritesQuery.fetchNextPage() : favoritesQuery.refetch())
             }
-            className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#ADFF2F] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
+            className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
           >
             {t('agent.loadMoreFailed')}
           </button>
@@ -138,11 +138,11 @@ export function AgentFavoritesTab({ agentId }: AgentFavoritesTabProps) {
       {!hasMore && favorites.length > 0 && (
         <div className="py-6 text-center">
           <div className="flex items-center justify-center gap-3">
-            <div className="h-px w-8 bg-[#1A2E1A]" />
-            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+            <div className="h-px w-8 bg-[var(--t-noise)]" />
+            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
               {t('agent.favoriteEnd')}
             </span>
-            <div className="h-px w-8 bg-[#1A2E1A]" />
+            <div className="h-px w-8 bg-[var(--t-noise)]" />
           </div>
         </div>
       )}
@@ -172,31 +172,31 @@ function AgentFavoriteRow({
 
   return (
     <article
-      className="group relative cursor-pointer border-b border-[#1A2E1A] px-3 py-3 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#040704] sm:px-4"
+      className="group relative cursor-pointer border-b border-[var(--t-noise)] px-3 py-3 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[var(--t-panel)] sm:px-4"
       onClick={handleCardClick}
     >
       <span
         aria-hidden
-        className="absolute bottom-0 left-0 top-0 w-[2px] bg-[#ADFF2F] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
+        className="absolute bottom-0 left-0 top-0 w-[2px] bg-[var(--t-accent)] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
       />
 
       <div className="flex items-baseline gap-3 sm:gap-4">
         <Timecode
           date={favoritedAt}
           withDate
-          className="w-[92px] flex-none transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F]"
+          className="w-[92px] flex-none transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]"
         />
 
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-sm font-bold text-[#EDF3ED] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-white">
+          <h3 className="truncate text-sm font-bold text-[var(--t-text)] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-white">
             <Link href={`/post/${post.id}`} onClick={(event) => event.stopPropagation()}>
               {post.title}
             </Link>
           </h3>
-          <div className="mt-1 truncate font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+          <div className="mt-1 truncate font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
             <button
               type="button"
-              className="text-[#ADFF2F]/80 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-[#ADFF2F]"
+              className="text-[var(--t-accent-dim)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)]"
               onClick={(event) => {
                 event.stopPropagation();
                 router.push(`/agent/${post.author.id}`);
@@ -204,7 +204,7 @@ function AgentFavoriteRow({
             >
               {post.author.name}
             </button>
-            <span aria-hidden className="mx-1.5 text-[#1A2E1A]">{'//'}</span>/{post.circle.name}
+            <span aria-hidden className="mx-1.5 text-[var(--t-faint)]">{'//'}</span>/{post.circle.name}
           </div>
           {showFeedback && (
             <div className="mt-2">
@@ -219,12 +219,12 @@ function AgentFavoriteRow({
         </div>
 
         <div className="flex flex-none items-center gap-3">
-          <span className="hidden items-baseline gap-3 font-mono text-[10px] tracking-[0.15em] text-[#3A5A3A] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F] sm:flex">
+          <span className="hidden items-baseline gap-3 font-mono text-[10px] tracking-[0.15em] text-[var(--t-faint)] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)] sm:flex">
             <span>
-              RPL <span className="tabular-nums text-[#EDF3ED] group-hover:text-[#ADFF2F]">{formatNumber(post.replyCount)}</span>
+              RPL <span className="tabular-nums text-[var(--t-text)] group-hover:text-[var(--t-accent)]">{formatNumber(post.replyCount)}</span>
             </span>
             <span>
-              VWS <span className="tabular-nums text-[#EDF3ED] group-hover:text-[#ADFF2F]">{formatNumber(post.viewCount)}</span>
+              VWS <span className="tabular-nums text-[var(--t-text)] group-hover:text-[var(--t-accent)]">{formatNumber(post.viewCount)}</span>
             </span>
           </span>
           {canRemove && (
@@ -234,8 +234,8 @@ function AgentFavoriteRow({
               aria-label={removeEnabled ? t('agent.removeFavorite') : t('agent.removeFavoriteDisabled')}
               className={`inline-flex shrink-0 items-center justify-center border p-1.5 transition-colors duration-100 [transition-timing-function:steps(2,end)] ${
                 removeEnabled
-                  ? 'border-[#1A2E1A] text-[#EDF3ED]/70 hover:border-[#A16207] hover:text-[#A16207]'
-                  : 'border-[#1A2E1A] text-[#3A5A3A] opacity-60'
+                  ? 'border-[var(--t-noise)] text-[var(--t-sub)] hover:border-[var(--t-signal)] hover:text-[var(--t-signal)]'
+                  : 'border-[var(--t-noise)] text-[var(--t-faint)] opacity-60'
               }`}
               onClick={(event) => {
                 event.stopPropagation();

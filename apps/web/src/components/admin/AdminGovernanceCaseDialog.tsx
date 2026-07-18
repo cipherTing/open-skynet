@@ -88,8 +88,8 @@ export function AdminGovernanceCaseDialog({
         ) : undefined
       }
     >
-      <p className="text-xs text-[#3A5A3A]">{t('admin.governance.detailDescription')}</p>
-      <p aria-hidden className="mt-1 truncate font-mono text-[9px] uppercase tracking-[0.2em] text-[#1A2E1A]">
+      <p className="text-xs text-[var(--t-sub)]">{t('admin.governance.detailDescription')}</p>
+      <p aria-hidden className="mt-1 truncate font-mono text-[9px] uppercase tracking-[0.2em] text-[var(--t-faint)]">
         FILE #CASE-{caseId}
       </p>
       {query.isPending ? (
@@ -102,52 +102,52 @@ export function AdminGovernanceCaseDialog({
         </div>
       ) : (
         <div className="mt-6 space-y-7">
-          <section className="grid gap-4 border-y border-[#1A2E1A] py-4 sm:grid-cols-2 lg:grid-cols-4">
+          <section className="grid gap-4 border-y border-[var(--t-noise)] py-4 sm:grid-cols-2 lg:grid-cols-4">
             <div>
-              <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+              <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                 {t('admin.governance.status')}
               </div>
-              <div className="mt-1 text-sm font-bold text-[#EDF3ED]">
+              <div className="mt-1 text-sm font-bold text-[var(--t-text)]">
                 {t(`admin.governance.statuses.${detail.status}`)}
               </div>
             </div>
             <div>
-              <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+              <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                 {t('admin.governance.reportCount')}
               </div>
-              <div className="mt-1 text-sm font-bold text-[#EDF3ED]">
+              <div className="mt-1 text-sm font-bold text-[var(--t-text)]">
                 {detail.reports.length}
               </div>
             </div>
             <div>
-              <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+              <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                 {t('admin.governance.voteCount')}
               </div>
-              <div className="mt-1 text-sm font-bold text-[#EDF3ED]">
+              <div className="mt-1 text-sm font-bold text-[var(--t-text)]">
                 {detail.tally.participantCount}
               </div>
             </div>
             <div>
-              <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+              <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                 {t('admin.governance.currentDeadline')}
               </div>
-              <div className="mt-1 text-sm font-bold text-[#EDF3ED]">
+              <div className="mt-1 text-sm font-bold text-[var(--t-text)]">
                 {formatAdminTime(detail.deadlineAt)}
               </div>
             </div>
           </section>
 
           <section>
-            <h3 className="text-sm font-bold text-[#EDF3ED]">{detail.targetSummary.title}</h3>
-            <p className="mt-1 text-xs text-[#3A5A3A]">
+            <h3 className="text-sm font-bold text-[var(--t-text)]">{detail.targetSummary.title}</h3>
+            <p className="mt-1 text-xs text-[var(--t-sub)]">
               {t(`admin.governance.targetTypes.${detail.targetType}`)}
             </p>
-            <div className="mt-4 border-l-2 border-[#3A5A3A] pl-4">
+            <div className="mt-4 border-l-2 border-[var(--t-faint)] pl-4">
               {detail.targetSnapshot.kind === 'POST' ? (
                 <div className="space-y-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <PostTags tags={detail.targetSnapshot.post.tags} />
-                    <span className="text-[10px] text-[#3A5A3A]">
+                    <span className="text-[10px] text-[var(--t-sub)]">
                       {t('admin.governance.contentVersion', {
                         version: detail.targetSnapshot.post.contentVersion,
                       })}
@@ -158,12 +158,12 @@ export function AdminGovernanceCaseDialog({
               ) : detail.targetSnapshot.kind === 'REPLY' ? (
                 <div className="space-y-5">
                   <div>
-                    <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                    <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                       {t('admin.governance.originalPost')}
                     </div>
                     <div className="mb-3 flex flex-wrap items-center gap-2">
                       <PostTags tags={detail.targetSnapshot.post.tags} />
-                      <span className="text-[10px] text-[#3A5A3A]">
+                      <span className="text-[10px] text-[var(--t-sub)]">
                         {t('admin.governance.contentVersion', {
                           version: detail.targetSnapshot.post.contentVersion,
                         })}
@@ -173,10 +173,10 @@ export function AdminGovernanceCaseDialog({
                   </div>
                   {detail.targetSnapshot.parentReply ? (
                     <div>
-                      <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                      <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                         {t('admin.governance.parentReply')}
                       </div>
-                      <div className="mb-2 text-[10px] text-[#3A5A3A]">
+                      <div className="mb-2 text-[10px] text-[var(--t-sub)]">
                         {t('admin.governance.contentVersion', {
                           version: detail.targetSnapshot.parentReply.contentVersion,
                         })}
@@ -185,10 +185,10 @@ export function AdminGovernanceCaseDialog({
                     </div>
                   ) : null}
                   <div>
-                    <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[#ADFF2F]">
+                    <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)]">
                       {t('admin.governance.reportedReply')}
                     </div>
-                    <div className="mb-2 text-[10px] text-[#3A5A3A]">
+                    <div className="mb-2 text-[10px] text-[var(--t-sub)]">
                       {t('admin.governance.contentVersion', {
                         version: detail.targetSnapshot.reply.contentVersion,
                       })}
@@ -218,13 +218,13 @@ export function AdminGovernanceCaseDialog({
 
           <section className="grid gap-6 md:grid-cols-2">
             <div>
-              <h3 className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[#EDF3ED]">
-                <span aria-hidden className="text-[#ADFF2F]">
+              <h3 className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--t-text)]">
+                <span aria-hidden className="text-[var(--t-accent)]">
                   {'//'}
                 </span>
                 {t('admin.governance.reportBasis')}
               </h3>
-              <div className="mt-3 divide-y divide-[#1A2E1A] border-y border-[#1A2E1A]">
+              <div className="mt-3 divide-y divide-[var(--t-noise)] border-y border-[var(--t-noise)]">
                 {detail.reports.map((report, index) => (
                   <div key={report.id} className="py-3">
                     <div className="text-xs font-bold text-white/60">
@@ -232,7 +232,7 @@ export function AdminGovernanceCaseDialog({
                       {t(`report.reasons.${report.reason}`)}
                     </div>
                     {report.evidence ? (
-                      <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-[#3A5A3A]">
+                      <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-[var(--t-sub)]">
                         {report.evidence}
                       </p>
                     ) : null}
@@ -241,24 +241,24 @@ export function AdminGovernanceCaseDialog({
               </div>
             </div>
             <div>
-              <h3 className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[#EDF3ED]">
-                <span aria-hidden className="text-[#ADFF2F]">
+              <h3 className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--t-text)]">
+                <span aria-hidden className="text-[var(--t-accent)]">
                   {'//'}
                 </span>
                 {t('admin.governance.voteSummary')}
               </h3>
               <div className="mt-3 grid grid-cols-2 gap-3">
-                <div className="border-l-2 border-[#7F1D1D] pl-3">
-                  <div className="text-xs text-[#3A5A3A]">
+                <div className="border-l-2 border-[var(--t-hazard)] pl-3">
+                  <div className="text-xs text-[var(--t-sub)]">
                     {t('admin.governance.violationVotes')}
                   </div>
-                  <div className="mt-1 text-lg font-bold text-[#EF4444]">{detail.tally.violation}</div>
+                  <div className="mt-1 text-lg font-bold text-[var(--t-hazard)]">{detail.tally.violation}</div>
                 </div>
-                <div className="border-l-2 border-[#ADFF2F]/45 pl-3">
-                  <div className="text-xs text-[#3A5A3A]">
+                <div className="border-l-2 border-[var(--t-accent)] pl-3">
+                  <div className="text-xs text-[var(--t-sub)]">
                     {t('admin.governance.notViolationVotes')}
                   </div>
-                  <div className="mt-1 text-lg font-bold text-[#ADFF2F]">
+                  <div className="mt-1 text-lg font-bold text-[var(--t-accent)]">
                     {detail.tally.notViolation}
                   </div>
                 </div>
@@ -267,13 +267,13 @@ export function AdminGovernanceCaseDialog({
           </section>
 
           <section>
-            <h3 className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[#EDF3ED]">
-              <span aria-hidden className="text-[#ADFF2F]">
+            <h3 className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--t-text)]">
+              <span aria-hidden className="text-[var(--t-accent)]">
                 {'//'}
               </span>
               {t('admin.governance.timeline')}
             </h3>
-            <ol className="mt-3 space-y-2 border-l border-[#1A2E1A] pl-4 text-xs text-white/60">
+            <ol className="mt-3 space-y-2 border-l border-[var(--t-noise)] pl-4 text-xs text-white/60">
               <li>
                 {t('admin.governance.openedTimeline', { time: formatAdminTime(detail.openedAt) })}
               </li>
@@ -303,8 +303,8 @@ export function AdminGovernanceCaseDialog({
           </section>
 
           {detail.resolvedAt ? (
-            <section className="border-l-2 border-[#ADFF2F]/50 pl-4">
-              <h3 className="text-sm font-bold text-[#EDF3ED]">
+            <section className="border-l-2 border-[var(--t-accent)] pl-4">
+              <h3 className="text-sm font-bold text-[var(--t-text)]">
                 {detail.resolutionSource === 'ADMIN'
                   ? t('admin.governance.adminDecision')
                   : t('admin.governance.communityDecision')}
@@ -316,12 +316,12 @@ export function AdminGovernanceCaseDialog({
           ) : null}
 
           {detail.corrections.map((correction) => (
-            <section key={correction.id} className="border-l-2 border-[#ADFF2F]/50 pl-4">
-              <h3 className="text-sm font-bold text-[#ADFF2F]">
+            <section key={correction.id} className="border-l-2 border-[var(--t-accent)] pl-4">
+              <h3 className="text-sm font-bold text-[var(--t-accent)]">
                 {t('admin.governance.correctionRecorded')}
               </h3>
               <p className="mt-2 text-sm text-white/60">{correction.publicReason}</p>
-              <p className="mt-1 text-xs text-[#3A5A3A]">
+              <p className="mt-1 text-xs text-[var(--t-sub)]">
                 {formatAdminTime(correction.createdAt)}
               </p>
             </section>

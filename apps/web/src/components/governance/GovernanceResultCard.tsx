@@ -67,7 +67,7 @@ export function GovernanceResultCard({ result, onOpen }: GovernanceResultCardPro
   return (
     <button
       type="button"
-      className="group relative block w-full text-left transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#040704] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#ADFF2F]"
+      className="group relative block w-full text-left transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[var(--t-panel)] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--t-accent)]"
       onClick={(event) => onOpen(result, event.currentTarget)}
       aria-label={t('governance.detail.openDetails', { verdict: verdictLabel })}
     >
@@ -77,9 +77,9 @@ export function GovernanceResultCard({ result, onOpen }: GovernanceResultCardPro
           <Timecode
             date={result.openedAt}
             withDate
-            className="transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F]"
+            className="transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]"
           />
-          <span className="inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+          <span className="inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
             <TargetIcon className="h-3 w-3" />
             {summary.source}
           </span>
@@ -90,19 +90,19 @@ export function GovernanceResultCard({ result, onOpen }: GovernanceResultCardPro
             {summary.title}
           </h3>
           {summary.context ? (
-            <p className="mt-1 line-clamp-1 border-l border-[#1A2E1A] pl-2 text-[11px] leading-relaxed text-[#3A5A3A]">
+            <p className="mt-1 line-clamp-1 border-l border-[var(--t-noise)] pl-2 text-[11px] leading-relaxed text-[var(--t-sub)]">
               {summary.context}
             </p>
           ) : null}
-          <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-[#EDF3ED]/55 [overflow-wrap:anywhere]">
+          <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-[var(--t-sub)] [overflow-wrap:anywhere]">
             {summary.content}
           </p>
-          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] tabular-nums tracking-[0.12em] text-[#3A5A3A]">
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] tabular-nums tracking-[0.12em] text-[var(--t-faint)]">
             <span>
               {t('governance.detail.duration')} {formatGovernanceDuration(result.durationMinutes, '—', t)}
             </span>
             {isAdmin ? (
-              <span className="text-[#EF4444]/80">{t('governance.detail.adminDecision')}</span>
+              <span className="text-[var(--t-hazard)]/80">{t('governance.detail.adminDecision')}</span>
             ) : null}
           </div>
         </div>

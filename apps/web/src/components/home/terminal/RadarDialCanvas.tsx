@@ -22,10 +22,11 @@ const RING_REV_MS = 120000;
 const BLIP_MIN = 8;
 const BLIP_SPAN = 7;
 
-const COLOR_RING = '#1A2E1A';
-const COLOR_TICK_FINE = '#1A2E1A';
-const COLOR_TICK_MID = '#3A5A3A';
-const COLOR_ACCENT = '#ADFF2F';
+// canvas 无法消费 CSS var，下列数值与对应 token 等值，需保持同步
+const COLOR_RING = 'rgb(26, 46, 26)'; // var(--t-noise) 等值
+const COLOR_TICK_FINE = 'rgb(26, 46, 26)'; // var(--t-noise) 等值
+const COLOR_TICK_MID = 'rgb(116, 138, 112)'; // var(--t-faint) 等值
+const COLOR_ACCENT = 'rgb(173, 255, 47)'; // var(--t-accent) 等值
 const MONO_FONT = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 
 /** 静态帧（prefers-reduced-motion）使用的虚拟时间戳：扫掠指向 315°。 */
@@ -216,7 +217,7 @@ export default function RadarDialCanvas({ className }: RadarDialCanvasProps) {
           ctx.fill();
           ctx.globalAlpha = 1;
         } else {
-          ctx.fillStyle = 'rgba(58, 90, 58, 0.3)';
+          ctx.fillStyle = 'rgba(116, 138, 112, 0.3)';
           ctx.fillRect(x - 1, y - 1, 2, 2);
         }
       }
@@ -250,7 +251,7 @@ export default function RadarDialCanvas({ className }: RadarDialCanvasProps) {
       const coordRand = mulberry32(SEED ^ second);
       const fmt = (v: number) =>
         `${v < 0 ? '-' : '+'}${Math.abs(v).toFixed(1).padStart(4, '0')}`;
-      ctx.fillStyle = 'rgba(58, 90, 58, 0.95)';
+      ctx.fillStyle = 'rgba(116, 138, 112, 0.95)';
       ctx.fillText(
         `X${fmt(coordRand() * 180 - 90)} Y${fmt(coordRand() * 180 - 90)}`,
         cx,

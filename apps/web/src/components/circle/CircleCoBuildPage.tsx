@@ -18,9 +18,9 @@ import { PageHeader } from '@/components/layout/PageHeader';
 
 /** 告警色条：进行中=荧光绿，被否决/终止=琥珀，已结=暗绿。 */
 function proposalRailClass(status: CircleProposalStatus): string {
-  if (status === 'DISCUSSION' || status === 'VOTING') return 'bg-[#ADFF2F]';
-  if (status === 'REJECTED' || status === 'MODERATED') return 'bg-[#A16207]';
-  return 'bg-[#3A5A3A]';
+  if (status === 'DISCUSSION' || status === 'VOTING') return 'bg-[var(--t-accent)]';
+  if (status === 'REJECTED' || status === 'MODERATED') return 'bg-[var(--t-signal)]';
+  return 'bg-[var(--t-faint)]';
 }
 
 export function CircleCoBuildPage({ slug }: { slug: string }) {
@@ -98,15 +98,15 @@ export function CircleCoBuildPage({ slug }: { slug: string }) {
         <div className="mx-auto max-w-6xl">
           <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
-                <span className="text-[#ADFF2F]">FILE #CR-{circleFileNo(circle.slug)}</span>
+              <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                <span className="text-[var(--t-accent)]">FILE #CR-{circleFileNo(circle.slug)}</span>
                 <span className="mx-2">·</span>
                 CO-BUILD // {circle.slug}
               </p>
               <div className="mt-2 flex items-center gap-3">
                 <span
                   aria-hidden
-                  className="t-dotgrid flex h-9 w-[4.5rem] shrink-0 select-none items-center justify-center border border-[#1A2E1A] bg-black font-mono text-[11px] tracking-[0.25em] text-[#ADFF2F]"
+                  className="t-dotgrid flex h-9 w-[4.5rem] shrink-0 select-none items-center justify-center border border-[var(--t-noise)] bg-black font-mono text-[11px] tracking-[0.25em] text-[var(--t-accent)]"
                 >
                   {circleSigil(circle.slug)}
                 </span>
@@ -127,24 +127,24 @@ export function CircleCoBuildPage({ slug }: { slug: string }) {
                 title={t('circles.coBuild.currentState')}
                 meta={t('circles.coBuild.topicVersion', { version: circle.topicVersion })}
               >
-                <p className="text-sm leading-7 text-[#EDF3ED]">{circle.topic}</p>
-                <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                <p className="text-sm leading-7 text-[var(--t-text)]">{circle.topic}</p>
+                <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                   {circle.topicOrigin === 'CREATION'
                     ? t('circles.coBuild.creationTopic')
                     : t('circles.coBuild.communityTopic')}
                 </p>
-                <div className="mt-4 space-y-2 border-t border-[#122012] pt-3">
+                <div className="mt-4 space-y-2 border-t border-[var(--t-noise2)] pt-3">
                   {circle.rules.length ? (
                     circle.rules.map((rule, index) => (
-                      <p key={rule.id} className="text-sm leading-6 text-[#EDF3ED]/70">
-                        <span className="mr-2 font-mono text-[11px] text-[#3A5A3A]">
+                      <p key={rule.id} className="text-sm leading-6 text-[var(--t-text)]/70">
+                        <span className="mr-2 font-mono text-[11px] text-[var(--t-faint)]">
                           {String(index + 1).padStart(2, '0')}
                         </span>
                         {rule.text}
                       </p>
                     ))
                   ) : (
-                    <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                    <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                       {t('circles.coBuild.noRules')}
                     </p>
                   )}
@@ -166,8 +166,8 @@ export function CircleCoBuildPage({ slug }: { slug: string }) {
                 empty={t('circles.coBuild.noHistory')}
               />
             </div>
-            <aside className="border-l border-[#1A2E1A] pl-0 xl:pl-5">
-              <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+            <aside className="border-l border-[var(--t-noise)] pl-0 xl:pl-5">
+              <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                 LOG // {t('circles.coBuild.records')}
               </p>
               {logsQuery.isPending ? (
@@ -175,12 +175,12 @@ export function CircleCoBuildPage({ slug }: { slug: string }) {
                   <InlineLoading label={t('circles.coBuild.loading')} />
                 </div>
               ) : logsQuery.isError ? (
-                <div className="py-5 text-xs text-[#3A5A3A]">
+                <div className="py-5 text-xs text-[var(--t-sub)]">
                   <p>{t('circles.coBuild.recordsFailed')}</p>
                   <button
                     type="button"
                     onClick={() => void logsQuery.refetch()}
-                    className="mt-2 font-mono text-[11px] uppercase tracking-[0.15em] text-[#ADFF2F] hover:text-white"
+                    className="mt-2 font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-accent)] hover:text-white"
                   >
                     {t('app.retry')}
                   </button>
@@ -197,7 +197,7 @@ export function CircleCoBuildPage({ slug }: { slug: string }) {
                       />
                     ))
                   ) : (
-                    <li className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                    <li className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                       {t('circles.coBuild.noRecords')}
                     </li>
                   )}
@@ -239,8 +239,8 @@ function MaintenanceRecordItem({
   const { t } = useTranslation();
   const content = (
     <>
-      <p className="text-[#EDF3ED]/70 transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F]">
-        <span aria-hidden className="mr-1.5 font-mono text-[#3A5A3A] group-hover:text-[#ADFF2F]">
+      <p className="text-[var(--t-text)]/70 transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]">
+        <span aria-hidden className="mr-1.5 font-mono text-[var(--t-faint)] group-hover:text-[var(--t-accent)]">
           &gt;
         </span>
         {t(`circles.coBuild.recordActions.${log.action}`)}
@@ -249,11 +249,11 @@ function MaintenanceRecordItem({
     </>
   );
   return (
-    <li className="border-l border-[#1A2E1A] pl-3 text-xs leading-5">
+    <li className="border-l border-[var(--t-noise)] pl-3 text-xs leading-5">
       {log.proposalId ? (
         <Link
           href={`/circles/${circleSlug}/co-build/${log.proposalId}`}
-          className="group block focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#ADFF2F]"
+          className="group block focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--t-accent)]"
         >
           {content}
         </Link>
@@ -261,7 +261,7 @@ function MaintenanceRecordItem({
         <button
           type="button"
           onClick={onOpen}
-          className="group block w-full text-left focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#ADFF2F]"
+          className="group block w-full text-left focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--t-accent)]"
         >
           {content}
         </button>
@@ -294,17 +294,17 @@ function ProposalSection({
   return (
     <section>
       <div className="mb-3 flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.15em]">
-        <span className="text-[#ADFF2F]">{chapter}</span>
-        <span aria-hidden className="h-px w-6 bg-[#1A2E1A]" />
+        <span className="text-[var(--t-accent)]">{chapter}</span>
+        <span aria-hidden className="h-px w-6 bg-[var(--t-noise)]" />
         <span className="text-white">{title}</span>
       </div>
       {items.length ? (
-        <div className="divide-y divide-[#122012] border-y border-[#1A2E1A]">
+        <div className="divide-y divide-[var(--t-noise2)] border-y border-[var(--t-noise)]">
           {items.map((proposal) => (
             <Link
               key={proposal.id}
               href={`/circles/${circleSlug}/co-build/${proposal.id}`}
-              className="group relative flex items-center justify-between gap-4 py-3 pl-4 pr-2 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#ADFF2F]/[0.04] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#ADFF2F]"
+              className="group relative flex items-center justify-between gap-4 py-3 pl-4 pr-2 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[var(--t-accent)]/[0.04] focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--t-accent)]"
             >
               <span
                 aria-hidden
@@ -314,7 +314,7 @@ function ProposalSection({
                 <p className="truncate text-sm font-semibold text-white">
                   {t(`circles.coBuild.scopes.${proposal.scope}`)}
                 </p>
-                <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                   {proposal.creator.name} · {t(`circles.coBuild.statuses.${proposal.status}`)} ·{' '}
                   {t('circles.coBuild.quorum', { count: proposal.quorum })}
                 </p>
@@ -322,13 +322,13 @@ function ProposalSection({
               <Timecode
                 date={proposal.updatedAt}
                 withDate
-                className="shrink-0 transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F]"
+                className="shrink-0 transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]"
               />
             </Link>
           ))}
         </div>
       ) : (
-        <p className="border border-dashed border-[#1A2E1A] px-4 py-6 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+        <p className="border border-dashed border-[var(--t-noise)] px-4 py-6 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
           {empty}
         </p>
       )}

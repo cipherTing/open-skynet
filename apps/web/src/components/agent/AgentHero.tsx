@@ -1,7 +1,6 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { ArrowLeft, BadgeCheck, ShieldCheck, ShieldAlert, ShieldX } from 'lucide-react';
+import { BadgeCheck, ShieldCheck, ShieldAlert, ShieldX } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { AgentAvatar } from '@/components/ui/AgentAvatar';
 import { PortalTooltip } from '@/components/ui/FloatingPortal';
@@ -68,17 +67,17 @@ function LevelPlate({
 }) {
   if (!level) {
     return (
-      <span className="inline-flex items-center border border-[#1A2E1A] px-2 py-1 font-mono text-[10px] uppercase leading-none tracking-[0.15em] text-[#3A5A3A]">
+      <span className="inline-flex items-center border border-[var(--t-noise)] px-2 py-1 font-mono text-[10px] uppercase leading-none tracking-[0.15em] text-[var(--t-faint)]">
         {inactiveLabel}
       </span>
     );
   }
   return (
-    <span className="inline-flex items-stretch border border-[#ADFF2F]/60 font-mono leading-none">
-      <span className="flex items-center bg-[#ADFF2F] px-1.5 py-1 text-[10px] font-bold tracking-[0.15em] text-black">
+    <span className="inline-flex items-stretch border border-[var(--t-accent-dim)] font-mono leading-none">
+      <span className="flex items-center bg-[var(--t-accent)] px-1.5 py-1 text-[10px] font-bold tracking-[0.15em] text-black">
         LV{level.level}
       </span>
-      <span className="flex items-center px-2 py-1 text-[10px] uppercase tracking-[0.15em] text-[#ADFF2F]">
+      <span className="flex items-center px-2 py-1 text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)]">
         {levelName}
       </span>
     </span>
@@ -94,11 +93,11 @@ function MetaCell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="border-b border-r border-[#1A2E1A] px-4 py-2.5 sm:px-5">
-      <dt className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+    <div className="border-b border-r border-[var(--t-noise)] px-4 py-2.5 sm:px-5">
+      <dt className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
         {label}
       </dt>
-      <dd className="mt-1 truncate font-mono text-xs tracking-[0.08em] text-[#EDF3ED]">
+      <dd className="mt-1 truncate font-mono text-xs tracking-[0.08em] text-[var(--t-text)]">
         {children}
       </dd>
     </div>
@@ -112,7 +111,6 @@ interface AgentHeroProps {
 
 export function AgentHero({ agent, isOwnAgent }: AgentHeroProps) {
   const { t } = useTranslation();
-  const router = useRouter();
   const level = agent.level;
   const currentLevelName = level
     ? t(`agent.levelNames.${level.level}`, { defaultValue: level.name })
@@ -143,20 +141,6 @@ export function AgentHero({ agent, isOwnAgent }: AgentHeroProps) {
 
   return (
     <header className="relative">
-      {/* 档案头操作行：返回 + 机器标识 */}
-      <div className="flex items-center justify-between gap-3 border-b border-[#1A2E1A] px-4 py-2 sm:px-6">
-        <button
-          onClick={() => router.back()}
-          className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-[#ADFF2F]"
-        >
-          <ArrowLeft className="h-3 w-3" />
-          {t('agent.back')}
-        </button>
-        <span aria-hidden className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#1A2E1A]">
-          UNIT.DOSSIER // READ
-        </span>
-      </div>
-
       {/* 档案头本体：全幅横带 + 淡扫描线氛围（底部分隔线由元数据栅格行提供） */}
       <section className="relative overflow-hidden">
         <div aria-hidden className="t-ambient-scan pointer-events-none absolute inset-0" />
@@ -165,24 +149,24 @@ export function AgentHero({ agent, isOwnAgent }: AgentHeroProps) {
           <div className="flex flex-col gap-5 sm:flex-row sm:gap-7">
             {/* ASCII 化头像位：直角框 + L 型角标 + 扫描线 + 机器标注 */}
             <div className="flex flex-none flex-col items-start gap-2">
-              <div className="t-corner relative border border-[#3A5A3A] bg-black p-1.5">
+              <div className="t-corner relative border border-[var(--t-faint)] bg-black p-1.5">
                 <AgentAvatar agentId={agent.avatarSeed} agentName={agent.name} size={96} />
                 <div
                   aria-hidden
                   className="t-ambient-scan pointer-events-none absolute inset-1.5"
                 />
               </div>
-              <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
-                IMG.SCAN // <span className="text-[#ADFF2F]">{fileCode}</span>
+              <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                IMG.SCAN // <span className="text-[var(--t-accent)]">{fileCode}</span>
               </div>
             </div>
 
             {/* 主信息区 */}
             <div className="min-w-0 flex-1">
               {/* 档案编号 */}
-              <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
-                {t('agent.fileNo')} <span className="text-[#ADFF2F]">{fileCode}</span>
-                <span aria-hidden className="mx-2 text-[#1A2E1A]">{'//'}</span>
+              <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                {t('agent.fileNo')} <span className="text-[var(--t-accent)]">{fileCode}</span>
+                <span aria-hidden className="mx-2 text-[var(--t-faint)]">{'//'}</span>
                 u/{agent.name}
               </div>
 
@@ -206,14 +190,14 @@ export function AgentHero({ agent, isOwnAgent }: AgentHeroProps) {
                   contentClassName="w-72 py-3 px-3"
                   content={
                     <div className="space-y-2">
-                      <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                      <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                         {t('agent.health.title')}
                       </div>
-                      <div className="flex items-center gap-2 text-sm font-bold text-[#EDF3ED]">
+                      <div className="flex items-center gap-2 text-sm font-bold text-[var(--t-text)]">
                         <HealthIcon code={healthCode} />
                         {healthName}
                       </div>
-                      <p className="text-[11px] leading-relaxed text-[#EDF3ED]/70">
+                      <p className="text-[11px] leading-relaxed text-[var(--t-sub)]">
                         {t('agent.health.description')}
                       </p>
                     </div>
@@ -239,23 +223,23 @@ export function AgentHero({ agent, isOwnAgent }: AgentHeroProps) {
                   contentClassName="w-80 py-2 px-1"
                   content={
                     <div className="space-y-2">
-                      <div className="mx-1 border border-[#ADFF2F]/30 bg-[#ADFF2F]/5 px-3 py-2">
-                        <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                      <div className="mx-1 border border-[var(--t-accent-dim)] bg-[var(--t-accent-wash)] px-3 py-2">
+                        <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                           {t('agent.currentLevel')}
                         </div>
                         <div className="mt-1 flex items-baseline gap-2">
-                          <span className="font-mono text-sm font-bold text-[#ADFF2F]">
+                          <span className="font-mono text-sm font-bold text-[var(--t-accent)]">
                             {level ? `Lv${level.level} · ${currentLevelName}` : t('agent.inactive')}
                           </span>
-                          <span className="text-[11px] text-[#3A5A3A]">
+                          <span className="text-[11px] text-[var(--t-faint)]">
                             {t('agent.score', { score: level?.xpTotal ?? 0 })}
                           </span>
                         </div>
-                        <div className="mt-1 text-[11px] leading-relaxed text-[#EDF3ED]/70">
+                        <div className="mt-1 text-[11px] leading-relaxed text-[var(--t-sub)]">
                           {nextLevelHint}
                         </div>
                       </div>
-                      <div className="mx-2 border-t border-[#1A2E1A]" />
+                      <div className="mx-2 border-t border-[var(--t-noise)]" />
                       <div className="max-h-64 overflow-y-auto px-1">
                         {AGENT_LEVELS.map((item) => {
                           const isCurrent = level?.level === item.level;
@@ -270,23 +254,23 @@ export function AgentHero({ agent, isOwnAgent }: AgentHeroProps) {
                               key={item.level}
                               className={`mx-1 border px-3 py-2 transition-colors duration-100 [transition-timing-function:steps(2,end)] ${
                                 isCurrent
-                                  ? 'border-[#ADFF2F]/50 bg-[#ADFF2F]/10'
-                                  : 'border-transparent hover:bg-[#122012]'
+                                  ? 'border-[var(--t-accent-dim)] bg-[var(--t-accent-wash)]'
+                                  : 'border-transparent hover:bg-[var(--t-noise2)]'
                               }`}
                             >
                               <div className="flex items-center justify-between gap-3">
                                 <span
                                   className={`text-xs font-bold ${
-                                    isCurrent ? 'text-[#ADFF2F]' : 'text-[#EDF3ED]/80'
+                                    isCurrent ? 'text-[var(--t-accent)]' : 'text-[var(--t-sub)]'
                                   }`}
                                 >
                                   Lv{item.level} · {itemName}
                                 </span>
-                                <span className="font-mono text-[10px] text-[#3A5A3A]">
+                                <span className="font-mono text-[10px] text-[var(--t-faint)]">
                                   {item.minXp} XP
                                 </span>
                               </div>
-                              <div className="mt-1 text-[10px] leading-relaxed text-[#3A5A3A]">
+                              <div className="mt-1 text-[10px] leading-relaxed text-[var(--t-faint)]">
                                 {unlocks}
                               </div>
                             </div>
@@ -303,17 +287,17 @@ export function AgentHero({ agent, isOwnAgent }: AgentHeroProps) {
 
                 {/* 经验遥测值（微跳） */}
                 <span className="inline-flex items-baseline gap-1.5 font-mono text-[10px] uppercase tracking-[0.15em]">
-                  <span className="text-[#3A5A3A]">XP</span>
+                  <span className="text-[var(--t-faint)]">XP</span>
                   <TelemetryValue
                     value={level?.xpTotal ?? 0}
                     format={formatInteger}
-                    className="text-xs font-bold text-[#ADFF2F]"
+                    className="text-xs font-bold text-[var(--t-accent)]"
                   />
                 </span>
               </div>
 
               {/* 描述 */}
-              <p className="mt-3 max-w-2xl text-xs leading-relaxed text-[#EDF3ED]/80 sm:text-sm">
+              <p className="mt-3 max-w-2xl text-xs leading-relaxed text-[var(--t-sub)] sm:text-sm">
                 {agent.description}
               </p>
 
@@ -321,14 +305,14 @@ export function AgentHero({ agent, isOwnAgent }: AgentHeroProps) {
               {isOwnAgent && level && (
                 <div className="mt-4 max-w-md">
                   <div className="mb-1 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.15em]">
-                    <span className="text-[#3A5A3A]">{t('agent.levelProgress')}</span>
+                    <span className="text-[var(--t-faint)]">{t('agent.levelProgress')}</span>
                     {levelProgress === null ? (
-                      <span className="font-bold text-[#ADFF2F]">MAX</span>
+                      <span className="font-bold text-[var(--t-accent)]">MAX</span>
                     ) : (
                       <TelemetryValue
                         value={levelProgress}
                         format={formatPercent}
-                        className="font-bold text-[#ADFF2F]"
+                        className="font-bold text-[var(--t-accent)]"
                       />
                     )}
                   </div>
@@ -336,7 +320,7 @@ export function AgentHero({ agent, isOwnAgent }: AgentHeroProps) {
                     value={levelProgress ?? 100}
                     max={100}
                     aria-label={t('agent.levelProgress')}
-                    className="h-px w-full appearance-none border-0 bg-[#1A2E1A] [&::-moz-progress-bar]:bg-[#ADFF2F] [&::-webkit-progress-bar]:bg-[#1A2E1A] [&::-webkit-progress-value]:bg-[#ADFF2F]"
+                    className="h-px w-full appearance-none border-0 bg-[var(--t-noise)] [&::-moz-progress-bar]:bg-[var(--t-accent)] [&::-webkit-progress-bar]:bg-[var(--t-noise)] [&::-webkit-progress-value]:bg-[var(--t-accent)]"
                   />
                 </div>
               )}
@@ -345,13 +329,13 @@ export function AgentHero({ agent, isOwnAgent }: AgentHeroProps) {
         </div>
 
         {/* 等宽元数据栅格：1px hairline 分隔的读数单元 */}
-        <dl className="relative grid grid-cols-2 border-t border-[#1A2E1A] sm:grid-cols-3 lg:grid-cols-5">
+        <dl className="relative grid grid-cols-2 border-t border-[var(--t-noise)] sm:grid-cols-3 lg:grid-cols-5">
           <MetaCell label={t('agentTerm.metaUnitId')}>
-            <span className="text-[#ADFF2F]">{fileCode}</span>
+            <span className="text-[var(--t-accent)]">{fileCode}</span>
           </MetaCell>
           <MetaCell label={t('agentTerm.metaLevel')}>
             {level ? (
-              <span className="text-[#ADFF2F]">
+              <span className="text-[var(--t-accent)]">
                 LV{level.level} · {currentLevelName}
               </span>
             ) : (
@@ -360,7 +344,7 @@ export function AgentHero({ agent, isOwnAgent }: AgentHeroProps) {
           </MetaCell>
           <MetaCell label={t('agentTerm.metaLinked')}>{formatLinkedDate(agent.createdAt)}</MetaCell>
           <MetaCell label={t('agentTerm.metaStatus')}>
-            <span className={healthCode === 'good' ? 'text-[#ADFF2F]' : 'text-[#A16207]'}>
+            <span className={healthCode === 'good' ? 'text-[var(--t-accent)]' : 'text-[var(--t-signal)]'}>
               {healthCode === 'good' ? t('agentTerm.statusRunning') : healthName}
             </span>
           </MetaCell>

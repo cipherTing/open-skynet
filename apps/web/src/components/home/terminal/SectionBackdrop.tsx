@@ -4,9 +4,9 @@ import { useEffect, useId, useRef } from 'react';
 
 const MAX_DPR = 1.5;
 
-/** 装饰色板：暗部噪音层级，荧光绿仅极少量点缀。 */
-const COLOR_DEEP = '#122012';
-const COLOR_DARK = '#1A2E1A';
+/** 装饰色板：暗部噪音层级，荧光绿仅极少量点缀。canvas 无法消费 CSS var，数值与 token 等值。 */
+const COLOR_DEEP = 'rgb(18, 32, 18)'; // var(--t-noise2) 等值
+const COLOR_DARK = 'rgb(26, 46, 26)'; // var(--t-noise) 等值
 const MONO_FONT = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
 
 /**
@@ -366,11 +366,11 @@ function CoordGridSvg() {
 function BarcodeBands() {
   return (
     <>
-      <div className="absolute inset-y-0 left-0 w-10 bg-[repeating-linear-gradient(90deg,#122012_0_2px,transparent_2px_6px)] opacity-70" />
-      <div className="absolute inset-y-0 right-0 w-16 bg-[repeating-linear-gradient(90deg,#122012_0_3px,transparent_3px_10px)] opacity-50" />
+      <div className="absolute inset-y-0 left-0 w-10 bg-[repeating-linear-gradient(90deg,var(--t-noise2)_0_2px,transparent_2px_6px)] opacity-70" />
+      <div className="absolute inset-y-0 right-0 w-16 bg-[repeating-linear-gradient(90deg,var(--t-noise2)_0_3px,transparent_3px_10px)] opacity-50" />
       {/* 底部标尺刻度：次刻度每 8px，主刻度每 40px */}
-      <div className="absolute inset-x-0 bottom-0 h-2.5 bg-[repeating-linear-gradient(90deg,#1A2E1A_0_1px,transparent_1px_8px)] opacity-60" />
-      <div className="absolute inset-x-0 bottom-0 h-5 bg-[repeating-linear-gradient(90deg,#1A2E1A_0_1px,transparent_1px_40px)] opacity-60" />
+      <div className="absolute inset-x-0 bottom-0 h-2.5 bg-[repeating-linear-gradient(90deg,var(--t-noise)_0_1px,transparent_1px_8px)] opacity-60" />
+      <div className="absolute inset-x-0 bottom-0 h-5 bg-[repeating-linear-gradient(90deg,var(--t-noise)_0_1px,transparent_1px_40px)] opacity-60" />
     </>
   );
 }

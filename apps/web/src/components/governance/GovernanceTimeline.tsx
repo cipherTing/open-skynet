@@ -18,9 +18,9 @@ type TimelineTone = 'accent' | 'info' | 'danger';
 
 /** 节点 = 1px 直角边框方块（无填充），色调仅由边框/图标承担。 */
 const TONE_NODE_CLASS: Record<TimelineTone, string> = {
-  accent: 'border-[#ADFF2F]/60 text-[#ADFF2F]',
-  info: 'border-[#3A5A3A] text-[#EDF3ED]/70',
-  danger: 'border-[#EF4444]/60 text-[#EF4444]/90',
+  accent: 'border-[var(--t-accent)]/60 text-[var(--t-accent)]',
+  info: 'border-[var(--t-faint)] text-[var(--t-sub)]',
+  danger: 'border-[var(--t-hazard)]/60 text-[var(--t-hazard)]/90',
 };
 
 function joinClasses(...classes: Array<string | false | null | undefined>): string {
@@ -41,7 +41,7 @@ function TimelineEvent({
   return (
     <li className="relative grid grid-cols-[24px_minmax(0,1fr)] gap-3">
       {isLast ? null : (
-        <span aria-hidden className="absolute bottom-[-13px] left-[11px] top-6 w-px bg-[#1A2E1A]" />
+        <span aria-hidden className="absolute bottom-[-13px] left-[11px] top-6 w-px bg-[var(--t-noise)]" />
       )}
       <span
         className={joinClasses(
@@ -51,14 +51,14 @@ function TimelineEvent({
       >
         {icon}
       </span>
-      <div className={isLast ? 'pb-1' : 'border-b border-[#122012] pb-3'}>{children}</div>
+      <div className={isLast ? 'pb-1' : 'border-b border-[var(--t-noise2)] pb-3'}>{children}</div>
     </li>
   );
 }
 
 function TimelineDate({ value }: { value: string }) {
   return (
-    <p className="mb-1 font-mono text-[10px] tabular-nums tracking-[0.15em] text-[#3A5A3A]">
+    <p className="mb-1 font-mono text-[10px] tabular-nums tracking-[0.15em] text-[var(--t-faint)]">
       {value}
     </p>
   );
@@ -68,7 +68,7 @@ export function GovernanceTimeline({ events }: GovernanceTimelineProps) {
   const { t, i18n } = useTranslation();
   if (events.length === 0) {
     return (
-      <p className="font-mono text-sm text-[#3A5A3A]">{t('governance.detail.loadingDetail')}</p>
+      <p className="font-mono text-sm text-[var(--t-sub)]">{t('governance.detail.loadingDetail')}</p>
     );
   }
 
@@ -88,7 +88,7 @@ export function GovernanceTimeline({ events }: GovernanceTimelineProps) {
               <h4 className="text-[13px] font-bold text-white/90">
                 {t('governance.timeline.caseOpened')}
               </h4>
-              <p className="mt-0.5 font-mono text-[11px] tabular-nums text-[#EDF3ED]/60">
+              <p className="mt-0.5 font-mono text-[11px] tabular-nums text-[var(--t-sub)]">
                 {formatGovernanceDateTime(event.occurredAt, i18n.language)}
               </p>
             </TimelineEvent>
@@ -113,7 +113,7 @@ export function GovernanceTimeline({ events }: GovernanceTimelineProps) {
                 violationLabel={t('governance.metrics.violationVotes')}
                 notViolationLabel={t('governance.metrics.notViolationVotes')}
               />
-              <p className="mt-2 font-mono text-[10px] tabular-nums tracking-[0.12em] text-[#3A5A3A]">
+              <p className="mt-2 font-mono text-[10px] tabular-nums tracking-[0.12em] text-[var(--t-faint)]">
                 {t('governance.timeline.voterCount', { count: event.violation.voterCount })} /{' '}
                 {t('governance.timeline.voterCount', { count: event.notViolation.voterCount })}
               </p>
@@ -132,7 +132,7 @@ export function GovernanceTimeline({ events }: GovernanceTimelineProps) {
               <h4 className="text-[13px] font-bold text-white/90">
                 {t('governance.timeline.adminCorrection')}
               </h4>
-              <p className="mt-0.5 text-xs leading-relaxed text-[#EDF3ED]/60">{event.publicReason}</p>
+              <p className="mt-0.5 text-xs leading-relaxed text-[var(--t-sub)]">{event.publicReason}</p>
             </TimelineEvent>
           );
         }
@@ -153,7 +153,7 @@ export function GovernanceTimeline({ events }: GovernanceTimelineProps) {
             <h4 className="text-[13px] font-bold text-white/90">
               {t('governance.timeline.caseResolved')}
             </h4>
-            <p className="mt-0.5 font-mono text-[11px] tabular-nums text-[#EDF3ED]/60">
+            <p className="mt-0.5 font-mono text-[11px] tabular-nums text-[var(--t-sub)]">
               {t(`governance.results.${getGovernanceResultKey(event.result)}`)} ·{' '}
               {formatGovernanceDuration(event.durationMinutes, '—', t)}
             </p>

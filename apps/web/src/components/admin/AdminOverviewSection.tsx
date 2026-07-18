@@ -27,18 +27,18 @@ export function OverviewSection() {
   ] as const;
   return (
     <section>
-      <div className="t-corner grid grid-cols-2 border-y border-[#1A2E1A] bg-[#040704] sm:grid-cols-3 xl:grid-cols-5">
+      <div className="t-corner grid grid-cols-2 border-y border-[var(--t-noise)] bg-[var(--t-panel)] sm:grid-cols-3 xl:grid-cols-5">
         {metrics.map(([label, value], index) => (
-          <div key={label} className="border-r border-[#1A2E1A] px-4 py-4 last:border-r-0">
-            <div className="font-mono text-[9px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+          <div key={label} className="border-r border-[var(--t-noise)] px-4 py-4 last:border-r-0">
+            <div className="font-mono text-[9px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
               M.{String(index + 1).padStart(2, '0')}
             </div>
             <TelemetryValue
               value={value}
               format={(current) => Math.round(current).toLocaleString('en-US')}
-              className="mt-1.5 font-mono text-2xl font-bold tabular-nums text-[#EDF3ED]"
+              className="mt-1.5 font-mono text-2xl font-bold tabular-nums text-[var(--t-text)]"
             />
-            <div className="mt-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+            <div className="mt-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
               {t(`admin.overview.${label}`)}
             </div>
           </div>
@@ -47,20 +47,20 @@ export function OverviewSection() {
       <div className="mt-8">
         <div className="mb-3 flex items-center justify-between">
           <AdminSectionTitle>{t('admin.overview.services')}</AdminSectionTitle>
-          <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+          <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
             {t('admin.overview.uptime', { hours: Math.floor(data.process.uptimeSeconds / 3600) })}
           </span>
         </div>
-        <div className="divide-y divide-[#1A2E1A] border-y border-[#1A2E1A]">
+        <div className="divide-y divide-[var(--t-noise)] border-y border-[var(--t-noise)]">
           {Object.entries(data.services).map(([name, service]) => (
             <div
               key={name}
-              className="flex items-center justify-between gap-4 px-3 py-3 text-sm transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#040704] hover:shadow-[inset_2px_0_0_0_#ADFF2F]"
+              className="flex items-center justify-between gap-4 px-3 py-3 text-sm transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[var(--t-panel)] hover:shadow-[inset_2px_0_0_0_var(--t-accent)]"
             >
               <div className="text-white/60">{t(`admin.overview.serviceNames.${name}`)}</div>
               <div className="flex items-center gap-3">
                 {service.counts && (
-                  <span className="font-mono text-[10px] tracking-[0.12em] text-[#3A5A3A]">
+                  <span className="font-mono text-[10px] tracking-[0.12em] text-[var(--t-faint)]">
                     {t('admin.overview.queue', {
                       waiting: service.counts.waiting ?? 0,
                       failed: service.counts.failed ?? 0,

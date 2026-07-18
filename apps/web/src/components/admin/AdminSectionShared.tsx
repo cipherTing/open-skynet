@@ -48,7 +48,7 @@ export function SectionToolbar({
       <AdminSectionTitle>{title}</AdminSectionTitle>
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 z-10 h-3.5 w-3.5 -translate-y-1/2 text-[#3A5A3A]" />
+          <Search className="absolute left-3 top-1/2 z-10 h-3.5 w-3.5 -translate-y-1/2 text-[var(--t-faint)]" />
           <TInput
             value={search}
             onChange={(event) => onSearch(event.target.value)}
@@ -81,8 +81,8 @@ export function AgentActionIcon({
         onClick={onClick}
         className={`flex h-8 w-8 items-center justify-center rounded-none border transition-colors duration-100 [transition-timing-function:steps(2,end)] ${
           warning
-            ? 'border-[#7F1D1D] text-[#EF4444]/80 hover:border-[#EF4444]/60 hover:bg-[#7F1D1D]/40 hover:text-[#EF4444]'
-            : 'border-[#1A2E1A] text-[#3A5A3A] hover:border-[#3A5A3A] hover:bg-[#ADFF2F]/10 hover:text-[#ADFF2F]'
+            ? 'border-[var(--t-hazard-dim)] text-[var(--t-hazard)] hover:border-[var(--t-hazard)] hover:bg-[var(--t-hazard-dim)] hover:text-[var(--t-hazard)]'
+            : 'border-[var(--t-noise)] text-[var(--t-sub)] hover:border-[var(--t-accent-dim)] hover:bg-[var(--t-accent-wash)] hover:text-[var(--t-accent)]'
         }`}
       >
         <Icon className="h-4 w-4" />
@@ -105,10 +105,10 @@ export function AgentMenuItem({
   return (
     <DropdownMenu.Item
       onSelect={onSelect}
-      className={`flex h-9 cursor-default select-none items-center gap-2.5 px-2.5 font-mono text-[11px] uppercase tracking-[0.12em] outline-none transition-colors duration-100 [transition-timing-function:steps(2,end)] data-[highlighted]:bg-[#ADFF2F]/10 ${
+      className={`flex h-9 cursor-default select-none items-center gap-2.5 px-2.5 font-mono text-[11px] uppercase tracking-[0.12em] outline-none transition-colors duration-100 [transition-timing-function:steps(2,end)] data-[highlighted]:bg-[var(--t-accent-wash)] ${
         warning
-          ? 'text-[#EF4444] data-[highlighted]:text-[#EF4444]'
-          : 'text-white/60 data-[highlighted]:text-[#ADFF2F]'
+          ? 'text-[var(--t-hazard)] data-[highlighted]:text-[var(--t-hazard)]'
+          : 'text-white/60 data-[highlighted]:text-[var(--t-accent)]'
       }`}
     >
       <Icon className="h-3.5 w-3.5" />
@@ -174,7 +174,7 @@ export function DecisionDialog({
         <div className="mt-4">
           <label
             htmlFor="admin-decision-reason"
-            className="mb-2 block font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]"
+            className="mb-2 block font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]"
           >
             {t('admin.action.reason')}
           </label>
@@ -187,13 +187,13 @@ export function DecisionDialog({
           />
           <div
             aria-hidden
-            className="mt-1.5 text-right font-mono text-[9px] tracking-[0.2em] text-[#3A5A3A]"
+            className="mt-1.5 text-right font-mono text-[9px] tracking-[0.2em] text-[var(--t-faint)]"
           >
             CH {String(reason.trim().length).padStart(3, '0')} / MIN 004
           </div>
         </div>
       ) : null}
-      {error ? <p className="mt-3 text-xs text-[#EF4444]">{error.message}</p> : null}
+      {error ? <p className="mt-3 text-xs text-[var(--t-hazard)]">{error.message}</p> : null}
     </TerminalDialog>
   );
 }
@@ -297,7 +297,7 @@ export function AdminActionDialog({
       }
     >
       {extraLabel && (
-        <label className="mb-4 block font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+        <label className="mb-4 block font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
           {extraLabel}
           <TInput
             type={action.kind === 'adjustXp' ? 'number' : 'text'}
@@ -307,7 +307,7 @@ export function AdminActionDialog({
           />
         </label>
       )}
-      <label className="block font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+      <label className="block font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
         {t('admin.action.reason')}
         <ComposerTextarea
           value={reason}
@@ -317,7 +317,7 @@ export function AdminActionDialog({
           variant="framed"
         />
       </label>
-      {mutation.isError && <p className="mt-3 text-xs text-[#EF4444]">{t('admin.action.failed')}</p>}
+      {mutation.isError && <p className="mt-3 text-xs text-[var(--t-hazard)]">{t('admin.action.failed')}</p>}
     </TerminalDialog>
   );
 }

@@ -61,7 +61,7 @@ export function TerminalFrame({ activeSection }: TerminalFrameProps) {
         <div className="flex h-12 items-center justify-between gap-4 px-4 md:px-6">
           <a href="#hero" className="pointer-events-auto flex items-center gap-3">
             <span className="t-display text-sm text-[var(--t-ink)]">SKYNET</span>
-            <span className="t-mono hidden text-[var(--t-dim)] lg:inline">
+            <span className="t-mono hidden text-[var(--t-faint)] lg:inline">
               {t('landing.nav.logoTag')}
             </span>
           </a>
@@ -76,7 +76,7 @@ export function TerminalFrame({ activeSection }: TerminalFrameProps) {
                   className={`t-mono transition-colors duration-100 [transition-timing-function:steps(2,end)] ${
                     isActive
                       ? 'text-[var(--t-accent)]'
-                      : 'text-[var(--t-dim)] hover:text-[var(--t-ink)]'
+                      : 'text-[var(--t-sub)] hover:text-[var(--t-ink)]'
                   }`}
                 >
                   <ScrambleText text={t(`landing.nav.${item.id}`)} />
@@ -102,7 +102,7 @@ export function TerminalFrame({ activeSection }: TerminalFrameProps) {
         className="absolute left-3 top-1/2 hidden -translate-y-1/2 md:block"
         aria-hidden
       >
-        <span className="t-mono text-[var(--t-dim)] [writing-mode:vertical-rl]">
+        <span className="t-mono text-[var(--t-faint)] [writing-mode:vertical-rl]">
           {t('landing.meta.railLeft')}
         </span>
       </aside>
@@ -110,7 +110,7 @@ export function TerminalFrame({ activeSection }: TerminalFrameProps) {
         className="absolute right-3 top-1/2 hidden -translate-y-1/2 md:block"
         aria-hidden
       >
-        <span className="t-mono text-[var(--t-dim)] [writing-mode:vertical-rl]">
+        <span className="t-mono text-[var(--t-faint)] [writing-mode:vertical-rl]">
           {t('landing.meta.railRight')}
         </span>
       </aside>
@@ -119,10 +119,10 @@ export function TerminalFrame({ activeSection }: TerminalFrameProps) {
       <footer className="absolute inset-x-0 bottom-0 bg-[rgba(0,0,0,0.72)] backdrop-blur-md">
         <div className="h-px w-full bg-[var(--t-noise)]" aria-hidden />
         <div className="flex h-10 items-center justify-between gap-4 px-4 md:px-6">
-          <span className="t-mono truncate text-[var(--t-dim)]">
+          <span className="t-mono truncate text-[var(--t-faint)]">
             {t('landing.meta.coordinates')}
           </span>
-          <span className="t-mono hidden text-[var(--t-dim)] md:inline">
+          <span className="t-mono hidden text-[var(--t-faint)] md:inline">
             {t('landing.meta.scrollHint')}
           </span>
           <span className="t-mono tabular-nums text-[var(--t-ink)]">

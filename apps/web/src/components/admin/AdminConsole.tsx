@@ -5,7 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { RefreshCw } from 'lucide-react';
+import { ArrowLeft, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/contexts/AuthContext';
 import { ErrorState, LoadingScreen } from '@/components/ui/LoadingState';
@@ -78,10 +78,10 @@ function isAdminSection(value: string | null): value is AdminSection {
 function ViewportCorners() {
   return (
     <div aria-hidden className="pointer-events-none fixed inset-0 z-40">
-      <span className="absolute left-0 top-0 h-3 w-3 border-l border-t border-[#3A5A3A]" />
-      <span className="absolute right-0 top-0 h-3 w-3 border-r border-t border-[#3A5A3A]" />
-      <span className="absolute bottom-0 left-0 h-3 w-3 border-b border-l border-[#3A5A3A]" />
-      <span className="absolute bottom-0 right-0 h-3 w-3 border-b border-r border-[#3A5A3A]" />
+      <span className="absolute left-0 top-0 h-3 w-3 border-l border-t border-[var(--t-faint)]" />
+      <span className="absolute right-0 top-0 h-3 w-3 border-r border-t border-[var(--t-faint)]" />
+      <span className="absolute bottom-0 left-0 h-3 w-3 border-b border-l border-[var(--t-faint)]" />
+      <span className="absolute bottom-0 right-0 h-3 w-3 border-b border-r border-[var(--t-faint)]" />
     </div>
   );
 }
@@ -89,8 +89,8 @@ function ViewportCorners() {
 function UtcClock() {
   const now = useUtcNow(1000);
   return (
-    <span className="hidden items-center gap-2 font-mono text-[10px] tracking-[0.15em] text-[#3A5A3A] sm:inline-flex">
-      <span aria-hidden className="t-anim-blink text-[#ADFF2F]">
+    <span className="hidden items-center gap-2 font-mono text-[10px] tracking-[0.15em] text-[var(--t-faint)] sm:inline-flex">
+      <span aria-hidden className="t-anim-blink text-[var(--t-accent)]">
         ▮
       </span>
       <span className="tabular-nums text-white/70">
@@ -147,27 +147,27 @@ function AdminWorkspace({ section }: { section: AdminSection }) {
   return (
     <div className="min-h-dvh bg-black">
       <ViewportCorners />
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-[#1A2E1A] bg-[#040704] lg:flex">
-        <div className="border-b border-[#1A2E1A] px-5 py-5">
-          <div className="font-mono text-[9px] uppercase tracking-[0.3em] text-[#3A5A3A]">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-[var(--t-noise)] bg-[var(--t-panel)] lg:flex">
+        <div className="border-b border-[var(--t-noise)] px-5 py-5">
+          <div className="font-mono text-[9px] uppercase tracking-[0.3em] text-[var(--t-faint)]">
             SKYNET.OS
           </div>
-          <div className="mt-1.5 font-mono text-[13px] font-bold uppercase tracking-[0.2em] text-[#ADFF2F]">
+          <div className="mt-1.5 font-mono text-[13px] font-bold uppercase tracking-[0.2em] text-[var(--t-accent)]">
             ROOT CONSOLE
           </div>
           <p className="mt-2 text-[11px] leading-4 text-white/50">{t('admin.subtitle')}</p>
           <p
             aria-hidden
-            className="mt-3 font-mono text-[9px] uppercase tracking-[0.25em] text-[#1A2E1A]"
+            className="mt-3 font-mono text-[9px] uppercase tracking-[0.25em] text-[var(--t-faint)]"
           >
             PRIVILEGED ACCESS // ROOT
           </p>
         </div>
         <nav className="flex-1 overflow-y-auto" aria-label={t('adminDialogs.secIndex')}>
           {SECTION_GROUPS.map((group) => (
-            <div key={group.id} className="border-b border-[#122012] px-3 py-3 last:border-b-0">
-              <div className="mb-2 flex items-center gap-2 px-2 font-mono text-[9px] uppercase tracking-[0.25em] text-[#3A5A3A]">
-                <span aria-hidden className="text-[#1A2E1A]">
+            <div key={group.id} className="border-b border-[var(--t-noise2)] px-3 py-3 last:border-b-0">
+              <div className="mb-2 flex items-center gap-2 px-2 font-mono text-[9px] uppercase tracking-[0.25em] text-[var(--t-faint)]">
+                <span aria-hidden className="text-[var(--t-faint)]">
                   {'//'}
                 </span>
                 {t(`admin.groups.${group.id}`)}
@@ -183,15 +183,15 @@ function AdminWorkspace({ section }: { section: AdminSection }) {
                       onClick={() => router.replace(`/admin?section=${id}`)}
                       className={`group flex w-full items-baseline gap-2.5 px-2 py-1.5 text-left transition-colors duration-100 [transition-timing-function:steps(2,end)] ${
                         active
-                          ? 'bg-[#ADFF2F]/5 shadow-[inset_2px_0_0_0_#ADFF2F]'
-                          : 'hover:bg-black hover:shadow-[inset_2px_0_0_0_#3A5A3A]'
+                          ? 'bg-[var(--t-accent-wash)] shadow-[inset_2px_0_0_0_var(--t-accent)]'
+                          : 'hover:bg-black hover:shadow-[inset_2px_0_0_0_var(--t-accent-dim)]'
                       }`}
                     >
                       <span
                         className={`shrink-0 font-mono text-[9px] tracking-[0.15em] ${
                           active
-                            ? 'text-[#ADFF2F]'
-                            : 'text-[#3A5A3A] group-hover:text-[#EDF3ED]'
+                            ? 'text-[var(--t-accent)]'
+                            : 'text-[var(--t-sub)] group-hover:text-[var(--t-text)]'
                         }`}
                       >
                         [{secCode(id)}]
@@ -199,8 +199,8 @@ function AdminWorkspace({ section }: { section: AdminSection }) {
                       <span
                         className={`truncate text-[13px] ${
                           active
-                            ? 'font-bold text-[#ADFF2F]'
-                            : 'text-white/60 group-hover:text-[#EDF3ED]'
+                            ? 'font-bold text-[var(--t-accent)]'
+                            : 'text-white/60 group-hover:text-[var(--t-text)]'
                         }`}
                       >
                         {t(`admin.sections.${id}`)}
@@ -212,31 +212,30 @@ function AdminWorkspace({ section }: { section: AdminSection }) {
             </div>
           ))}
         </nav>
-        <div className="border-t border-[#1A2E1A] p-3">
-          <Link
-            href="/workspace"
-            className="flex items-center gap-2 px-2 py-2 font-mono text-[10px] uppercase tracking-[0.2em] text-[#3A5A3A] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-[#ADFF2F]"
-          >
-            <span aria-hidden>[&lt;&lt;]</span>
-            {t('admin.backHome')}
-          </Link>
-        </div>
       </aside>
 
       <main className="min-w-0 lg:ml-60">
-        <header className="sticky top-0 z-20 border-b border-[#1A2E1A] bg-black/90 backdrop-blur-md">
+        <header className="sticky top-0 z-20 border-b border-[var(--t-noise)] bg-black/90 backdrop-blur-md">
           <div className="flex items-center justify-between gap-4 px-4 py-3 sm:px-6">
-            <div className="flex min-w-0 items-baseline gap-3">
-              <span className="hidden shrink-0 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[#ADFF2F] md:inline">
+            <div className="flex min-w-0 items-center gap-3">
+              <Link
+                href="/workspace"
+                className="inline-flex h-8 shrink-0 items-center gap-1.5 border border-[var(--t-noise)] px-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-sub)] transition-colors [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]"
+              >
+                <ArrowLeft className="h-3.5 w-3.5 stroke-[1.5]" />
+                {t('admin.backHome')}
+              </Link>
+              <span aria-hidden className="h-3 w-px shrink-0 bg-[var(--t-noise)]" />
+              <span className="hidden shrink-0 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--t-accent)] md:inline">
                 ROOT CONSOLE
               </span>
-              <span aria-hidden className="hidden shrink-0 text-[#1A2E1A] md:inline">
+              <span aria-hidden className="hidden shrink-0 text-[var(--t-faint)] md:inline">
                 /
               </span>
-              <span className="shrink-0 font-mono text-[10px] tracking-[0.15em] text-[#3A5A3A]">
+              <span className="shrink-0 font-mono text-[10px] tracking-[0.15em] text-[var(--t-faint)]">
                 [{secCode(section)}]
               </span>
-              <h1 className="truncate text-lg font-bold text-[#EDF3ED]">
+              <h1 className="truncate text-lg font-bold text-[var(--t-text)]">
                 {t(`admin.sections.${section}`)}
               </h1>
             </div>
@@ -246,7 +245,7 @@ function AdminWorkspace({ section }: { section: AdminSection }) {
                 type="button"
                 aria-label={t('admin.refresh')}
                 onClick={() => void queryClient.invalidateQueries({ queryKey: ['admin', section] })}
-                className="flex h-8 w-8 items-center justify-center rounded-none border border-[#1A2E1A] text-[#3A5A3A] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[#ADFF2F] hover:text-[#ADFF2F]"
+                className="flex h-8 w-8 items-center justify-center rounded-none border border-[var(--t-noise)] text-[var(--t-sub)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]"
               >
                 <RefreshCw className="h-4 w-4" />
               </button>
@@ -264,8 +263,8 @@ function AdminWorkspace({ section }: { section: AdminSection }) {
                 onClick={() => router.replace(`/admin?section=${id}`)}
                 className={`shrink-0 rounded-none px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] transition-colors duration-100 [transition-timing-function:steps(2,end)] ${
                   section === id
-                    ? 'bg-[#ADFF2F]/10 text-[#ADFF2F] shadow-[inset_0_-2px_0_0_#ADFF2F]'
-                    : 'text-[#3A5A3A] hover:text-white/85'
+                    ? 'bg-[var(--t-accent-wash)] text-[var(--t-accent)] shadow-[inset_0_-2px_0_0_var(--t-accent)]'
+                    : 'text-[var(--t-sub)] hover:text-white/85'
                 }`}
               >
                 <span className="mr-1.5 text-[9px]">[{secCode(id)}]</span>

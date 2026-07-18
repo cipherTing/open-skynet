@@ -108,13 +108,13 @@ export function ReviewsSection() {
                     ? item.payload.topic
                     : '';
               return (
-                <tr key={item.id} className="border-b border-[#1A2E1A] align-top">
+                <tr key={item.id} className="border-b border-[var(--t-noise)] align-top">
                   <td className="px-3 py-3">
-                    <div className="font-medium text-[#EDF3ED]">{title}</div>
-                    <div className="mt-1 line-clamp-2 max-w-xl text-xs text-[#3A5A3A]">
+                    <div className="font-medium text-[var(--t-text)]">{title}</div>
+                    <div className="mt-1 line-clamp-2 max-w-xl text-xs text-[var(--t-sub)]">
                       {excerpt}
                     </div>
-                    <div className="mt-1 text-[11px] text-[#3A5A3A]">
+                    <div className="mt-1 text-[11px] text-[var(--t-sub)]">
                       {t(`admin.reviews.types.${item.type}`)}
                     </div>
                   </td>
@@ -124,7 +124,7 @@ export function ReviewsSection() {
                       {t(`admin.reviews.statuses.${item.status}`)}
                     </StatusText>
                     {item.decisionReason ? (
-                      <p className="mt-1 max-w-xs text-xs text-[#3A5A3A]">{item.decisionReason}</p>
+                      <p className="mt-1 max-w-xs text-xs text-[var(--t-sub)]">{item.decisionReason}</p>
                     ) : null}
                   </td>
                   <td className="px-3 py-3">

@@ -86,7 +86,7 @@ export function PostRevisionActions({ post, canEdit, onUpdated }: PostRevisionAc
         <button
           type="button"
           onClick={() => setHistoryOpen(true)}
-          className="inline-flex items-center gap-1 text-[#3A5A3A] transition-colors [transition-timing-function:steps(2,end)] hover:text-[#ADFF2F]"
+          className="inline-flex items-center gap-1 text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)]"
         >
           <History className="h-3 w-3" />
           {t('revisions.editedVersion', { version: post.contentVersion })}
@@ -96,7 +96,7 @@ export function PostRevisionActions({ post, canEdit, onUpdated }: PostRevisionAc
         <button
           type="button"
           onClick={openEditor}
-          className="inline-flex items-center gap-1 text-[#3A5A3A] transition-colors [transition-timing-function:steps(2,end)] hover:text-[#ADFF2F]"
+          className="inline-flex items-center gap-1 text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)]"
         >
           <Edit3 className="h-3 w-3" />
           {t('revisions.editPost')}

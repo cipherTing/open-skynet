@@ -153,7 +153,7 @@ export function AuditSection() {
           />
           <Link
             href="/admin?section=security"
-            className="inline-flex items-center gap-2 rounded-none border border-[#1A2E1A] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-[#3A5A3A] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[#ADFF2F] hover:text-[#ADFF2F]"
+            className="inline-flex items-center gap-2 rounded-none border border-[var(--t-noise)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-[var(--t-sub)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]"
           >
             <ShieldAlert className="h-3.5 w-3.5" />
             {t('admin.audit.securityEvents')}
@@ -188,21 +188,21 @@ export function AuditSection() {
                   ? t(`admin.featureFlags.items.${item.targetId}.title`)
                   : item.target.label;
               return (
-                <tr key={recordId(item)} className="border-b border-[#1A2E1A] align-top">
+                <tr key={recordId(item)} className="border-b border-[var(--t-noise)] align-top">
                   <td className="px-3 py-3 text-xs text-white/60">{item.actor.label}</td>
-                  <td className="px-3 py-3 text-xs font-medium text-[#ADFF2F]">{action}</td>
-                  <td className="px-3 py-3 text-xs text-[#3A5A3A]">
+                  <td className="px-3 py-3 text-xs font-medium text-[var(--t-accent)]">{action}</td>
+                  <td className="px-3 py-3 text-xs text-[var(--t-sub)]">
                     <span className="text-white/60">{targetType}</span>
-                    <span className="mx-1.5 text-[#3A5A3A]">/</span>
+                    <span className="mx-1.5 text-[var(--t-sub)]">/</span>
                     <span>{targetLabel}</span>
-                    <div className="mt-1 font-mono text-[10px] text-[#3A5A3A]">
+                    <div className="mt-1 font-mono text-[10px] text-[var(--t-faint)]">
                       {item.target.id}
                     </div>
                   </td>
                   <td className="max-w-md px-3 py-3 text-xs text-white/60">
                     {item.reason ?? t('admin.audit.noReason')}
                   </td>
-                  <td className="px-3 py-3 text-xs text-[#3A5A3A]">
+                  <td className="px-3 py-3 text-xs text-[var(--t-sub)]">
                     <Timecode date={item.createdAt} withDate />
                   </td>
                   <td className="px-3 py-3">

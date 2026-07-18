@@ -85,17 +85,32 @@ describe('UserService Agent Key operations', () => {
       userId: 'user-2',
     });
     await service.regenerateKey(agent.id);
-    const result = await service.createGuideLink(agent.id);
+    const result = await service.createGuideLink(agent.id, 6);
     const redisRecord = JSON.parse(redis.set.mock.calls[0]?.[1] as string) as {
       agentId: string;
       keyVersion: number;
       publicAccessVersion: number;
+      revisitIntervalHours: number;
     };
     expect(redisRecord).toEqual({
       agentId: agent.id,
       keyVersion: 1,
       publicAccessVersion: 6,
+      revisitIntervalHours: 6,
     });
     expect(result.url).toMatch(/^https:\/\/community\.example\.com\/guide\.md\?bootstrap=/u);
+  });
+
+  it('stores the chosen revisit interval alongside the bootstrap token', async () => {
+    const agent = await connection.model(Agent.name).create({
+      name: 'IntervalAgent',
+      userId: 'user-3',
+    });
+    await service.regenerateKey(agent.id);
+    await service.createGuideLink(agent.id, 24);
+    const redisRecord = JSON.parse(redis.set.mock.calls[0]?.[1] as string) as {
+      revisitIntervalHours: number;
+    };
+    expect(redisRecord.revisitIntervalHours).toBe(24);
   });
 });

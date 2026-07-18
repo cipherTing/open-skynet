@@ -43,7 +43,7 @@ function SnapshotText({ content, emphasized = false }: { content: string; emphas
   return (
     <div>
       <p
-        className={`whitespace-pre-wrap text-sm leading-7 text-[#EDF3ED]/75 [overflow-wrap:anywhere] ${
+        className={`whitespace-pre-wrap text-sm leading-7 text-[var(--t-text)] [overflow-wrap:anywhere] ${
           expanded ? '' : 'line-clamp-6'
         }`}
       >
@@ -65,7 +65,7 @@ function SnapshotText({ content, emphasized = false }: { content: string; emphas
 }
 
 /** 快照档案页：1px 暗绿边框 + 近黑面板，禁止底色卡片堆叠。 */
-const SNAPSHOT_FRAME_CLASS = 'border border-[#1A2E1A] bg-[#040704] p-4';
+const SNAPSHOT_FRAME_CLASS = 'border border-[var(--t-noise)] bg-[var(--t-panel)] p-4';
 
 function SnapshotHeader({
   icon,
@@ -105,7 +105,7 @@ function PostSnapshot({
       <h3 className="mt-2.5 text-base font-bold text-white">{snapshot.post.title}</h3>
       <div className="mb-3 mt-2 flex flex-wrap items-center gap-2">
         <PostTags tags={snapshot.post.tags} />
-        <span className="font-mono text-[10px] tracking-[0.12em] text-[#3A5A3A]">
+        <span className="font-mono text-[10px] tracking-[0.12em] text-[var(--t-faint)]">
           {t('governance.detail.contentVersion', { version: snapshot.post.contentVersion })}
         </span>
       </div>
@@ -130,21 +130,21 @@ function ReplySnapshot({
         <h3 className="mt-2.5 text-base font-bold text-white">{snapshot.post.title}</h3>
         <div className="mb-3 mt-2 flex flex-wrap items-center gap-2">
           <PostTags tags={snapshot.post.tags} />
-          <span className="font-mono text-[10px] tracking-[0.12em] text-[#3A5A3A]">
+          <span className="font-mono text-[10px] tracking-[0.12em] text-[var(--t-faint)]">
             {t('governance.detail.contentVersion', { version: snapshot.post.contentVersion })}
           </span>
         </div>
         <SnapshotText content={snapshot.post.content} />
       </article>
 
-      <div className="ml-5 grid gap-3 border-l border-[#3A5A3A]/50 pl-4">
+      <div className="ml-5 grid gap-3 border-l border-[var(--t-noise)] pl-4">
         {snapshot.parentReply ? (
           <article className={`relative ${SNAPSHOT_FRAME_CLASS}`}>
-            <span aria-hidden className="absolute -left-4 top-6 w-4 border-t border-[#3A5A3A]/50" />
-            <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+            <span aria-hidden className="absolute -left-4 top-6 w-4 border-t border-[var(--t-noise)]" />
+            <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
               {t('governance.detail.parentReply')}
             </p>
-            <p className="mb-2 font-mono text-[10px] tracking-[0.12em] text-[#3A5A3A]">
+            <p className="mb-2 font-mono text-[10px] tracking-[0.12em] text-[var(--t-faint)]">
               {t('governance.detail.contentVersion', {
                 version: snapshot.parentReply.contentVersion,
               })}
@@ -153,16 +153,16 @@ function ReplySnapshot({
           </article>
         ) : null}
 
-        <article className="relative border border-[#ADFF2F]/40 bg-[#040704] py-3 pl-5 pr-4">
+        <article className="relative border border-[var(--t-accent)]/40 bg-[var(--t-panel)] py-3 pl-5 pr-4">
           <GovernanceAlertRail tone="pending" />
-          <span aria-hidden className="absolute -left-4 top-6 w-4 border-t border-[#3A5A3A]/50" />
+          <span aria-hidden className="absolute -left-4 top-6 w-4 border-t border-[var(--t-noise)]" />
           <div className="flex items-center gap-2">
             <TTag color="accent">
               <MessageSquare className="h-3 w-3" />
               {t('governance.detail.reportedReply')}
             </TTag>
           </div>
-          <p className="mb-2 mt-2 font-mono text-[10px] tracking-[0.12em] text-[#3A5A3A]">
+          <p className="mb-2 mt-2 font-mono text-[10px] tracking-[0.12em] text-[var(--t-faint)]">
             {t('governance.detail.contentVersion', { version: snapshot.reply.contentVersion })}
           </p>
           <SnapshotText content={snapshot.reply.content} emphasized />
@@ -240,7 +240,7 @@ function VoteSummary({ result }: { result: GovernanceResultFeedItem }) {
 function VerdictCell({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="bg-black p-3">
-      <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">{label}</p>
+      <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">{label}</p>
       <div className="mt-2">{children}</div>
     </div>
   );
@@ -276,16 +276,16 @@ export function GovernanceResultDetailModal({
               tone={displayResult.result === 'violation' ? 'violation' : 'notViolation'}
               label={t(`governance.results.${getGovernanceResultKey(displayResult.result)}`)}
             />
-            <p className="text-xs text-[#3A5A3A]">{t('governance.detail.description')}</p>
+            <p className="text-xs text-[var(--t-sub)]">{t('governance.detail.description')}</p>
           </div>
 
           <TPanel>
             <GovernanceChapterTitle chapter="CH.01" title={t('governance.detail.verdictSummary')} />
-            <section className="mt-4 grid gap-px border border-[#1A2E1A] bg-[#1A2E1A] sm:grid-cols-3">
+            <section className="mt-4 grid gap-px border border-[var(--t-noise)] bg-[var(--t-noise)] sm:grid-cols-3">
               <VerdictCell label={t('governance.detail.verdictSummary')}>
                 <p
                   className={`font-mono text-sm font-bold ${
-                    displayResult.result === 'violation' ? 'text-[#EF4444]' : 'text-[#ADFF2F]'
+                    displayResult.result === 'violation' ? 'text-[var(--t-hazard)]' : 'text-[var(--t-accent)]'
                   }`}
                 >
                   {t(`governance.results.${getGovernanceResultKey(displayResult.result)}`)}
@@ -304,7 +304,7 @@ export function GovernanceResultDetailModal({
                 </p>
               </VerdictCell>
               <VerdictCell label={t('governance.detail.duration')}>
-                <p className="font-mono text-sm font-bold tabular-nums text-[#ADFF2F]">
+                <p className="font-mono text-sm font-bold tabular-nums text-[var(--t-accent)]">
                   {formatGovernanceDuration(displayResult.durationMinutes, '—', t)}
                 </p>
               </VerdictCell>
@@ -327,11 +327,11 @@ export function GovernanceResultDetailModal({
                   : t('governance.detail.communityDecision')
               }
             />
-            <div className="relative mt-4 border border-[#1A2E1A] bg-[#040704] py-3 pl-5 pr-4">
+            <div className="relative mt-4 border border-[var(--t-noise)] bg-[var(--t-panel)] py-3 pl-5 pr-4">
               <GovernanceAlertRail
                 tone={displayResult.resolutionSource === 'ADMIN' ? 'admin' : 'closed'}
               />
-              <p className="whitespace-pre-wrap text-sm leading-6 text-[#EDF3ED]/75">
+              <p className="whitespace-pre-wrap text-sm leading-6 text-[var(--t-text)]">
                 {displayResult.resolutionReason ?? t('governance.detail.noPublicReason')}
               </p>
             </div>
@@ -341,11 +341,11 @@ export function GovernanceResultDetailModal({
             <GovernanceChapterTitle chapter="CH.04" title={t('governance.detail.targetSnapshot')} />
             <div className="mt-4">
               {detailQuery.isLoading ? (
-                <p className="font-mono text-sm text-[#3A5A3A]">
+                <p className="font-mono text-sm text-[var(--t-sub)]">
                   {t('governance.detail.loadingDetail')}
                 </p>
               ) : detailQuery.isError ? (
-                <p className="border border-[#7F1D1D] px-3 py-2 font-mono text-sm text-[#EF4444]/80">
+                <p className="border border-[var(--t-hazard-dim)] px-3 py-2 font-mono text-sm text-[var(--t-hazard)]/80">
                   {t('governance.detail.loadFailed')}
                 </p>
               ) : detail ? (

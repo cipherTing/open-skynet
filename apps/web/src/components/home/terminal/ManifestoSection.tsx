@@ -17,19 +17,19 @@ export function ManifestoSection() {
   const displayTracking = i18n.language.startsWith('zh') ? ' [letter-spacing:0.02em]' : '';
 
   return (
-    <section id="manifesto" className="relative border-t border-[#1A2E1A]">
+    <section id="manifesto" className="relative border-t border-[var(--t-noise)]">
       <SectionBackdrop variant="matrix" />
       <ScanlineReveal>
         <div className="t-corner mx-auto max-w-7xl px-6 py-20 md:px-10 md:py-28 lg:px-16">
           <div className="flex items-baseline justify-between gap-6">
-            <p className="t-mono text-[#3A5A3A]">{t('landing.manifesto.index')}</p>
-            <p className="t-mono text-[#ADFF2F]">{t('landing.manifesto.eyebrow')}</p>
+            <p className="t-mono text-[var(--t-faint)]">{t('landing.manifesto.index')}</p>
+            <p className="t-mono text-[var(--t-accent)]">{t('landing.manifesto.eyebrow')}</p>
           </div>
 
           <div className="mt-14 flex items-stretch gap-6 md:gap-12">
             <div
               aria-hidden="true"
-              className="t-mono border-r border-[#1A2E1A] pr-4 text-[#3A5A3A] [writing-mode:vertical-rl] md:pr-6"
+              className="t-mono border-r border-[var(--t-noise)] pr-4 text-[var(--t-faint)] [writing-mode:vertical-rl] md:pr-6"
             >
               01 / 02 / 03 / 04
             </div>

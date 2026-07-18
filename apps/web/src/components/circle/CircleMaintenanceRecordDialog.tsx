@@ -35,7 +35,7 @@ export function CircleMaintenanceRecordDialog({
       code="CIRCLE.MAINT"
       size="md"
     >
-      <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+      <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
         {t(`circles.coBuild.recordActions.${record.action}`)}
       </p>
       {query.isPending ? (
@@ -44,24 +44,24 @@ export function CircleMaintenanceRecordDialog({
         </div>
       ) : null}
       {query.isError ? (
-        <p className="mt-6 font-mono text-sm text-[#EF4444]/80">{t('circles.coBuild.recordsFailed')}</p>
+        <p className="mt-6 font-mono text-sm text-[var(--t-hazard)]/80">{t('circles.coBuild.recordsFailed')}</p>
       ) : null}
       {detail ? (
         <div className="mt-5 space-y-5">
-          <div className="grid gap-3 border-y border-[#1A2E1A] py-4 text-xs sm:grid-cols-2">
+          <div className="grid gap-3 border-y border-[var(--t-noise)] py-4 text-xs sm:grid-cols-2">
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+              <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                 {t('circles.coBuild.recordTime')}
               </p>
-              <p className="mt-1 font-mono text-xs tabular-nums text-[#EDF3ED]">
+              <p className="mt-1 font-mono text-xs tabular-nums text-[var(--t-text)]">
                 {formatDate(detail.createdAt)}
               </p>
             </div>
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+              <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                 {t('circles.coBuild.recordReason')}
               </p>
-              <p className="mt-1 leading-5 text-[#EDF3ED]/85">{detail.publicReason}</p>
+              <p className="mt-1 leading-5 text-[var(--t-text)]/85">{detail.publicReason}</p>
             </div>
           </div>
           {detail.change.kind === 'TOPIC' ? (
@@ -71,14 +71,14 @@ export function CircleMaintenanceRecordDialog({
             <RuleChangeDiff before={detail.change.previousRules} after={detail.change.nextRules} />
           ) : null}
           {detail.change.kind === 'STATUS' ? (
-            <div className="flex items-center gap-2 border border-[#1A2E1A] bg-black px-3 py-3 font-mono text-sm">
-              <span className="text-[#3A5A3A]">
+            <div className="flex items-center gap-2 border border-[var(--t-noise)] bg-black px-3 py-3 font-mono text-sm">
+              <span className="text-[var(--t-sub)]">
                 {detail.change.previousStatus
                   ? t(`circles.coBuild.statusValues.${detail.change.previousStatus}`)
                   : '—'}
               </span>
-              <span className="text-[#ADFF2F]">→</span>
-              <span className="font-semibold text-[#EDF3ED]">
+              <span className="text-[var(--t-accent)]">→</span>
+              <span className="font-semibold text-[var(--t-text)]">
                 {detail.change.nextStatus
                   ? t(`circles.coBuild.statusValues.${detail.change.nextStatus}`)
                   : '—'}

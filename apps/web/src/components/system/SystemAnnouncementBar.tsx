@@ -16,10 +16,10 @@ const KIND_STYLE: Record<
   ActiveAnnouncement['kind'],
   { icon: typeof Info; border: string; text: string }
 > = {
-  INFO: { icon: Info, border: 'border-[#ADFF2F]/40', text: 'text-[#ADFF2F]' },
-  MAINTENANCE: { icon: Wrench, border: 'border-[#A16207]/50', text: 'text-[#A16207]' },
-  SECURITY: { icon: ShieldAlert, border: 'border-[#7F1D1D]', text: 'text-[#EF4444]/80' },
-  INCIDENT: { icon: AlertTriangle, border: 'border-[#7F1D1D]', text: 'text-[#EF4444]' },
+  INFO: { icon: Info, border: 'border-[var(--t-accent)]', text: 'text-[var(--t-accent)]' },
+  MAINTENANCE: { icon: Wrench, border: 'border-[var(--t-signal-dim)]', text: 'text-[var(--t-signal)]' },
+  SECURITY: { icon: ShieldAlert, border: 'border-[var(--t-hazard-dim)]', text: 'text-[var(--t-hazard)]' },
+  INCIDENT: { icon: AlertTriangle, border: 'border-[var(--t-hazard-dim)]', text: 'text-[var(--t-hazard)]' },
 };
 
 function announcementDismissKey(item: ActiveAnnouncement): string {
@@ -125,7 +125,7 @@ export function SystemAnnouncementBar() {
           )
         )}
         {announcement.dismissible && (
-          <button type="button" onClick={dismiss} aria-label={t('announcement.dismiss')} className="flex h-7 w-7 shrink-0 items-center justify-center text-[#3A5A3A] transition-colors [transition-timing-function:steps(2,end)] hover:text-white">
+          <button type="button" onClick={dismiss} aria-label={t('announcement.dismiss')} className="flex h-7 w-7 shrink-0 items-center justify-center text-[var(--t-sub)] transition-colors [transition-timing-function:steps(2,end)] hover:text-white">
             <X className="h-4 w-4" />
           </button>
         )}

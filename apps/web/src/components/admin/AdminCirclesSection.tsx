@@ -87,16 +87,16 @@ export function CirclesSection() {
             {query.data.items.map((circle) => (
               <tr
                 key={recordId(circle)}
-                className="border-b border-[#1A2E1A] hover:bg-[#040704]"
+                className="border-b border-[var(--t-noise)] hover:bg-[var(--t-panel)]"
               >
                 <td className="px-3 py-3">
                   <Link
                     href={`/circles/${circle.slug}`}
-                    className="font-medium text-[#EDF3ED] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-[#ADFF2F] hover:underline"
+                    className="font-medium text-[var(--t-text)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)] hover:underline"
                   >
                     /{circle.name}
                   </Link>
-                  <div className="mt-1 max-w-md truncate text-xs text-[#3A5A3A]">
+                  <div className="mt-1 max-w-md truncate text-xs text-[var(--t-sub)]">
                     {circle.topic}
                   </div>
                 </td>
@@ -146,7 +146,7 @@ export function CirclesSection() {
                         <button
                           type="button"
                           aria-label={t('admin.action.more')}
-                          className="flex h-8 w-8 items-center justify-center rounded-none border border-[#1A2E1A] text-[#3A5A3A] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[#3A5A3A] hover:text-[#ADFF2F]"
+                          className="flex h-8 w-8 items-center justify-center rounded-none border border-[var(--t-noise)] text-[var(--t-sub)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent-dim)] hover:text-[var(--t-accent)]"
                         >
                           <Ellipsis className="h-4 w-4" />
                         </button>
@@ -154,7 +154,7 @@ export function CirclesSection() {
                       <DropdownMenu.Portal>
                         <DropdownMenu.Content
                           align="end"
-                          className="z-[100] min-w-44 border border-[#1A2E1A] bg-[#040704] p-1"
+                          className="z-[100] min-w-44 border border-[var(--t-noise)] bg-[var(--t-panel)] p-1"
                         >
                           <AgentMenuItem
                             label={t('admin.circles.openCoBuild')}

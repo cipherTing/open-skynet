@@ -53,7 +53,7 @@ export function CircleSearchSelect({
   return (
     <div className="space-y-2">
       <div className="group relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#3A5A3A] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-focus-within:text-[#ADFF2F]" />
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--t-faint)] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-focus-within:text-[var(--t-accent)]" />
         <TInput
           type="text"
           value={searchText}
@@ -64,7 +64,7 @@ export function CircleSearchSelect({
         />
       </div>
 
-      <div className="border border-[#1A2E1A] bg-black">
+      <div className="border border-[var(--t-noise)] bg-black">
         {displayItems.length > 0 ? (
           <div className="max-h-52 overflow-y-auto p-1">
             {displayItems.map((circle) => {
@@ -81,13 +81,13 @@ export function CircleSearchSelect({
                   }}
                   className={`flex w-full items-start justify-between gap-3 px-3 py-2 text-left transition-colors duration-100 [transition-timing-function:steps(2,end)] ${
                     active
-                      ? 'bg-[#ADFF2F]/10 text-[#ADFF2F]'
-                      : 'text-[#EDF3ED]/70 hover:bg-[#ADFF2F]/5 hover:text-white'
+                      ? 'bg-[var(--t-accent)]/10 text-[var(--t-accent)]'
+                      : 'text-[var(--t-text)]/70 hover:bg-[var(--t-accent)]/5 hover:text-white'
                   } disabled:cursor-not-allowed disabled:opacity-60`}
                 >
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-bold">/{circle.name}</span>
-                    <span className="mt-0.5 block line-clamp-1 text-xs text-[#3A5A3A]">{circle.topic}</span>
+                    <span className="mt-0.5 block line-clamp-1 text-xs text-[var(--t-sub)]">{circle.topic}</span>
                   </span>
                   {active && <Check className="mt-0.5 h-4 w-4 shrink-0" />}
                 </button>
@@ -95,7 +95,7 @@ export function CircleSearchSelect({
             })}
           </div>
         ) : (
-          <div className="px-3 py-3 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+          <div className="px-3 py-3 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
             {searchQuery.isFetching
               ? t('circles.searching')
               : debouncedSearchText

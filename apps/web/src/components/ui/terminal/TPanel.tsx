@@ -19,9 +19,9 @@ function joinClasses(...classes: Array<string | false | null | undefined>): stri
 export function TPanel({ title, meta, actions, children, className }: TPanelProps) {
   const hasHeader = title !== undefined || meta !== undefined || actions !== undefined;
   return (
-    <section className={joinClasses('t-corner t-hairline relative bg-[#040704]', className)}>
+    <section className={joinClasses('t-corner t-hairline relative bg-[var(--t-panel)]', className)}>
       {hasHeader ? (
-        <header className="flex items-center justify-between gap-3 border-b border-[#1A2E1A] px-4 py-2.5">
+        <header className="flex items-center justify-between gap-3 border-b border-[var(--t-noise)] px-4 py-2.5">
           <div className="min-w-0">
             {title ? (
               <span className="block truncate font-mono text-[10px] uppercase tracking-[0.15em] text-white">
@@ -31,7 +31,7 @@ export function TPanel({ title, meta, actions, children, className }: TPanelProp
           </div>
           <div className="flex shrink-0 items-center gap-3">
             {meta ? (
-              <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+              <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                 {meta}
               </span>
             ) : null}

@@ -80,7 +80,7 @@ export function AgentRepliesTab({ agentId }: AgentRepliesTabProps) {
   return (
     <div>
       {/* 追加日志行：`>` 前缀 + 时间码 + 等宽数据簇 */}
-      <div className="border-t border-[#1A2E1A]">
+      <div className="border-t border-[var(--t-noise)]">
         {replies.map((reply) => {
           const showFeedback = hasVisibleFeedback(reply.feedbackCounts);
           const postContentPreview = reply.post?.content
@@ -90,16 +90,16 @@ export function AgentRepliesTab({ agentId }: AgentRepliesTabProps) {
           return (
             <article
               key={reply.id}
-              className="group relative cursor-pointer border-b border-[#1A2E1A] px-3 py-3 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#040704] sm:px-4"
+              className="group relative cursor-pointer border-b border-[var(--t-noise)] px-3 py-3 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[var(--t-panel)] sm:px-4"
               onClick={(event) => handleCardClick(event, reply.postId, reply.id)}
             >
               <span
                 aria-hidden
-                className="absolute bottom-0 left-0 top-0 w-[2px] bg-[#ADFF2F] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
+                className="absolute bottom-0 left-0 top-0 w-[2px] bg-[var(--t-accent)] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
               />
 
               <div className="flex items-start gap-2.5">
-                <span aria-hidden className="mt-px flex-none font-mono text-xs text-[#ADFF2F]">
+                <span aria-hidden className="mt-px flex-none font-mono text-xs text-[var(--t-accent)]">
                   {'>'}
                 </span>
 
@@ -107,31 +107,31 @@ export function AgentRepliesTab({ agentId }: AgentRepliesTabProps) {
                   {/* 回复内容 */}
                   <Link
                     href={`/post/${reply.postId}?replyId=${encodeURIComponent(reply.id)}`}
-                    className="text-sm leading-relaxed text-[#EDF3ED] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white line-clamp-2"
+                    className="text-sm leading-relaxed text-[var(--t-text)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white line-clamp-2"
                     onClick={(event) => event.stopPropagation()}
                   >
                     {sanitizePreview(reply.content)}
                   </Link>
 
                   {/* 回复对象：等宽上下文行 */}
-                  <div className="mt-1.5 truncate font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                  <div className="mt-1.5 truncate font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                     {reply.parentReply ? (
                       <>
-                        <span className="text-[#3A5A3A]">
+                        <span className="text-[var(--t-faint)]">
                           {t('replyThread.replyTo', {
                             name: reply.parentReply.author?.name || t('agent.unknownAgent'),
                           })}
                         </span>
-                        <span aria-hidden className="mx-1.5 text-[#1A2E1A]">{'//'}</span>
-                        <span className="normal-case tracking-normal text-[#3A5A3A]/80">
+                        <span aria-hidden className="mx-1.5 text-[var(--t-faint)]">{'//'}</span>
+                        <span className="normal-case tracking-normal text-[var(--t-faint)]">
                           {sanitizePreview(reply.parentReply.content, 60)}
                         </span>
                       </>
                     ) : (
                       <>
-                        <span className="text-[#ADFF2F]">{t('agent.replyMainPost')}</span>
-                        <span aria-hidden className="mx-1.5 text-[#1A2E1A]">{'//'}</span>
-                        <span className="normal-case tracking-normal text-[#3A5A3A]/80">
+                        <span className="text-[var(--t-accent)]">{t('agent.replyMainPost')}</span>
+                        <span aria-hidden className="mx-1.5 text-[var(--t-faint)]">{'//'}</span>
+                        <span className="normal-case tracking-normal text-[var(--t-faint)]">
                           {postContentPreview || reply.post?.title || t('agent.mainPostUnavailable')}
                         </span>
                       </>
@@ -141,9 +141,9 @@ export function AgentRepliesTab({ agentId }: AgentRepliesTabProps) {
                   {/* 元数据行：主帖 + 反馈簇 + 时间码 */}
                   <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
                     {reply.post && (
-                      <span className="min-w-0 truncate font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
-                        RE // <span className="text-[#EDF3ED]/70">{reply.post.title}</span>
-                        <span aria-hidden className="mx-1.5 text-[#1A2E1A]">{'//'}</span>/
+                      <span className="min-w-0 truncate font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                        RE // <span className="text-[var(--t-sub)]">{reply.post.title}</span>
+                        <span aria-hidden className="mx-1.5 text-[var(--t-faint)]">{'//'}</span>/
                         {reply.post.circle.name}
                       </span>
                     )}
@@ -159,7 +159,7 @@ export function AgentRepliesTab({ agentId }: AgentRepliesTabProps) {
                       <Timecode
                         date={reply.createdAt}
                         withDate
-                        className="transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F]"
+                        className="transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]"
                       />
                     </span>
                   </div>
@@ -176,7 +176,7 @@ export function AgentRepliesTab({ agentId }: AgentRepliesTabProps) {
         <div className="py-4 text-center">
           <button
             onClick={() => void (hasMore ? repliesQuery.fetchNextPage() : repliesQuery.refetch())}
-            className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#ADFF2F] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
+            className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
           >
             {t('agent.loadMoreFailed')}
           </button>
@@ -188,11 +188,11 @@ export function AgentRepliesTab({ agentId }: AgentRepliesTabProps) {
       {!hasMore && replies.length > 0 && (
         <div className="py-6 text-center">
           <div className="flex items-center justify-center gap-3">
-            <div className="h-px w-8 bg-[#1A2E1A]" />
-            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+            <div className="h-px w-8 bg-[var(--t-noise)]" />
+            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
               {t('agent.repliesEnd')}
             </span>
-            <div className="h-px w-8 bg-[#1A2E1A]" />
+            <div className="h-px w-8 bg-[var(--t-noise)]" />
           </div>
         </div>
       )}

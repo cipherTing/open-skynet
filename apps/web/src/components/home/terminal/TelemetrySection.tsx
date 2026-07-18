@@ -53,13 +53,13 @@ export function TelemetrySection() {
     new Intl.NumberFormat(locale).format(Math.round(value));
 
   return (
-    <section id="telemetry" className="relative border-t border-[#1A2E1A]">
+    <section id="telemetry" className="relative border-t border-[var(--t-noise)]">
       <SectionBackdrop variant="wave" />
       <ScanlineReveal>
         <div className="mx-auto max-w-7xl px-6 py-20 md:px-10 md:py-28 lg:px-16">
           <div className="flex items-baseline justify-between gap-6">
-            <p className="t-mono text-[#3A5A3A]">{t('landing.telemetry.index')}</p>
-            <p className="t-mono text-[#ADFF2F]">{t('landing.telemetry.eyebrow')}</p>
+            <p className="t-mono text-[var(--t-faint)]">{t('landing.telemetry.index')}</p>
+            <p className="t-mono text-[var(--t-accent)]">{t('landing.telemetry.eyebrow')}</p>
           </div>
           <h2 className="t-display mt-4 text-4xl text-white md:text-6xl">
             {t('landing.telemetry.title')}
@@ -73,20 +73,20 @@ export function TelemetrySection() {
                   return (
                     <div
                       key={stat.valueKey}
-                      className={`mt-6 border-t border-[#1A2E1A] pt-6 first:mt-0 first:border-t-0 first:pt-0 ${stat.offsetClass}`}
+                      className={`mt-6 border-t border-[var(--t-noise)] pt-6 first:mt-0 first:border-t-0 first:pt-0 ${stat.offsetClass}`}
                     >
-                      <p className="t-mono text-[#3A5A3A]">
+                      <p className="t-mono text-[var(--t-faint)]">
                         {`${String(index + 1).padStart(2, '0')} // ${t(
                           `landing.telemetry.stats.${stat.labelKey}`,
                         )}`}
                       </p>
-                      <div className="t-display mt-2 text-6xl text-[#ADFF2F] md:text-7xl xl:text-8xl">
+                      <div className="t-display mt-2 text-6xl text-[var(--t-accent)] md:text-7xl xl:text-8xl">
                         {summaryQuery.isPending ? (
-                          <span className="t-mono text-[#3A5A3A]">
+                          <span className="t-mono text-[var(--t-sub)]">
                             {t('landing.telemetry.loading')}
                           </span>
                         ) : summaryQuery.isError || value === undefined ? (
-                          <span className="t-mono text-[#3A5A3A]">
+                          <span className="t-mono text-[var(--t-sub)]">
                             {t('landing.telemetry.unavailable')}
                           </span>
                         ) : (
@@ -99,13 +99,13 @@ export function TelemetrySection() {
               </div>
 
               <div className="t-hairline bg-black p-6">
-                <div className="flex items-center justify-between gap-4 border-b border-[#1A2E1A] pb-4">
-                  <p className="t-mono text-[#ADFF2F]">{t('landing.telemetry.logTitle')}</p>
+                <div className="flex items-center justify-between gap-4 border-b border-[var(--t-noise)] pb-4">
+                  <p className="t-mono text-[var(--t-accent)]">{t('landing.telemetry.logTitle')}</p>
                   <div aria-hidden="true" className="flex h-5 items-end gap-[3px]">
                     {PULSE_BAR_HEIGHTS.map((heightClass, barIndex) => (
                       <span
                         key={barIndex}
-                        className={`t-anim-pulse-bar w-[2px] bg-[#ADFF2F] ${heightClass}`}
+                        className={`t-anim-pulse-bar w-[2px] bg-[var(--t-accent)] ${heightClass}`}
                       />
                     ))}
                   </div>

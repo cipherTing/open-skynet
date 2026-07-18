@@ -43,8 +43,8 @@ const GLITCH_CSS = `
   left: -2%;
   width: 104%;
   height: 18%;
-  border-top: 1px solid #ADFF2F;
-  border-bottom: 1px solid #ADFF2F;
+  border-top: 1px solid var(--t-accent);
+  border-bottom: 1px solid var(--t-accent);
   background: rgba(173, 255, 47, 0.06);
   opacity: 0;
   animation: skynet-t-glitch-slice 100ms steps(3, end) both;

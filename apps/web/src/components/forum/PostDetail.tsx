@@ -301,7 +301,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
   if (loading) {
     return (
       <div role="status" aria-label={t('forum.loadingPost')} className="flex flex-col gap-8 py-8">
-        <div className="border border-[#1A2E1A] bg-[#040704] px-4 py-5 sm:px-6">
+        <div className="border border-[var(--t-noise)] bg-[var(--t-panel)] px-4 py-5 sm:px-6">
           <TSkeleton rows={3} />
         </div>
         <div className="max-w-3xl">
@@ -335,24 +335,24 @@ function PostDetailContent({ postId }: PostDetailProps) {
   return (
     <div className="w-full pb-10">
       {/* 档案卷宗头 */}
-      <article className="t-corner relative border border-[#1A2E1A] bg-[#040704]">
+      <article className="t-corner relative border border-[var(--t-noise)] bg-[var(--t-panel)]">
         {post.activeGovernanceCase ? (
           <GovernanceCaseStamp caseId={post.activeGovernanceCase.id} />
         ) : null}
         <div aria-hidden className="t-ambient-scan pointer-events-none absolute inset-0" />
 
         {/* FILE 编号行 */}
-        <div className="relative flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-[#1A2E1A] px-4 py-2 sm:px-6">
-          <span className="font-mono text-[10px] tracking-[0.2em] text-[#ADFF2F]">
+        <div className="relative flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--t-noise)] px-4 py-2 sm:px-6">
+          <span className="font-mono text-[10px] tracking-[0.2em] text-[var(--t-accent)]">
             FILE #{post.id.slice(0, 8).toUpperCase()}
           </span>
-          <span aria-hidden className="font-mono text-[10px] tracking-[0.2em] text-[#3A5A3A]">
+          <span aria-hidden className="font-mono text-[10px] tracking-[0.2em] text-[var(--t-faint)]">
             {'//'}
           </span>
-          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[#3A5A3A]">
+          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--t-faint)]">
             {t('forum.dossier')}
           </span>
-          <span className="ml-auto flex items-center gap-3 font-mono text-[10px] tabular-nums tracking-[0.15em] text-[#3A5A3A]">
+          <span className="ml-auto flex items-center gap-3 font-mono text-[10px] tabular-nums tracking-[0.15em] text-[var(--t-faint)]">
             <span>REPLIES ×{formatNumber(post.replyCount || 0)}</span>
             <span>VIEWS ×{formatNumber(post.viewCount || 0)}</span>
             <span>REV.{post.contentVersion}</span>
@@ -360,9 +360,9 @@ function PostDetailContent({ postId }: PostDetailProps) {
         </div>
 
         {/* 元数据栅格：1px 暗绿分隔 */}
-        <div className="relative grid grid-cols-2 gap-px border-b border-[#1A2E1A] bg-[#122012] sm:grid-cols-4">
-          <div className="bg-[#040704] px-4 py-2.5 sm:px-6">
-            <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-[#3A5A3A]">
+        <div className="relative grid grid-cols-2 gap-px border-b border-[var(--t-noise)] bg-[var(--t-noise2)] sm:grid-cols-4">
+          <div className="bg-[var(--t-panel)] px-4 py-2.5 sm:px-6">
+            <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-[var(--t-faint)]">
               {t('post.meta.author')}
             </p>
             <button
@@ -376,23 +376,23 @@ function PostDetailContent({ postId }: PostDetailProps) {
                 size={22}
               />
               <span className="flex min-w-0 items-center gap-1.5">
-                <span className="truncate text-[12px] font-bold text-white transition-colors [transition-timing-function:steps(2,end)] group-hover/author:text-[#ADFF2F]">
+                <span className="truncate text-[12px] font-bold text-white transition-colors [transition-timing-function:steps(2,end)] group-hover/author:text-[var(--t-accent)]">
                   {post.author?.name}
                 </span>
                 <AgentLevelBadge level={post.author?.level} />
               </span>
             </button>
           </div>
-          <div className="bg-[#040704] px-4 py-2.5 sm:px-6">
-            <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-[#3A5A3A]">
+          <div className="bg-[var(--t-panel)] px-4 py-2.5 sm:px-6">
+            <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-[var(--t-faint)]">
               {t('post.meta.filed')}
             </p>
             <p className="mt-1.5">
               <Timecode date={post.createdAt} withDate className="text-[11px] text-white/80" />
             </p>
           </div>
-          <div className="bg-[#040704] px-4 py-2.5 sm:px-6">
-            <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-[#3A5A3A]">
+          <div className="bg-[var(--t-panel)] px-4 py-2.5 sm:px-6">
+            <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-[var(--t-faint)]">
               {t('post.meta.circle')}
             </p>
             <p className="mt-1.5">
@@ -403,13 +403,13 @@ function PostDetailContent({ postId }: PostDetailProps) {
               />
             </p>
           </div>
-          <div className="bg-[#040704] px-4 py-2.5 sm:px-6">
-            <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-[#3A5A3A]">
+          <div className="bg-[var(--t-panel)] px-4 py-2.5 sm:px-6">
+            <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-[var(--t-faint)]">
               {t('post.meta.status')}
             </p>
             <p
               className={`mt-1.5 font-mono text-[11px] uppercase tracking-[0.15em] ${
-                post.activeGovernanceCase ? 'text-[#ADFF2F]' : 'text-white/70'
+                post.activeGovernanceCase ? 'text-[var(--t-accent)]' : 'text-white/70'
               }`}
             >
               {post.activeGovernanceCase
@@ -421,7 +421,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
 
         {/* 巨型标题 */}
         <div className="relative px-4 py-6 sm:px-6 sm:py-8">
-          <h1 className="max-w-4xl text-[clamp(2rem,4vw,3.5rem)] font-black leading-[0.95] tracking-tight text-white [text-shadow:0_0_6px_rgba(173,255,47,0.22)]">
+          <h1 className="max-w-4xl text-[clamp(2rem,4vw,3.5rem)] font-black leading-[0.95] tracking-tight text-white [text-shadow:0_0_6px_color-mix(in_srgb,var(--t-accent)_22%,transparent)]">
             {post.title}
           </h1>
           <div className="mt-5">
@@ -430,13 +430,13 @@ function PostDetailContent({ postId }: PostDetailProps) {
         </div>
 
         {/* 等宽小字操作行 */}
-        <div className="relative flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-[#122012] px-4 py-2 sm:px-6">
+        <div className="relative flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-[var(--t-noise2)] px-4 py-2 sm:px-6">
           <button
             type="button"
             disabled={favoriteBusy}
             onClick={handleFavorite}
             className={`inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.15em] transition-colors [transition-timing-function:steps(2,end)] disabled:cursor-not-allowed disabled:opacity-60 ${
-              postFavorited ? 'text-[#ADFF2F]' : 'text-[#3A5A3A] hover:text-[#ADFF2F]'
+              postFavorited ? 'text-[var(--t-accent)]' : 'text-[var(--t-faint)] hover:text-[var(--t-accent)]'
             }`}
           >
             {postFavorited ? (
@@ -452,7 +452,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
             aria-disabled={!canWatchPost || undefined}
             onClick={handleWatch}
             className={`inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.15em] transition-colors [transition-timing-function:steps(2,end)] disabled:cursor-not-allowed disabled:opacity-60 ${
-              postWatching ? 'text-white' : 'text-[#3A5A3A] hover:text-[#ADFF2F]'
+              postWatching ? 'text-white' : 'text-[var(--t-faint)] hover:text-[var(--t-accent)]'
             }`}
           >
             {postWatching ? <BellRing className="h-3 w-3" /> : <Bell className="h-3 w-3" />}
@@ -462,7 +462,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
             <button
               type="button"
               onClick={quoteSelectedPostText}
-              className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A] transition-colors [transition-timing-function:steps(2,end)] hover:text-[#ADFF2F]"
+              className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)]"
             >
               <Quote className="h-3 w-3" />
               {t('replyInput.quoteSelection')}
@@ -478,7 +478,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
         </div>
 
         {(showPostFeedback || canFeedbackOnPost || postFeedbackReason) && (
-          <div className="relative flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-[#122012] px-4 py-2 sm:px-6">
+          <div className="relative flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-[var(--t-noise2)] px-4 py-2 sm:px-6">
             <FeedbackBar
               counts={post.feedbackCounts}
               currentFeedback={post.currentUserFeedback}
@@ -515,17 +515,17 @@ function PostDetailContent({ postId }: PostDetailProps) {
       {/* 回复区域 = 追加日志 */}
       <section className="mt-10 w-full max-w-3xl">
         <div className="mb-4 flex items-center gap-3">
-          <span className="font-mono text-[11px] tracking-[0.2em] text-[#ADFF2F]">
+          <span className="font-mono text-[11px] tracking-[0.2em] text-[var(--t-accent)]">
             {'> APPEND.LOG'}
           </span>
-          <span aria-hidden className="font-mono text-[11px] tracking-[0.2em] text-[#3A5A3A]">
+          <span aria-hidden className="font-mono text-[11px] tracking-[0.2em] text-[var(--t-faint)]">
             {'//'}
           </span>
           <span className="text-[13px] font-bold tracking-wide text-text-primary">
             {t('post.replies.title')}
           </span>
-          <span aria-hidden className="h-px flex-1 bg-[#1A2E1A]" />
-          <span className="font-mono text-[10px] tabular-nums tracking-[0.15em] text-[#3A5A3A]">
+          <span aria-hidden className="h-px flex-1 bg-[var(--t-noise)]" />
+          <span className="font-mono text-[10px] tabular-nums tracking-[0.15em] text-[var(--t-faint)]">
             {formatNumber(post.replyCount || 0)} REPLIES
           </span>
         </div>
@@ -621,7 +621,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
               type="button"
               disabled={repliesQuery.isFetchingNextPage}
               onClick={() => void repliesQuery.fetchNextPage()}
-              className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A] transition-colors [transition-timing-function:steps(2,end)] hover:text-[#ADFF2F] disabled:cursor-wait disabled:opacity-50"
+              className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)] disabled:cursor-wait disabled:opacity-50"
             >
               {repliesQuery.isFetchingNextPage
                 ? t('forum.loadingMoreReplies')

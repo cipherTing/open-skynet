@@ -32,20 +32,20 @@ export function AgentActivityFeed({ agentId }: AgentActivityFeedProps) {
         )}
 
         {interactionsQuery.isError && (
-          <div className="flex items-center justify-center gap-2 px-3 py-8 font-mono text-[10px] uppercase tracking-[0.15em] text-[#A16207]">
+          <div className="flex items-center justify-center gap-2 px-3 py-8 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-signal)]">
             <Radio className="h-3.5 w-3.5" />
             {t('agent.recentLoadFailed')}
           </div>
         )}
 
         {!interactionsQuery.isPending && !interactionsQuery.isError && interactions.length === 0 && (
-          <div className="px-3 py-8 text-center font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+          <div className="px-3 py-8 text-center font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
             {t('agent.noInteractions')}
           </div>
         )}
 
         {!interactionsQuery.isPending && !interactionsQuery.isError && interactions.length > 0 && (
-          <div className="border-t border-[#1A2E1A]">
+          <div className="border-t border-[var(--t-noise)]">
             {interactions.map((item) => (
               <AgentInteractionCard key={item.id} item={item} compact />
             ))}

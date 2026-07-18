@@ -121,11 +121,11 @@ export function AnnouncementMenu() {
         <button
           type="button"
           aria-label={buttonLabel}
-          className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-none border border-[#1A2E1A] text-[#3A5A3A] transition-[color,border-color] duration-100 [transition-timing-function:steps(2,end)] hover:border-[#ADFF2F]/60 hover:text-[#ADFF2F]"
+          className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-none border border-[var(--t-noise)] text-[var(--t-sub)] transition-[color,border-color] duration-100 [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]"
         >
           <Bell className="h-4 w-4" />
           {unreadCount > 0 && (
-            <span className="absolute right-1 top-1 h-1.5 w-1.5 bg-[#EF4444]" aria-hidden="true" />
+            <span className="absolute right-1 top-1 h-1.5 w-1.5 bg-[var(--t-hazard)]" aria-hidden="true" />
           )}
         </button>
       </Popover.Trigger>
@@ -135,20 +135,20 @@ export function AnnouncementMenu() {
           align="end"
           sideOffset={8}
           collisionPadding={12}
-          className="z-[100] w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-none border border-[#1A2E1A] bg-black"
+          className="z-[100] w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-none border border-[var(--t-noise)] bg-black"
         >
-          <div className="border-b border-[#1A2E1A] px-4 py-3">
+          <div className="border-b border-[var(--t-noise)] px-4 py-3">
             <h2 id={titleId} className="font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-white">
               {t('announcement.menuTitle')}
             </h2>
           </div>
           <div className="max-h-[min(420px,calc(100dvh-96px))] overflow-y-auto">
             {query.isPending ? (
-              <div className="px-3 py-8 text-center font-mono text-[11px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+              <div className="px-3 py-8 text-center font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                 {t('announcement.loading')}
               </div>
             ) : query.isError ? (
-              <div className="flex flex-col items-center gap-3 px-3 py-8 text-center font-mono text-[11px] uppercase tracking-[0.15em] text-[#EF4444]">
+              <div className="flex flex-col items-center gap-3 px-3 py-8 text-center font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-hazard)]">
                 <span>{t('announcement.failed')}</span>
                 <TButton
                   variant="secondary"
@@ -159,7 +159,7 @@ export function AnnouncementMenu() {
                 </TButton>
               </div>
             ) : announcements.length === 0 ? (
-              <div className="px-3 py-8 text-center font-mono text-[11px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+              <div className="px-3 py-8 text-center font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                 {t('announcement.empty')}
               </div>
             ) : (
@@ -167,14 +167,14 @@ export function AnnouncementMenu() {
                 const Icon = KIND_ICON[item.kind];
                 const content = (
                   <div className="flex gap-3 px-2.5 py-3">
-                    <Icon className="mt-0.5 h-4 w-4 shrink-0 text-[#ADFF2F]" />
+                    <Icon className="mt-0.5 h-4 w-4 shrink-0 text-[var(--t-accent)]" />
                     <div className="min-w-0">
                       <div className="text-xs font-bold text-white">{item.title}</div>
                       <AnnouncementMarkdown
                         content={item.body}
                         className="mt-1 text-xs leading-5 text-white/70"
                       />
-                      <div className="mt-2 font-mono text-[10px] tabular-nums tracking-[0.15em] text-[#3A5A3A]">
+                      <div className="mt-2 font-mono text-[10px] tabular-nums tracking-[0.15em] text-[var(--t-faint)]">
                         {new Intl.DateTimeFormat(undefined, {
                           dateStyle: 'medium',
                           timeStyle: 'short',
@@ -186,7 +186,7 @@ export function AnnouncementMenu() {
                 return (
                   <div
                     key={item.id}
-                    className="border-b border-[#1A2E1A] transition-colors [transition-timing-function:steps(2,end)] last:border-b-0 hover:bg-[#ADFF2F]/5"
+                    className="border-b border-[var(--t-noise)] transition-colors [transition-timing-function:steps(2,end)] last:border-b-0 hover:bg-[var(--t-accent-wash)]"
                   >
                     {content}
                     {item.linkUrl && (
@@ -195,7 +195,7 @@ export function AnnouncementMenu() {
                           <Link
                             href={item.linkUrl}
                             onClick={() => setOpen(false)}
-                            className="font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[#ADFF2F] hover:text-white"
+                            className="font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--t-accent)] hover:text-white"
                           >
                             {t('announcement.open')}
                           </Link>
@@ -204,7 +204,7 @@ export function AnnouncementMenu() {
                             href={item.linkUrl}
                             target="_blank"
                             rel="noreferrer noopener"
-                            className="font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[#ADFF2F] hover:text-white"
+                            className="font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--t-accent)] hover:text-white"
                           >
                             {t('announcement.open')}
                           </a>

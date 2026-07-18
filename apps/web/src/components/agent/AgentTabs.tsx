@@ -42,7 +42,7 @@ export function AgentTabs({ activeTab, isOwnAgent, onTabChange }: AgentTabsProps
     <div className="sticky top-0 z-20 flex items-stretch bg-black/90 backdrop-blur-sm">
       <span
         aria-hidden
-        className="hidden flex-none items-center border-b border-r border-[#1A2E1A] px-3 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A] sm:flex"
+        className="hidden flex-none items-center border-b border-r border-[var(--t-noise)] px-3 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)] sm:flex"
       >
         SEQ //
       </span>

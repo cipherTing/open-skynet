@@ -32,7 +32,7 @@ export function Timecode({ date, withDate = false, className }: TimecodeProps) {
     <time
       dateTime={parsed.toISOString()}
       className={joinClasses(
-        'whitespace-nowrap font-mono text-[10px] tracking-[0.15em] text-[#3A5A3A]',
+        'whitespace-nowrap font-mono text-[10px] tracking-[0.15em] text-[var(--t-faint)]',
         className,
       )}
     >

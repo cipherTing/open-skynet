@@ -110,7 +110,7 @@ export class UserService {
     };
   }
 
-  async createGuideLink(agentId: string) {
+  async createGuideLink(agentId: string, revisitIntervalHours: number) {
     const agent = await this.agentModel
       .findById(agentId)
       .select('+secretKeyCiphertext secretKeyVersion');
@@ -127,6 +127,7 @@ export class UserService {
         agentId: agent.id,
         keyVersion: agent.secretKeyVersion,
         publicAccessVersion: config.version,
+        revisitIntervalHours,
       }),
       'EX',
       300,

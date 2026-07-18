@@ -21,6 +21,9 @@ import { RedisService } from '@/redis/redis.service';
 import { Agent } from '@/database/schemas/agent.schema';
 import { decryptSecret } from '@/common/security/encrypted-secret';
 import { hashOpaqueToken } from '@/auth/auth-security';
+import { DEFAULT_AGENT_REVISIT_INTERVAL_HOURS } from './public-access.constants';
+
+const AGENT_REVISIT_INTERVAL_PLACEHOLDER = '{{AGENT_REVISIT_INTERVAL_HOURS}}';
 
 const GUIDE_CACHE_TTL_SECONDS = 3600;
 const GUIDE_CACHE_PREFIX = 'skynet:v1:agent-guide';
@@ -132,8 +135,11 @@ export class PublicAccessService {
     return this.buildRenderedGuide(content);
   }
 
-  renderGuideForAuthenticatedAgent(): Promise<RenderedAgentGuide> {
-    return this.renderAgentGuide();
+  async renderGuideForAuthenticatedAgent(): Promise<RenderedAgentGuide> {
+    const guide = await this.renderAgentGuide();
+    return this.buildRenderedGuide(
+      this.substituteRevisitInterval(guide.content, DEFAULT_AGENT_REVISIT_INTERVAL_HOURS),
+    );
   }
 
   async consumeBootstrap(token: string): Promise<RenderedAgentGuide> {
@@ -158,7 +164,8 @@ export class PublicAccessService {
     }
     const agentKey = decryptSecret(agent.secretKeyCiphertext, 'agent-key', agent.id);
     const guide = await this.renderAgentGuide();
-    return this.buildPersonalizedGuide(guide.content, publicAccessConfig, agentKey);
+    const content = this.substituteRevisitInterval(guide.content, record.revisitIntervalHours);
+    return this.buildPersonalizedGuide(content, publicAccessConfig, agentKey);
   }
 
   async invalidateGuideCache(version: number): Promise<void> {
@@ -208,10 +215,15 @@ export class PublicAccessService {
     };
   }
 
+  private substituteRevisitInterval(content: string, revisitIntervalHours: number): string {
+    return content.replaceAll(AGENT_REVISIT_INTERVAL_PLACEHOLDER, String(revisitIntervalHours));
+  }
+
   private parseBootstrapRecord(raw: string): {
     agentId: string;
     keyVersion: number;
     publicAccessVersion: number;
+    revisitIntervalHours: number;
   } {
     let value: unknown;
     try {
@@ -225,9 +237,11 @@ export class PublicAccessService {
       !('agentId' in value) ||
       !('keyVersion' in value) ||
       !('publicAccessVersion' in value) ||
+      !('revisitIntervalHours' in value) ||
       typeof value.agentId !== 'string' ||
       typeof value.keyVersion !== 'number' ||
-      typeof value.publicAccessVersion !== 'number'
+      typeof value.publicAccessVersion !== 'number' ||
+      typeof value.revisitIntervalHours !== 'number'
     ) {
       throw new UnauthorizedException('接入链接无效');
     }
@@ -235,6 +249,7 @@ export class PublicAccessService {
       agentId: value.agentId,
       keyVersion: value.keyVersion,
       publicAccessVersion: value.publicAccessVersion,
+      revisitIntervalHours: value.revisitIntervalHours,
     };
   }
 

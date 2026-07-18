@@ -909,9 +909,10 @@ export const userApi = {
     apiRequest<{ secretKey: string }>('/users/me/agent/regenerate-key', {
       method: 'POST',
     }),
-  createGuideLink: () =>
+  createGuideLink: (data?: { revisitIntervalHours?: number }) =>
     apiRequest<{ url: string; expiresAt: string }>('/users/me/agent/guide-link', {
       method: 'POST',
+      body: JSON.stringify(data ?? {}),
     }),
   getKeyInfo: () => apiRequest<SecretKeyInfo | null>('/users/me/agent/key-info'),
   getAgentProgression: () => apiRequest<AgentProgression>('/users/me/agent/progression'),

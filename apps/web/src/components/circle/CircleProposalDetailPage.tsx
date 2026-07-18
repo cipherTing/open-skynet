@@ -35,10 +35,10 @@ const PROGRESS_BLOCKS = 24;
 /** 左色条：讨论/表决中=荧光绿（有异议转琥珀），被否决/终止=琥珀，已结=暗绿。 */
 function proposalRailClass(status: CircleProposalStatus, hasObjection: boolean): string {
   if (status === 'DISCUSSION' || status === 'VOTING') {
-    return hasObjection ? 'bg-[#A16207]' : 'bg-[#ADFF2F]';
+    return hasObjection ? 'bg-[var(--t-signal)]' : 'bg-[var(--t-accent)]';
   }
-  if (status === 'REJECTED' || status === 'MODERATED') return 'bg-[#A16207]';
-  return 'bg-[#3A5A3A]';
+  if (status === 'REJECTED' || status === 'MODERATED') return 'bg-[var(--t-signal)]';
+  return 'bg-[var(--t-faint)]';
 }
 
 export function CircleProposalDetailPage({
@@ -162,14 +162,14 @@ export function CircleProposalDetailPage({
       <PageHeader titleKey="circles.coBuild.proposalDetail" />
       <main className="skynet-auto-hide-scrollbar min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-10">
         <div className="mx-auto max-w-4xl">
-          <header className="t-corner relative border border-[#1A2E1A] bg-[#040704]">
+          <header className="t-corner relative border border-[var(--t-noise)] bg-[var(--t-panel)]">
             <span
               aria-hidden
               className={`absolute left-0 top-0 h-full w-[3px] ${proposalRailClass(proposal.status, hasObjection)}`}
             />
             {/* 卷宗脊：档案编号 + 元数据 */}
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-[#122012] py-2.5 pl-6 pr-5 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
-              <span className="text-[#ADFF2F]">FILE #PR-{circleFileNo(proposal.id)}</span>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-[var(--t-noise2)] py-2.5 pl-6 pr-5 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+              <span className="text-[var(--t-accent)]">FILE #PR-{circleFileNo(proposal.id)}</span>
               <span>PROPOSAL // {t(`circles.coBuild.scopes.${proposal.scope}`)}</span>
               <span className="inline-flex items-center gap-1.5 sm:ml-auto">
                 <Timecode date={proposal.updatedAt} withDate />
@@ -185,8 +185,8 @@ export function CircleProposalDetailPage({
                 <span
                   className={`border px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.15em] ${
                     isVotingPhase
-                      ? 'border-[#ADFF2F]/60 text-[#ADFF2F]'
-                      : 'border-[#3A5A3A] text-[#3A5A3A]'
+                      ? 'border-[var(--t-accent)]/60 text-[var(--t-accent)]'
+                      : 'border-[var(--t-noise)] text-[var(--t-faint)]'
                   }`}
                 >
                   {t(`circles.coBuild.statuses.${proposal.status}`)}
@@ -204,31 +204,31 @@ export function CircleProposalDetailPage({
             </div>
 
             {/* 元数据栅格 */}
-            <div className="grid grid-cols-2 gap-px border-t border-[#122012] bg-[#122012] pl-[3px] sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-px border-t border-[var(--t-noise2)] bg-[var(--t-noise2)] pl-[3px] sm:grid-cols-4">
               <ProposalMetaCell label={t('circleDossier.creator')}>
-                <span className="truncate text-xs font-semibold text-[#EDF3ED]">
+                <span className="truncate text-xs font-semibold text-[var(--t-text)]">
                   {proposal.creator.name}
                 </span>
               </ProposalMetaCell>
               <ProposalMetaCell label={t('circleDossier.quorum')}>
-                <span className="font-mono text-sm font-semibold tabular-nums text-[#EDF3ED]">
+                <span className="font-mono text-sm font-semibold tabular-nums text-[var(--t-text)]">
                   {proposal.quorum}
                 </span>
               </ProposalMetaCell>
               <ProposalMetaCell label={t('circleDossier.eligible')}>
-                <span className="font-mono text-sm font-semibold tabular-nums text-[#EDF3ED]">
+                <span className="font-mono text-sm font-semibold tabular-nums text-[var(--t-text)]">
                   {proposal.eligibleMemberCount}
                 </span>
               </ProposalMetaCell>
               <ProposalMetaCell label={t('circleDossier.revisionNo')}>
-                <span className="font-mono text-sm font-semibold tabular-nums text-[#EDF3ED]">
+                <span className="font-mono text-sm font-semibold tabular-nums text-[var(--t-text)]">
                   R{String(proposal.currentRevisionNumber).padStart(2, '0')}
                 </span>
               </ProposalMetaCell>
             </div>
 
             {proposal.status === 'VOTING' ? (
-              <div className="border-t border-[#122012] px-5 pb-4 pl-6">
+              <div className="border-t border-[var(--t-noise2)] px-5 pb-4 pl-6">
                 <VoteProgress
                   approve={proposal.voting.approveCount ?? 0}
                   reject={proposal.voting.rejectCount ?? 0}
@@ -243,19 +243,19 @@ export function CircleProposalDetailPage({
           </header>
 
           {proposal.eligibility && !canFormal ? (
-            <p className="mt-4 border border-[#713F12] bg-[#A16207]/10 px-3 py-2 font-mono text-[11px] tracking-[0.08em] text-[#A16207]">
+            <p className="mt-4 border border-[var(--t-signal-dim)] bg-[var(--t-signal)]/10 px-3 py-2 font-mono text-[11px] tracking-[0.08em] text-[var(--t-signal)]">
               {proposal.eligibility.reason}
             </p>
           ) : null}
 
           <section className="mt-6">
             <TPanel title={t('circles.coBuild.proposalContent')}>
-              <div className="text-sm leading-7 text-[#EDF3ED]/85">
+              <div className="text-sm leading-7 text-[var(--t-text)]/85">
                 <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
                   {currentRevision?.reason ?? ''}
                 </ReactMarkdown>
               </div>
-              <div className="mt-5 border-t border-[#122012] pt-4">
+              <div className="mt-5 border-t border-[var(--t-noise2)] pt-4">
                 {proposal.scope === 'TOPIC' ? (
                   <TopicChangeDiff
                     before={proposal.base.topic}
@@ -271,7 +271,7 @@ export function CircleProposalDetailPage({
             </TPanel>
           </section>
 
-          <section className="mt-6 flex flex-wrap gap-2 border-y border-[#1A2E1A] py-4">
+          <section className="mt-6 flex flex-wrap gap-2 border-y border-[var(--t-noise)] py-4">
             {proposal.status === 'DISCUSSION' && (
               <>
                 <TButton
@@ -286,7 +286,7 @@ export function CircleProposalDetailPage({
                   type="button"
                   disabled={!canFormal || action.isPending}
                   onClick={() => setObjectionOpen((value) => !value)}
-                  className="inline-flex h-9 items-center gap-1.5 border border-[#713F12] px-4 font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-[#A16207] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#A16207]/10 disabled:cursor-not-allowed disabled:opacity-45"
+                  className="inline-flex h-9 items-center gap-1.5 border border-[var(--t-signal-dim)] px-4 font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-[var(--t-signal)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[var(--t-signal)]/10 disabled:cursor-not-allowed disabled:opacity-45"
                 >
                   <ThumbsDown className="h-3.5 w-3.5" />
                   {t('circles.coBuild.object')} {proposal.stance.objectionCount}
@@ -357,7 +357,7 @@ export function CircleProposalDetailPage({
                 type="button"
                 disabled={!objection.trim() || action.isPending}
                 onClick={() => action.mutate('object')}
-                className="mt-3 inline-flex h-9 items-center gap-1.5 border border-[#713F12] bg-[#A16207]/15 px-4 font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-[#A16207] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#A16207]/25 disabled:cursor-not-allowed disabled:opacity-45"
+                className="mt-3 inline-flex h-9 items-center gap-1.5 border border-[var(--t-signal-dim)] bg-[var(--t-signal)]/15 px-4 font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-[var(--t-signal)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[var(--t-signal)]/25 disabled:cursor-not-allowed disabled:opacity-45"
               >
                 {action.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                 {t('circles.coBuild.submitObjection')}
@@ -367,13 +367,13 @@ export function CircleProposalDetailPage({
 
           <section className="mt-8">
             <h2 className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.15em] text-white">
-              <Scale className="h-3.5 w-3.5 text-[#3A5A3A]" />
+              <Scale className="h-3.5 w-3.5 text-[var(--t-faint)]" />
               {t('circles.coBuild.revisions')}
             </h2>
             <ol className="mt-3 space-y-3">
               {proposal.revisions.map((revision) => (
-                <li key={revision.id} className="border-l border-[#1A2E1A] pl-3">
-                  <p className="text-xs font-semibold text-[#EDF3ED]/80">
+                <li key={revision.id} className="border-l border-[var(--t-noise)] pl-3">
+                  <p className="text-xs font-semibold text-[var(--t-text)]/80">
                     {t('circles.coBuild.revision', { number: revision.revisionNumber })}
                   </p>
                   <Timecode date={revision.createdAt} withDate className="mt-1 block" />
@@ -397,24 +397,24 @@ export function CircleProposalDetailPage({
                 })}
               />
               {proposal.moderationReason ? (
-                <p className="mt-3 border-l-2 border-[#A16207]/60 pl-3 text-sm text-[#A16207]">
+                <p className="mt-3 border-l-2 border-[var(--t-signal)]/60 pl-3 text-sm text-[var(--t-signal)]">
                   {proposal.moderationReason}
                 </p>
               ) : null}
             </section>
           ) : null}
 
-          <section className="mt-8 border-t border-[#1A2E1A] pt-6">
+          <section className="mt-8 border-t border-[var(--t-noise)] pt-6">
             <h2 className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.15em] text-white">
-              <MessageSquare className="h-3.5 w-3.5 text-[#3A5A3A]" />
+              <MessageSquare className="h-3.5 w-3.5 text-[var(--t-faint)]" />
               {t('circles.coBuild.comments')}
             </h2>
             <div className="mt-4 space-y-4">
               {commentsQuery.data?.items.map((item) => (
-                <article key={item.id} className="border-l border-[#1A2E1A] pl-3">
+                <article key={item.id} className="border-l border-[var(--t-noise)] pl-3">
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-xs font-semibold text-white">
-                      <span aria-hidden className="mr-1.5 font-mono text-[#ADFF2F]">
+                      <span aria-hidden className="mr-1.5 font-mono text-[var(--t-accent)]">
                         &gt;
                       </span>
                       {item.author.name}
@@ -432,7 +432,7 @@ export function CircleProposalDetailPage({
                       ) : null}
                     </div>
                   </div>
-                  <div className="prose prose-sm mt-2 max-w-none text-[#EDF3ED]/75 prose-headings:text-white prose-strong:text-white">
+                  <div className="prose prose-sm mt-2 max-w-none text-[var(--t-text)]/75 prose-headings:text-white prose-strong:text-white">
                     <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
                       {item.content}
                     </ReactMarkdown>
@@ -484,8 +484,8 @@ export function CircleProposalDetailPage({
 /** 卷宗元数据单元格：等宽微型标签 + 读数。 */
 function ProposalMetaCell({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex flex-col gap-1 bg-[#040704] px-4 py-3">
-      <span className="font-mono text-[9px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+    <div className="flex flex-col gap-1 bg-[var(--t-panel)] px-4 py-3">
+      <span className="font-mono text-[9px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
         {label}
       </span>
       {children}
@@ -510,7 +510,7 @@ function VoteProgress({
   const rejectBlocks = total === 0 ? 0 : PROGRESS_BLOCKS - approveBlocks;
   return (
     <div className="mt-4">
-      <div className="flex items-center justify-between gap-3 font-mono text-[9px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+      <div className="flex items-center justify-between gap-3 font-mono text-[9px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
         <span>{caption}</span>
         <span>{summary}</span>
       </div>
@@ -520,10 +520,10 @@ function VoteProgress({
             key={index}
             className={`h-[3px] flex-1 ${
               index < approveBlocks
-                ? 'bg-[#ADFF2F]'
+                ? 'bg-[var(--t-accent)]'
                 : index < approveBlocks + rejectBlocks
-                  ? 'bg-[#A16207]'
-                  : 'bg-[#122012]'
+                  ? 'bg-[var(--t-signal)]'
+                  : 'bg-[var(--t-noise2)]'
             }`}
           />
         ))}

@@ -60,8 +60,8 @@ function SmallIconButton({
       onClick={onClick}
       className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-none border transition-colors duration-100 [transition-timing-function:steps(2,end)] ${
         warning
-          ? 'border-[#7F1D1D] text-[#EF4444] hover:bg-[#7F1D1D]/20'
-          : 'border-[#1A2E1A] text-[#3A5A3A] hover:border-[#3A5A3A] hover:text-[#ADFF2F]'
+          ? 'border-[var(--t-hazard-dim)] text-[var(--t-hazard)] hover:bg-[var(--t-hazard-dim)]'
+          : 'border-[var(--t-noise)] text-[var(--t-sub)] hover:border-[var(--t-accent-dim)] hover:text-[var(--t-accent)]'
       }`}
     >
       {children}
@@ -120,7 +120,7 @@ function AdminCircleEditorDialogInstance({
         contentClassName="t-corner"
       >
         {detailQuery.isError ? (
-          <p className="text-sm text-[#EF4444]">{t('admin.circles.loadDetailFailed')}</p>
+          <p className="text-sm text-[var(--t-hazard)]">{t('admin.circles.loadDetailFailed')}</p>
         ) : (
           <div className="py-16">
             <AdminLoading />
@@ -249,7 +249,7 @@ function AdminCircleEditorForm({
       contentClassName="t-corner"
       footer={
         <>
-          <span className="mr-auto text-xs text-[#3A5A3A]">
+          <span className="mr-auto text-xs text-[var(--t-sub)]">
             {isEdit && !valid
               ? !topicChanged && !rulesChanged
                 ? t('admin.circles.saveDisabledNoChanges')
@@ -280,7 +280,7 @@ function AdminCircleEditorForm({
         </>
       }
     >
-      <p className="text-xs text-[#3A5A3A]">
+      <p className="text-xs text-[var(--t-sub)]">
         {t(isEdit ? 'admin.circles.editDescription' : 'admin.circles.createDescription')}
       </p>
       <div className="mt-6 space-y-7">
@@ -304,14 +304,14 @@ function AdminCircleEditorForm({
                     onClick={() => setKind(value)}
                     className={`rounded-none border px-3 py-3 text-left transition-colors duration-100 [transition-timing-function:steps(2,end)] ${
                       kind === value
-                        ? 'border-[#ADFF2F] bg-[#ADFF2F]/10 text-[#ADFF2F]'
-                        : 'border-[#1A2E1A] text-white/60 hover:border-[#3A5A3A]'
+                        ? 'border-[var(--t-accent)] bg-[var(--t-accent-wash)] text-[var(--t-accent)]'
+                        : 'border-[var(--t-noise)] text-white/60 hover:border-[var(--t-accent-dim)]'
                     }`}
                   >
                     <span className="block text-sm font-bold">
                       {t(`admin.circles.kinds.${value}`)}
                     </span>
-                    <span className="mt-1 block text-xs text-[#3A5A3A]">
+                    <span className="mt-1 block text-xs text-[var(--t-sub)]">
                       {t(`admin.circles.kindDescriptions.${value}`)}
                     </span>
                   </button>
@@ -322,20 +322,20 @@ function AdminCircleEditorForm({
         ) : null}
 
         <section>
-          <h3 className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[#EDF3ED]">
-            <span aria-hidden className="text-[#ADFF2F]">
+          <h3 className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--t-text)]">
+            <span aria-hidden className="text-[var(--t-accent)]">
               {'//'}
             </span>
             {t('admin.circles.topic')}
           </h3>
           {isEdit && snapshot ? (
             <div className="mt-3 space-y-3">
-              <p className="whitespace-pre-wrap border border-[#1A2E1A] bg-[#040704] px-3 py-2.5 text-sm leading-6 text-[#3A5A3A]">
+              <p className="whitespace-pre-wrap border border-[var(--t-noise)] bg-[var(--t-panel)] px-3 py-2.5 text-sm leading-6 text-[var(--t-sub)]">
                 {snapshot.topic}
               </p>
-              <div className={topicChanged ? 'border-l-2 border-[#ADFF2F]/60 pl-3' : ''}>
+              <div className={topicChanged ? 'border-l-2 border-[var(--t-accent)] pl-3' : ''}>
                 {topicChanged ? (
-                  <div className="mb-2 text-[10px] font-bold text-[#ADFF2F]">
+                  <div className="mb-2 text-[10px] font-bold text-[var(--t-accent)]">
                     {t('admin.circles.changed')}
                   </div>
                 ) : null}
@@ -363,13 +363,13 @@ function AdminCircleEditorForm({
           <section>
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h3 className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[#EDF3ED]">
-                  <span aria-hidden className="text-[#ADFF2F]">
+                <h3 className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--t-text)]">
+                  <span aria-hidden className="text-[var(--t-accent)]">
                     {'//'}
                   </span>
                   {t('admin.circles.rules')}
                 </h3>
-                <p className="mt-1 text-xs text-[#3A5A3A]">
+                <p className="mt-1 text-xs text-[var(--t-sub)]">
                   {t('admin.circles.rulesEditHint')}
                 </p>
               </div>
@@ -387,7 +387,7 @@ function AdminCircleEditorForm({
                 {t('admin.circles.addRule')}
               </TButton>
             </div>
-            <div className="mt-4 divide-y divide-[#1A2E1A] border-y border-[#1A2E1A]">
+            <div className="mt-4 divide-y divide-[var(--t-noise)] border-y border-[var(--t-noise)]">
               {rules.map((rule, index) => {
                 const original = originalRules.find((item) => item.id === rule.id);
                 const originalIndex = originalRules.findIndex((item) => item.id === rule.id);
@@ -400,23 +400,23 @@ function AdminCircleEditorForm({
                     <div className="flex items-start gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2 text-[10px] font-bold">
-                          <span className="text-[#3A5A3A]">
+                          <span className="text-[var(--t-sub)]">
                             {t('admin.circles.ruleNumber', { number: index + 1 })}
                           </span>
                           {added ? (
-                            <span className="text-[#ADFF2F]">{t('admin.circles.added')}</span>
+                            <span className="text-[var(--t-accent)]">{t('admin.circles.added')}</span>
                           ) : null}
                           {edited ? (
-                            <span className="text-[#ADFF2F]">{t('admin.circles.edited')}</span>
+                            <span className="text-[var(--t-accent)]">{t('admin.circles.edited')}</span>
                           ) : null}
                           {moved ? (
-                            <span className="text-[#3A5A3A]">
+                            <span className="text-[var(--t-sub)]">
                               {t('admin.circles.moved', { from: originalIndex + 1, to: index + 1 })}
                             </span>
                           ) : null}
                         </div>
                         {original && editable ? (
-                          <p className="mt-2 border border-[#1A2E1A] bg-[#040704] px-3 py-2 text-xs leading-5 text-[#3A5A3A]">
+                          <p className="mt-2 border border-[var(--t-noise)] bg-[var(--t-panel)] px-3 py-2 text-xs leading-5 text-[var(--t-sub)]">
                             {original.text}
                           </p>
                         ) : null}
@@ -473,8 +473,8 @@ function AdminCircleEditorForm({
               })}
             </div>
             {deletedRules.length ? (
-              <div className="mt-4 border-l-2 border-[#7F1D1D] pl-3">
-                <div className="text-xs font-bold text-[#EF4444]">
+              <div className="mt-4 border-l-2 border-[var(--t-hazard)] pl-3">
+                <div className="text-xs font-bold text-[var(--t-hazard)]">
                   {t('admin.circles.pendingDeletion')}
                 </div>
                 <div className="mt-2 space-y-2">
@@ -496,7 +496,7 @@ function AdminCircleEditorForm({
                             return next;
                           });
                         }}
-                        className="inline-flex shrink-0 items-center gap-1 text-xs font-bold text-[#ADFF2F]"
+                        className="inline-flex shrink-0 items-center gap-1 text-xs font-bold text-[var(--t-accent)]"
                       >
                         <RotateCcw className="h-3.5 w-3.5" />
                         {t('admin.circles.restoreRule')}
@@ -510,9 +510,9 @@ function AdminCircleEditorForm({
         ) : null}
 
         {isEdit && snapshot ? (
-          <section className="border-t border-[#1A2E1A] pt-5">
-            <h3 className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[#EDF3ED]">
-              <span aria-hidden className="text-[#ADFF2F]">
+          <section className="border-t border-[var(--t-noise)] pt-5">
+            <h3 className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--t-text)]">
+              <span aria-hidden className="text-[var(--t-accent)]">
                 {'//'}
               </span>
               {t('admin.circles.changeSummary')}
@@ -524,11 +524,11 @@ function AdminCircleEditorForm({
                 ))}
               </ul>
             ) : (
-              <p className="mt-2 text-sm text-[#3A5A3A]">{t('admin.circles.noChanges')}</p>
+              <p className="mt-2 text-sm text-[var(--t-sub)]">{t('admin.circles.noChanges')}</p>
             )}
             {impactedProposals.length ? (
-              <div className="mt-4 border-l-2 border-[#7F1D1D] pl-3">
-                <div className="text-xs font-bold text-[#EF4444]">
+              <div className="mt-4 border-l-2 border-[var(--t-hazard)] pl-3">
+                <div className="text-xs font-bold text-[var(--t-hazard)]">
                   {t('admin.circles.proposalsWillEnd')}
                 </div>
                 <ul className="mt-2 space-y-1 text-xs text-white/60">
@@ -541,7 +541,7 @@ function AdminCircleEditorForm({
                         })}{' '}
                         · {t(`circles.coBuild.statuses.${proposal.status}`)}
                       </div>
-                      <div className="font-mono text-[10px] text-[#3A5A3A]">
+                      <div className="font-mono text-[10px] text-[var(--t-faint)]">
                         {t('admin.circles.proposalId', { id: proposal.id })}
                       </div>
                     </li>
@@ -566,13 +566,13 @@ function AdminCircleEditorForm({
               />
             </div>
             <p
-              className={`mt-1 text-xs ${reason.trim().length > 0 && reason.trim().length < 4 ? 'text-[#EF4444]' : 'text-[#3A5A3A]'}`}
+              className={`mt-1 text-xs ${reason.trim().length > 0 && reason.trim().length < 4 ? 'text-[var(--t-hazard)]' : 'text-[var(--t-sub)]'}`}
             >
               {t('admin.circles.adminReasonHint')}
             </p>
           </div>
         ) : null}
-        {mutation.error ? <p className="text-xs text-[#EF4444]">{mutation.error.message}</p> : null}
+        {mutation.error ? <p className="text-xs text-[var(--t-hazard)]">{mutation.error.message}</p> : null}
       </div>
     </TerminalDialog>
   );

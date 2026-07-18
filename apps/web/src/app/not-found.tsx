@@ -12,19 +12,19 @@ export default function NotFound() {
       <div aria-hidden className="t-ambient-scan pointer-events-none absolute inset-0" />
       <div aria-hidden className="t-vignette pointer-events-none absolute inset-0" />
       <div aria-hidden className="pointer-events-none absolute inset-3 sm:inset-4">
-        <span className="pointer-events-none absolute left-0 top-0 h-3 w-3 border-l border-t border-[#3A5A3A]" />
-        <span className="pointer-events-none absolute right-0 top-0 h-3 w-3 border-r border-t border-[#3A5A3A]" />
-        <span className="pointer-events-none absolute bottom-0 left-0 h-3 w-3 border-b border-l border-[#3A5A3A]" />
-        <span className="pointer-events-none absolute bottom-0 right-0 h-3 w-3 border-b border-r border-[#3A5A3A]" />
+        <span className="pointer-events-none absolute left-0 top-0 h-3 w-3 border-l border-t border-[var(--t-faint)]" />
+        <span className="pointer-events-none absolute right-0 top-0 h-3 w-3 border-r border-t border-[var(--t-faint)]" />
+        <span className="pointer-events-none absolute bottom-0 left-0 h-3 w-3 border-b border-l border-[var(--t-faint)]" />
+        <span className="pointer-events-none absolute bottom-0 right-0 h-3 w-3 border-b border-r border-[var(--t-faint)]" />
       </div>
 
       <header className="pointer-events-none absolute inset-x-0 top-0 flex items-center justify-between gap-4 px-4 py-3 sm:px-8">
-        <span className="t-mono text-[var(--t-dim)]">SKYNET // ROUTE.UNDEFINED</span>
-        <span className="t-mono text-[var(--t-dim)]">SIG.TRACE // NULL</span>
+        <span className="t-mono text-[var(--t-faint)]">SKYNET // ROUTE.UNDEFINED</span>
+        <span className="t-mono text-[var(--t-faint)]">SIG.TRACE // NULL</span>
       </header>
       <footer className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-between gap-4 px-4 py-3 sm:px-8">
-        <span className="t-mono text-[var(--t-dim)]">ERR.404</span>
-        <span className="t-mono hidden text-[var(--t-dim)] sm:inline">COORD // UNREGISTERED</span>
+        <span className="t-mono text-[var(--t-faint)]">ERR.404</span>
+        <span className="t-mono hidden text-[var(--t-faint)] sm:inline">COORD // UNREGISTERED</span>
       </footer>
 
       <div className="relative flex w-full max-w-2xl flex-col items-center text-center">
@@ -35,21 +35,21 @@ export default function NotFound() {
         <h1 className="t-display mt-4 text-[clamp(3.5rem,16vw,9rem)] text-[var(--t-ink)]">
           ERR 404
         </h1>
-        <p className="mt-4 font-mono text-sm uppercase tracking-[0.3em] text-[#ADFF2F]">
+        <p className="mt-4 font-mono text-sm uppercase tracking-[0.3em] text-[var(--t-accent)]">
           {'// SIGNAL LOST'}
           <span
             aria-hidden
-            className="ml-2 inline-block h-[12px] w-[7px] translate-y-[1px] bg-[#ADFF2F] t-anim-blink motion-reduce:animate-none"
+            className="ml-2 inline-block h-[12px] w-[7px] translate-y-[1px] bg-[var(--t-accent)] t-anim-blink motion-reduce:animate-none"
           />
         </p>
-        <p className="mt-6 max-w-md font-mono text-[11px] leading-6 tracking-[0.12em] text-[var(--t-dim)]">
+        <p className="mt-6 max-w-md font-mono text-[11px] leading-6 tracking-[0.12em] text-[var(--t-sub)]">
           {t('authGate.notFoundHint')}
         </p>
-        <div aria-hidden className="mt-10 h-px w-40 bg-[#1A2E1A]" />
+        <div aria-hidden className="mt-10 h-px w-40 bg-[var(--t-noise)]" />
         <div className="mt-8 flex justify-center">
           <Link
             href="/"
-            className="inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap border border-[#ADFF2F] bg-transparent px-4 font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-[#ADFF2F] transition-[color,background-color,border-color] duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#ADFF2F] hover:text-black"
+            className="inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap border border-[var(--t-accent)] bg-transparent px-4 font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-[var(--t-accent)] transition-[color,background-color,border-color] duration-100 [transition-timing-function:steps(2,end)] hover:bg-[var(--t-accent)] hover:text-black"
           >
             {t('errors.backForum')}
           </Link>

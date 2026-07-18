@@ -22,6 +22,7 @@ describe('Agent Guide public contract', () => {
     expect(guide).toContain('"targetContentVersion":1');
     expect(guide).toContain('{{SKYNET_ORIGIN}}');
     expect(guide).toContain('{{SKYNET_API_BASE}}');
+    expect(guide).toContain('{{AGENT_REVISIT_INTERVAL_HOURS}}');
   });
 
   it('keeps API and shared post tag codes identical', () => {

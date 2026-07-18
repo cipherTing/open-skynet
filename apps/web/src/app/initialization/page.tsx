@@ -11,7 +11,7 @@ import { TButton, TInput, TTextarea } from '@/components/ui/terminal';
 import LatticeWebCanvas from '@/components/home/terminal/LatticeWebCanvas';
 import { useUtcNow } from '@/components/home/terminal/terminal-hooks';
 
-const FIELD_LABEL_CLASS = 't-mono flex items-center gap-1.5 text-[var(--t-dim)]';
+const FIELD_LABEL_CLASS = 't-mono flex items-center gap-1.5 text-[var(--t-faint)]';
 /** 进度条格数：必填项完成度按格硬跳，不做任何平滑过渡。 */
 const PROGRESS_SEGMENTS = 12;
 
@@ -122,27 +122,27 @@ function InitializationForm({
       <ViewportCorners />
 
       <header className="pointer-events-none fixed inset-x-0 top-0 z-10 flex items-center justify-between gap-4 px-4 py-3 sm:px-8">
-        <span className="t-mono text-[var(--t-dim)]">SKYNET // INIT SEQUENCE</span>
+        <span className="t-mono text-[var(--t-faint)]">SKYNET // INIT SEQUENCE</span>
         <GateClock />
       </header>
       <footer className="pointer-events-none fixed inset-x-0 bottom-0 z-10 flex items-center justify-between gap-4 px-4 py-3 sm:px-8">
-        <span className="t-mono text-[var(--t-dim)]">INIT.00 // ONE-SHOT</span>
-        <span className="t-mono hidden text-[var(--t-dim)] sm:inline">IGNITION.PROTOCOL</span>
+        <span className="t-mono text-[var(--t-faint)]">INIT.00 // ONE-SHOT</span>
+        <span className="t-mono hidden text-[var(--t-faint)] sm:inline">IGNITION.PROTOCOL</span>
       </footer>
 
       <div className="relative z-10 flex min-h-full items-center justify-center px-4 py-16 sm:py-20">
         <form
           onSubmit={handleSubmit}
-          className="t-corner t-corner--accent t-hairline w-full max-w-lg bg-[#040704]"
+          className="t-corner t-corner--accent t-hairline w-full max-w-lg bg-[var(--t-panel)]"
         >
           {/* 点火序列标号条 */}
-          <header className="flex items-center justify-between gap-3 border-b border-[#1A2E1A] px-6 py-2.5 sm:px-8">
+          <header className="flex items-center justify-between gap-3 border-b border-[var(--t-noise)] px-6 py-2.5 sm:px-8">
             <span className="t-mono text-white">IGNITION SEQUENCE</span>
             <span className="t-mono text-[var(--t-accent)]">ONE-SHOT</span>
           </header>
 
           <div className="p-6 sm:p-8">
-            <p className="t-mono text-[var(--t-dim)]">SKYNET / INIT</p>
+            <p className="t-mono text-[var(--t-faint)]">SKYNET / INIT</p>
             <h1 className="t-display mt-3 text-3xl text-[var(--t-ink)] sm:text-4xl">
               {t('initialization.title')}
             </h1>
@@ -154,7 +154,7 @@ function InitializationForm({
             {/* 点火进度：必填项完成度，12 格 steps 硬跳 */}
             <div className="mt-6">
               <div className="flex items-center justify-between gap-3">
-                <span className="t-mono text-[var(--t-dim)]">{t('authGate.ignitionProgress')}</span>
+                <span className="t-mono text-[var(--t-faint)]">{t('authGate.ignitionProgress')}</span>
                 <span className="t-mono text-[var(--t-accent)]">
                   {String(doneCount).padStart(2, '0')}/{String(requiredValues.length).padStart(2, '0')}
                 </span>
@@ -170,7 +170,7 @@ function InitializationForm({
                   <span
                     key={index}
                     aria-hidden
-                    className={index < filledSegments ? 'h-1 bg-[#ADFF2F]' : 'h-1 bg-[#1A2E1A]'}
+                    className={index < filledSegments ? 'h-1 bg-[var(--t-accent)]' : 'h-1 bg-[var(--t-noise)]'}
                   />
                 ))}
               </div>
@@ -279,7 +279,7 @@ function InitializationForm({
             {errorMessage ? (
               <p
                 role="alert"
-                className="mt-4 border-l-2 border-[#7F1D1D] pl-3 font-mono text-[11px] leading-6 tracking-[0.12em] text-[#EF4444]"
+                className="mt-4 border-l-2 border-[var(--t-hazard)] pl-3 font-mono text-[11px] leading-6 tracking-[0.12em] text-[var(--t-hazard)]"
               >
                 ERR // {errorMessage}
               </p>
@@ -296,7 +296,7 @@ function InitializationForm({
 
 /** 视口四角 1px L 型角标：封闭控制台框架。 */
 function ViewportCorners() {
-  const base = 'pointer-events-none fixed h-3 w-3 border-[#3A5A3A]';
+  const base = 'pointer-events-none fixed h-3 w-3 border-[var(--t-faint)]';
   return (
     <div aria-hidden className="pointer-events-none fixed inset-3 z-10 sm:inset-4">
       <span className={`${base} left-0 top-0 border-l border-t`} />
@@ -312,8 +312,8 @@ function StepHeader({ step, label }: { step: string; label: string }) {
   return (
     <p className="mt-7 flex items-center gap-3">
       <span className="t-mono shrink-0 text-[var(--t-accent)]">{step}</span>
-      <span aria-hidden className="h-px flex-1 bg-[#1A2E1A]" />
-      <span className="t-mono shrink-0 text-[var(--t-dim)]">{label}</span>
+      <span aria-hidden className="h-px flex-1 bg-[var(--t-noise)]" />
+      <span className="t-mono shrink-0 text-[var(--t-faint)]">{label}</span>
     </p>
   );
 }
@@ -324,7 +324,7 @@ function GateClock() {
   const text = now
     ? `${String(now.getUTCHours()).padStart(2, '0')}:${String(now.getUTCMinutes()).padStart(2, '0')}:${String(now.getUTCSeconds()).padStart(2, '0')} UTC`
     : '--:--:-- UTC';
-  return <span className="t-mono text-[var(--t-dim)]">{text}</span>;
+  return <span className="t-mono text-[var(--t-faint)]">{text}</span>;
 }
 
 function InitializationField({
@@ -345,7 +345,7 @@ function InitializationField({
           {icon}
           {label}
         </span>
-        <span aria-hidden className="font-mono text-[9px] tracking-[0.2em] text-[#1A2E1A]">
+        <span aria-hidden className="font-mono text-[9px] tracking-[0.2em] text-[var(--t-faint)]">
           [{code}]
         </span>
       </span>

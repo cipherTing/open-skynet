@@ -22,7 +22,7 @@ export function TTabs({ items, active, onChange, className }: TTabsProps) {
   return (
     <div
       role="tablist"
-      className={joinClasses('flex items-stretch border-b border-[#1A2E1A]', className)}
+      className={joinClasses('flex items-stretch border-b border-[var(--t-noise)]', className)}
     >
       {items.map((item) => {
         const isActive = item.id === active;
@@ -36,15 +36,15 @@ export function TTabs({ items, active, onChange, className }: TTabsProps) {
             className={joinClasses(
               'relative px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.15em]',
               'transition-colors duration-100 [transition-timing-function:steps(2,end)]',
-              'focus-visible:outline focus-visible:outline-1 focus-visible:outline-[#ADFF2F]',
-              isActive ? 'text-white' : 'text-[#3A5A3A] hover:text-white/85',
+              'focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--t-accent)]',
+              isActive ? 'text-white' : 'text-[var(--t-sub)] hover:text-white/85',
             )}
           >
             {item.label}
             <span
               aria-hidden
               className={joinClasses(
-                'absolute inset-x-0 -bottom-px h-[2px] bg-[#ADFF2F]',
+                'absolute inset-x-0 -bottom-px h-[2px] bg-[var(--t-accent)]',
                 'transition-opacity duration-150 [transition-timing-function:steps(2,end)]',
                 isActive ? 'opacity-100' : 'opacity-0',
               )}

@@ -7,7 +7,7 @@ import { TerminalDialog } from '@/components/ui/TerminalDialog';
 import { AdminError, AdminLoading, formatAdminTime } from './AdminPrimitives';
 
 function JsonValue({ value }: { value: AdminJsonValue }) {
-  if (value === null) return <span className="text-[#3A5A3A]">—</span>;
+  if (value === null) return <span className="text-[var(--t-sub)]">—</span>;
   if (Array.isArray(value)) {
     return (
       <ol className="space-y-1">
@@ -24,7 +24,7 @@ function JsonValue({ value }: { value: AdminJsonValue }) {
       <dl className="space-y-2">
         {Object.entries(value).map(([key, item]) => (
           <div key={key} className="grid gap-1 sm:grid-cols-[140px_1fr]">
-            <dt className="font-mono text-[11px] text-[#3A5A3A]">{key}</dt>
+            <dt className="font-mono text-[11px] text-[var(--t-sub)]">{key}</dt>
             <dd className="min-w-0 break-words text-xs text-white/60">
               <JsonValue value={item} />
             </dd>
@@ -61,8 +61,8 @@ export function AdminAuditDetailDialog({
       size="lg"
       contentClassName="t-corner"
     >
-      <p className="text-xs text-[#3A5A3A]">{t('admin.audit.detailDescription')}</p>
-      <p aria-hidden className="mt-1 truncate font-mono text-[9px] uppercase tracking-[0.2em] text-[#1A2E1A]">
+      <p className="text-xs text-[var(--t-sub)]">{t('admin.audit.detailDescription')}</p>
+      <p aria-hidden className="mt-1 truncate font-mono text-[9px] uppercase tracking-[0.2em] text-[var(--t-faint)]">
         FILE #AUDIT-{logId}
       </p>
       {query.isPending ? (
@@ -75,40 +75,40 @@ export function AdminAuditDetailDialog({
         </div>
       ) : (
         <div className="mt-6 space-y-6">
-          <dl className="grid gap-4 border-y border-[#1A2E1A] py-4 sm:grid-cols-2">
+          <dl className="grid gap-4 border-y border-[var(--t-noise)] py-4 sm:grid-cols-2">
             <div>
-              <dt className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+              <dt className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                 {t('admin.audit.actor')}
               </dt>
-              <dd className="mt-1 text-sm text-[#EDF3ED]">{detail.actor.label}</dd>
+              <dd className="mt-1 text-sm text-[var(--t-text)]">{detail.actor.label}</dd>
             </div>
             <div>
-              <dt className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+              <dt className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                 {t('admin.audit.time')}
               </dt>
-              <dd className="mt-1 text-sm text-[#EDF3ED]">
+              <dd className="mt-1 text-sm text-[var(--t-text)]">
                 {formatAdminTime(detail.createdAt)}
               </dd>
             </div>
             <div>
-              <dt className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+              <dt className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                 {t('admin.audit.action')}
               </dt>
-              <dd className="mt-1 text-sm text-[#EDF3ED]">
+              <dd className="mt-1 text-sm text-[var(--t-text)]">
                 {t(`admin.audit.actions.${detail.action}`, { defaultValue: detail.action })}
               </dd>
             </div>
             <div>
-              <dt className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+              <dt className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                 {t('admin.audit.target')}
               </dt>
-              <dd className="mt-1 text-sm text-[#EDF3ED]">{detail.target.label}</dd>
-              <dd className="mt-1 font-mono text-[10px] text-[#3A5A3A]">{detail.target.id}</dd>
+              <dd className="mt-1 text-sm text-[var(--t-text)]">{detail.target.label}</dd>
+              <dd className="mt-1 font-mono text-[10px] text-[var(--t-faint)]">{detail.target.id}</dd>
             </div>
           </dl>
           <section>
-            <h3 className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[#EDF3ED]">
-              <span aria-hidden className="text-[#ADFF2F]">
+            <h3 className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--t-text)]">
+              <span aria-hidden className="text-[var(--t-accent)]">
                 {'//'}
               </span>
               {t('admin.audit.reason')}
@@ -118,13 +118,13 @@ export function AdminAuditDetailDialog({
             </p>
           </section>
           <section>
-            <h3 className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[#EDF3ED]">
-              <span aria-hidden className="text-[#ADFF2F]">
+            <h3 className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--t-text)]">
+              <span aria-hidden className="text-[var(--t-accent)]">
                 {'//'}
               </span>
               {t('admin.audit.changes')}
             </h3>
-            <div className="mt-3 border-l-2 border-[#ADFF2F]/45 pl-4">
+            <div className="mt-3 border-l-2 border-[var(--t-accent)] pl-4">
               <JsonValue value={detail.changes} />
             </div>
           </section>

@@ -48,7 +48,7 @@ export function WatchedDiscussions({ onBack }: WatchedDiscussionsProps) {
 
   return (
     <section className="flex h-full min-h-0 flex-col pb-1" aria-labelledby="watched-title">
-      <div className="flex flex-none items-center justify-between gap-3 border-b border-[#1A2E1A] px-1 pb-3 pt-2">
+      <div className="flex flex-none items-center justify-between gap-3 border-b border-[var(--t-noise)] px-1 pb-3 pt-2">
         <div className="flex min-w-0 items-center gap-3">
           <TButton
             variant="secondary"
@@ -62,14 +62,14 @@ export function WatchedDiscussions({ onBack }: WatchedDiscussionsProps) {
           </TButton>
           <div className="min-w-0">
             <div className="flex items-baseline gap-2">
-              <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#ADFF2F]">
+              <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)]">
                 {t('sections.watching.code')}
               </span>
               <h1 id="watched-title" className="truncate text-sm font-bold text-white">
                 {t('inbox.watching')}
               </h1>
             </div>
-            <p className="mt-0.5 font-mono text-[11px] tabular-nums tracking-[0.15em] text-[#3A5A3A]">
+            <p className="mt-0.5 font-mono text-[11px] tabular-nums tracking-[0.15em] text-[var(--t-faint)]">
               {t('inbox.watchListCount', { count: query.data?.count ?? 0 })}
             </p>
           </div>
@@ -101,8 +101,8 @@ export function WatchedDiscussions({ onBack }: WatchedDiscussionsProps) {
             />
           </WatchState>
         ) : (
-          <div className="t-corner my-2 border border-[#1A2E1A]">
-            <div className="divide-y divide-[#122012]">
+          <div className="t-corner my-2 border border-[var(--t-noise)]">
+            <div className="divide-y divide-[var(--t-noise2)]">
               {query.data.items.map((item) => (
                 <WatchedRow
                   key={item.postId}
@@ -146,7 +146,7 @@ function WatchedRow({
   const hoverRail = (
     <span
       aria-hidden
-      className="absolute inset-y-0 left-0 w-[2px] bg-[#ADFF2F] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
+      className="absolute inset-y-0 left-0 w-[2px] bg-[var(--t-accent)] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
     />
   );
   const frameRail = item.source.available ? (
@@ -154,20 +154,20 @@ function WatchedRow({
       <Timecode
         date={item.source.post.updatedAt}
         withDate
-        className="transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F]"
+        className="transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]"
       />
-      <span className="font-mono text-[9px] uppercase tracking-[0.15em] text-[#3A5A3A]">WATCH</span>
+      <span className="font-mono text-[9px] uppercase tracking-[0.15em] text-[var(--t-faint)]">WATCH</span>
     </span>
   ) : (
     <span className="flex w-[92px] shrink-0 flex-col items-start gap-1 pt-0.5">
-      <span className="font-mono text-[9px] uppercase tracking-[0.15em] text-[#3A5A3A]">VOID</span>
+      <span className="font-mono text-[9px] uppercase tracking-[0.15em] text-[var(--t-faint)]">VOID</span>
     </span>
   );
 
   const body = item.source.available ? (
     <Link
       href={`/post/${item.source.post.id}`}
-      className="min-w-0 flex-1 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#040704]"
+      className="min-w-0 flex-1 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[var(--t-panel)]"
     >
       <span className="flex min-w-0 flex-1 gap-3 px-3 py-3.5 transition-transform duration-100 [transition-timing-function:steps(2,end)] group-hover:translate-x-1">
         {frameRail}
@@ -180,7 +180,7 @@ function WatchedRow({
           <span className="block truncate text-sm font-semibold text-white/85 transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-white">
             {item.source.post.title}
           </span>
-          <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[11px] text-[#3A5A3A]">
+          <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[11px] text-[var(--t-faint)]">
             <span>{item.source.circle.name}</span>
             <span>{item.source.author.name}</span>
             <span className="inline-flex items-center gap-1">
@@ -194,14 +194,14 @@ function WatchedRow({
   ) : (
     <div className="flex min-w-0 flex-1 gap-3 px-3 py-3.5 opacity-70">
       {frameRail}
-      <span className="flex h-[34px] w-[34px] shrink-0 items-center justify-center border border-[#1A2E1A] text-[#3A5A3A]">
+      <span className="flex h-[34px] w-[34px] shrink-0 items-center justify-center border border-[var(--t-noise)] text-[var(--t-faint)]">
         <Radio className="h-4 w-4" />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-semibold text-white/50">
           {t('inbox.sourceUnavailable')}
         </span>
-        <span className="mt-1 block text-xs text-[#EDF3ED]/40">
+        <span className="mt-1 block text-xs text-[var(--t-text)]/40">
           {t('inbox.watchUnavailableHint')}
         </span>
       </span>
@@ -218,7 +218,7 @@ function WatchedRow({
         title={t('inbox.stopWatching')}
         disabled={busy}
         onClick={onUnwatch}
-        className="mt-3 flex h-7 shrink-0 items-center gap-1.5 border border-transparent px-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A] opacity-0 transition-[color,border-color,opacity] duration-100 [transition-timing-function:steps(2,end)] hover:border-[#ADFF2F]/60 hover:text-[#ADFF2F] focus-visible:opacity-100 disabled:cursor-not-allowed group-hover:opacity-100"
+        className="mt-3 flex h-7 shrink-0 items-center gap-1.5 border border-transparent px-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-sub)] opacity-0 transition-[color,border-color,opacity] duration-100 [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)]/60 hover:text-[var(--t-accent)] focus-visible:opacity-100 disabled:cursor-not-allowed group-hover:opacity-100"
       >
         <BellOff className="h-3 w-3" />
         {t('inbox.stopWatching')}

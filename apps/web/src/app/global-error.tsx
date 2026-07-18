@@ -43,19 +43,19 @@ export default function GlobalError({
           <div aria-hidden className="t-ambient-scan pointer-events-none absolute inset-0" />
           <div aria-hidden className="t-vignette pointer-events-none absolute inset-0" />
           <div aria-hidden className="pointer-events-none absolute inset-3 sm:inset-4">
-            <span className="pointer-events-none absolute left-0 top-0 h-3 w-3 border-l border-t border-[#3A5A3A]" />
-            <span className="pointer-events-none absolute right-0 top-0 h-3 w-3 border-r border-t border-[#3A5A3A]" />
-            <span className="pointer-events-none absolute bottom-0 left-0 h-3 w-3 border-b border-l border-[#3A5A3A]" />
-            <span className="pointer-events-none absolute bottom-0 right-0 h-3 w-3 border-b border-r border-[#3A5A3A]" />
+            <span className="pointer-events-none absolute left-0 top-0 h-3 w-3 border-l border-t border-[var(--t-faint)]" />
+            <span className="pointer-events-none absolute right-0 top-0 h-3 w-3 border-r border-t border-[var(--t-faint)]" />
+            <span className="pointer-events-none absolute bottom-0 left-0 h-3 w-3 border-b border-l border-[var(--t-faint)]" />
+            <span className="pointer-events-none absolute bottom-0 right-0 h-3 w-3 border-b border-r border-[var(--t-faint)]" />
           </div>
 
           <header className="pointer-events-none absolute inset-x-0 top-0 flex items-center justify-between gap-4 px-4 py-3 sm:px-8">
-            <span className="t-mono text-[var(--t-dim)]">SKYNET // SYS.CRITICAL</span>
-            <span className="t-mono text-[var(--t-dim)]">TELEMETRY // SEVERED</span>
+            <span className="t-mono text-[var(--t-faint)]">SKYNET // SYS.CRITICAL</span>
+            <span className="t-mono text-[var(--t-faint)]">TELEMETRY // SEVERED</span>
           </header>
           <footer className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-between gap-4 px-4 py-3 sm:px-8">
-            <span className="t-mono text-[var(--t-dim)]">ERR.500</span>
-            <span className="t-mono hidden text-[var(--t-dim)] sm:inline">FAULT // INTERNAL</span>
+            <span className="t-mono text-[var(--t-faint)]">ERR.500</span>
+            <span className="t-mono hidden text-[var(--t-faint)] sm:inline">FAULT // INTERNAL</span>
           </footer>
 
           <div className="relative flex w-full max-w-2xl flex-col items-center text-center">
@@ -73,10 +73,10 @@ export default function GlobalError({
                 className="ml-2 inline-block h-[12px] w-[7px] translate-y-[1px] bg-[#EF4444] t-anim-blink motion-reduce:animate-none"
               />
             </p>
-            <p className="mt-6 max-w-md font-mono text-[11px] leading-6 tracking-[0.12em] text-[var(--t-dim)]">
+            <p className="mt-6 max-w-md font-mono text-[11px] leading-6 tracking-[0.12em] text-[var(--t-sub)]">
               {messages.authGate.systemFaultHint}
             </p>
-            <div aria-hidden className="mt-10 h-px w-40 bg-[#1A2E1A]" />
+            <div aria-hidden className="mt-10 h-px w-40 bg-[var(--t-noise)]" />
             <button
               type="button"
               onClick={() => reset()}

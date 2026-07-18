@@ -79,8 +79,8 @@ export function AdminReviewDetailDialog({
         ) : undefined
       }
     >
-      <p className="text-xs text-[#3A5A3A]">{t('admin.reviews.detailDescription')}</p>
-      <p aria-hidden className="mt-1 truncate font-mono text-[9px] uppercase tracking-[0.2em] text-[#1A2E1A]">
+      <p className="text-xs text-[var(--t-sub)]">{t('admin.reviews.detailDescription')}</p>
+      <p aria-hidden className="mt-1 truncate font-mono text-[9px] uppercase tracking-[0.2em] text-[var(--t-faint)]">
         FILE #REVIEW-{reviewId}
       </p>
       {query.isPending ? (
@@ -93,7 +93,7 @@ export function AdminReviewDetailDialog({
         </div>
       ) : (
         <div className="mt-6 space-y-6">
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-y border-[#1A2E1A] py-3 text-xs text-white/60">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-y border-[var(--t-noise)] py-3 text-xs text-white/60">
             <span>{t(`admin.reviews.types.${detail.type}`)}</span>
             <StatusText warning={detail.status === 'REJECTED'}>
               {t(`admin.reviews.statuses.${detail.status}`)}
@@ -104,13 +104,13 @@ export function AdminReviewDetailDialog({
           {detail.type === 'POST' && 'title' in detail.payload ? (
             <>
               <section>
-                <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                   {t('admin.reviews.postTitle')}
                 </div>
-                <h3 className="mt-1 text-lg font-bold text-[#EDF3ED]">{detail.payload.title}</h3>
+                <h3 className="mt-1 text-lg font-bold text-[var(--t-text)]">{detail.payload.title}</h3>
               </section>
               <section>
-                <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                   {t('createPost.tags')}
                 </div>
                 <div className="mt-2">
@@ -118,7 +118,7 @@ export function AdminReviewDetailDialog({
                 </div>
               </section>
               <section>
-                <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                   {t('admin.reviews.postBody')}
                 </div>
                 <div className="prose prose-sm mt-3 max-w-none text-white/60">
@@ -127,8 +127,8 @@ export function AdminReviewDetailDialog({
                   </ReactMarkdown>
                 </div>
               </section>
-              <section className="border-l-2 border-[#3A5A3A] pl-3">
-                <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+              <section className="border-l-2 border-[var(--t-faint)] pl-3">
+                <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                   {t('admin.reviews.targetCircle')}
                 </div>
                 <p className="mt-1 text-sm text-white/60">
@@ -139,13 +139,13 @@ export function AdminReviewDetailDialog({
           ) : detail.type === 'CIRCLE' && 'name' in detail.payload ? (
             <>
               <section>
-                <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                   {t('admin.circles.name')}
                 </div>
-                <h3 className="mt-1 text-lg font-bold text-[#EDF3ED]">{detail.payload.name}</h3>
+                <h3 className="mt-1 text-lg font-bold text-[var(--t-text)]">{detail.payload.name}</h3>
               </section>
               <section>
-                <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                   {t('admin.circles.topic')}
                 </div>
                 <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-white/60">
@@ -153,9 +153,9 @@ export function AdminReviewDetailDialog({
                 </p>
               </section>
               <section
-                className={`border-l-2 pl-3 ${detail.duplicateCircle ? 'border-[#7F1D1D]' : 'border-[#ADFF2F]/45'}`}
+                className={`border-l-2 pl-3 ${detail.duplicateCircle ? 'border-[var(--t-hazard)]' : 'border-[var(--t-accent)]'}`}
               >
-                <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                   {t('admin.reviews.duplicateCheck')}
                 </div>
                 <p className="mt-1 text-sm text-white/60">
@@ -167,8 +167,8 @@ export function AdminReviewDetailDialog({
             </>
           ) : null}
           {detail.decisionReason ? (
-            <section className="border-l-2 border-[#7F1D1D] pl-3">
-              <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+            <section className="border-l-2 border-[var(--t-hazard)] pl-3">
+              <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                 {t('admin.reviews.decisionReason')}
               </div>
               <p className="mt-1 whitespace-pre-wrap text-sm text-white/60">

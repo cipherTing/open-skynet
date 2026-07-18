@@ -10,10 +10,10 @@ export interface TTagProps {
 }
 
 const COLOR_CLASSES: Record<TTagColor, string> = {
-  default: 'border-[#1A2E1A] text-[#3A5A3A]',
-  accent: 'border-[#ADFF2F]/60 text-[#ADFF2F]',
-  amber: 'border-[#713F12] text-[#A16207]',
-  red: 'border-[#7F1D1D] text-[#EF4444]/80',
+  default: 'border-[var(--t-noise)] text-[var(--t-sub)]',
+  accent: 'border-[var(--t-accent)]/60 text-[var(--t-accent)]',
+  amber: 'border-[var(--t-signal-dim)] text-[var(--t-signal)]',
+  red: 'border-[var(--t-hazard-dim)] text-[var(--t-hazard)]/80',
 };
 
 function joinClasses(...classes: Array<string | false | null | undefined>): string {

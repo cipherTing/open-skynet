@@ -57,41 +57,41 @@ export function AgentCirclesTab({ agentId }: AgentCirclesTabProps) {
   return (
     <div>
       {/* 节点名录行：序号 + 圈名 + 等宽数据簇 */}
-      <div className="border-t border-[#1A2E1A]">
+      <div className="border-t border-[var(--t-noise)]">
         {circles.map((circle, index) => (
           <article
             key={circle.id}
-            className="group relative flex items-baseline gap-3 border-b border-[#1A2E1A] px-3 py-3 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#040704] sm:gap-4 sm:px-4"
+            className="group relative flex items-baseline gap-3 border-b border-[var(--t-noise)] px-3 py-3 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[var(--t-panel)] sm:gap-4 sm:px-4"
           >
             <span
               aria-hidden
-              className="absolute bottom-0 left-0 top-0 w-[2px] bg-[#ADFF2F] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
+              className="absolute bottom-0 left-0 top-0 w-[2px] bg-[var(--t-accent)] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
             />
 
-            <span className="w-8 flex-none font-mono text-[10px] tracking-[0.15em] text-[#3A5A3A] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F]">
+            <span className="w-8 flex-none font-mono text-[10px] tracking-[0.15em] text-[var(--t-faint)] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]">
               {String(index + 1).padStart(2, '0')}
             </span>
 
             <span className="min-w-0 flex-1">
               <span className="flex items-center gap-2">
-                <span className="truncate text-sm font-bold text-[#EDF3ED] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F]">
+                <span className="truncate text-sm font-bold text-[var(--t-text)] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]">
                   /{circle.name}
                 </span>
                 {circle.subscribed && (
-                  <Bell aria-hidden className="h-3 w-3 flex-none text-[#ADFF2F]" />
+                  <Bell aria-hidden className="h-3 w-3 flex-none text-[var(--t-accent)]" />
                 )}
               </span>
-              <span className="mt-1 block truncate font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+              <span className="mt-1 block truncate font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                 {circle.topic}
               </span>
             </span>
 
-            <span className="flex flex-none items-baseline gap-3 font-mono text-[10px] tracking-[0.15em] text-[#3A5A3A] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[#ADFF2F]">
+            <span className="flex flex-none items-baseline gap-3 font-mono text-[10px] tracking-[0.15em] text-[var(--t-faint)] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]">
               <span>
-                SUB <span className="tabular-nums text-[#EDF3ED] group-hover:text-[#ADFF2F]">{formatNumber(circle.subscriberCount)}</span>
+                SUB <span className="tabular-nums text-[var(--t-text)] group-hover:text-[var(--t-accent)]">{formatNumber(circle.subscriberCount)}</span>
               </span>
               <span className="hidden sm:inline">
-                PST <span className="tabular-nums text-[#EDF3ED] group-hover:text-[#ADFF2F]">{formatNumber(circle.postCount)}</span>
+                PST <span className="tabular-nums text-[var(--t-text)] group-hover:text-[var(--t-accent)]">{formatNumber(circle.postCount)}</span>
               </span>
             </span>
           </article>
@@ -105,7 +105,7 @@ export function AgentCirclesTab({ agentId }: AgentCirclesTabProps) {
           <button
             type="button"
             onClick={() => void (hasMore ? circlesQuery.fetchNextPage() : circlesQuery.refetch())}
-            className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#ADFF2F] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
+            className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
           >
             {t('agent.loadMoreFailed')}
           </button>
@@ -117,11 +117,11 @@ export function AgentCirclesTab({ agentId }: AgentCirclesTabProps) {
       {!hasMore && circles.length > 0 && (
         <div className="py-6 text-center">
           <div className="flex items-center justify-center gap-3">
-            <div className="h-px w-8 bg-[#1A2E1A]" />
-            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+            <div className="h-px w-8 bg-[var(--t-noise)]" />
+            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
               {t('agent.circlesEnd')}
             </span>
-            <div className="h-px w-8 bg-[#1A2E1A]" />
+            <div className="h-px w-8 bg-[var(--t-noise)]" />
           </div>
         </div>
       )}

@@ -103,7 +103,7 @@ export function CreateCircleProposalModal({
       }
     >
       <div className="space-y-5">
-        <div className="flex items-center gap-8 border border-[#1A2E1A] bg-black px-4 py-3">
+        <div className="flex items-center gap-8 border border-[var(--t-noise)] bg-black px-4 py-3">
           {(['TOPIC', 'RULES'] as const).map((value) => (
             <TRadarNode
               key={value}
@@ -118,14 +118,14 @@ export function CreateCircleProposalModal({
         {scope === 'TOPIC' ? (
           <div className="space-y-3">
             <div>
-              <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+              <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                 {t('circles.coBuild.currentTopic')}
               </p>
-              <p className="mt-2 border border-[#1A2E1A] bg-black px-3 py-2.5 text-sm leading-6 text-[#EDF3ED]/50">
+              <p className="mt-2 border border-[var(--t-noise)] bg-black px-3 py-2.5 text-sm leading-6 text-[var(--t-text)]/50">
                 {circle.topic}
               </p>
             </div>
-            <label className="block font-mono text-[11px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+            <label className="block font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
               {t('circles.coBuild.changeTo')}
               <TInput
                 value={topic}
@@ -156,7 +156,7 @@ export function CreateCircleProposalModal({
           emptyPreview={t('circles.coBuild.emptyPreview')}
         />
         {mutation.isError ? (
-          <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-[#EF4444]/80">
+          <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-hazard)]/80">
             {t(proposal ? 'circles.coBuild.reviseFailed' : 'circles.coBuild.createFailed')}
           </p>
         ) : null}
@@ -211,7 +211,7 @@ function RuleEditor({
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
-        <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+        <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
           {t('circles.coBuild.currentRules')}
         </p>
         <TButton
@@ -230,22 +230,22 @@ function RuleEditor({
       </div>
       <div className="space-y-2">
         {rules.length === 0 ? (
-          <p className="border border-dashed border-[#1A2E1A] px-3 py-5 text-center font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+          <p className="border border-dashed border-[var(--t-noise)] px-3 py-5 text-center font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
             {t('circles.coBuild.noProposedRules')}
           </p>
         ) : null}
         {rules.map((rule, index) => (
-          <div key={rule.id} className="border border-[#1A2E1A] bg-black p-3">
+          <div key={rule.id} className="border border-[var(--t-noise)] bg-black p-3">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
-                <span className="w-5 text-center font-mono text-xs tabular-nums text-[#3A5A3A]">
+                <span className="w-5 text-center font-mono text-xs tabular-nums text-[var(--t-faint)]">
                   {String(index + 1).padStart(2, '0')}
                 </span>
                 <span
                   className={`border px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.15em] ${
                     originalById.has(rule.id)
-                      ? 'border-[#1A2E1A] text-[#3A5A3A]'
-                      : 'border-[#ADFF2F]/50 bg-[#ADFF2F]/10 text-[#ADFF2F]'
+                      ? 'border-[var(--t-noise)] text-[var(--t-faint)]'
+                      : 'border-[var(--t-accent)]/50 bg-[var(--t-accent)]/10 text-[var(--t-accent)]'
                   }`}
                 >
                   {t(
@@ -261,7 +261,7 @@ function RuleEditor({
                   title={t('circles.coBuild.moveUp')}
                   onClick={() => move(index, -1)}
                   disabled={index === 0}
-                  className="flex h-8 w-8 items-center justify-center border border-[#1A2E1A] text-[#3A5A3A] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white disabled:opacity-35"
+                  className="flex h-8 w-8 items-center justify-center border border-[var(--t-noise)] text-[var(--t-sub)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white disabled:opacity-35"
                 >
                   <ArrowUp className="h-3.5 w-3.5" />
                 </button>
@@ -270,7 +270,7 @@ function RuleEditor({
                   title={t('circles.coBuild.moveDown')}
                   onClick={() => move(index, 1)}
                   disabled={index === rules.length - 1}
-                  className="flex h-8 w-8 items-center justify-center border border-[#1A2E1A] text-[#3A5A3A] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white disabled:opacity-35"
+                  className="flex h-8 w-8 items-center justify-center border border-[var(--t-noise)] text-[var(--t-sub)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white disabled:opacity-35"
                 >
                   <ArrowDown className="h-3.5 w-3.5" />
                 </button>
@@ -278,7 +278,7 @@ function RuleEditor({
                   type="button"
                   title={t('circles.coBuild.editRule')}
                   onClick={() => beginEdit(rule.id)}
-                  className="flex h-8 w-8 items-center justify-center border border-[#1A2E1A] text-[#ADFF2F]/80 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#ADFF2F]/10"
+                  className="flex h-8 w-8 items-center justify-center border border-[var(--t-noise)] text-[var(--t-accent)]/80 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[var(--t-accent)]/10"
                 >
                   <Pencil className="h-3.5 w-3.5" />
                 </button>
@@ -286,7 +286,7 @@ function RuleEditor({
                   type="button"
                   title={t('circles.coBuild.removeRule')}
                   onClick={() => remove(rule)}
-                  className="flex h-8 w-8 items-center justify-center border border-[#1A2E1A] text-[#EF4444]/80 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[#7F1D1D]/30"
+                  className="flex h-8 w-8 items-center justify-center border border-[var(--t-noise)] text-[var(--t-hazard)]/80 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[var(--t-hazard-dim)]/30"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
@@ -295,15 +295,15 @@ function RuleEditor({
             {editingIds.has(rule.id) ? (
               <div className="mt-3 space-y-2">
                 {originalById.has(rule.id) ? (
-                  <p className="border border-[#1A2E1A] bg-[#040704] px-3 py-2 text-sm text-[#EDF3ED]/50">
+                  <p className="border border-[var(--t-noise)] bg-[var(--t-panel)] px-3 py-2 text-sm text-[var(--t-text)]/50">
                     {t('circles.coBuild.originalRule')}：{originalById.get(rule.id)?.text}
                   </p>
                 ) : (
-                  <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-[#ADFF2F]">
+                  <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-accent)]">
                     {t('circles.coBuild.newRule')}
                   </p>
                 )}
-                <label className="block font-mono text-[11px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+                <label className="block font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                   {originalById.has(rule.id)
                     ? t('circles.coBuild.changeTo')
                     : t('circles.coBuild.ruleContent')}
@@ -324,31 +324,31 @@ function RuleEditor({
                 <button
                   type="button"
                   onClick={() => stopEdit(rule.id)}
-                  className="font-mono text-[11px] uppercase tracking-[0.15em] text-[#ADFF2F] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
+                  className="font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-accent)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
                 >
                   {t('circles.coBuild.finishEditing')}
                 </button>
               </div>
             ) : (
-              <p className="mt-3 text-sm leading-6 text-[#EDF3ED]">{rule.text}</p>
+              <p className="mt-3 text-sm leading-6 text-[var(--t-text)]">{rule.text}</p>
             )}
           </div>
         ))}
         {removedRules.map((rule) => (
-          <div key={rule.id} className="border border-[#7F1D1D] bg-[#7F1D1D]/10 p-3">
+          <div key={rule.id} className="border border-[var(--t-hazard-dim)] bg-[var(--t-hazard-dim)]/10 p-3">
             <div className="flex items-center justify-between gap-3">
-              <span className="border border-[#7F1D1D] bg-[#7F1D1D]/20 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.15em] text-[#EF4444]/80">
+              <span className="border border-[var(--t-hazard-dim)] bg-[var(--t-hazard-dim)]/20 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-hazard)]/80">
                 {t('circles.coBuild.ruleDeleted')}
               </span>
               <button
                 type="button"
                 onClick={() => restore(rule)}
-                className="font-mono text-[11px] uppercase tracking-[0.15em] text-[#ADFF2F] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
+                className="font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-accent)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
               >
                 {t('circles.coBuild.restoreRule')}
               </button>
             </div>
-            <p className="mt-3 text-sm leading-6 text-[#EDF3ED]/40 line-through">{rule.text}</p>
+            <p className="mt-3 text-sm leading-6 text-[var(--t-text)]/40 line-through">{rule.text}</p>
           </div>
         ))}
       </div>

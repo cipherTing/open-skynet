@@ -19,7 +19,7 @@ export function TSkeleton({ rows = 3, className }: TSkeletonProps) {
         <div
           key={index}
           className={joinClasses(
-            't-anim-skeleton h-3 rounded-none bg-[#1A2E1A]',
+            't-anim-skeleton h-3 rounded-none bg-[var(--t-noise)]',
             ROW_WIDTHS[index % ROW_WIDTHS.length],
           )}
         />

@@ -62,7 +62,7 @@ export function AgentHistoryTab({ agentId }: AgentHistoryTabProps) {
   return (
     <div>
       {/* 交互日志行：`>` 前缀 + 时间码 */}
-      <div className="border-t border-[#1A2E1A]">
+      <div className="border-t border-[var(--t-noise)]">
         {interactions.map((item) => (
           <AgentInteractionCard key={item.id} item={item} />
         ))}
@@ -75,7 +75,7 @@ export function AgentHistoryTab({ agentId }: AgentHistoryTabProps) {
           <button
             type="button"
             onClick={() => void (hasMore ? historyQuery.fetchNextPage() : historyQuery.refetch())}
-            className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#ADFF2F] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
+            className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
           >
             {t('agent.loadMoreFailed')}
           </button>
@@ -87,11 +87,11 @@ export function AgentHistoryTab({ agentId }: AgentHistoryTabProps) {
       {!hasMore && interactions.length > 0 && (
         <div className="py-6 text-center">
           <div className="flex items-center justify-center gap-3">
-            <div className="h-px w-8 bg-[#1A2E1A]" />
-            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#3A5A3A]">
+            <div className="h-px w-8 bg-[var(--t-noise)]" />
+            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
               {t('agent.historyEnd')}
             </span>
-            <div className="h-px w-8 bg-[#1A2E1A]" />
+            <div className="h-px w-8 bg-[var(--t-noise)]" />
           </div>
         </div>
       )}

@@ -310,11 +310,11 @@ export function ForumFeed({
             <div
               role="group"
               aria-label={t('feed.freqLabel')}
-              className="flex max-w-full flex-wrap items-stretch divide-x divide-[#1A2E1A] border border-[#1A2E1A]"
+              className="flex max-w-full flex-wrap items-stretch divide-x divide-[var(--t-noise)] border border-[var(--t-noise)]"
             >
               <span
                 aria-hidden
-                className="flex items-center px-2 font-mono text-[10px] uppercase tracking-[0.2em] text-[#3A5A3A]"
+                className="flex items-center px-2 font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--t-faint)]"
               >
                 {t('feed.freqLabel')}
               </span>
@@ -354,7 +354,7 @@ export function ForumFeed({
               <div
                 role="group"
                 aria-label={t('feed.scopeLabel')}
-                className="flex max-w-full items-stretch divide-x divide-[#1A2E1A] border border-[#1A2E1A]"
+                className="flex max-w-full items-stretch divide-x divide-[var(--t-noise)] border border-[var(--t-noise)]"
               >
                 <button
                   type="button"
@@ -425,19 +425,19 @@ export function ForumFeed({
           {!showingRefreshLoading && posts.length > 0 && (
             <>
               <div className="mb-2 flex items-center gap-3 px-1">
-                <span className="font-mono text-[11px] tracking-[0.2em] text-[#ADFF2F]">
+                <span className="font-mono text-[11px] tracking-[0.2em] text-[var(--t-accent)]">
                   CH.01
                 </span>
-                <span className="font-mono text-[11px] tracking-[0.2em] text-[#3A5A3A]">{'//'}</span>
+                <span className="font-mono text-[11px] tracking-[0.2em] text-[var(--t-faint)]">{'//'}</span>
                 <span className="text-[13px] font-bold tracking-wide text-text-primary">
                   {t('forum.chapterFeed')}
                 </span>
-                <span aria-hidden className="h-px flex-1 bg-[#1A2E1A]" />
-                <span className="font-mono text-[10px] tracking-[0.2em] text-[#3A5A3A]">
+                <span aria-hidden className="h-px flex-1 bg-[var(--t-noise)]" />
+                <span className="font-mono text-[10px] tracking-[0.2em] text-[var(--t-faint)]">
                   {t('feed.recordCount', { count: posts.length })}
                 </span>
               </div>
-              <div className="border-t border-[#1A2E1A]">
+              <div className="border-t border-[var(--t-noise)]">
                 {posts.map((post, index) => (
                   <PostCard key={post.id} post={post} index={index} layout={1} />
                 ))}
@@ -454,9 +454,9 @@ export function ForumFeed({
           {!showingRefreshLoading && !hasMore && posts.length > 0 && (
             <div className="py-8 text-center font-mono text-[11px] tracking-deck-normal text-text-tertiary">
               <div className="flex items-center justify-center gap-3">
-                <div className="h-px w-8 bg-[#1A2E1A]" aria-hidden />
+                <div className="h-px w-8 bg-[var(--t-noise)]" aria-hidden />
                 <span>{t('forum.postsEnd')}</span>
-                <div className="h-px w-8 bg-[#1A2E1A]" aria-hidden />
+                <div className="h-px w-8 bg-[var(--t-noise)]" aria-hidden />
               </div>
             </div>
           )}
@@ -484,7 +484,7 @@ function FeedLoadingState({ label }: { label: string }) {
   return (
     <div role="status" aria-label={label} className="flex min-h-full flex-col py-2">
       {[0, 1, 2, 3].map((row) => (
-        <div key={row} className="border-b border-[#1A2E1A] px-4 py-4 sm:px-5">
+        <div key={row} className="border-b border-[var(--t-noise)] px-4 py-4 sm:px-5">
           <TSkeleton rows={2} />
         </div>
       ))}

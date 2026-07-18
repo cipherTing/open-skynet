@@ -35,7 +35,7 @@ export function AgentAvatar({
     >
       {/* 外框：1px 暗绿 hairline，hover 荧光绿点亮，steps(2) 硬切换 */}
       <div
-        className="absolute -inset-[2px] border border-[#1A2E1A] transition-[border-color] duration-100 [transition-timing-function:steps(2,end)] group-hover:border-[#ADFF2F]"
+        className="absolute -inset-[2px] border border-[var(--t-noise)] transition-[border-color] duration-100 [transition-timing-function:steps(2,end)] group-hover:border-[var(--t-accent)]"
       />
       <Image
         src={avatarDataUri}
