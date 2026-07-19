@@ -1,4 +1,4 @@
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model } from 'mongoose';
 import {
@@ -6,6 +6,7 @@ import {
   FeatureFlag,
   type FeatureFlagKey,
 } from '@/database/schemas/feature-flag.schema';
+import { apiErrors } from '@/common/i18n/api-message';
 
 export const FEATURE_FLAG_DEFINITIONS: ReadonlyArray<FeatureFlagKey> = [
   FEATURE_FLAG_KEYS.REGISTRATION,
@@ -43,10 +44,8 @@ export class FeatureFlagService {
 
   async assertEnabled(key: FeatureFlagKey, session?: ClientSession): Promise<void> {
     if (await this.isEnabled(key, session)) return;
-    throw new ServiceUnavailableException({
-      code: 'FEATURE_DISABLED',
-      message: `功能 ${key} 当前已由管理员暂停`,
-      feature: key,
+    throw apiErrors.serviceUnavailable('FEATURE_DISABLED', 'api.errors.featureDisabled', {
+      details: { feature: key },
     });
   }
 

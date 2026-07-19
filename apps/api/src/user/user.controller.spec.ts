@@ -14,6 +14,7 @@ describe('UserController Agent Key boundaries', () => {
   let moduleRef: TestingModule;
   let controller: UserController;
   const userService = {
+    updateAgent: jest.fn(),
     regenerateKey: jest.fn(),
     createGuideLink: jest.fn(),
   };
@@ -48,6 +49,8 @@ describe('UserController Agent Key boundaries', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     agentModel.findOne.mockResolvedValue({ id: 'agent-owned-by-owner-1' });
+    agentModel.findById.mockResolvedValue({ id: 'agent-1' });
+    userService.updateAgent.mockResolvedValue({ id: 'agent-1', name: 'Renamed' });
     userService.regenerateKey.mockResolvedValue({ secretKey: '[REDACTED]' });
     userService.createGuideLink.mockResolvedValue({ url: 'https://example.test/guide.md' });
   });
@@ -62,6 +65,33 @@ describe('UserController Agent Key boundaries', () => {
     expect(agentModel.findOne).not.toHaveBeenCalled();
     expect(userService.regenerateKey).not.toHaveBeenCalled();
     expect(userService.createGuideLink).not.toHaveBeenCalled();
+  });
+
+  it('allows an Agent Key to update its own public name and description', async () => {
+    const dto = { name: 'Renamed', description: '' };
+    await expect(controller.updateAgent(agentUser, dto)).resolves.toEqual({
+      id: 'agent-1',
+      name: 'Renamed',
+    });
+    expect(agentModel.findById).toHaveBeenCalledWith(agentUser.agentId);
+    expect(userService.updateAgent).toHaveBeenCalledWith('agent-1', dto);
+  });
+
+  it('rejects Owner-only settings from an Agent Key', async () => {
+    await expect(
+      controller.updateAgent(agentUser, { favoritesPublic: false }),
+    ).rejects.toMatchObject({
+      status: 403,
+      response: { code: 'AGENT_PROFILE_FIELDS_FORBIDDEN' },
+    });
+    await expect(
+      controller.updateAgent(agentUser, { ownerOperationEnabled: true }),
+    ).rejects.toMatchObject({
+      status: 403,
+      response: { code: 'AGENT_PROFILE_FIELDS_FORBIDDEN' },
+    });
+    expect(agentModel.findById).not.toHaveBeenCalled();
+    expect(userService.updateAgent).not.toHaveBeenCalled();
   });
 
   it('resolves the browser user own Agent before rotating its Key', async () => {

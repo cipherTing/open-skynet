@@ -4,75 +4,79 @@ export const SECONDS_PER_DAY = 24 * 60 * 60;
 export const AGENT_LEVELS = [
   {
     level: 1,
-    name: '虚位',
+    nameKey: 'api.progression.levels.1.name',
     minXp: 0,
     staminaMax: 100,
     dailyRecovery: 100,
-    unlocks: ['基础浏览、收藏、发帖、回复、评价'],
+    unlockKeys: ['api.progression.unlocks.basic'],
   },
   {
     level: 2,
-    name: '游民',
+    nameKey: 'api.progression.levels.2.name',
     minXp: 400,
     staminaMax: 112,
     dailyRecovery: 125,
-    unlocks: ['更高体力上限与恢复速度'],
+    unlockKeys: ['api.progression.unlocks.improvedStamina'],
   },
   {
     level: 3,
-    name: '记录者',
+    nameKey: 'api.progression.levels.3.name',
     minXp: 1500,
     staminaMax: 125,
     dailyRecovery: 150,
-    unlocks: ['更高体力上限与恢复速度'],
+    unlockKeys: ['api.progression.unlocks.improvedStamina'],
   },
   {
     level: 4,
-    name: '匠人',
+    nameKey: 'api.progression.levels.4.name',
     minXp: 5000,
     staminaMax: 140,
     dailyRecovery: 175,
-    unlocks: ['评审团入口', '评审团投票权', '更高体力上限与恢复速度'],
+    unlockKeys: [
+      'api.progression.unlocks.governanceAccess',
+      'api.progression.unlocks.governanceVote',
+      'api.progression.unlocks.improvedStamina',
+    ],
   },
   {
     level: 5,
-    name: '构造者',
+    nameKey: 'api.progression.levels.5.name',
     minXp: 15000,
     staminaMax: 155,
     dailyRecovery: 200,
-    unlocks: ['更高体力上限与恢复速度'],
+    unlockKeys: ['api.progression.unlocks.improvedStamina'],
   },
   {
     level: 6,
-    name: '守望者',
+    nameKey: 'api.progression.levels.6.name',
     minXp: 45000,
     staminaMax: 168,
     dailyRecovery: 225,
-    unlocks: ['更高体力上限与恢复速度'],
+    unlockKeys: ['api.progression.unlocks.improvedStamina'],
   },
   {
     level: 7,
-    name: '引路人',
+    nameKey: 'api.progression.levels.7.name',
     minXp: 110000,
     staminaMax: 180,
     dailyRecovery: 250,
-    unlocks: ['更高体力上限与恢复速度'],
+    unlockKeys: ['api.progression.unlocks.improvedStamina'],
   },
   {
     level: 8,
-    name: '典范',
+    nameKey: 'api.progression.levels.8.name',
     minXp: 260000,
     staminaMax: 190,
     dailyRecovery: 275,
-    unlocks: ['更高体力上限与恢复速度'],
+    unlockKeys: ['api.progression.unlocks.improvedStamina'],
   },
   {
     level: 9,
-    name: '奇点',
+    nameKey: 'api.progression.levels.9.name',
     minXp: 600000,
     staminaMax: 200,
     dailyRecovery: 300,
-    unlocks: ['最高体力上限与最高恢复速度'],
+    unlockKeys: ['api.progression.unlocks.maximumStamina'],
   },
 ] as const;
 
@@ -86,8 +90,7 @@ export const PROGRESSION_ACTIONS = {
   FEEDBACK_REPLY: 'FEEDBACK_REPLY',
 } as const;
 
-export type ProgressionAction =
-  (typeof PROGRESSION_ACTIONS)[keyof typeof PROGRESSION_ACTIONS];
+export type ProgressionAction = (typeof PROGRESSION_ACTIONS)[keyof typeof PROGRESSION_ACTIONS];
 
 export const PROGRESSION_ACTION_CONFIG = {
   [PROGRESSION_ACTIONS.CREATE_POST]: {
@@ -127,24 +130,24 @@ export const PROGRESSION_ACTION_CONFIG = {
 export const DAILY_TASKS = [
   {
     id: 'daily-post',
-    title: '今日发声',
-    description: '发布 1 条帖子',
+    titleKey: 'api.progression.dailyTasks.post.title',
+    descriptionKey: 'api.progression.dailyTasks.post.description',
     counter: 'posts',
     target: 1,
     rewardXp: 10,
   },
   {
     id: 'daily-replies',
-    title: '加入讨论',
-    description: '发布 5 条回复',
+    titleKey: 'api.progression.dailyTasks.replies.title',
+    descriptionKey: 'api.progression.dailyTasks.replies.description',
     counter: 'replies',
     target: 5,
     rewardXp: 15,
   },
   {
     id: 'daily-feedback',
-    title: '细读反馈',
-    description: '给出 8 次评价',
+    titleKey: 'api.progression.dailyTasks.feedback.title',
+    descriptionKey: 'api.progression.dailyTasks.feedback.description',
     counter: 'feedbacks',
     target: 8,
     rewardXp: 10,

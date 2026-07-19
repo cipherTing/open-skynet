@@ -14,6 +14,7 @@ interface ReplyInputProps {
   compact?: boolean;
   quoteText?: string | null;
   onClearQuote?: () => void;
+  disabled?: boolean;
 }
 
 export function ReplyInput({
@@ -23,6 +24,7 @@ export function ReplyInput({
   compact = false,
   quoteText,
   onClearQuote,
+  disabled = false,
 }: ReplyInputProps) {
   const { t } = useTranslation();
   const [content, setContent] = useState('');
@@ -31,7 +33,7 @@ export function ReplyInput({
   const [error, setError] = useState('');
 
   const handleSubmit = useCallback(async () => {
-    if (!content.trim()) return;
+    if (disabled || !content.trim()) return;
     setError('');
     setSubmitting(true);
     try {
@@ -46,12 +48,16 @@ export function ReplyInput({
     } finally {
       setSubmitting(false);
     }
-  }, [content, onSubmit, t]);
+  }, [content, disabled, onSubmit, t]);
 
   const inputPlaceholder = placeholder ?? t('forum.replyPlaceholder');
 
   return (
-    <div className="t-corner relative overflow-visible border border-[var(--t-noise)] bg-black transition-[border-color] duration-100 [transition-timing-function:steps(2,end)] focus-within:border-[var(--t-accent)]">
+    <div
+      aria-disabled={disabled}
+      title={disabled ? t('replyThread.ownerOperationRequired') : undefined}
+      className={`t-corner relative overflow-visible border border-[var(--t-noise)] bg-black transition-[border-color] duration-100 [transition-timing-function:steps(2,end)] focus-within:border-[var(--t-accent)] ${disabled ? 'opacity-45' : ''}`}
+    >
       {/* 错误提示 */}
       {error && (
         <div className="border-b border-danger/40 bg-danger/10 px-3 py-2 font-mono text-[11px] text-danger">
@@ -65,9 +71,13 @@ export function ReplyInput({
           <span className="text-[var(--t-accent)]">{'>'}</span> {t('replyInput.label')}
         </span>
         <button
+          type="button"
           onClick={() => setShowPreview(!showPreview)}
+          disabled={disabled}
           className={`flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.12em] transition-colors [transition-timing-function:steps(2,end)] ${
-            showPreview ? 'text-[var(--t-accent)]' : 'text-[var(--t-faint)] hover:text-[var(--t-accent)]'
+            showPreview
+              ? 'text-[var(--t-accent)]'
+              : 'text-[var(--t-faint)] hover:text-[var(--t-accent)]'
           }`}
         >
           <Eye className="w-3 h-3" />
@@ -83,6 +93,7 @@ export function ReplyInput({
             <button
               type="button"
               onClick={onClearQuote}
+              disabled={disabled}
               aria-label={t('replyInput.clearQuote')}
               className="shrink-0 text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-danger"
             >
@@ -118,6 +129,7 @@ export function ReplyInput({
           <div className="relative min-w-0 flex-1">
             <textarea
               aria-label={t('replyInput.label')}
+              disabled={disabled}
               value={content}
               onChange={(e) => setContent(e.target.value)}
               placeholder={inputPlaceholder}
@@ -126,7 +138,7 @@ export function ReplyInput({
                 compact ? 'min-h-[76px]' : 'min-h-[96px]'
               }`}
             />
-            {content.length === 0 && (
+            {content.length === 0 && !disabled && (
               <span
                 aria-hidden
                 className="t-anim-blink pointer-events-none absolute left-0 top-[3px] h-[14px] w-[8px] bg-[var(--t-accent)]"
@@ -140,7 +152,9 @@ export function ReplyInput({
       <div className="flex items-center justify-end gap-3 border-t border-[var(--t-noise2)] px-3 py-2">
         {onCancel && (
           <button
+            type="button"
             onClick={onCancel}
+            disabled={disabled}
             className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-white"
           >
             <X className="w-3 h-3" />
@@ -148,8 +162,9 @@ export function ReplyInput({
           </button>
         )}
         <button
+          type="button"
           onClick={handleSubmit}
-          disabled={submitting || !content.trim()}
+          disabled={disabled || submitting || !content.trim()}
           className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)] transition-colors [transition-timing-function:steps(2,end)] hover:bg-accent/10 disabled:cursor-not-allowed disabled:text-[var(--t-faint)] disabled:hover:bg-transparent"
         >
           <Send className="w-3 h-3" />

@@ -1,4 +1,3 @@
-import { getQueueToken } from '@nestjs/bullmq';
 import { getConnectionToken, getModelToken, MongooseModule } from '@nestjs/mongoose';
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
@@ -120,7 +119,6 @@ describe('AdminService moderation paths', () => {
         { provide: getModelToken(Report.name), useValue: {} },
         { provide: getModelToken(GovernanceCorrection.name), useValue: {} },
         { provide: getModelToken(ReportTargetState.name), useValue: {} },
-        { provide: getQueueToken('view-count'), useValue: {} },
         { provide: HealthService, useValue: {} },
         { provide: ForumService, useValue: forumService },
         { provide: CircleService, useValue: circleService },

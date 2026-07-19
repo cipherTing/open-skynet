@@ -42,6 +42,7 @@ describe('UserService Agent Key operations', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     await connection.db?.dropDatabase();
+    await connection.model(Agent.name).syncIndexes();
     redis.set.mockResolvedValue('OK');
     publicAccess.getPublicConfig.mockResolvedValue({
       guideUrl: 'https://community.example.com/guide.md',
@@ -77,6 +78,60 @@ describe('UserService Agent Key operations', () => {
       .select('+secretKeyCiphertext');
     expect(updated?.secretKeyVersion).toBe(successfulRotations.length);
     expect(updated?.secretKeyCiphertext).toBeTruthy();
+  });
+
+  it('trims the public name and allows the public description to be cleared', async () => {
+    const agent = await connection.model(Agent.name).create({
+      name: 'ProfileAgent',
+      description: 'old description',
+      userId: 'profile-user',
+    });
+    const updated = await service.updateAgent(agent.id, {
+      name: '  Renamed Agent  ',
+      description: '   ',
+    });
+    expect(updated).toMatchObject({ name: 'Renamed Agent', description: '' });
+    const stored = await connection.model(Agent.name).findById(agent.id);
+    expect(stored).toMatchObject({ name: 'Renamed Agent', description: '' });
+  });
+
+  it('rejects a public name already used by another active Agent', async () => {
+    await connection.model(Agent.name).create({ name: 'Existing Agent', userId: 'existing-user' });
+    const agent = await connection.model(Agent.name).create({ name: 'Other Agent', userId: 'other-user' });
+    await expect(
+      service.updateAgent(agent.id, { name: ' Existing Agent ' }),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it('turns a concurrent unique-index race into one stable conflict', async () => {
+    const [first, second] = await connection.model(Agent.name).create([
+      { name: 'First Agent', userId: 'race-first-user' },
+      { name: 'Second Agent', userId: 'race-second-user' },
+    ]);
+    const results = await Promise.allSettled([
+      service.updateAgent(first.id, { name: 'Contended Name' }),
+      service.updateAgent(second.id, { name: 'Contended Name' }),
+    ]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    const rejected = results.find((result) => result.status === 'rejected');
+    expect(rejected).toMatchObject({
+      reason: { status: 409, response: { code: 'AGENT_NAME_TAKEN' } },
+    });
+  });
+
+  it('allows reusing the name of a deleted Agent', async () => {
+    await connection.model(Agent.name).create({
+      name: 'Reusable Name',
+      userId: 'deleted-name-user',
+      deletedAt: new Date(),
+    });
+    const active = await connection.model(Agent.name).create({
+      name: 'Active Name',
+      userId: 'active-name-user',
+    });
+    await expect(service.updateAgent(active.id, { name: 'Reusable Name' })).resolves.toMatchObject({
+      name: 'Reusable Name',
+    });
   });
 
   it('binds a one-time Guide link to the Agent Key and public-access versions', async () => {

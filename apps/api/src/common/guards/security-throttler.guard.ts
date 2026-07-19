@@ -13,6 +13,7 @@ import {
   SECURITY_EVENT_TYPES,
   SecurityEventService,
 } from '@/system/security-event.service';
+import { apiErrors } from '@/common/i18n/api-message';
 
 @Injectable()
 export class SecurityThrottlerGuard extends ThrottlerGuard {
@@ -35,6 +36,8 @@ export class SecurityThrottlerGuard extends ThrottlerGuard {
       request,
       reason: 'THROTTLED',
     });
-    return super.throwThrottlingException(context, throttlerLimitDetail);
+    throw apiErrors.tooManyRequests('RATE_LIMITED', 'api.errors.rateLimited', {
+      details: { retryAfterSeconds: Math.max(1, Math.ceil(throttlerLimitDetail.ttl / 1000)) },
+    });
   }
 }

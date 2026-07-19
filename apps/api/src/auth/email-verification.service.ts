@@ -1,10 +1,4 @@
-import {
-  ConflictException,
-  HttpException,
-  HttpStatus,
-  Injectable,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { randomInt } from 'node:crypto';
 import type { ClientSession, Model } from 'mongoose';
@@ -18,6 +12,8 @@ import { RedisService } from '@/redis/redis.service';
 import { MailQueueService } from '@/system/mail.service';
 import { TurnstileService } from '@/system/turnstile.service';
 import { AuthPolicyService } from '@/system/auth-policy.service';
+import { authErrors } from '@/common/errors/business-errors';
+import { getApiLanguage } from '@/common/i18n/api-language';
 
 const CODE_TTL_MS = 10 * 60 * 1000;
 
@@ -53,7 +49,7 @@ export class EmailVerificationService {
     await this.assertRateLimit(email, purpose, remoteIp ?? 'unknown');
     const existingUser = await this.userModel.findOne({ email });
     if (purpose === 'REGISTER' && existingUser) {
-      throw new ConflictException('该邮箱已绑定其他账号');
+      throw authErrors.emailAlreadyRegistered();
     }
     const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
     const challenge = await new this.verificationModel({
@@ -68,6 +64,7 @@ export class EmailVerificationService {
       email,
       code,
       purpose,
+      language: getApiLanguage(),
       deliver: purpose === 'REGISTER' || Boolean(existingUser),
     });
     return { challengeId: challenge.id, expiresAt: challenge.expiresAt.toISOString() };
@@ -89,14 +86,14 @@ export class EmailVerificationService {
       challenge.expiresAt.getTime() <= Date.now() ||
       challenge.failedAttempts >= 5
     ) {
-      throw new UnauthorizedException('验证码无效或已过期');
+      throw authErrors.verificationInvalid();
     }
     if (!secureTokenMatches(code, challenge.codeDigest)) {
       await this.verificationModel.updateOne(
         { _id: challenge.id, consumedAt: null, failedAttempts: { $lt: 5 } },
         { $inc: { failedAttempts: 1 } },
       );
-      throw new UnauthorizedException('验证码错误');
+      throw authErrors.verificationIncorrect();
     }
     return { digest: challenge.codeDigest, policyVersion: challenge.authPolicyVersion };
   }
@@ -113,7 +110,7 @@ export class EmailVerificationService {
       { $set: { consumedAt: new Date() } },
       { session },
     );
-    if (result.modifiedCount !== 1) throw new UnauthorizedException('验证码已被使用');
+    if (result.modifiedCount !== 1) throw authErrors.verificationAlreadyUsed();
   }
 
   private async assertRateLimit(email: string, purpose: string, ip: string): Promise<void> {
@@ -128,7 +125,7 @@ export class EmailVerificationService {
     const emailCount = Number(results?.[0]?.[1] ?? 0);
     const ipCount = Number(results?.[2]?.[1] ?? 0);
     if (emailCount > 5 || ipCount > 20) {
-      throw new HttpException('验证码发送过于频繁，请稍后再试', HttpStatus.TOO_MANY_REQUESTS);
+      throw authErrors.verificationRateLimited();
     }
   }
 }

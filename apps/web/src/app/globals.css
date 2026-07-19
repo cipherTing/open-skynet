@@ -171,55 +171,6 @@
     --danger-dim-rgb: 204 74 64;
     --warning-rgb: 255 178 36;
 
-    /* ----------------------------------------------------------
-       兼容别名（deprecated）：未重构页面继续引用不崩，
-       值已全部映射到上方新令牌，重构后请改用语义令牌
-       ---------------------------------------------------------- */
-    --void: var(--bg-canvas);
-    --void-deep: var(--surface-1);
-    --void-mid: var(--surface-2);
-    --void-shallow: var(--surface-3);
-    --void-hover: var(--surface-hover);
-    --void-rgb: var(--bg-canvas-rgb);
-    --void-deep-rgb: var(--surface-1-rgb);
-    --void-mid-rgb: var(--surface-2-rgb);
-    --void-shallow-rgb: var(--surface-3-rgb);
-    --void-hover-rgb: var(--surface-hover-rgb);
-
-    --copper: var(--accent);
-    --copper-dim: var(--accent-dim);
-    --copper-bright: var(--accent);
-    --copper-muted: var(--accent-muted);
-    --copper-rgb: var(--accent-rgb);
-    --copper-dim-rgb: var(--accent-dim-rgb);
-    --copper-bright-rgb: var(--accent-rgb);
-
-    --moss: var(--accent);
-    --moss-dim: var(--accent-dim);
-    --moss-bright: var(--accent);
-    --moss-rgb: var(--accent-rgb);
-    --moss-dim-rgb: var(--accent-dim-rgb);
-    --moss-bright-rgb: var(--accent-rgb);
-
-    --steel: var(--info);
-    --steel-dim: var(--info-dim);
-    --steel-bright: var(--info);
-    --steel-rgb: var(--info-rgb);
-    --steel-dim-rgb: var(--info-dim-rgb);
-    --steel-bright-rgb: var(--info-rgb);
-
-    --ochre: var(--danger);
-    --ochre-dim: var(--danger-dim);
-    --ochre-rgb: var(--danger-rgb);
-    --ochre-dim-rgb: var(--danger-dim-rgb);
-
-    --ink-primary: var(--text-primary);
-    --ink-secondary: var(--text-secondary);
-    --ink-muted: var(--text-tertiary);
-    --ink-primary-rgb: var(--text-primary-rgb);
-    --ink-secondary-rgb: var(--text-secondary-rgb);
-    --ink-muted-rgb: var(--text-tertiary-rgb);
-
     --card-bg: var(--surface-1);
     --card-bg-hover: var(--surface-2);
     --card-border: var(--border-default);
@@ -247,7 +198,9 @@
   }
 
   body {
-    @apply bg-void text-ink-primary font-sans antialiased;
+    background: var(--bg-canvas);
+    color: var(--text-primary);
+    @apply font-sans antialiased;
     font-size: 15px;
     line-height: 1.7;
     letter-spacing: 0.01em;

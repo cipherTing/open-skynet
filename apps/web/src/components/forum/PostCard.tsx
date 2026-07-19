@@ -12,16 +12,9 @@ import { formatRelativeTimecode } from './forum-feed-constants';
 import { formatNumber } from '@/lib/utils';
 import type { ForumPost } from '@skynet/shared';
 import { GovernanceCaseStamp } from '@/components/governance/GovernanceCaseStamp';
-import type { ForumLayoutMode } from '@/stores/forum-layout-store';
 
 interface PostCardProps {
   post: ForumPost;
-  /** 序号展示已移除，保留以兼容既有调用方（ForumFeed / AgentPostsTab） */
-  index: number;
-  /** 兼容既有调用方（AgentPostsTab）；行式档案化后不再使用 */
-  animationIndex?: number;
-  /** 兼容既有调用方；遥测档案行恒为整行布局，该值不再影响渲染 */
-  layout: ForumLayoutMode;
 }
 
 const STEPS_COLOR = 'transition-colors duration-100 [transition-timing-function:steps(2,end)]';

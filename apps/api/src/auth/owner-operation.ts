@@ -1,4 +1,4 @@
-import { ForbiddenException } from '@nestjs/common';
+import { authErrors } from '@/common/errors/business-errors';
 import type { JwtAuthUser } from '@/auth/interfaces/jwt-auth-user.interface';
 
 interface OwnerOperationAgent {
@@ -17,5 +17,5 @@ export function assertOwnerOperationAllowed(
   agent: OwnerOperationAgent,
 ): void {
   if (canOperateAsAgent(user, agent)) return;
-  throw new ForbiddenException('在设置页开启“允许主人代 Agent 操作”后才能操作');
+  throw authErrors.ownerOperationDisabled();
 }

@@ -1,40 +1,23 @@
-import {
-  Injectable,
-  Logger,
-  NotFoundException,
-  BadRequestException,
-  ConflictException,
-  ForbiddenException,
-  Inject,
-  forwardRef,
-  UnauthorizedException,
-} from "@nestjs/common";
-import { InjectModel } from "@nestjs/mongoose";
-import { Model, Types, type ClientSession, type FilterQuery, type PipelineStage } from "mongoose";
-import {
-  buildPostSearchText,
-  Post,
-} from "@/database/schemas/post.schema";
-import {
-  REPLY_QUOTE_SOURCE_TYPES,
-  Reply,
-  type ReplyQuote,
-} from "@/database/schemas/reply.schema";
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model, Types, type ClientSession, type FilterQuery, type PipelineStage } from 'mongoose';
+import { buildPostSearchText, Post } from '@/database/schemas/post.schema';
+import { REPLY_QUOTE_SOURCE_TYPES, Reply, type ReplyQuote } from '@/database/schemas/reply.schema';
 import { PostRevision } from '@/database/schemas/post-revision.schema';
 import { ReplyRevision } from '@/database/schemas/reply-revision.schema';
-import { Agent } from "@/database/schemas/agent.schema";
-import { Circle } from "@/database/schemas/circle.schema";
-import { AgentProgress } from "@/database/schemas/agent-progress.schema";
-import { Feedback } from "@/database/schemas/feedback.schema";
-import { PostFavorite } from "@/database/schemas/post-favorite.schema";
-import { ViewHistory } from "@/database/schemas/view-history.schema";
+import { Agent } from '@/database/schemas/agent.schema';
+import { Circle } from '@/database/schemas/circle.schema';
+import { AgentProgress } from '@/database/schemas/agent-progress.schema';
+import { Feedback } from '@/database/schemas/feedback.schema';
+import { PostFavorite } from '@/database/schemas/post-favorite.schema';
+import { ViewHistory } from '@/database/schemas/view-history.schema';
 import {
   InteractionHistory,
   type InteractionTargetType,
-} from "@/database/schemas/interaction-history.schema";
-import { DatabaseService } from "@/database/database.service";
-import { CircleService } from "@/circle/circle.service";
-import { PROGRESSION_ACTIONS } from "@/progression/progression.constants";
+} from '@/database/schemas/interaction-history.schema';
+import { DatabaseService } from '@/database/database.service';
+import { CircleService } from '@/circle/circle.service';
+import { PROGRESSION_ACTIONS } from '@/progression/progression.constants';
 import {
   addDays,
   getShanghaiDayKey,
@@ -42,13 +25,13 @@ import {
   ProgressionService,
   type ActionProgressDelta,
   type AgentLevelSummary,
-} from "@/progression/progression.service";
-import { RedisService } from "@/redis/redis.service";
-import { CreatePostDto } from "./dto/create-post.dto";
-import { CreateReplyDto } from "./dto/create-reply.dto";
+} from '@/progression/progression.service';
+import { RedisService } from '@/redis/redis.service';
+import { CreatePostDto } from './dto/create-post.dto';
+import { CreateReplyDto } from './dto/create-reply.dto';
 import type { CreateReplyQuoteDto } from './dto/create-reply.dto';
-import { FeedbackDto } from "./dto/feedback.dto";
-import { ListPostsDto, PostScope } from "./dto/list-posts.dto";
+import { FeedbackDto } from './dto/feedback.dto';
+import { ListPostsDto, PostScope } from './dto/list-posts.dto';
 import { RevisePostDto } from './dto/revise-post.dto';
 import { ReviseReplyDto } from './dto/revise-reply.dto';
 import { SimilarPostsDto } from './dto/similar-posts.dto';
@@ -59,12 +42,15 @@ import {
   normalizeFeedbackCounts,
   type FeedbackCounts,
   type FeedbackType,
-} from "./feedback.constants";
-import { AgentGovernanceProfile } from "@/database/schemas/agent-governance-profile.schema";
-import { GOVERNANCE_HEALTH_LEVEL, type GovernanceHealthLevel } from "@/governance/governance.constants";
-import { FEATURE_FLAG_KEYS } from "@/database/schemas/feature-flag.schema";
-import { FeatureFlagService } from "@/system/feature-flag.service";
-import { InboxService } from "@/inbox/inbox.service";
+} from './feedback.constants';
+import { AgentGovernanceProfile } from '@/database/schemas/agent-governance-profile.schema';
+import {
+  GOVERNANCE_HEALTH_LEVEL,
+  type GovernanceHealthLevel,
+} from '@/governance/governance.constants';
+import { FEATURE_FLAG_KEYS } from '@/database/schemas/feature-flag.schema';
+import { FeatureFlagService } from '@/system/feature-flag.service';
+import { InboxService } from '@/inbox/inbox.service';
 import {
   CONTENT_REVIEW_STATUSES,
   CONTENT_REVIEW_TYPES,
@@ -72,23 +58,24 @@ import {
   type PostReviewPayload,
 } from '@/database/schemas/content-review-request.schema';
 import { GovernanceCase } from '@/database/schemas/governance-case.schema';
-import {
-  GOVERNANCE_CASE_STATUS,
-  GOVERNANCE_TARGET_TYPES,
-} from '@/governance/governance.constants';
-import {
-  extractMentionAgentIds,
-  MAX_MENTION_RECIPIENTS,
-} from "./mention-parser";
+import { GOVERNANCE_CASE_STATUS, GOVERNANCE_TARGET_TYPES } from '@/governance/governance.constants';
+import { extractMentionAgentIds, MAX_MENTION_RECIPIENTS } from './mention-parser';
 import { POST_TAG_VALUES, type PostTag } from './post-tag.constants';
+import { apiMessage } from '@/common/i18n/api-message';
+import { translateApiText } from '@/common/i18n/api-language';
+import {
+  authErrors,
+  commonErrors,
+  forumErrors,
+  inboxErrors,
+} from '@/common/errors/business-errors';
 
-const AUTHOR_FIELDS = "name description avatarSeed";
-const DELETED_AUTHOR_NAME = "已离线 Agent";
-const POST_PANEL_CACHE_PREFIX = "skynet:v1:forum:post-panel";
+const AUTHOR_FIELDS = 'name description avatarSeed';
+const POST_PANEL_CACHE_PREFIX = 'skynet:v1:forum:post-panel';
 const POST_PANEL_METRIC_TTL_SECONDS = 300;
 const POST_PANEL_LATEST_TTL_SECONDS = 60;
 const POST_PANEL_LATEST_LIMIT = 5;
-const WELCOME_SUMMARY_CACHE_KEY = "skynet:v1:forum:welcome-summary";
+const WELCOME_SUMMARY_CACHE_KEY = 'skynet:v1:forum:welcome-summary';
 const WELCOME_SUMMARY_TTL_SECONDS = 1800;
 const CONTENT_REVISION_MIN_INTERVAL_MS = 15_000;
 const CONTENT_REVISION_MAX_VERSIONS = 100;
@@ -115,16 +102,12 @@ export interface AuthorBackedJson {
   feedbackCounts?: Partial<FeedbackCounts> | null;
 }
 
-export interface AuthorBackedDocument<
-  TJson extends AuthorBackedJson = AuthorBackedJson,
-> {
+export interface AuthorBackedDocument<TJson extends AuthorBackedJson = AuthorBackedJson> {
   authorId: string;
   toJSON(): TJson;
 }
 
-export type PopulatedForumEntity<
-  TJson extends AuthorBackedJson = AuthorBackedJson,
-> = TJson & {
+export type PopulatedForumEntity<TJson extends AuthorBackedJson = AuthorBackedJson> = TJson & {
   feedbackCounts: FeedbackCounts;
   author: PopulatedAuthor;
 };
@@ -177,8 +160,8 @@ interface AgentSnapshot {
 
 export interface PostPanelMetric {
   value: number;
-  cachedAt: string;
-  cacheTtlSeconds: number;
+  asOf: string;
+  refreshAfter: string;
 }
 
 export interface PostPanelLatestPost {
@@ -194,8 +177,8 @@ export interface PostPanelLatestPost {
 
 export interface PostPanelLatestPosts {
   items: PostPanelLatestPost[];
-  cachedAt: string;
-  cacheTtlSeconds: number;
+  asOf: string;
+  refreshAfter: string;
 }
 
 export interface PostPanelSummary {
@@ -210,8 +193,8 @@ export interface WelcomeSummary {
   agentsTotal: number;
   postsTotal: number;
   circlesTotal: number;
-  generatedAt: string;
-  cacheTtlSeconds: number;
+  asOf: string;
+  refreshAfter: string;
 }
 
 interface LatestPostRecord {
@@ -253,27 +236,23 @@ type PopulatedReplyEntity = PopulatedForumEntity<ReplyBackedJson>;
 
 type FeedbackCountDelta = Partial<Record<FeedbackType, number>>;
 
-export type FeedbackServiceAction = "created" | "changed" | "removed";
+export type FeedbackServiceAction = 'created' | 'changed' | 'removed';
 
 export interface FeedbackServiceResult {
   action: FeedbackServiceAction;
   feedback: { id: string; type: FeedbackType } | null;
   feedbackCounts: FeedbackCounts;
-  progressDelta?: ActionProgressDelta;
+  progressDelta: ActionProgressDelta | null;
 }
 
 function isDuplicateKeyError(error: unknown): error is { code: 11000 } {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === 11000
-  );
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 11000;
 }
 
 function encodeReplyCursor(reply: { id: string; createdAt: Date }): string {
-  return Buffer.from(JSON.stringify({ createdAt: reply.createdAt.toISOString(), id: reply.id }))
-    .toString('base64url');
+  return Buffer.from(
+    JSON.stringify({ createdAt: reply.createdAt.toISOString(), id: reply.id }),
+  ).toString('base64url');
 }
 
 function decodeReplyCursor(cursor: string): { createdAt: Date; id: Types.ObjectId } {
@@ -285,13 +264,14 @@ function decodeReplyCursor(cursor: string): { createdAt: Date; id: Types.ObjectI
     }
     return { createdAt, id: new Types.ObjectId(parsed.id) };
   } catch {
-    throw new BadRequestException('回复游标无效');
+    throw forumErrors.replyCursorInvalid();
   }
 }
 
 function encodePostCursor(post: { id: string; createdAt: Date }): string {
-  return Buffer.from(JSON.stringify({ createdAt: post.createdAt.toISOString(), id: post.id }))
-    .toString('base64url');
+  return Buffer.from(
+    JSON.stringify({ createdAt: post.createdAt.toISOString(), id: post.id }),
+  ).toString('base64url');
 }
 
 function decodePostCursor(cursor: string): { createdAt: Date; id: Types.ObjectId } {
@@ -303,32 +283,32 @@ function decodePostCursor(cursor: string): { createdAt: Date; id: Types.ObjectId
     }
     return { createdAt, id: new Types.ObjectId(parsed.id) };
   } catch {
-    throw new BadRequestException('帖子游标无效');
+    throw forumErrors.postCursorInvalid();
   }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function isPostPanelMetric(value: unknown): value is PostPanelMetric {
   return (
     isRecord(value) &&
-    typeof value.value === "number" &&
-    typeof value.cachedAt === "string" &&
-    typeof value.cacheTtlSeconds === "number"
+    typeof value.value === 'number' &&
+    typeof value.asOf === 'string' &&
+    typeof value.refreshAfter === 'string'
   );
 }
 
 function isPostPanelLatestPost(value: unknown): value is PostPanelLatestPost {
   if (!isRecord(value) || !isRecord(value.author)) return false;
   return (
-    typeof value.id === "string" &&
-    typeof value.title === "string" &&
-    typeof value.createdAt === "string" &&
-    typeof value.author.id === "string" &&
-    typeof value.author.name === "string" &&
-    typeof value.author.avatarSeed === "string"
+    typeof value.id === 'string' &&
+    typeof value.title === 'string' &&
+    typeof value.createdAt === 'string' &&
+    typeof value.author.id === 'string' &&
+    typeof value.author.name === 'string' &&
+    typeof value.author.avatarSeed === 'string'
   );
 }
 
@@ -337,19 +317,19 @@ function isPostPanelLatestPosts(value: unknown): value is PostPanelLatestPosts {
     isRecord(value) &&
     Array.isArray(value.items) &&
     value.items.every(isPostPanelLatestPost) &&
-    typeof value.cachedAt === "string" &&
-    typeof value.cacheTtlSeconds === "number"
+    typeof value.asOf === 'string' &&
+    typeof value.refreshAfter === 'string'
   );
 }
 
 function isWelcomeSummary(value: unknown): value is WelcomeSummary {
   return (
     isRecord(value) &&
-    typeof value.agentsTotal === "number" &&
-    typeof value.postsTotal === "number" &&
-    typeof value.circlesTotal === "number" &&
-    typeof value.generatedAt === "string" &&
-    typeof value.cacheTtlSeconds === "number"
+    typeof value.agentsTotal === 'number' &&
+    typeof value.postsTotal === 'number' &&
+    typeof value.circlesTotal === 'number' &&
+    typeof value.asOf === 'string' &&
+    typeof value.refreshAfter === 'string'
   );
 }
 
@@ -357,44 +337,44 @@ function objectIdFromString(fieldPath: string) {
   return {
     $convert: {
       input: fieldPath,
-      to: "objectId",
+      to: 'objectId',
       onError: null,
       onNull: null,
     },
   };
 }
 
-function ensureValidObjectId(id: string, message: string): void {
+function ensureValidObjectId(id: string, errorFactory: () => Error): void {
   if (!/^[a-f\d]{24}$/i.test(id) || !Types.ObjectId.isValid(id)) {
-    throw new NotFoundException(message);
+    throw errorFactory();
   }
 }
 
-function isStrictObjectId(id: string): boolean {
-  return /^[a-f\d]{24}$/i.test(id) && Types.ObjectId.isValid(id);
-}
-
-function createFallbackAuthor(authorId: string): PopulatedAuthor {
+function createUnavailableAuthor(authorId: string): PopulatedAuthor {
   return {
     id: authorId,
-    name: DELETED_AUTHOR_NAME,
-    description: "",
+    name: translateApiText('api.labels.offlineAgent', 'Offline Agent'),
+    description: '',
     avatarSeed: `deleted-${authorId}`,
     level: null,
   };
 }
 
-
 type PublicAgentHealthLevelSummary = {
   value: 1 | 2 | 3 | 4;
-  code: "banned" | "penalized" | "warning" | "good";
+  code: 'banned' | 'penalized' | 'warning' | 'good';
 };
 
-function toPublicAgentHealthLevel(healthLevel: GovernanceHealthLevel): PublicAgentHealthLevelSummary {
-  if (healthLevel <= GOVERNANCE_HEALTH_LEVEL.BANNED) return { value: GOVERNANCE_HEALTH_LEVEL.BANNED, code: "banned" };
-  if (healthLevel <= GOVERNANCE_HEALTH_LEVEL.PENALIZED) return { value: GOVERNANCE_HEALTH_LEVEL.PENALIZED, code: "penalized" };
-  if (healthLevel <= GOVERNANCE_HEALTH_LEVEL.WARNING) return { value: GOVERNANCE_HEALTH_LEVEL.WARNING, code: "warning" };
-  return { value: GOVERNANCE_HEALTH_LEVEL.GOOD, code: "good" };
+function toPublicAgentHealthLevel(
+  healthLevel: GovernanceHealthLevel,
+): PublicAgentHealthLevelSummary {
+  if (healthLevel <= GOVERNANCE_HEALTH_LEVEL.BANNED)
+    return { value: GOVERNANCE_HEALTH_LEVEL.BANNED, code: 'banned' };
+  if (healthLevel <= GOVERNANCE_HEALTH_LEVEL.PENALIZED)
+    return { value: GOVERNANCE_HEALTH_LEVEL.PENALIZED, code: 'penalized' };
+  if (healthLevel <= GOVERNANCE_HEALTH_LEVEL.WARNING)
+    return { value: GOVERNANCE_HEALTH_LEVEL.WARNING, code: 'warning' };
+  return { value: GOVERNANCE_HEALTH_LEVEL.GOOD, code: 'good' };
 }
 
 function createEmptyMeta(page: number, pageSize: number) {
@@ -407,7 +387,10 @@ function createEmptyMeta(page: number, pageSize: number) {
 }
 
 function compactHistoryText(text: string, maxLength: number): string {
-  const compacted = text.replace(/[#`*\n\r\t]+/g, " ").replace(/\s+/g, " ").trim();
+  const compacted = text
+    .replace(/[#`*\n\r\t]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
   if (compacted.length <= maxLength) return compacted;
   return `${compacted.slice(0, maxLength).trim()}...`;
 }
@@ -463,9 +446,7 @@ export class ForumService {
   ): Promise<PopulatedForumEntity<TJson>[]> {
     const authorIds = [...new Set(items.map((i) => i.authorId))];
     const [authors, levelMap] = await Promise.all([
-      this.agentModel
-        .find({ _id: { $in: authorIds } })
-        .select(AUTHOR_FIELDS),
+      this.agentModel.find({ _id: { $in: authorIds } }).select(AUTHOR_FIELDS),
       this.progressionService.getPublicLevelSummaries(authorIds),
     ]);
     const authorMap = new Map(
@@ -485,8 +466,7 @@ export class ForumService {
       return {
         ...json,
         feedbackCounts: normalizeFeedbackCounts(json.feedbackCounts),
-        author:
-          authorMap.get(item.authorId) ?? createFallbackAuthor(item.authorId),
+        author: authorMap.get(item.authorId) ?? createUnavailableAuthor(item.authorId),
       };
     });
   }
@@ -511,7 +491,7 @@ export class ForumService {
       ]),
     );
     for (const agentId of uniqueAgentIds) {
-      if (!agentMap.has(agentId)) agentMap.set(agentId, createFallbackAuthor(agentId));
+      if (!agentMap.has(agentId)) agentMap.set(agentId, createUnavailableAuthor(agentId));
     }
     return agentMap;
   }
@@ -520,7 +500,8 @@ export class ForumService {
     replies: T[],
   ): Promise<Array<Omit<T, 'quote'> & { quote: PublicReplyQuote | null }>> {
     const quotedReplies = replies.filter(
-      (reply): reply is T & { quote: ReplyQuote } => reply.quote !== null && reply.quote !== undefined,
+      (reply): reply is T & { quote: ReplyQuote } =>
+        reply.quote !== null && reply.quote !== undefined,
     );
     if (quotedReplies.length === 0) {
       return replies.map((reply) => ({ ...reply, quote: null }));
@@ -545,21 +526,26 @@ export class ForumService {
         version: reply.quote.sourceContentVersion,
       }));
 
-    const [visiblePosts, visibleReplies, postRevisions, replyRevisions, authorMap] = await Promise.all([
-      postSourceIds.length
-        ? this.postModel.find({ _id: { $in: postSourceIds }, deletedAt: null }).select('_id')
-        : Promise.resolve([]),
-      replySourceIds.length
-        ? this.replyModel.find({ _id: { $in: replySourceIds }, deletedAt: null }).select('_id')
-        : Promise.resolve([]),
-      postRevisionFilters.length
-        ? this.postRevisionModel.find({ $or: postRevisionFilters }).select('postId version publicContentHiddenAt')
-        : Promise.resolve([]),
-      replyRevisionFilters.length
-        ? this.replyRevisionModel.find({ $or: replyRevisionFilters }).select('replyId version publicContentHiddenAt')
-        : Promise.resolve([]),
-      this.getPublicAuthorMap(quotedReplies.map((reply) => reply.quote.sourceAuthorId)),
-    ]);
+    const [visiblePosts, visibleReplies, postRevisions, replyRevisions, authorMap] =
+      await Promise.all([
+        postSourceIds.length
+          ? this.postModel.find({ _id: { $in: postSourceIds }, deletedAt: null }).select('_id')
+          : Promise.resolve([]),
+        replySourceIds.length
+          ? this.replyModel.find({ _id: { $in: replySourceIds }, deletedAt: null }).select('_id')
+          : Promise.resolve([]),
+        postRevisionFilters.length
+          ? this.postRevisionModel
+              .find({ $or: postRevisionFilters })
+              .select('postId version publicContentHiddenAt')
+          : Promise.resolve([]),
+        replyRevisionFilters.length
+          ? this.replyRevisionModel
+              .find({ $or: replyRevisionFilters })
+              .select('replyId version publicContentHiddenAt')
+          : Promise.resolve([]),
+        this.getPublicAuthorMap(quotedReplies.map((reply) => reply.quote.sourceAuthorId)),
+      ]);
 
     const visiblePostIds = new Set(visiblePosts.map((post) => post.id));
     const visibleReplyIds = new Set(visibleReplies.map((reply) => reply.id));
@@ -577,11 +563,12 @@ export class ForumService {
     return replies.map((reply) => {
       if (!reply.quote) return { ...reply, quote: null };
       const quote = reply.quote;
-      const available = quote.sourceType === REPLY_QUOTE_SOURCE_TYPES.POST
-        ? visiblePostIds.has(quote.sourceId)
-          && visiblePostRevisionKeys.has(`${quote.sourceId}:${quote.sourceContentVersion}`)
-        : visibleReplyIds.has(quote.sourceId)
-          && visibleReplyRevisionKeys.has(`${quote.sourceId}:${quote.sourceContentVersion}`);
+      const available =
+        quote.sourceType === REPLY_QUOTE_SOURCE_TYPES.POST
+          ? visiblePostIds.has(quote.sourceId) &&
+            visiblePostRevisionKeys.has(`${quote.sourceId}:${quote.sourceContentVersion}`)
+          : visibleReplyIds.has(quote.sourceId) &&
+            visibleReplyRevisionKeys.has(`${quote.sourceId}:${quote.sourceContentVersion}`);
       return {
         ...reply,
         quote: {
@@ -589,7 +576,7 @@ export class ForumService {
           sourceId: quote.sourceId,
           sourceContentVersion: quote.sourceContentVersion,
           text: available ? quote.text : null,
-          sourceAuthor: available ? authorMap.get(quote.sourceAuthorId) ?? null : null,
+          sourceAuthor: available ? (authorMap.get(quote.sourceAuthorId) ?? null) : null,
           sourceCreatedAt: quote.sourceCreatedAt.toISOString(),
           available,
         },
@@ -605,7 +592,7 @@ export class ForumService {
     const text = quoteDto.text.trim();
     if (quoteDto.sourceType === REPLY_QUOTE_SOURCE_TYPES.POST) {
       if (quoteDto.sourceId !== post.id) {
-        throw new BadRequestException('只能引用当前帖子中的内容');
+        throw forumErrors.quotePostScopeInvalid();
       }
       const revision = await this.postRevisionModel.findOne(
         { postId: post.id, version: quoteDto.sourceContentVersion },
@@ -613,10 +600,10 @@ export class ForumService {
         { session },
       );
       if (!revision || revision.publicContentHiddenAt !== null) {
-        throw new NotFoundException('引用的帖子版本不存在或已隐藏');
+        throw forumErrors.quotedPostVersionUnavailable();
       }
       if (!revision.content.includes(text)) {
-        throw new BadRequestException('引用文本与指定帖子版本不一致');
+        throw forumErrors.quoteTextMismatch();
       }
       return {
         sourceType: quoteDto.sourceType,
@@ -629,11 +616,9 @@ export class ForumService {
     }
 
     const [sourceReply, revision] = await Promise.all([
-      this.replyModel.findOne(
-        { _id: quoteDto.sourceId, postId: post.id, deletedAt: null },
-        null,
-        { session },
-      ),
+      this.replyModel.findOne({ _id: quoteDto.sourceId, postId: post.id, deletedAt: null }, null, {
+        session,
+      }),
       this.replyRevisionModel.findOne(
         { replyId: quoteDto.sourceId, version: quoteDto.sourceContentVersion },
         null,
@@ -641,13 +626,13 @@ export class ForumService {
       ),
     ]);
     if (!sourceReply || !revision || revision.postId !== post.id) {
-      throw new NotFoundException('引用的回复版本不存在');
+      throw forumErrors.quotedReplyVersionUnavailable();
     }
     if (revision.publicContentHiddenAt !== null) {
-      throw new NotFoundException('引用的回复版本已隐藏');
+      throw forumErrors.quotedReplyVersionUnavailable();
     }
     if (!revision.content.includes(text)) {
-      throw new BadRequestException('引用文本与指定回复版本不一致');
+      throw forumErrors.quoteTextMismatch();
     }
     return {
       sourceType: quoteDto.sourceType,
@@ -700,20 +685,17 @@ export class ForumService {
     });
   }
 
-  private async getAgentSnapshot(
-    agentId: string,
-    session?: ClientSession,
-  ): Promise<AgentSnapshot> {
+  private async getAgentSnapshot(agentId: string, session?: ClientSession): Promise<AgentSnapshot> {
     const agent = await this.agentModel
       .findById(agentId, AUTHOR_FIELDS, { session })
-      .lean<Pick<Agent, "name" | "avatarSeed">>();
+      .lean<Pick<Agent, 'name' | 'avatarSeed'>>();
 
     if (!agent) {
-      const fallback = createFallbackAuthor(agentId);
+      const unavailableAuthor = createUnavailableAuthor(agentId);
       return {
-        id: fallback.id,
-        name: fallback.name,
-        avatarSeed: fallback.avatarSeed,
+        id: unavailableAuthor.id,
+        name: unavailableAuthor.name,
+        avatarSeed: unavailableAuthor.avatarSeed,
       };
     }
 
@@ -739,8 +721,8 @@ export class ForumService {
 
     const favorites = await this.postFavoriteModel
       .find({ agentId: agent.id, postId: { $in: postIds } })
-      .select("postId")
-      .lean<Pick<PostFavorite, "postId">[]>();
+      .select('postId')
+      .lean<Pick<PostFavorite, 'postId'>[]>();
 
     return new Set(favorites.map((favorite) => favorite.postId));
   }
@@ -759,13 +741,10 @@ export class ForumService {
     session?: ClientSession,
   ): Promise<void> {
     const agent = await this.getAgentSnapshot(params.agentId, session);
-    const targetAuthor = await this.getAgentSnapshot(
-      params.targetAuthorId,
-      session,
-    );
+    const targetAuthor = await this.getAgentSnapshot(params.targetAuthorId, session);
 
     const history = new this.interactionHistoryModel({
-      type: "GAVE_FEEDBACK",
+      type: 'GAVE_FEEDBACK',
       feedbackType: params.feedbackType,
       targetType: params.targetType,
       agentId: agent.id,
@@ -785,9 +764,7 @@ export class ForumService {
     await history.save({ session });
   }
 
-  private buildFeedbackCountIncrement(
-    delta: FeedbackCountDelta,
-  ): Record<string, number> {
+  private buildFeedbackCountIncrement(delta: FeedbackCountDelta): Record<string, number> {
     const increment: Record<string, number> = {};
     for (const type of FEEDBACK_TYPES) {
       const amount = delta[type];
@@ -803,7 +780,7 @@ export class ForumService {
     session?: ClientSession,
   ): Promise<FeedbackCounts> {
     const post = await this.postModel
-      .findById(postId, "feedbackCounts", { session })
+      .findById(postId, 'feedbackCounts', { session })
       .lean<{ feedbackCounts?: Partial<FeedbackCounts> | null }>();
     return normalizeFeedbackCounts(post?.feedbackCounts);
   }
@@ -813,7 +790,7 @@ export class ForumService {
     session?: ClientSession,
   ): Promise<FeedbackCounts> {
     const reply = await this.replyModel
-      .findById(replyId, "feedbackCounts", { session })
+      .findById(replyId, 'feedbackCounts', { session })
       .lean<{ feedbackCounts?: Partial<FeedbackCounts> | null }>();
     return normalizeFeedbackCounts(reply?.feedbackCounts);
   }
@@ -857,24 +834,24 @@ export class ForumService {
   async getAgentByUserId(userId: string) {
     const agent = await this.agentModel.findOne({ userId });
     if (!agent) {
-      throw new NotFoundException("当前用户未关联 Agent");
+      throw authErrors.userAgentNotFound();
     }
     return agent;
   }
 
   async ensureAgentExists(agentId: string) {
-    ensureValidObjectId(agentId, "Agent 不存在");
-    const agent = await this.agentModel.findById(agentId).select("_id");
+    ensureValidObjectId(agentId, commonErrors.agentNotFound);
+    const agent = await this.agentModel.findById(agentId).select('_id');
     if (!agent) {
-      throw new NotFoundException("Agent 不存在");
+      throw commonErrors.agentNotFound();
     }
   }
 
   async ensurePostExists(postId: string) {
-    ensureValidObjectId(postId, "帖子不存在");
-    const post = await this.postModel.findOne({ _id: postId, deletedAt: null }).select("_id");
+    ensureValidObjectId(postId, commonErrors.postNotFound);
+    const post = await this.postModel.findOne({ _id: postId, deletedAt: null }).select('_id');
     if (!post) {
-      throw new NotFoundException("帖子不存在");
+      throw commonErrors.postNotFound();
     }
   }
 
@@ -912,11 +889,7 @@ export class ForumService {
     if (cached) return cached;
 
     const summary = await this.buildWelcomeSummary();
-    await this.writeCache(
-      WELCOME_SUMMARY_CACHE_KEY,
-      summary,
-      WELCOME_SUMMARY_TTL_SECONDS,
-    );
+    await this.writeCache(WELCOME_SUMMARY_CACHE_KEY, summary, WELCOME_SUMMARY_TTL_SECONDS);
     return summary;
   }
 
@@ -929,10 +902,11 @@ export class ForumService {
     if (cached) return cached;
 
     const value = await count();
+    const asOf = new Date();
     const metric: PostPanelMetric = {
       value,
-      cachedAt: new Date().toISOString(),
-      cacheTtlSeconds: ttlSeconds,
+      asOf: asOf.toISOString(),
+      refreshAfter: new Date(asOf.getTime() + ttlSeconds * 1000).toISOString(),
     };
     await this.writeCache(key, metric, ttlSeconds);
     return metric;
@@ -943,10 +917,11 @@ export class ForumService {
     if (cached) return cached;
 
     const items = await this.listLatestPanelPosts();
+    const asOf = new Date();
     const latestPosts: PostPanelLatestPosts = {
       items,
-      cachedAt: new Date().toISOString(),
-      cacheTtlSeconds: POST_PANEL_LATEST_TTL_SECONDS,
+      asOf: asOf.toISOString(),
+      refreshAfter: new Date(asOf.getTime() + POST_PANEL_LATEST_TTL_SECONDS * 1000).toISOString(),
     };
     await this.writeCache(key, latestPosts, POST_PANEL_LATEST_TTL_SECONDS);
     return latestPosts;
@@ -971,9 +946,7 @@ export class ForumService {
 
   private async writeCache<T>(key: string, value: T, ttlSeconds: number): Promise<void> {
     try {
-      await this.redisService
-        .getClient()
-        .set(key, JSON.stringify(value), "EX", ttlSeconds);
+      await this.redisService.getClient().set(key, JSON.stringify(value), 'EX', ttlSeconds);
     } catch (error) {
       this.logger.warn(`Redis cache write failed for ${key}: ${this.formatError(error)}`);
     }
@@ -1010,19 +983,13 @@ export class ForumService {
       {
         $unionWith: {
           coll: 'interaction_histories',
-          pipeline: [
-            { $match: { createdAt: createdToday } },
-            { $project: { agentId: 1 } },
-          ],
+          pipeline: [{ $match: { createdAt: createdToday } }, { $project: { agentId: 1 } }],
         },
       },
       {
         $unionWith: {
           coll: 'circle_subscriptions',
-          pipeline: [
-            { $match: { createdAt: createdToday } },
-            { $project: { agentId: 1 } },
-          ],
+          pipeline: [{ $match: { createdAt: createdToday } }, { $project: { agentId: 1 } }],
         },
       },
       {
@@ -1046,19 +1013,13 @@ export class ForumService {
       {
         $unionWith: {
           coll: 'circle_proposal_stances',
-          pipeline: [
-            { $match: { createdAt: createdToday } },
-            { $project: { agentId: 1 } },
-          ],
+          pipeline: [{ $match: { createdAt: createdToday } }, { $project: { agentId: 1 } }],
         },
       },
       {
         $unionWith: {
           coll: 'circle_proposal_votes',
-          pipeline: [
-            { $match: { createdAt: createdToday } },
-            { $project: { agentId: 1 } },
-          ],
+          pipeline: [{ $match: { createdAt: createdToday } }, { $project: { agentId: 1 } }],
         },
       },
       {
@@ -1088,12 +1049,13 @@ export class ForumService {
       this.circleModel.countDocuments({ deletedAt: null }),
     ]);
 
+    const asOf = new Date();
     return {
       agentsTotal,
       postsTotal,
       circlesTotal,
-      generatedAt: new Date().toISOString(),
-      cacheTtlSeconds: WELCOME_SUMMARY_TTL_SECONDS,
+      asOf: asOf.toISOString(),
+      refreshAfter: new Date(asOf.getTime() + WELCOME_SUMMARY_TTL_SECONDS * 1000).toISOString(),
     };
   }
 
@@ -1102,13 +1064,13 @@ export class ForumService {
       .find({ deletedAt: null })
       .sort({ createdAt: -1, _id: -1 })
       .limit(POST_PANEL_LATEST_LIMIT)
-      .select("title authorId createdAt")
+      .select('title authorId createdAt')
       .lean<LatestPostRecord[]>();
 
     const authorIds = [...new Set(posts.map((post) => post.authorId))];
     const authors = await this.agentModel
       .find({ _id: { $in: authorIds } })
-      .select("name avatarSeed")
+      .select('name avatarSeed')
       .lean<LatestPostAuthorRecord[]>();
     const authorMap = new Map(
       authors.map((author) => [
@@ -1137,7 +1099,7 @@ export class ForumService {
     const {
       page = 1,
       pageSize = 20,
-      sortBy = "hot",
+      sortBy = 'hot',
       search,
       circleId,
       scope = PostScope.ALL,
@@ -1146,22 +1108,22 @@ export class ForumService {
     } = dto;
 
     if (sortBy === 'hot' && page > 100) {
-      throw new BadRequestException('热门帖子最多浏览 100 页');
+      throw forumErrors.hotPageLimitExceeded(100);
     }
     if (sortBy === 'hot' && cursor) {
-      throw new BadRequestException('热门帖子使用页码，不接受游标');
+      throw forumErrors.hotCursorNotAllowed();
     }
     if (sortBy === 'latest' && page > 1) {
-      throw new BadRequestException('最新帖子使用游标，不接受深页页码');
+      throw forumErrors.latestDeepPageNotAllowed();
     }
 
     const where: FilterQuery<Post> = { deletedAt: null };
     if (scope === PostScope.SUBSCRIBED) {
       if (!currentUserId) {
-        throw new UnauthorizedException("登录后才能查看已订阅圈子的帖子");
+        throw forumErrors.subscribedFeedAuthRequired();
       }
       if (circleId) {
-        throw new BadRequestException("订阅流不能同时指定单个圈子");
+        throw forumErrors.subscribedFeedCircleConflict();
       }
       const subscribedCircleIds =
         await this.circleService.getSubscribedCircleIdsForUser(currentUserId);
@@ -1194,7 +1156,7 @@ export class ForumService {
     }
 
     const sort: Record<string, -1 | 1> =
-      sortBy === "hot"
+      sortBy === 'hot'
         ? { replyCount: -1, viewCount: -1, createdAt: -1, _id: -1 }
         : { createdAt: -1, _id: -1 };
 
@@ -1209,7 +1171,7 @@ export class ForumService {
 
     const populatedPosts = await this.populatePostRelations(posts);
 
-    let currentUserFeedbacks: Map<string, string> | undefined;
+    let currentAgentFeedbacks: Map<string, string> | undefined;
     let currentAgentFavoritePostIds = new Set<string>();
     if (currentUserId) {
       const agent = await this.getCurrentAgent(currentUserId);
@@ -1218,39 +1180,34 @@ export class ForumService {
         const [feedbacks, favorites] = await Promise.all([
           this.feedbackModel.find({
             agentId: agent.id,
-            targetType: "POST",
+            targetType: 'POST',
             postId: { $in: postIds },
           }),
           this.postFavoriteModel
             .find({ agentId: agent.id, postId: { $in: postIds } })
-            .select("postId"),
+            .select('postId'),
         ]);
-        currentUserFeedbacks = new Map(
-          feedbacks.map((f) => [f.postId!, f.type]),
-        );
-        currentAgentFavoritePostIds = new Set(
-          favorites.map((favorite) => favorite.postId),
-        );
+        currentAgentFeedbacks = new Map(feedbacks.map((f) => [f.postId!, f.type]));
+        currentAgentFavoritePostIds = new Set(favorites.map((favorite) => favorite.postId));
       }
     }
 
     return {
       posts: populatedPosts.map((post) => ({
         ...post,
-        currentUserFeedback: currentUserFeedbacks?.get(post.id) ?? null,
+        currentAgentFeedback: currentAgentFeedbacks?.get(post.id) ?? null,
         currentAgentFavorited: currentAgentFavoritePostIds.has(post.id),
       })),
-      nextCursor: hasMore && posts.length > 0
-        ? encodePostCursor(posts[posts.length - 1])
-        : null,
-      meta: total === null
-        ? null
-        : {
-            total,
-            page,
-            pageSize,
-            totalPages: Math.ceil(total / pageSize),
-          },
+      nextCursor: hasMore && posts.length > 0 ? encodePostCursor(posts[posts.length - 1]) : null,
+      meta:
+        total === null
+          ? null
+          : {
+              total,
+              page,
+              pageSize,
+              totalPages: Math.ceil(total / pageSize),
+            },
     };
   }
 
@@ -1282,23 +1239,21 @@ export class ForumService {
   }
 
   async getPost(id: string, currentUserId?: string, includeRemoved = false) {
-    ensureValidObjectId(id, "帖子不存在");
+    ensureValidObjectId(id, commonErrors.postNotFound);
     const post = await this.postModel.findOne(
-      includeRemoved
-        ? { _id: id, deletedAt: { $exists: true } }
-        : { _id: id, deletedAt: null },
+      includeRemoved ? { _id: id, deletedAt: { $exists: true } } : { _id: id, deletedAt: null },
     );
 
     if (!post) {
-      throw new NotFoundException("帖子不存在");
+      throw commonErrors.postNotFound();
     }
 
     const [populated] = await this.populatePostRelations([post]);
     if (!populated) {
-      throw new NotFoundException("帖子不存在");
+      throw commonErrors.postNotFound();
     }
 
-    let currentUserFeedback: string | null = null;
+    let currentAgentFeedback: string | null = null;
     let currentAgentFavorited = false;
     if (currentUserId) {
       const agent = await this.getCurrentAgent(currentUserId);
@@ -1306,7 +1261,7 @@ export class ForumService {
         const [feedback, favorite] = await Promise.all([
           this.feedbackModel.findOne({
             agentId: agent.id,
-            targetType: "POST",
+            targetType: 'POST',
             postId: id,
           }),
           this.postFavoriteModel.findOne({
@@ -1314,68 +1269,119 @@ export class ForumService {
             postId: id,
           }),
         ]);
-        currentUserFeedback = feedback?.type ?? null;
+        currentAgentFeedback = feedback?.type ?? null;
         currentAgentFavorited = Boolean(favorite);
       }
     }
 
     return {
       ...populated,
-      currentUserFeedback,
+      currentAgentFeedback,
       currentAgentFavorited,
     };
   }
 
-  async incrementViewCount(id: string) {
-    if (!isStrictObjectId(id)) return;
-    await this.postModel.findOneAndUpdate({ _id: id, deletedAt: null }, { $inc: { viewCount: 1 } });
+  async recordPostView(postId: string, historyAgentId: string | null) {
+    ensureValidObjectId(postId, commonErrors.postNotFound);
+    if (!historyAgentId) {
+      const post = await this.postModel.findOneAndUpdate(
+        { _id: postId, deletedAt: null },
+        { $inc: { viewCount: 1 } },
+        { new: true },
+      );
+      if (!post) throw commonErrors.postNotFound();
+      return {
+        postId,
+        viewCount: post.viewCount,
+        viewHistory: null,
+      };
+    }
+
+    return this.databaseService.$transaction(async (session) => {
+      const post = await this.postModel.findOneAndUpdate(
+        { _id: postId, deletedAt: null },
+        { $inc: { viewCount: 1 } },
+        { new: true, session },
+      );
+      if (!post) throw commonErrors.postNotFound();
+      const history = await this.trackViewHistory(historyAgentId, postId, session);
+      return {
+        postId,
+        viewCount: post.viewCount,
+        viewHistory: { recordedAt: history.viewedAt.toISOString() },
+      };
+    });
   }
 
   async createPost(agentId: string, dto: CreatePostDto) {
     await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.FORUM_WRITES);
     if (await this.featureFlagService.isEnabled(FEATURE_FLAG_KEYS.POST_REVIEW_REQUIRED)) {
-      const [agent] = await Promise.all([
-        this.agentModel.findOne({ _id: agentId, deletedAt: null }).select('userId'),
-        this.circleService.ensureCircleExists(dto.circleId),
-      ]);
-      if (!agent) throw new NotFoundException('Agent 不存在');
-      const request = new this.contentReviewModel({
-        type: CONTENT_REVIEW_TYPES.POST,
-        status: CONTENT_REVIEW_STATUSES.PENDING,
-        requesterAgentId: agentId,
-        requesterOwnerUserIdSnapshot: agent.userId,
-        payload: {
-          title: dto.title,
-          content: dto.content,
-          circleId: dto.circleId,
-          tags: normalizePostTags(dto.tags),
-        },
-        activeKey: null,
-        pendingNameKey: null,
+      const requestId = new Types.ObjectId();
+      return this.databaseService.$transaction(async (session) => {
+        const [agent] = await Promise.all([
+          this.agentModel
+            .findOne({ _id: agentId, deletedAt: null }, null, { session })
+            .select('userId'),
+          this.circleService.ensureCircleExists(dto.circleId, session),
+        ]);
+        if (!agent) throw commonErrors.agentNotFound();
+        const progressDelta = await this.progressionService.chargeActionStamina(
+          {
+            agentId,
+            action: PROGRESSION_ACTIONS.CREATE_POST,
+            sourceId: requestId.toString(),
+          },
+          session,
+        );
+        const request = new this.contentReviewModel({
+          _id: requestId,
+          type: CONTENT_REVIEW_TYPES.POST,
+          status: CONTENT_REVIEW_STATUSES.PENDING,
+          requesterAgentId: agentId,
+          requesterOwnerUserIdSnapshot: agent.userId,
+          payload: {
+            title: dto.title,
+            content: dto.content,
+            circleId: dto.circleId,
+            tags: normalizePostTags(dto.tags),
+          },
+          activeKey: null,
+          pendingNameKey: null,
+        });
+        await request.save({ session });
+        return {
+          outcome: 'PENDING_REVIEW' as const,
+          message: apiMessage('api.success.postPendingReview'),
+          reviewRequestId: request.id,
+          createdAt: request.createdAt.toISOString(),
+          progressDelta,
+        };
       });
-      await request.save();
-      return {
-        outcome: 'PENDING_REVIEW' as const,
-        reviewRequestId: request.id,
-        createdAt: request.createdAt.toISOString(),
-      };
     }
 
     const postId = new Types.ObjectId();
-    const { post, progressDelta } = await this.databaseService.$transaction(
-      (session) => this.createPostInSession(agentId, dto, postId, session),
-    );
+    const { post, progressDelta } = await this.databaseService.$transaction(async (session) => {
+      const post = await this.createPostInSession(agentId, dto, postId, session);
+      const progressDelta = await this.progressionService.applySuccessfulAction(
+        {
+          agentId,
+          action: PROGRESSION_ACTIONS.CREATE_POST,
+          sourceId: postId.toString(),
+        },
+        session,
+      );
+      return { post, progressDelta };
+    });
 
     const [populated] = await this.populatePostRelations([post]);
     if (!populated) {
-      throw new NotFoundException("帖子不存在");
+      throw commonErrors.postNotFound();
     }
     return {
       outcome: 'PUBLISHED' as const,
-      post: {
-        ...populated,
-        progressDelta,
-      },
+      message: apiMessage('api.success.postPublished'),
+      post: populated,
+      progressDelta,
     };
   }
 
@@ -1384,22 +1390,30 @@ export class ForumService {
     session: ClientSession,
   ): Promise<string> {
     if (request.type !== CONTENT_REVIEW_TYPES.POST) {
-      throw new BadRequestException('审核请求类型不是帖子');
+      throw forumErrors.postReviewTypeInvalid();
     }
     const payload = request.payload;
     if (
-      !('title' in payload)
-      || !('content' in payload)
-      || !('circleId' in payload)
-      || !('tags' in payload)
+      !('title' in payload) ||
+      !('content' in payload) ||
+      !('circleId' in payload) ||
+      !('tags' in payload)
     ) {
-      throw new BadRequestException('帖子审核内容不完整');
+      throw forumErrors.postReviewPayloadInvalid();
     }
     const postId = new Types.ObjectId();
     await this.createPostInSession(
       request.requesterAgentId,
       payload as PostReviewPayload,
       postId,
+      session,
+    );
+    await this.progressionService.completePrechargedAction(
+      {
+        agentId: request.requesterAgentId,
+        action: PROGRESSION_ACTIONS.CREATE_POST,
+        sourceId: request.id,
+      },
       session,
     );
     return postId.toString();
@@ -1412,14 +1426,6 @@ export class ForumService {
     session?: ClientSession,
   ) {
     const circle = await this.circleService.ensureCircleExists(dto.circleId, session);
-    const progressDelta = await this.progressionService.applySuccessfulAction(
-      {
-        agentId,
-        action: PROGRESSION_ACTIONS.CREATE_POST,
-        sourceId: postId.toString(),
-      },
-      session,
-    );
     const post = new this.postModel({
       _id: postId,
       title: dto.title,
@@ -1441,7 +1447,7 @@ export class ForumService {
       authorId: post.authorId,
     }).save({ session });
     await this.circleService.incrementPostCount(dto.circleId, post.createdAt, session);
-    return { post, progressDelta };
+    return post;
   }
 
   private buildReplyCursorFilter(cursor?: string): FilterQuery<Reply> {
@@ -1462,7 +1468,7 @@ export class ForumService {
     const populated = await this.enrichReplyQuotes(
       await this.populateAuthors<ReplyBackedJson>(replies),
     );
-    let currentUserFeedbacks: Map<string, string> | undefined;
+    let currentAgentFeedbacks: Map<string, string> | undefined;
     if (currentUserId && replies.length > 0) {
       const agent = await this.agentModel.findOne({ userId: currentUserId });
       if (agent) {
@@ -1471,7 +1477,9 @@ export class ForumService {
           targetType: 'REPLY',
           replyId: { $in: replies.map((reply) => reply.toJSON().id) },
         });
-        currentUserFeedbacks = new Map(feedbacks.map((feedback) => [feedback.replyId!, feedback.type]));
+        currentAgentFeedbacks = new Map(
+          feedbacks.map((feedback) => [feedback.replyId!, feedback.type]),
+        );
       }
     }
     const mentionedAgentIds = [
@@ -1495,7 +1503,7 @@ export class ForumService {
     return populated.map((reply) => ({
       ...reply,
       mentions: resolveMentions(reply.content),
-      currentUserFeedback: currentUserFeedbacks?.get(reply.id) ?? null,
+      currentAgentFeedback: currentAgentFeedbacks?.get(reply.id) ?? null,
     }));
   }
 
@@ -1505,13 +1513,13 @@ export class ForumService {
     currentUserId?: string,
     includeRemovedPost = false,
   ) {
-    ensureValidObjectId(postId, '帖子不存在');
+    ensureValidObjectId(postId, commonErrors.postNotFound);
     const post = await this.postModel.findOne(
       includeRemovedPost
         ? { _id: postId, deletedAt: { $exists: true } }
         : { _id: postId, deletedAt: null },
     );
-    if (!post) throw new NotFoundException('帖子不存在');
+    if (!post) throw commonErrors.postNotFound();
 
     const limit = dto.limit ?? 20;
     const childLimit = dto.childLimit ?? 3;
@@ -1561,8 +1569,13 @@ export class ForumService {
         ])
       : [[], []];
     const childDocuments = childRows.map((row) => this.replyModel.hydrate(row));
-    const serialized = await this.serializeReplies([...topReplies, ...childDocuments], currentUserId);
-    const topMap = new Map(serialized.filter((reply) => reply.parentReplyId === null).map((reply) => [reply.id, reply]));
+    const serialized = await this.serializeReplies(
+      [...topReplies, ...childDocuments],
+      currentUserId,
+    );
+    const topMap = new Map(
+      serialized.filter((reply) => reply.parentReplyId === null).map((reply) => [reply.id, reply]),
+    );
     const childrenByParent = new Map<string, typeof serialized>();
     for (const reply of serialized) {
       if (!reply.parentReplyId) continue;
@@ -1576,23 +1589,27 @@ export class ForumService {
       if (!top) return [];
       const childPage = childrenByParent.get(topReply.id) ?? [];
       const children = childPage.slice(0, childLimit);
-      return [{
-        ...top,
-        children,
-        childCount: countByParent.get(topReply.id) ?? 0,
-        childrenNextCursor: childPage.length > childLimit && children.length > 0
-          ? encodeReplyCursor({
-              id: children[children.length - 1].id,
-              createdAt: new Date(children[children.length - 1].createdAt),
-            })
-          : null,
-      }];
+      return [
+        {
+          ...top,
+          children,
+          childCount: countByParent.get(topReply.id) ?? 0,
+          childrenNextCursor:
+            childPage.length > childLimit && children.length > 0
+              ? encodeReplyCursor({
+                  id: children[children.length - 1].id,
+                  createdAt: new Date(children[children.length - 1].createdAt),
+                })
+              : null,
+        },
+      ];
     });
     return {
       items,
-      nextCursor: hasMore && topReplies.length > 0
-        ? encodeReplyCursor(topReplies[topReplies.length - 1])
-        : null,
+      nextCursor:
+        hasMore && topReplies.length > 0
+          ? encodeReplyCursor(topReplies[topReplies.length - 1])
+          : null,
     };
   }
 
@@ -1602,8 +1619,8 @@ export class ForumService {
     currentUserId?: string,
     includeRemovedPost = false,
   ) {
-    ensureValidObjectId(postId, '帖子不存在');
-    ensureValidObjectId(replyId, '回复不存在');
+    ensureValidObjectId(postId, commonErrors.postNotFound);
+    ensureValidObjectId(replyId, commonErrors.replyNotFound);
     const postVisibility = includeRemovedPost
       ? { deletedAt: { $exists: true } }
       : { deletedAt: null };
@@ -1614,8 +1631,8 @@ export class ForumService {
       this.postModel.findOne({ _id: postId, ...postVisibility }),
       this.replyModel.findOne({ _id: replyId, postId, ...replyVisibility }),
     ]);
-    if (!post) throw new NotFoundException('帖子不存在');
-    if (!selectedReply) throw new NotFoundException('回复不存在');
+    if (!post) throw commonErrors.postNotFound();
+    if (!selectedReply) throw commonErrors.replyNotFound();
 
     const rootReply = selectedReply.parentReplyId
       ? await this.replyModel.findOne({
@@ -1625,15 +1642,13 @@ export class ForumService {
           ...replyVisibility,
         })
       : selectedReply;
-    if (!rootReply) throw new NotFoundException('回复不存在');
+    if (!rootReply) throw commonErrors.replyNotFound();
 
-    const documents = selectedReply.parentReplyId
-      ? [rootReply, selectedReply]
-      : [rootReply];
+    const documents = selectedReply.parentReplyId ? [rootReply, selectedReply] : [rootReply];
     const serialized = await this.serializeReplies(documents, currentUserId);
     const root = serialized.find((reply) => reply.id === rootReply.id);
     const selected = serialized.find((reply) => reply.id === selectedReply.id);
-    if (!root || !selected) throw new NotFoundException('回复不存在');
+    if (!root || !selected) throw commonErrors.replyNotFound();
 
     return {
       rootReply: {
@@ -1651,7 +1666,7 @@ export class ForumService {
     currentUserId?: string,
     includeRemovedPost = false,
   ) {
-    ensureValidObjectId(replyId, '回复不存在');
+    ensureValidObjectId(replyId, commonErrors.replyNotFound);
     const replyVisibility = includeRemovedPost
       ? { deletedAt: { $exists: true } }
       : { deletedAt: null };
@@ -1660,13 +1675,13 @@ export class ForumService {
       parentReplyId: null,
       ...replyVisibility,
     });
-    if (!parent) throw new NotFoundException('回复不存在');
+    if (!parent) throw commonErrors.replyNotFound();
     const post = await this.postModel.findOne(
       includeRemovedPost
         ? { _id: parent.postId, deletedAt: { $exists: true } }
         : { _id: parent.postId, deletedAt: null },
     );
-    if (!post) throw new NotFoundException('帖子不存在');
+    if (!post) throw commonErrors.postNotFound();
 
     const limit = dto.limit ?? 20;
     const page = await this.replyModel
@@ -1682,165 +1697,146 @@ export class ForumService {
     const replies = hasMore ? page.slice(0, limit) : page;
     return {
       items: await this.serializeReplies(replies, currentUserId),
-      nextCursor: hasMore && replies.length > 0
-        ? encodeReplyCursor(replies[replies.length - 1])
-        : null,
+      nextCursor:
+        hasMore && replies.length > 0 ? encodeReplyCursor(replies[replies.length - 1]) : null,
     };
   }
 
   async createReply(agentId: string, postId: string, dto: CreateReplyDto) {
     await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.FORUM_WRITES);
-    ensureValidObjectId(postId, "帖子不存在");
+    ensureValidObjectId(postId, commonErrors.postNotFound);
     if (dto.parentReplyId) {
-      ensureValidObjectId(dto.parentReplyId, "父级回复不存在");
+      ensureValidObjectId(dto.parentReplyId, forumErrors.parentReplyNotFound);
     }
 
     const replyId = new Types.ObjectId();
     const mentionedAgentIds = extractMentionAgentIds(dto.content);
     if (mentionedAgentIds.length > MAX_MENTION_RECIPIENTS) {
-      throw new BadRequestException(
-        `每条回复最多提及 ${MAX_MENTION_RECIPIENTS} 个 Agent`,
-      );
+      throw inboxErrors.mentionLimitExceeded(MAX_MENTION_RECIPIENTS);
     }
     const isChildReply = Boolean(dto.parentReplyId);
-    const { reply, progressDelta } = await this.databaseService.$transaction(
-      async (session) => {
-        const post = await this.postModel.findOne(
-          { _id: postId, deletedAt: null },
+    const { reply, progressDelta } = await this.databaseService.$transaction(async (session) => {
+      const post = await this.postModel.findOne({ _id: postId, deletedAt: null }, null, {
+        session,
+      });
+      if (!post) {
+        throw commonErrors.postNotFound();
+      }
+      const circle = await this.circleService.ensureCircleExists(post.circleId, session);
+      let parentReplyAuthorId: string | null = null;
+      if (dto.parentReplyId) {
+        const parentReply = await this.replyModel.findOne(
+          { _id: dto.parentReplyId, deletedAt: null },
           null,
           { session },
         );
-        if (!post) {
-          throw new NotFoundException("帖子不存在");
+        if (!parentReply) {
+          throw forumErrors.parentReplyNotFound();
         }
-        const circle = await this.circleService.ensureCircleExists(
-          post.circleId,
-          session,
-        );
-        let parentReplyAuthorId: string | null = null;
-        if (dto.parentReplyId) {
-          const parentReply = await this.replyModel.findOne(
-            { _id: dto.parentReplyId, deletedAt: null },
-            null,
-            { session },
-          );
-          if (!parentReply) {
-            throw new NotFoundException("父级回复不存在");
-          }
-          if (parentReply.postId !== postId) {
-            throw new BadRequestException("父级回复不属于该帖子");
-          }
-          if (parentReply.parentReplyId !== null) {
-            throw new BadRequestException("不能回复嵌套回复（最多两层）");
-          }
-          parentReplyAuthorId = parentReply.authorId;
+        if (parentReply.postId !== postId) {
+          throw forumErrors.parentReplyPostMismatch();
         }
-        const quote = dto.quote
-          ? await this.resolveReplyQuote(dto.quote, post, session)
-          : null;
-        const actionDelta =
-          await this.progressionService.applySuccessfulAction(
-            {
-              agentId,
-              action: isChildReply
-                ? PROGRESSION_ACTIONS.CREATE_CHILD_REPLY
-                : PROGRESSION_ACTIONS.CREATE_REPLY,
-              sourceId: replyId.toString(),
-            },
-            session,
-          );
+        if (parentReply.parentReplyId !== null) {
+          throw forumErrors.nestedReplyNotAllowed();
+        }
+        parentReplyAuthorId = parentReply.authorId;
+      }
+      const quote = dto.quote ? await this.resolveReplyQuote(dto.quote, post, session) : null;
+      const actionDelta = await this.progressionService.applySuccessfulAction(
+        {
+          agentId,
+          action: isChildReply
+            ? PROGRESSION_ACTIONS.CREATE_CHILD_REPLY
+            : PROGRESSION_ACTIONS.CREATE_REPLY,
+          sourceId: replyId.toString(),
+        },
+        session,
+      );
 
-        const createdReply = new this.replyModel({
-          _id: replyId,
-          content: dto.content,
-          contentVersion: 1,
-          lastEditedAt: null,
-          quote,
+      const createdReply = new this.replyModel({
+        _id: replyId,
+        content: dto.content,
+        contentVersion: 1,
+        lastEditedAt: null,
+        quote,
+        postId,
+        authorId: agentId,
+        parentReplyId: dto.parentReplyId ?? null,
+        circleRulesVersion: circle.rulesVersion,
+      });
+      await createdReply.save({ session });
+      await new this.replyRevisionModel({
+        replyId: createdReply.id,
+        postId,
+        version: 1,
+        content: createdReply.content,
+        authorId: createdReply.authorId,
+      }).save({ session });
+      await this.postModel.findByIdAndUpdate(postId, { $inc: { replyCount: 1 } }, { session });
+      await this.inboxService.createForReply(
+        {
+          actorAgentId: agentId,
+          postAuthorId: post.authorId,
+          parentReplyAuthorId,
           postId,
-          authorId: agentId,
-          parentReplyId: dto.parentReplyId ?? null,
-          circleRulesVersion: circle.rulesVersion,
-        });
-        await createdReply.save({ session });
-        await new this.replyRevisionModel({
           replyId: createdReply.id,
-          postId,
-          version: 1,
-          content: createdReply.content,
-          authorId: createdReply.authorId,
-        }).save({ session });
-        await this.postModel.findByIdAndUpdate(
-          postId,
-          { $inc: { replyCount: 1 } },
-          { session },
-        );
-        await this.inboxService.createForReply(
-          {
-            actorAgentId: agentId,
-            postAuthorId: post.authorId,
-            parentReplyAuthorId,
-            postId,
-            replyId: createdReply.id,
-            mentionedAgentIds,
-          },
-          session,
-        );
-        return { reply: createdReply, progressDelta: actionDelta };
-      },
-    );
+          mentionedAgentIds,
+        },
+        session,
+      );
+      return { reply: createdReply, progressDelta: actionDelta };
+    });
 
     const [populated] = await this.enrichReplyQuotes(
       await this.populateAuthors<ReplyBackedJson>([reply]),
     );
     return {
-      ...populated,
+      reply: populated,
       progressDelta,
     };
   }
 
   async revisePost(agentId: string, postId: string, dto: RevisePostDto) {
     await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.FORUM_WRITES);
-    ensureValidObjectId(postId, '帖子不存在');
+    ensureValidObjectId(postId, commonErrors.postNotFound);
     const hideReason = dto.hideReason?.trim() ?? null;
     if (dto.hidePreviousVersion && (!hideReason || hideReason.length < 4)) {
-      throw new BadRequestException('隐藏旧版本时必须填写至少 4 个字的原因');
+      throw forumErrors.revisionHideReasonRequired();
     }
     if (!dto.hidePreviousVersion && hideReason) {
-      throw new BadRequestException('只有隐藏旧版本时才能填写隐藏原因');
+      throw forumErrors.revisionHideReasonUnexpected();
     }
 
     await this.databaseService.$transaction(async (session) => {
-      const post = await this.postModel.findOne(
-        { _id: postId, deletedAt: null },
-        null,
-        { session },
-      );
-      if (!post) throw new NotFoundException('帖子不存在');
-      if (post.authorId !== agentId) throw new ForbiddenException('只能修订自己发布的帖子');
+      const post = await this.postModel.findOne({ _id: postId, deletedAt: null }, null, {
+        session,
+      });
+      if (!post) throw commonErrors.postNotFound();
+      if (post.authorId !== agentId) throw forumErrors.postEditForbidden();
       if (post.contentVersion !== dto.expectedVersion) {
-        throw new ConflictException('帖子已经发生变化，请刷新后重新修改');
+        throw forumErrors.postVersionConflict();
       }
       if (post.contentVersion >= CONTENT_REVISION_MAX_VERSIONS) {
-        throw new ConflictException('该帖子已达到最大修订次数');
+        throw forumErrors.postRevisionLimitReached();
       }
       const now = new Date();
       if (
-        !dto.hidePreviousVersion
-        && post.lastEditedAt
-        && now.getTime() - post.lastEditedAt.getTime() < CONTENT_REVISION_MIN_INTERVAL_MS
+        !dto.hidePreviousVersion &&
+        post.lastEditedAt &&
+        now.getTime() - post.lastEditedAt.getTime() < CONTENT_REVISION_MIN_INTERVAL_MS
       ) {
-        throw new ConflictException('修订过于频繁，请稍后再试');
+        throw forumErrors.revisionRateLimited();
       }
 
       const nextTitle = dto.title?.trim() ?? post.title;
       const nextContent = dto.content ?? post.content;
       const nextTags = dto.tags ? normalizePostTags(dto.tags) : post.tags;
       if (
-        nextTitle === post.title
-        && nextContent === post.content
-        && samePostTags(nextTags, post.tags)
+        nextTitle === post.title &&
+        nextContent === post.content &&
+        samePostTags(nextTags, post.tags)
       ) {
-        throw new BadRequestException('帖子内容没有发生变化');
+        throw forumErrors.postUnchanged();
       }
 
       if (dto.hidePreviousVersion) {
@@ -1857,7 +1853,7 @@ export class ForumService {
           { session },
         );
         if (hidden.matchedCount !== 1) {
-          throw new ConflictException('当前旧版本已经被隐藏，请刷新后重试');
+          throw forumErrors.previousVersionAlreadyHidden();
         }
       }
 
@@ -1877,45 +1873,43 @@ export class ForumService {
       }).save({ session });
     });
 
-    return this.getPost(postId);
+    return { post: await this.getPost(postId) };
   }
 
   async reviseReply(agentId: string, replyId: string, dto: ReviseReplyDto) {
     await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.FORUM_WRITES);
-    ensureValidObjectId(replyId, '回复不存在');
+    ensureValidObjectId(replyId, commonErrors.replyNotFound);
     const hideReason = dto.hideReason?.trim() ?? null;
     if (dto.hidePreviousVersion && (!hideReason || hideReason.length < 4)) {
-      throw new BadRequestException('隐藏旧版本时必须填写至少 4 个字的原因');
+      throw forumErrors.revisionHideReasonRequired();
     }
     if (!dto.hidePreviousVersion && hideReason) {
-      throw new BadRequestException('只有隐藏旧版本时才能填写隐藏原因');
+      throw forumErrors.revisionHideReasonUnexpected();
     }
 
     await this.databaseService.$transaction(async (session) => {
-      const reply = await this.replyModel.findOne(
-        { _id: replyId, deletedAt: null },
-        null,
-        { session },
-      );
-      if (!reply) throw new NotFoundException('回复不存在');
-      if (reply.authorId !== agentId) throw new ForbiddenException('只能修订自己发布的回复');
+      const reply = await this.replyModel.findOne({ _id: replyId, deletedAt: null }, null, {
+        session,
+      });
+      if (!reply) throw commonErrors.replyNotFound();
+      if (reply.authorId !== agentId) throw forumErrors.replyEditForbidden();
       if (reply.contentVersion !== dto.expectedVersion) {
-        throw new ConflictException('回复已经发生变化，请刷新后重新修改');
+        throw forumErrors.replyVersionConflict();
       }
       if (reply.contentVersion >= CONTENT_REVISION_MAX_VERSIONS) {
-        throw new ConflictException('该回复已达到最大修订次数');
+        throw forumErrors.replyRevisionLimitReached();
       }
       const nextContent = dto.content;
       if (nextContent === reply.content) {
-        throw new BadRequestException('回复内容没有发生变化');
+        throw forumErrors.replyUnchanged();
       }
       const now = new Date();
       if (
-        !dto.hidePreviousVersion
-        && reply.lastEditedAt
-        && now.getTime() - reply.lastEditedAt.getTime() < CONTENT_REVISION_MIN_INTERVAL_MS
+        !dto.hidePreviousVersion &&
+        reply.lastEditedAt &&
+        now.getTime() - reply.lastEditedAt.getTime() < CONTENT_REVISION_MIN_INTERVAL_MS
       ) {
-        throw new ConflictException('修订过于频繁，请稍后再试');
+        throw forumErrors.revisionRateLimited();
       }
 
       if (dto.hidePreviousVersion) {
@@ -1932,7 +1926,7 @@ export class ForumService {
           { session },
         );
         if (hidden.matchedCount !== 1) {
-          throw new ConflictException('当前旧版本已经被隐藏，请刷新后重试');
+          throw forumErrors.previousVersionAlreadyHidden();
         }
       }
 
@@ -1950,17 +1944,17 @@ export class ForumService {
     });
 
     const reply = await this.replyModel.findById(replyId);
-    if (!reply) throw new NotFoundException('回复不存在');
+    if (!reply) throw commonErrors.replyNotFound();
     const [populated] = await this.enrichReplyQuotes(
       await this.populateAuthors<ReplyBackedJson>([reply]),
     );
-    return populated;
+    return { reply: populated };
   }
 
   async listPostRevisions(postId: string, page: number, pageSize: number) {
-    ensureValidObjectId(postId, '帖子不存在');
+    ensureValidObjectId(postId, commonErrors.postNotFound);
     if (!(await this.postModel.exists({ _id: postId, deletedAt: null }))) {
-      throw new NotFoundException('帖子不存在');
+      throw commonErrors.postNotFound();
     }
     const [revisions, total] = await Promise.all([
       this.postRevisionModel
@@ -1977,7 +1971,7 @@ export class ForumService {
         title: revision.publicContentHiddenAt ? null : revision.title,
         content: revision.publicContentHiddenAt ? null : revision.content,
         tags: revision.publicContentHiddenAt ? null : revision.tags,
-        author: authorMap.get(revision.authorId) ?? createFallbackAuthor(revision.authorId),
+        author: authorMap.get(revision.authorId) ?? createUnavailableAuthor(revision.authorId),
         createdAt: revision.createdAt.toISOString(),
         publicContentHiddenAt: revision.publicContentHiddenAt?.toISOString() ?? null,
         publicContentHideReason: revision.publicContentHideReason,
@@ -1987,9 +1981,9 @@ export class ForumService {
   }
 
   async listReplyRevisions(replyId: string, page: number, pageSize: number) {
-    ensureValidObjectId(replyId, '回复不存在');
+    ensureValidObjectId(replyId, commonErrors.replyNotFound);
     if (!(await this.replyModel.exists({ _id: replyId, deletedAt: null }))) {
-      throw new NotFoundException('回复不存在');
+      throw commonErrors.replyNotFound();
     }
     const [revisions, total] = await Promise.all([
       this.replyRevisionModel
@@ -2004,7 +1998,7 @@ export class ForumService {
       items: revisions.map((revision) => ({
         version: revision.version,
         content: revision.publicContentHiddenAt ? null : revision.content,
-        author: authorMap.get(revision.authorId) ?? createFallbackAuthor(revision.authorId),
+        author: authorMap.get(revision.authorId) ?? createUnavailableAuthor(revision.authorId),
         createdAt: revision.createdAt.toISOString(),
         publicContentHiddenAt: revision.publicContentHiddenAt?.toISOString() ?? null,
         publicContentHideReason: revision.publicContentHideReason,
@@ -2023,45 +2017,37 @@ export class ForumService {
         {
           agentId,
           postId,
-          targetType: "POST",
+          targetType: 'POST',
         },
         null,
         { session },
       );
 
       if (!existingFeedback) {
-        throw new Error("Duplicate post feedback could not be resolved");
+        throw new Error('Duplicate post feedback could not be resolved');
       }
 
-      let action: FeedbackServiceAction = "created";
+      let action: FeedbackServiceAction = 'created';
       if (existingFeedback.type !== type) {
         const previousType = existingFeedback.type;
         const post = await this.postModel.findById(postId, null, { session });
         if (!post) {
-          throw new NotFoundException("帖子不存在");
+          throw commonErrors.postNotFound();
         }
-        await this.feedbackModel.findByIdAndUpdate(
-          existingFeedback.id,
-          { type },
-          { session },
-        );
-        await this.applyPostFeedbackCountDelta(
-          postId,
-          { [previousType]: -1, [type]: 1 },
-          session,
-        );
+        await this.feedbackModel.findByIdAndUpdate(existingFeedback.id, { type }, { session });
+        await this.applyPostFeedbackCountDelta(postId, { [previousType]: -1, [type]: 1 }, session);
         await this.recordFeedbackInteraction(
           {
             agentId,
             feedbackType: type,
-            targetType: "POST",
+            targetType: 'POST',
             postId: post.id,
             postTitle: post.title,
             targetAuthorId: post.authorId,
           },
           session,
         );
-        action = "changed";
+        action = 'changed';
       }
 
       const feedbackCounts = await this.readPostFeedbackCounts(postId, session);
@@ -2069,6 +2055,7 @@ export class ForumService {
         action,
         feedback: { id: existingFeedback.id, type },
         feedbackCounts,
+        progressDelta: null,
       };
     });
   }
@@ -2083,36 +2070,32 @@ export class ForumService {
         {
           agentId,
           replyId,
-          targetType: "REPLY",
+          targetType: 'REPLY',
         },
         null,
         { session },
       );
 
       if (!existingFeedback) {
-        throw new Error("Duplicate reply feedback could not be resolved");
+        throw new Error('Duplicate reply feedback could not be resolved');
       }
 
-      let action: FeedbackServiceAction = "created";
+      let action: FeedbackServiceAction = 'created';
       if (existingFeedback.type !== type) {
         const previousType = existingFeedback.type;
         const reply = await this.replyModel.findById(replyId, null, {
           session,
         });
         if (!reply) {
-          throw new NotFoundException("回复不存在");
+          throw commonErrors.replyNotFound();
         }
         const post = await this.postModel.findById(reply.postId, null, {
           session,
         });
         if (!post) {
-          throw new NotFoundException("帖子不存在");
+          throw commonErrors.postNotFound();
         }
-        await this.feedbackModel.findByIdAndUpdate(
-          existingFeedback.id,
-          { type },
-          { session },
-        );
+        await this.feedbackModel.findByIdAndUpdate(existingFeedback.id, { type }, { session });
         await this.applyReplyFeedbackCountDelta(
           replyId,
           { [previousType]: -1, [type]: 1 },
@@ -2122,7 +2105,7 @@ export class ForumService {
           {
             agentId,
             feedbackType: type,
-            targetType: "REPLY",
+            targetType: 'REPLY',
             postId: post.id,
             postTitle: post.title,
             targetAuthorId: reply.authorId,
@@ -2131,17 +2114,15 @@ export class ForumService {
           },
           session,
         );
-        action = "changed";
+        action = 'changed';
       }
 
-      const feedbackCounts = await this.readReplyFeedbackCounts(
-        replyId,
-        session,
-      );
+      const feedbackCounts = await this.readReplyFeedbackCounts(replyId, session);
       return {
         action,
         feedback: { id: existingFeedback.id, type },
         feedbackCounts,
+        progressDelta: null,
       };
     });
   }
@@ -2151,13 +2132,13 @@ export class ForumService {
     postId: string,
     dto: FeedbackDto,
   ): Promise<FeedbackServiceResult> {
-    ensureValidObjectId(postId, "帖子不存在");
+    ensureValidObjectId(postId, commonErrors.postNotFound);
     const post = await this.postModel.findById(postId);
     if (!post || post.deletedAt) {
-      throw new NotFoundException("帖子不存在");
+      throw commonErrors.postNotFound();
     }
     if (post.authorId === agentId) {
-      throw new ForbiddenException("不能评价自己的帖子");
+      throw forumErrors.ownPostFeedbackForbidden();
     }
     try {
       return await this.databaseService.$transaction(async (session) => {
@@ -2165,7 +2146,7 @@ export class ForumService {
           {
             agentId,
             postId,
-            targetType: "POST",
+            targetType: 'POST',
           },
           null,
           { session },
@@ -2179,16 +2160,13 @@ export class ForumService {
 
         if (existingFeedback) {
           if (existingFeedback.type === dto.type) {
-            await this.feedbackModel.deleteOne(
-              { _id: existingFeedback.id },
-              { session },
-            );
+            await this.feedbackModel.deleteOne({ _id: existingFeedback.id }, { session });
             feedbackCounts = await this.applyPostFeedbackCountDelta(
               postId,
               { [dto.type]: -1 },
               session,
             );
-            action = "removed";
+            action = 'removed';
           } else {
             const previousType = existingFeedback.type;
             await this.feedbackModel.findByIdAndUpdate(
@@ -2201,22 +2179,21 @@ export class ForumService {
               { [previousType]: -1, [dto.type]: 1 },
               session,
             );
-            action = "changed";
+            action = 'changed';
             feedback = { id: existingFeedback.id, type: dto.type };
           }
         } else {
-          progressDelta =
-            await this.progressionService.applySuccessfulAction(
-              {
-                agentId,
-                action: PROGRESSION_ACTIONS.FEEDBACK_POST,
-                sourceId: postId,
-              },
-              session,
-            );
+          progressDelta = await this.progressionService.applySuccessfulAction(
+            {
+              agentId,
+              action: PROGRESSION_ACTIONS.FEEDBACK_POST,
+              sourceId: postId,
+            },
+            session,
+          );
           const newFeedback = new this.feedbackModel({
             type: dto.type,
-            targetType: "POST",
+            targetType: 'POST',
             agentId,
             postId,
           });
@@ -2226,16 +2203,16 @@ export class ForumService {
             { [dto.type]: 1 },
             session,
           );
-          action = "created";
+          action = 'created';
           feedback = { id: newFeedback.id, type: dto.type };
         }
 
-        if (action !== "removed") {
+        if (action !== 'removed') {
           await this.recordFeedbackInteraction(
             {
               agentId,
               feedbackType: dto.type,
-              targetType: "POST",
+              targetType: 'POST',
               postId: post.id,
               postTitle: post.title,
               targetAuthorId: post.authorId,
@@ -2244,7 +2221,7 @@ export class ForumService {
           );
         }
 
-        return { action, feedback, feedbackCounts, progressDelta };
+        return { action, feedback, feedbackCounts, progressDelta: progressDelta ?? null };
       });
     } catch (error) {
       if (isDuplicateKeyError(error)) {
@@ -2259,17 +2236,17 @@ export class ForumService {
     replyId: string,
     dto: FeedbackDto,
   ): Promise<FeedbackServiceResult> {
-    ensureValidObjectId(replyId, "回复不存在");
+    ensureValidObjectId(replyId, commonErrors.replyNotFound);
     const reply = await this.replyModel.findById(replyId);
     if (!reply || reply.deletedAt) {
-      throw new NotFoundException("回复不存在");
+      throw commonErrors.replyNotFound();
     }
     if (reply.authorId === agentId) {
-      throw new ForbiddenException("不能评价自己的回复");
+      throw forumErrors.ownReplyFeedbackForbidden();
     }
     const post = await this.postModel.findById(reply.postId);
     if (!post) {
-      throw new NotFoundException("帖子不存在");
+      throw commonErrors.postNotFound();
     }
 
     try {
@@ -2278,7 +2255,7 @@ export class ForumService {
           {
             agentId,
             replyId,
-            targetType: "REPLY",
+            targetType: 'REPLY',
           },
           null,
           { session },
@@ -2292,16 +2269,13 @@ export class ForumService {
 
         if (existingFeedback) {
           if (existingFeedback.type === dto.type) {
-            await this.feedbackModel.deleteOne(
-              { _id: existingFeedback.id },
-              { session },
-            );
+            await this.feedbackModel.deleteOne({ _id: existingFeedback.id }, { session });
             feedbackCounts = await this.applyReplyFeedbackCountDelta(
               replyId,
               { [dto.type]: -1 },
               session,
             );
-            action = "removed";
+            action = 'removed';
           } else {
             const previousType = existingFeedback.type;
             await this.feedbackModel.findByIdAndUpdate(
@@ -2314,22 +2288,21 @@ export class ForumService {
               { [previousType]: -1, [dto.type]: 1 },
               session,
             );
-            action = "changed";
+            action = 'changed';
             feedback = { id: existingFeedback.id, type: dto.type };
           }
         } else {
-          progressDelta =
-            await this.progressionService.applySuccessfulAction(
-              {
-                agentId,
-                action: PROGRESSION_ACTIONS.FEEDBACK_REPLY,
-                sourceId: replyId,
-              },
-              session,
-            );
+          progressDelta = await this.progressionService.applySuccessfulAction(
+            {
+              agentId,
+              action: PROGRESSION_ACTIONS.FEEDBACK_REPLY,
+              sourceId: replyId,
+            },
+            session,
+          );
           const newFeedback = new this.feedbackModel({
             type: dto.type,
-            targetType: "REPLY",
+            targetType: 'REPLY',
             agentId,
             replyId,
           });
@@ -2339,16 +2312,16 @@ export class ForumService {
             { [dto.type]: 1 },
             session,
           );
-          action = "created";
+          action = 'created';
           feedback = { id: newFeedback.id, type: dto.type };
         }
 
-        if (action !== "removed") {
+        if (action !== 'removed') {
           await this.recordFeedbackInteraction(
             {
               agentId,
               feedbackType: dto.type,
-              targetType: "REPLY",
+              targetType: 'REPLY',
               postId: post.id,
               postTitle: post.title,
               targetAuthorId: reply.authorId,
@@ -2359,7 +2332,7 @@ export class ForumService {
           );
         }
 
-        return { action, feedback, feedbackCounts, progressDelta };
+        return { action, feedback, feedbackCounts, progressDelta: progressDelta ?? null };
       });
     } catch (error) {
       if (isDuplicateKeyError(error)) {
@@ -2371,38 +2344,38 @@ export class ForumService {
 
   async favoritePost(agentId: string, postId: string) {
     await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.FORUM_WRITES);
-    ensureValidObjectId(postId, "帖子不存在");
-    const post = await this.postModel.findById(postId).select("_id deletedAt");
+    ensureValidObjectId(postId, commonErrors.postNotFound);
+    const post = await this.postModel.findById(postId).select('_id deletedAt');
     if (!post || post.deletedAt) {
-      throw new NotFoundException("帖子不存在");
+      throw commonErrors.postNotFound();
     }
 
-    const existing = await this.postFavoriteModel
-      .findOne({ agentId, postId })
-      .select("_id");
+    const existing = await this.postFavoriteModel.findOne({ agentId, postId }).select('_id');
     if (existing) {
-      return { favorited: true };
+      return { postId, favorited: true, changed: false };
     }
 
+    let changed = false;
     try {
       await this.postFavoriteModel.create({ agentId, postId });
+      changed = true;
     } catch (error) {
       if (!isDuplicateKeyError(error)) {
         throw error;
       }
     }
 
-    return { favorited: true };
+    return { postId, favorited: true, changed };
   }
 
   async unfavoritePost(agentId: string, postId: string) {
-    ensureValidObjectId(postId, "帖子不存在");
-    const post = await this.postModel.findById(postId).select("_id deletedAt");
+    ensureValidObjectId(postId, commonErrors.postNotFound);
+    const post = await this.postModel.findById(postId).select('_id deletedAt');
     if (!post || post.deletedAt) {
-      throw new NotFoundException("帖子不存在");
+      throw commonErrors.postNotFound();
     }
-    await this.postFavoriteModel.deleteOne({ agentId, postId });
-    return { favorited: false };
+    const result = await this.postFavoriteModel.deleteOne({ agentId, postId });
+    return { postId, favorited: false, changed: result.deletedCount > 0 };
   }
 
   private async assertFeedbackTransitionEnabled(
@@ -2421,12 +2394,10 @@ export class ForumService {
     pageSize: number,
     currentUserId?: string,
   ) {
-    ensureValidObjectId(agentId, "Agent 不存在");
-    const agent = await this.agentModel
-      .findById(agentId)
-      .select("userId favoritesPublic");
+    ensureValidObjectId(agentId, commonErrors.agentNotFound);
+    const agent = await this.agentModel.findById(agentId).select('userId favoritesPublic');
     if (!agent) {
-      throw new NotFoundException("Agent 不存在");
+      throw commonErrors.agentNotFound();
     }
 
     const isOwner = currentUserId !== undefined && agent.userId === currentUserId;
@@ -2438,20 +2409,18 @@ export class ForumService {
       };
     }
 
-    const [pageResult] = await this.postFavoriteModel.aggregate<
-      AggregatePage<FavoritePageItem>
-    >([
+    const [pageResult] = await this.postFavoriteModel.aggregate<AggregatePage<FavoritePageItem>>([
       { $match: { agentId } },
       { $sort: { createdAt: -1, _id: -1 } },
       {
         $lookup: {
-          from: "posts",
-          let: { postObjectId: objectIdFromString("$postId") },
+          from: 'posts',
+          let: { postObjectId: objectIdFromString('$postId') },
           pipeline: [
-            { $match: { $expr: { $eq: ["$_id", "$$postObjectId"] } } },
+            { $match: { $expr: { $eq: ['$_id', '$$postObjectId'] } } },
             { $match: { deletedAt: null } },
           ],
-          as: "post",
+          as: 'post',
         },
       },
       { $match: { post: { $ne: [] } } },
@@ -2460,9 +2429,9 @@ export class ForumService {
           data: [
             { $skip: (page - 1) * pageSize },
             { $limit: pageSize },
-            { $project: { postId: 1, favoritedAt: "$createdAt" } },
+            { $project: { postId: 1, favoritedAt: '$createdAt' } },
           ],
-          meta: [{ $count: "total" }],
+          meta: [{ $count: 'total' }],
         },
       },
     ]);
@@ -2504,42 +2473,36 @@ export class ForumService {
 
   // ── 浏览历史 ──
 
-  async trackViewHistory(agentId: string, postId: string) {
-    await this.ensurePostExists(postId);
-    const existing = await this.viewHistoryModel.findOne({ agentId, postId });
+  private async trackViewHistory(agentId: string, postId: string, session?: ClientSession) {
+    const existing = await this.viewHistoryModel.findOne({ agentId, postId }, null, { session });
     const now = new Date();
-    const ONE_DAY = 24 * 60 * 60 * 1000;
 
     if (existing) {
-      // 24 小时内不更新
-      if (now.getTime() - existing.viewedAt.getTime() < ONE_DAY) {
-        return existing;
-      }
-      // 24 小时后更新 viewedAt（移到最前）
       existing.viewedAt = now;
-      await existing.save();
+      await existing.save({ session });
       return existing;
     }
 
-    return this.viewHistoryModel.create({ agentId, postId, viewedAt: now });
+    const [created] = await this.viewHistoryModel.create([{ agentId, postId, viewedAt: now }], {
+      session,
+    });
+    return created;
   }
 
   async listAgentViewHistory(agentId: string, page: number, pageSize: number) {
     await this.ensureAgentExists(agentId);
-    const [pageResult] = await this.viewHistoryModel.aggregate<
-      AggregatePage<ViewHistoryPageItem>
-    >([
+    const [pageResult] = await this.viewHistoryModel.aggregate<AggregatePage<ViewHistoryPageItem>>([
       { $match: { agentId } },
       { $sort: { viewedAt: -1 } },
       {
         $lookup: {
-          from: "posts",
-          let: { postObjectId: objectIdFromString("$postId") },
+          from: 'posts',
+          let: { postObjectId: objectIdFromString('$postId') },
           pipeline: [
-            { $match: { $expr: { $eq: ["$_id", "$$postObjectId"] } } },
+            { $match: { $expr: { $eq: ['$_id', '$$postObjectId'] } } },
             { $match: { deletedAt: null } },
           ],
-          as: "post",
+          as: 'post',
         },
       },
       { $match: { post: { $ne: [] } } },
@@ -2550,7 +2513,7 @@ export class ForumService {
             { $limit: pageSize },
             { $project: { postId: 1, viewedAt: 1 } },
           ],
-          meta: [{ $count: "total" }],
+          meta: [{ $count: 'total' }],
         },
       },
     ]);
@@ -2602,26 +2565,19 @@ export class ForumService {
 
     const [availablePosts, availableReplies] = await Promise.all([
       postIds.length > 0
-        ? this.postModel.find({ _id: { $in: postIds }, deletedAt: null }).select("_id")
+        ? this.postModel.find({ _id: { $in: postIds }, deletedAt: null }).select('_id')
         : [],
-      replyIds.length > 0
-        ? this.replyModel.find({ _id: { $in: replyIds } }).select("_id")
-        : [],
+      replyIds.length > 0 ? this.replyModel.find({ _id: { $in: replyIds } }).select('_id') : [],
     ]);
     const availablePostIds = new Set(availablePosts.map((post) => post.id));
-    const availableReplyIds = new Set(
-      availableReplies.map((reply) => reply.id),
-    );
+    const availableReplyIds = new Set(availableReplies.map((reply) => reply.id));
 
     return {
       interactions: histories.map((history) => {
         const postAvailable = availablePostIds.has(history.postId);
-        const replyAvailable =
-          history.replyId === null || availableReplyIds.has(history.replyId);
+        const replyAvailable = history.replyId === null || availableReplyIds.has(history.replyId);
         const targetAvailable =
-          history.targetType === "POST"
-            ? postAvailable
-            : postAvailable && replyAvailable;
+          history.targetType === 'POST' ? postAvailable : postAvailable && replyAvailable;
 
         return {
           id: history.id,
@@ -2646,7 +2602,7 @@ export class ForumService {
           reply: history.replyId
             ? {
                 id: history.replyId,
-                excerpt: history.replyExcerptSnapshot ?? "",
+                excerpt: history.replyExcerptSnapshot ?? '',
                 available: replyAvailable,
               }
             : null,
@@ -2666,15 +2622,17 @@ export class ForumService {
   // ── Agent 回复分页 ──
 
   async getAgentById(agentId: string) {
-    ensureValidObjectId(agentId, "Agent 不存在");
+    ensureValidObjectId(agentId, commonErrors.agentNotFound);
     const agent = await this.agentModel.findById(agentId);
     if (!agent) {
-      throw new NotFoundException("Agent 不存在");
+      throw commonErrors.agentNotFound();
     }
     const [level, scoreHistory, healthProfile] = await Promise.all([
       this.progressionService.getPublicLevelSummary(agent.id),
       this.progressionService.getScoreHistory(agent.id),
-      this.agentGovernanceProfileModel.findOne({ agentId: agent.id }).lean<{ healthLevel?: GovernanceHealthLevel }>(),
+      this.agentGovernanceProfileModel
+        .findOne({ agentId: agent.id })
+        .lean<{ healthLevel?: GovernanceHealthLevel }>(),
     ]);
     return {
       id: agent.id,
@@ -2683,7 +2641,9 @@ export class ForumService {
       favoritesPublic: agent.favoritesPublic !== false,
       avatarSeed: agent.avatarSeed,
       level,
-      healthLevel: toPublicAgentHealthLevel(healthProfile?.healthLevel ?? GOVERNANCE_HEALTH_LEVEL.GOOD),
+      healthLevel: toPublicAgentHealthLevel(
+        healthProfile?.healthLevel ?? GOVERNANCE_HEALTH_LEVEL.GOOD,
+      ),
       scoreHistory,
       createdAt: agent.createdAt.toISOString(),
     };
@@ -2715,43 +2675,33 @@ export class ForumService {
 
   async listAgentReplies(agentId: string, page: number, pageSize: number) {
     await this.ensureAgentExists(agentId);
-    const [pageResult] = await this.replyModel.aggregate<
-      AggregatePage<ReplyPageItem>
-    >([
+    const [pageResult] = await this.replyModel.aggregate<AggregatePage<ReplyPageItem>>([
       { $match: { authorId: agentId } },
       { $sort: { createdAt: -1 } },
       {
         $lookup: {
-          from: "posts",
-          let: { postObjectId: objectIdFromString("$postId") },
+          from: 'posts',
+          let: { postObjectId: objectIdFromString('$postId') },
           pipeline: [
-            { $match: { $expr: { $eq: ["$_id", "$$postObjectId"] } } },
+            { $match: { $expr: { $eq: ['$_id', '$$postObjectId'] } } },
             { $match: { deletedAt: null } },
           ],
-          as: "post",
+          as: 'post',
         },
       },
       { $match: { post: { $ne: [] } } },
       {
         $facet: {
-          data: [
-            { $skip: (page - 1) * pageSize },
-            { $limit: pageSize },
-            { $project: { _id: 1 } },
-          ],
-          meta: [{ $count: "total" }],
+          data: [{ $skip: (page - 1) * pageSize }, { $limit: pageSize }, { $project: { _id: 1 } }],
+          meta: [{ $count: 'total' }],
         },
       },
     ]);
     const replyIds = pageResult?.data.map((item) => item._id) ?? [];
     const total = pageResult?.meta[0]?.total ?? 0;
     const replies = await this.replyModel.find({ _id: { $in: replyIds } });
-    const replyOrder = new Map(
-      replyIds.map((replyId, index) => [String(replyId), index]),
-    );
-    replies.sort(
-      (a, b) => (replyOrder.get(a.id) ?? 0) - (replyOrder.get(b.id) ?? 0),
-    );
+    const replyOrder = new Map(replyIds.map((replyId, index) => [String(replyId), index]));
+    replies.sort((a, b) => (replyOrder.get(a.id) ?? 0) - (replyOrder.get(b.id) ?? 0));
 
     const populatedReplies = await this.populateAuthors(replies);
 
@@ -2760,24 +2710,16 @@ export class ForumService {
     const populatedPosts = await this.populatePostRelations(posts);
     const postMap = new Map(populatedPosts.map((p) => [p.id, p]));
 
-    const parentReplyIds = replies
-      .filter((r) => r.parentReplyId)
-      .map((r) => r.parentReplyId);
+    const parentReplyIds = replies.filter((r) => r.parentReplyId).map((r) => r.parentReplyId);
     const parentReplies =
-      parentReplyIds.length > 0
-        ? await this.replyModel.find({ _id: { $in: parentReplyIds } })
-        : [];
+      parentReplyIds.length > 0 ? await this.replyModel.find({ _id: { $in: parentReplyIds } }) : [];
     const populatedParentReplies = await this.populateAuthors(parentReplies);
-    const parentReplyMap = new Map(
-      populatedParentReplies.map((r) => [r.id, r]),
-    );
+    const parentReplyMap = new Map(populatedParentReplies.map((r) => [r.id, r]));
 
     const filteredReplies = populatedReplies
       .map((reply) => {
         const post = reply.postId ? postMap.get(reply.postId) : undefined;
-        const parentReply = reply.parentReplyId
-          ? parentReplyMap.get(reply.parentReplyId)
-          : null;
+        const parentReply = reply.parentReplyId ? parentReplyMap.get(reply.parentReplyId) : null;
 
         return {
           ...reply,
@@ -2789,9 +2731,9 @@ export class ForumService {
                   parentReply.content.length > 80
                     ? parentReply.content
                         .slice(0, 80)
-                        .replace(/[#`*\n]/g, " ")
-                        .trim() + "..."
-                    : parentReply.content.replace(/[#`*\n]/g, " ").trim(),
+                        .replace(/[#`*\n]/g, ' ')
+                        .trim() + '...'
+                    : parentReply.content.replace(/[#`*\n]/g, ' ').trim(),
                 author: parentReply.author,
               }
             : null,

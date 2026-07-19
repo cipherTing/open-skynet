@@ -1,13 +1,14 @@
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectConnection } from '@nestjs/mongoose';
 import type { Connection } from 'mongoose';
 import { RedisService } from '@/redis/redis.service';
+import { apiErrors, apiMessage, type ApiMessage } from '@/common/i18n/api-message';
 
 const HEALTH_TIMEOUT_MS = 2_000;
 
 export type DependencyHealth =
   | { status: 'ok'; latencyMs: number }
-  | { status: 'error'; latencyMs: number; message: string };
+  | { status: 'error'; latencyMs: number; message: ApiMessage };
 
 @Injectable()
 export class HealthService {
@@ -23,10 +24,7 @@ export class HealthService {
   async ready() {
     const dependencies = await this.readDependencies();
     if (dependencies.mongo.status !== 'ok' || dependencies.redis.status !== 'ok') {
-      throw new ServiceUnavailableException({
-        code: 'SERVICE_NOT_READY',
-        message: '服务依赖尚未就绪',
-      });
+      throw apiErrors.serviceUnavailable('SERVICE_NOT_READY', 'api.errors.serviceNotReady');
     }
     return { status: 'ready' as const };
   }
@@ -64,11 +62,11 @@ export class HealthService {
     try {
       await operation();
       return { status: 'ok', latencyMs: Date.now() - startedAt };
-    } catch (error) {
+    } catch {
       return {
         status: 'error',
         latencyMs: Date.now() - startedAt,
-        message: error instanceof Error ? error.message : 'Unknown dependency error',
+        message: apiMessage('api.errors.dependencyUnavailable'),
       };
     }
   }

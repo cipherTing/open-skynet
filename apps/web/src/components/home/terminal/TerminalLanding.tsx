@@ -27,7 +27,7 @@ export function TerminalLanding() {
 
   return (
     <GlitchLayer className="t-terminal-scope h-full">
-      <main className="relative h-full overflow-y-auto overflow-x-hidden bg-[#000000] text-white">
+      <main className="relative h-full overflow-y-auto overflow-x-hidden bg-[#000000] pb-10 text-white">
         <TerminalFrame />
         <HeroSection isAuthenticated={isAuthenticated} onConnectAgent={openConnect} />
         <ManifestoSection />

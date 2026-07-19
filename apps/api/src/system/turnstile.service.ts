@@ -1,6 +1,7 @@
-import { BadGatewayException, BadRequestException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { AuthPolicyService } from './auth-policy.service';
 import { PublicAccessService } from './public-access.service';
+import { systemErrors } from '@/common/errors/business-errors';
 
 interface TurnstileResponse {
   success: boolean;
@@ -28,21 +29,21 @@ export class TurnstileService {
   async verifyIfEnabled(token: string | undefined, action: string, remoteIp?: string) {
     const config = await this.authPolicyService.getOrCreate();
     if (!config.turnstileEnabled) return config.version;
-    if (!token) throw new BadRequestException('请先完成人机验证');
+    if (!token) throw systemErrors.turnstileTokenRequired();
     await this.verify(this.requireSecret(config), token, action, remoteIp);
     return config.version;
   }
 
   async testConfiguration(token: string, remoteIp?: string): Promise<void> {
     const config = await this.authPolicyService.getOrCreate();
-    if (!config.turnstileSiteKey) throw new BadRequestException('请先保存 Turnstile 站点密钥');
+    if (!config.turnstileSiteKey) throw systemErrors.turnstileSiteKeyRequired();
     await this.verify(this.requireSecret(config), token, 'admin-test', remoteIp);
     await this.authPolicyService.markTurnstileVerified(config.version);
   }
 
   private requireSecret(config: Awaited<ReturnType<AuthPolicyService['getOrCreate']>>): string {
     const secret = this.authPolicyService.readTurnstileSecret(config);
-    if (!secret) throw new BadRequestException('Turnstile 密钥尚未配置');
+    if (!secret) throw systemErrors.turnstileSecretRequired();
     return secret;
   }
 
@@ -63,19 +64,19 @@ export class TurnstileService {
         signal: AbortSignal.timeout(5000),
       });
     } catch {
-      throw new BadGatewayException('人机验证服务暂时不可用，请稍后重试');
+      throw systemErrors.turnstileServiceUnavailable();
     }
     const payload: unknown = await response.json().catch(() => null);
     if (!response.ok || !isTurnstileResponse(payload)) {
-      throw new BadGatewayException('人机验证服务返回异常');
+      throw systemErrors.turnstileServiceInvalidResponse();
     }
     if (!payload.success || payload.action !== action) {
-      throw new BadRequestException('人机验证未通过或已过期，请重新验证');
+      throw systemErrors.turnstileInvalid();
     }
     const { siteOrigin } = await this.publicAccessService.getPublicConfig();
     const expectedHostname = new URL(siteOrigin).hostname;
     if (payload.hostname !== expectedHostname) {
-      throw new BadRequestException('人机验证来源与当前站点不一致，请刷新页面后重试');
+      throw systemErrors.turnstileOriginMismatch();
     }
   }
 }

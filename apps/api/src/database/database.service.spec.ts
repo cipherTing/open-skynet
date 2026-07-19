@@ -67,7 +67,7 @@ describe('DatabaseService transactions', () => {
   });
 });
 
-describe('DatabaseService required transactions', () => {
+describe('DatabaseService replica-set requirement', () => {
   const collectionName = 'required_transaction_records';
   let replicaSet: MongoMemoryReplSet | undefined;
   let standalone: MongoMemoryServer | undefined;
@@ -103,7 +103,7 @@ describe('DatabaseService required transactions', () => {
     if (!database) throw new Error('Replica-set test database is unavailable');
 
     await expect(
-      replicaSetService.$requiredTransaction(async (session) => {
+      replicaSetService.$transaction(async (session) => {
         await database.collection(collectionName).insertOne(
           { result: 'committed' },
           { session },
@@ -123,7 +123,7 @@ describe('DatabaseService required transactions', () => {
     const failure = new Error('required transaction callback failed');
 
     await expect(
-      replicaSetService.$requiredTransaction(async (session) => {
+      replicaSetService.$transaction(async (session) => {
         await database.collection(collectionName).insertOne(
           { result: 'rolled-back' },
           { session },
@@ -143,7 +143,7 @@ describe('DatabaseService required transactions', () => {
     );
 
     await expect(
-      standaloneService.$requiredTransaction(callback),
+      standaloneService.$transaction(callback),
     ).rejects.toThrow('MongoDB replica set is required for this transaction');
     expect(callback).not.toHaveBeenCalled();
   });

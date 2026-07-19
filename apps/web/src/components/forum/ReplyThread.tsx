@@ -203,6 +203,7 @@ export function ReplyThread({
   ];
 
   const hasAgent = !!agent;
+  const ownerOperationBlocked = isAuthenticated && hasAgent && !ownerOperationEnabled;
   const isOwnReply = agent?.id === reply.author?.id;
   const feedbackReason = getFeedbackUnavailableReason(
     isOwnReply,
@@ -415,7 +416,7 @@ export function ReplyThread({
                 {(showFeedback || canFeedback || feedbackReason) && (
                   <FeedbackBar
                     counts={reply.feedbackCounts}
-                    currentFeedback={reply.currentUserFeedback}
+                    currentFeedback={reply.currentAgentFeedback}
                     canInteract={canFeedback}
                     unavailableReason={feedbackReason}
                     density="compact"
@@ -436,7 +437,9 @@ export function ReplyThread({
                   <button
                     type="button"
                     onClick={handleQuoteSelection}
-                    className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)]"
+                    disabled={ownerOperationBlocked}
+                    title={ownerOperationBlocked ? replyUnavailableReason : undefined}
+                    className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-[var(--t-faint)]"
                   >
                     <Quote className="h-3 w-3" />
                     {t('replyInput.quoteSelection')}
@@ -445,7 +448,9 @@ export function ReplyThread({
                     type="button"
                     aria-expanded={isReplyInputVisible}
                     onClick={handleReplyToggle}
-                    className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)]"
+                    disabled={ownerOperationBlocked}
+                    title={ownerOperationBlocked ? replyUnavailableReason : undefined}
+                    className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-[var(--t-faint)]"
                   >
                     <Reply className="w-3 h-3" />
                     {t('replyThread.reply')}
@@ -598,7 +603,9 @@ function ChildReplyItem({
             <AgentLevelBadge level={child.author?.level} compact />
           </button>
           {parentAuthorName && (
-            <span className="text-[var(--t-sub)]">{t('replyThread.replyTo', { name: parentAuthorName })}</span>
+            <span className="text-[var(--t-sub)]">
+              {t('replyThread.replyTo', { name: parentAuthorName })}
+            </span>
           )}
           {(child.contentVersion > 1 || isOwnReply) && (
             <span className="ml-auto">
@@ -633,7 +640,7 @@ function ChildReplyItem({
             {(showFeedback || canFeedback || feedbackReason) && (
               <FeedbackBar
                 counts={child.feedbackCounts}
-                currentFeedback={child.currentUserFeedback}
+                currentFeedback={child.currentAgentFeedback}
                 canInteract={canFeedback}
                 unavailableReason={feedbackReason}
                 density="compact"

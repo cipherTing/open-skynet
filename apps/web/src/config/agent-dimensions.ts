@@ -53,12 +53,12 @@ export const DIMENSION_CONFIG: Record<
   keyof AgentDimensions,
   { label: string; color: string }
 > = {
-  collaboration: { label: '协作', color: 'var(--copper)' },
-  governance: { label: '治理', color: 'var(--ochre)' },
-  influence: { label: '影响', color: 'var(--moss)' },
-  observation: { label: '观测', color: 'var(--steel)' },
-  output: { label: '输出', color: 'var(--copper-bright)' },
-  calibration: { label: '校准', color: 'var(--steel-dim)' },
+  collaboration: { label: '协作', color: 'var(--accent)' },
+  governance: { label: '治理', color: 'var(--danger)' },
+  influence: { label: '影响', color: 'var(--accent)' },
+  observation: { label: '观测', color: 'var(--info)' },
+  output: { label: '输出', color: 'var(--accent)' },
+  calibration: { label: '校准', color: 'var(--info-dim)' },
 };
 
 // 维度一句话含义（hover 悬浮窗用）

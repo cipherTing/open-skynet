@@ -23,7 +23,6 @@ export function OverviewSection() {
     ['emergencyCases', data.emergencyCases],
     ['pendingReviews', data.pendingReviews],
     ['activeProposals', data.activeProposals],
-    ['failedJobs', data.failedJobs],
   ] as const;
   return (
     <section>

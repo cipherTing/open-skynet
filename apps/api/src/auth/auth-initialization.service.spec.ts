@@ -106,7 +106,9 @@ describe('AuthService administrator initialization', () => {
       agentDescription: '平台首位管理员',
     });
 
-    expect(result.user).toEqual(expect.objectContaining({ username: 'first_admin', role: 'ADMIN' }));
+    expect(result.user).toEqual(
+      expect.objectContaining({ username: 'first_admin', role: 'ADMIN' }),
+    );
     await expect(service.getInitializationStatus()).resolves.toEqual({ initialized: true });
     await expect(
       service.initializeAdministrator({
@@ -152,25 +154,31 @@ describe('AuthService administrator initialization', () => {
     await expect(connection.model(PlatformInitialization.name).countDocuments({})).resolves.toBe(1);
   });
 
-  it('treats an existing legacy administrator as initialized without a marker', async () => {
+  it('rejects an administrator record that exists without an initialization marker', async () => {
     await connection.model(User.name).create({
-      username: 'legacy_admin',
-      email: 'legacy@example.com',
+      username: 'unmarked_admin',
+      email: 'unmarked@example.com',
       emailVerifiedAt: new Date(),
-      passwordHash: 'legacy-password-hash',
+      passwordHash: 'unmarked-password-hash',
       role: USER_ROLES.ADMIN,
     });
 
-    await expect(service.getInitializationStatus()).resolves.toEqual({ initialized: true });
+    await expect(service.getInitializationStatus()).resolves.toEqual({ initialized: false });
     await expect(
       service.initializeAdministrator({
         username: 'replacement_admin',
         email: 'replacement@example.com',
-        initializationKey: 'wrong',
+        initializationKey,
         password: 'Password123',
         agentName: 'ReplacementAdmin',
       }),
-    ).rejects.toThrow('系统已经完成初始化');
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'PLATFORM_INITIALIZATION_STATE_INVALID' }),
+    });
+    await expect(connection.model(PlatformInitialization.name).countDocuments({})).resolves.toBe(0);
+    await expect(
+      connection.model(User.name).countDocuments({ role: USER_ROLES.ADMIN }),
+    ).resolves.toBe(1);
   });
 
   it('keeps initialization empty when the username or Agent name is occupied', async () => {
@@ -195,7 +203,9 @@ describe('AuthService administrator initialization', () => {
         password: 'Password123',
         agentName: 'NewAdminAgent',
       }),
-    ).rejects.toThrow('用户名已被占用');
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'USERNAME_TAKEN' }),
+    });
     await expect(
       service.initializeAdministrator({
         username: 'new_admin_username',
@@ -204,8 +214,12 @@ describe('AuthService administrator initialization', () => {
         password: 'Password123',
         agentName: 'OccupiedAgent',
       }),
-    ).rejects.toThrow('Agent 名称已被占用');
-    await expect(connection.model(User.name).countDocuments({ role: USER_ROLES.ADMIN })).resolves.toBe(0);
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'AGENT_NAME_TAKEN' }),
+    });
+    await expect(
+      connection.model(User.name).countDocuments({ role: USER_ROLES.ADMIN }),
+    ).resolves.toBe(0);
     await expect(connection.model(BrowserSession.name).countDocuments({})).resolves.toBe(0);
     await expect(connection.model(PlatformInitialization.name).countDocuments({})).resolves.toBe(0);
   });
@@ -221,7 +235,9 @@ describe('AuthService administrator initialization', () => {
     });
 
     expect(result.user).toEqual(expect.objectContaining({ role: 'USER' }));
-    await expect(connection.model(User.name).countDocuments({ role: USER_ROLES.USER })).resolves.toBe(1);
+    await expect(
+      connection.model(User.name).countDocuments({ role: USER_ROLES.USER }),
+    ).resolves.toBe(1);
     await expect(connection.model(Agent.name).countDocuments({})).resolves.toBe(1);
     await expect(connection.model(BrowserSession.name).countDocuments({})).resolves.toBe(1);
     await expect(connection.model(PlatformInitialization.name).countDocuments({})).resolves.toBe(0);
@@ -252,8 +268,12 @@ describe('AuthService administrator initialization', () => {
     });
 
     expect(result.user.role).toBe('ADMIN');
-    await expect(connection.model(User.name).countDocuments({ username: 'reusable_admin' })).resolves.toBe(2);
-    await expect(connection.model(Agent.name).countDocuments({ name: 'ReusableAgent' })).resolves.toBe(2);
+    await expect(
+      connection.model(User.name).countDocuments({ username: 'reusable_admin' }),
+    ).resolves.toBe(2);
+    await expect(
+      connection.model(Agent.name).countDocuments({ name: 'ReusableAgent' }),
+    ).resolves.toBe(2);
   });
 
   it('rejects an invalid initialization key before writing any account data', async () => {

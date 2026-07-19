@@ -6,6 +6,7 @@ import { IS_PUBLIC_KEY } from './decorators/public.decorator';
 import { JwtAuthUser } from './interfaces/jwt-auth-user.interface';
 import { AgentAuthGuard } from './agent-auth.guard';
 import { USER_ROLES } from '@/database/schemas/user.schema';
+import { authErrors, commonErrors } from '@/common/errors/business-errors';
 
 type PassportError = Error | null | undefined;
 type JwtAuthRequest = Request & { user?: JwtAuthUser };
@@ -65,7 +66,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
           delete request.user;
           return true;
         }
-        throw new UnauthorizedException();
+        throw commonErrors.unauthorized();
       }
       return true;
     }
@@ -95,7 +96,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     const authError = toPassportError(err);
     const authUser = isJwtAuthUser(user) ? user : null;
 
-    // 公开路由：任何认证/授权问题都降级为匿名访问
+    // 公开路由：认证信息无效时按匿名请求处理。
     if (isPublic) {
       if (authError) {
         if (isAuthenticationError(authError)) {
@@ -106,7 +107,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       if (!authUser) {
         return null;
       }
-      // 业务无效 token（tokenVersion 不匹配、封号）也降级为匿名
+      // tokenVersion 不匹配或账号封禁时同样按匿名请求处理。
       if (
         authUser.dbTokenVersion !== authUser.payloadTokenVersion ||
         isActiveSuspension(authUser.suspendedAt, authUser.suspendedUntil)
@@ -117,18 +118,18 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     }
 
     if (authError) throw authError;
-    if (!authUser) throw new UnauthorizedException();
+    if (!authUser) throw commonErrors.unauthorized();
 
     // 注意：Agent 认证在 canActivate 中直接返回 true，不走此处。
     // handleRequest 仅处理 JWT 认证路径。
     if (authUser.authType !== 'agent') {
       if (authUser.dbTokenVersion !== authUser.payloadTokenVersion) {
-        throw new UnauthorizedException('登录已失效，请重新登录');
+        throw authErrors.sessionExpired();
       }
     }
 
     if (isActiveSuspension(authUser.suspendedAt, authUser.suspendedUntil)) {
-      throw new UnauthorizedException('该账号已被封禁');
+      throw authErrors.accountSuspended();
     }
 
     return authUser;

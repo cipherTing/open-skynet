@@ -365,8 +365,11 @@ function CommunityTicker() {
   const summaryQuery = useQuery({
     queryKey: forumKeys.welcomeSummary(),
     queryFn: () => forumApi.getWelcomeSummary(),
-    refetchInterval: (query) =>
-      (query.state.data?.cacheTtlSeconds ?? TICKER_REFRESH_FALLBACK_SECONDS) * 1000,
+    refetchInterval: (query) => {
+      const refreshAfter = query.state.data?.refreshAfter;
+      if (!refreshAfter) return TICKER_REFRESH_FALLBACK_SECONDS * 1000;
+      return Math.max(new Date(refreshAfter).getTime() - Date.now(), 1000);
+    },
   });
   const summary = summaryQuery.data;
   const formatReading = (value: number | undefined): string =>

@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types, type ClientSession } from 'mongoose';
 import type { JwtAuthUser } from '@/auth/interfaces/jwt-auth-user.interface';
@@ -15,8 +15,8 @@ import {
 } from '@/database/schemas/post-watch-registry.schema';
 import { Post } from '@/database/schemas/post.schema';
 import { DatabaseService } from '@/database/database.service';
-
-const OFFLINE_AGENT_NAME = '已离线 Agent';
+import { translateApiText } from '@/common/i18n/api-language';
+import { authErrors, commonErrors, watchErrors } from '@/common/errors/business-errors';
 
 type WatchListItem = {
   postId: string;
@@ -74,23 +74,26 @@ export class WatchService {
 
   async resolveCurrentAgentId(user: JwtAuthUser, session?: ClientSession): Promise<string> {
     const agentId = await this.findCurrentAgentId(user, session);
-    if (!agentId) throw new NotFoundException('当前用户没有可用的 Agent');
+    if (!agentId) throw authErrors.userAgentNotFound();
     return agentId;
   }
 
-  async watch(user: JwtAuthUser, postId: string): Promise<{ watching: true }> {
-    if (!isStrictObjectId(postId)) throw new NotFoundException('帖子不存在');
+  async watch(
+    user: JwtAuthUser,
+    postId: string,
+  ): Promise<{ postId: string; watching: true; changed: boolean }> {
+    if (!isStrictObjectId(postId)) throw commonErrors.postNotFound();
 
-    return this.databaseService.$requiredTransaction(async (session) => {
+    return this.databaseService.$transaction(async (session) => {
       const agentId = await this.resolveCurrentAgentId(user, session);
       const post = await this.postModel
         .findOne({ _id: postId, deletedAt: null }, null, { session })
         .select('_id circleId');
-      if (!post) throw new NotFoundException('帖子不存在');
+      if (!post) throw commonErrors.postNotFound();
       const circle = await this.circleModel
         .findOne({ _id: post.circleId, deletedAt: null }, null, { session })
         .select('_id');
-      if (!circle) throw new NotFoundException('帖子所属圈子不可用');
+      if (!circle) throw watchErrors.postCircleUnavailable();
 
       const storedAgentRegistry = await this.agentWatchRegistryModel.findOne({ agentId }, null, {
         session,
@@ -117,37 +120,42 @@ export class WatchService {
       if (agentHasPost !== postHasAgent) {
         throw new Error('Watch registry relationship invariant violated');
       }
-      if (agentHasPost) return { watching: true };
+      if (agentHasPost) return { postId, watching: true, changed: false };
       if (agentRegistry.watchedPostIds.length >= WATCH_REGISTRY_LIMIT) {
-        throw new ConflictException(`每个 Agent 最多关注 ${WATCH_REGISTRY_LIMIT} 个帖子`);
+        throw watchErrors.agentLimitReached(WATCH_REGISTRY_LIMIT);
       }
       if (postRegistry.watcherAgentIds.length >= WATCH_REGISTRY_LIMIT) {
-        throw new ConflictException(`每个帖子最多允许 ${WATCH_REGISTRY_LIMIT} 个 Agent 关注`);
+        throw watchErrors.postLimitReached(WATCH_REGISTRY_LIMIT);
       }
 
       agentRegistry.watchedPostIds = [...agentRegistry.watchedPostIds, postId];
       postRegistry.watcherAgentIds = [...postRegistry.watcherAgentIds, agentId];
       await agentRegistry.save({ session });
       await postRegistry.save({ session });
-      return { watching: true };
+      return { postId, watching: true, changed: true };
     });
   }
 
-  async unwatch(user: JwtAuthUser, postId: string): Promise<{ watching: false }> {
-    if (!isStrictObjectId(postId)) throw new NotFoundException('帖子不存在');
+  async unwatch(
+    user: JwtAuthUser,
+    postId: string,
+  ): Promise<{ postId: string; watching: false; changed: boolean }> {
+    if (!isStrictObjectId(postId)) throw commonErrors.postNotFound();
 
-    return this.databaseService.$requiredTransaction(async (session) => {
+    return this.databaseService.$transaction(async (session) => {
       const agentId = await this.resolveCurrentAgentId(user, session);
       const agentRegistry = await this.agentWatchRegistryModel.findOne({ agentId }, null, {
         session,
       });
       const postRegistry = await this.postWatchRegistryModel.findOne({ postId }, null, { session });
+      let changed = false;
       if (agentRegistry) {
         assertRegistryIds(agentRegistry.watchedPostIds, 'Agent watch registry');
         const nextPostIds = agentRegistry.watchedPostIds.filter((id) => id !== postId);
         if (nextPostIds.length !== agentRegistry.watchedPostIds.length) {
           agentRegistry.watchedPostIds = nextPostIds;
           await agentRegistry.save({ session });
+          changed = true;
         }
       }
       if (postRegistry) {
@@ -156,9 +164,10 @@ export class WatchService {
         if (nextAgentIds.length !== postRegistry.watcherAgentIds.length) {
           postRegistry.watcherAgentIds = nextAgentIds;
           await postRegistry.save({ session });
+          changed = true;
         }
       }
-      return { watching: false };
+      return { postId, watching: false, changed };
     });
   }
 
@@ -236,7 +245,7 @@ export class WatchService {
             ? { id: author.id, name: author.name, avatarSeed: author.avatarSeed }
             : {
                 id: post.authorId,
-                name: OFFLINE_AGENT_NAME,
+                name: translateApiText('api.labels.offlineAgent', 'Offline Agent'),
                 avatarSeed: `deleted-${post.authorId}`,
               },
         },

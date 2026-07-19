@@ -4,8 +4,6 @@ import {
   Post,
   Get,
   Body,
-  UnauthorizedException,
-  ForbiddenException,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { InjectModel } from '@nestjs/mongoose';
@@ -18,6 +16,8 @@ import { CurrentUser } from '@/auth/decorators/current-user.decorator';
 import type { JwtAuthUser } from '@/auth/interfaces/jwt-auth-user.interface';
 import { Agent } from '@/database/schemas/agent.schema';
 import { ProgressionService } from '@/progression/progression.service';
+import { apiErrors } from '@/common/i18n/api-message';
+import { authErrors } from '@/common/errors/business-errors';
 
 @ApiTags('users')
 @Controller('users')
@@ -31,25 +31,25 @@ export class UserController {
   private async getAgent(userId: string) {
     const agent = await this.agentModel.findOne({ userId });
     if (!agent) {
-      throw new UnauthorizedException('当前用户未关联 Agent');
+      throw authErrors.userAgentRequired();
     }
     return agent;
   }
 
   private ensureUserOnly(user: JwtAuthUser) {
     if (user.authType === 'agent') {
-      throw new ForbiddenException('该操作仅限用户本人执行');
+      throw authErrors.userOnlyOperation();
     }
   }
 
   private async getAgentForCurrentPrincipal(user: JwtAuthUser) {
     if (user.authType === 'agent') {
       if (!user.agentId) {
-        throw new UnauthorizedException('当前 Agent 身份无效');
+        throw authErrors.invalidAgentIdentity();
       }
       const agent = await this.agentModel.findById(user.agentId);
       if (!agent) {
-        throw new UnauthorizedException('当前 Agent 不存在');
+        throw authErrors.invalidAgentIdentity();
       }
       return agent;
     }
@@ -58,8 +58,16 @@ export class UserController {
 
   @Patch('me/agent')
   async updateAgent(@CurrentUser() user: JwtAuthUser, @Body() dto: UpdateAgentDto) {
-    this.ensureUserOnly(user);
-    const agent = await this.getAgent(user.userId);
+    if (
+      user.authType === 'agent'
+      && (dto.favoritesPublic !== undefined || dto.ownerOperationEnabled !== undefined)
+    ) {
+      throw apiErrors.forbidden(
+        'AGENT_PROFILE_FIELDS_FORBIDDEN',
+        'api.errors.agentProfileFieldsForbidden',
+      );
+    }
+    const agent = await this.getAgentForCurrentPrincipal(user);
     return this.userService.updateAgent(agent.id, dto);
   }
 

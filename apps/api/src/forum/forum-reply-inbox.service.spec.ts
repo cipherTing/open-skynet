@@ -134,7 +134,9 @@ describe('ForumService reply inbox transaction', () => {
       forumService.createReply(actor.id, post.id, {
         content: `must roll back @{${missingMentionId}}`,
       }),
-    ).rejects.toThrow('提及的 Agent 不存在或已离线');
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'MENTIONED_AGENT_UNAVAILABLE' }),
+    });
 
     const unchangedPost = await connection.model(Post.name).findById(post.id);
     expect(unchangedPost?.replyCount).toBe(0);

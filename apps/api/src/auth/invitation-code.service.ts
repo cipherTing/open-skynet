@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { randomBytes } from 'node:crypto';
 import type { ClientSession, FilterQuery, Model } from 'mongoose';
@@ -10,6 +10,7 @@ import {
   AdminAuditLog,
 } from '@/database/schemas/admin-audit-log.schema';
 import { ADMIN_AUDIT_ACTIONS } from '@/admin/admin.constants';
+import { authErrors } from '@/common/errors/business-errors';
 
 @Injectable()
 export class InvitationCodeService {
@@ -24,7 +25,7 @@ export class InvitationCodeService {
   async create(createdByUserId: string, expiresAt?: string) {
     const expiration = expiresAt ? new Date(expiresAt) : null;
     if (expiration && expiration.getTime() <= Date.now()) {
-      throw new BadRequestException('邀请码过期时间必须晚于当前时间');
+      throw authErrors.invitationExpiryInvalid();
     }
     const code = `sky_inv_${randomBytes(18).toString('base64url')}`;
     const item = await new this.invitationModel({
@@ -62,7 +63,7 @@ export class InvitationCodeService {
       { $set: { revokedAt: new Date() } },
       { new: true },
     );
-    if (!item) throw new NotFoundException('邀请码不存在或不能撤销');
+    if (!item) throw authErrors.invitationNotRevocable();
     return this.serialize(item);
   }
 
@@ -77,7 +78,7 @@ export class InvitationCodeService {
       { $set: { usedAt: new Date(), usedByUserId: userId } },
       { new: true, session },
     );
-    if (!item) throw new ConflictException('邀请码无效、已使用或已过期');
+    if (!item) throw authErrors.invitationInvalid();
     await new this.auditModel({
       actorType: ADMIN_AUDIT_ACTOR_TYPES.USER,
       actorUserId: userId,

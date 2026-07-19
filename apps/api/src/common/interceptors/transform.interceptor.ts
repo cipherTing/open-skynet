@@ -5,8 +5,14 @@ import {
   CallHandler,
 } from '@nestjs/common';
 import type { Request } from 'express';
+import type { Response } from 'express';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
+import {
+  getApiLanguage,
+  getContentLanguage,
+  localizeApiValue,
+} from '@/common/i18n/api-language';
 import {
   filterResponseSemantics,
   getResponseSemantics,
@@ -35,13 +41,21 @@ export class TransformInterceptor
     next: CallHandler<unknown>,
   ): Observable<ResponseEnvelope<unknown>> {
     const request = context.switchToHttp().getRequest<Request>();
-    const semantics = shouldIncludeSemantics(request.query[SEMANTICS_REQUEST_QUERY])
+    const httpResponse = context.switchToHttp().getResponse<Response>();
+    const language = getApiLanguage(context);
+    httpResponse.setHeader('Content-Language', getContentLanguage(language));
+    httpResponse.vary('Accept-Language');
+    const includeSemantics = shouldIncludeSemantics(request.query[SEMANTICS_REQUEST_QUERY]);
+    const semantics = includeSemantics
       ? getResponseSemantics(`${context.getClass().name}.${context.getHandler().name}`)
       : null;
 
     return next.handle().pipe(
       map((response) => {
-        const envelope = isResponseEnvelope(response) ? response : { data: response };
+        const localizedResponse = localizeApiValue(response, context);
+        const envelope = isResponseEnvelope(localizedResponse)
+          ? localizedResponse
+          : { data: localizedResponse };
         if (!semantics) {
           return envelope;
         }

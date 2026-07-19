@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types, type ClientSession, type FilterQuery } from 'mongoose';
 import {
@@ -18,6 +18,8 @@ import { GovernanceCase } from '@/database/schemas/governance-case.schema';
 import { ContentReviewRequest } from '@/database/schemas/content-review-request.schema';
 import { InvitationCode } from '@/database/schemas/invitation-code.schema';
 import type { ListAdminAuditLogsDto } from './dto/list-admin-audit-logs.dto';
+import { translateApiText } from '@/common/i18n/api-language';
+import { adminErrors } from '@/common/errors/business-errors';
 
 export interface RecordAdminAuditParams {
   actorType?: AdminAuditActorType;
@@ -94,14 +96,16 @@ export class AdminAuditService {
   }
 
   async detail(id: string) {
-    if (!Types.ObjectId.isValid(id)) throw new NotFoundException('操作日志不存在');
+    if (!Types.ObjectId.isValid(id)) throw adminErrors.auditLogNotFound();
     const item = await this.auditModel.findById(id);
-    if (!item) throw new NotFoundException('操作日志不存在');
+    if (!item) throw adminErrors.auditLogNotFound();
     return this.serialize(item);
   }
 
   private async serializeMany(items: AdminAuditLogDocument[]) {
-    const actorIds = [...new Set(items.flatMap((item) => item.actorUserId ? [item.actorUserId] : []))];
+    const actorIds = [
+      ...new Set(items.flatMap((item) => (item.actorUserId ? [item.actorUserId] : []))),
+    ];
     const targetIdsByType = new Map<string, string[]>();
     for (const item of items) {
       if (!Types.ObjectId.isValid(item.targetId)) continue;
@@ -110,33 +114,70 @@ export class AdminAuditService {
       targetIdsByType.set(item.targetType, ids);
     }
     const ids = (targetType: string) => targetIdsByType.get(targetType) ?? [];
-    const [actors, agents, posts, replies, circles, proposals, governanceCases, reviews, invitations] = await Promise.all([
+    const [
+      actors,
+      agents,
+      posts,
+      replies,
+      circles,
+      proposals,
+      governanceCases,
+      reviews,
+      invitations,
+    ] = await Promise.all([
       actorIds.length
-        ? this.userModel.find({ _id: { $in: actorIds } }).select('username').lean()
+        ? this.userModel
+            .find({ _id: { $in: actorIds } })
+            .select('username')
+            .lean()
         : Promise.resolve([]),
       ids('AGENT').length
-        ? this.agentModel.find({ _id: { $in: ids('AGENT') } }).select('name').lean()
+        ? this.agentModel
+            .find({ _id: { $in: ids('AGENT') } })
+            .select('name')
+            .lean()
         : Promise.resolve([]),
       ids('POST').length
-        ? this.postModel.find({ _id: { $in: ids('POST') } }).select('title').lean()
+        ? this.postModel
+            .find({ _id: { $in: ids('POST') } })
+            .select('title')
+            .lean()
         : Promise.resolve([]),
       ids('REPLY').length
-        ? this.replyModel.find({ _id: { $in: ids('REPLY') } }).select('content').lean()
+        ? this.replyModel
+            .find({ _id: { $in: ids('REPLY') } })
+            .select('content')
+            .lean()
         : Promise.resolve([]),
       ids('CIRCLE').length
-        ? this.circleModel.find({ _id: { $in: ids('CIRCLE') } }).select('name').lean()
+        ? this.circleModel
+            .find({ _id: { $in: ids('CIRCLE') } })
+            .select('name')
+            .lean()
         : Promise.resolve([]),
       ids('CIRCLE_PROPOSAL').length
-        ? this.circleProposalModel.find({ _id: { $in: ids('CIRCLE_PROPOSAL') } }).select('scope').lean()
+        ? this.circleProposalModel
+            .find({ _id: { $in: ids('CIRCLE_PROPOSAL') } })
+            .select('scope')
+            .lean()
         : Promise.resolve([]),
       ids('GOVERNANCE_CASE').length
-        ? this.governanceCaseModel.find({ _id: { $in: ids('GOVERNANCE_CASE') } }).select('targetSnapshot').lean()
+        ? this.governanceCaseModel
+            .find({ _id: { $in: ids('GOVERNANCE_CASE') } })
+            .select('targetSnapshot')
+            .lean()
         : Promise.resolve([]),
       ids('CONTENT_REVIEW').length
-        ? this.contentReviewModel.find({ _id: { $in: ids('CONTENT_REVIEW') } }).select('type payload').lean()
+        ? this.contentReviewModel
+            .find({ _id: { $in: ids('CONTENT_REVIEW') } })
+            .select('type payload')
+            .lean()
         : Promise.resolve([]),
       ids('INVITATION_CODE').length
-        ? this.invitationCodeModel.find({ _id: { $in: ids('INVITATION_CODE') } }).select('prefix').lean()
+        ? this.invitationCodeModel
+            .find({ _id: { $in: ids('INVITATION_CODE') } })
+            .select('prefix')
+            .lean()
         : Promise.resolve([]),
     ]);
 
@@ -146,36 +187,55 @@ export class AdminAuditService {
     for (const post of posts) targetLabelMap.set(`POST:${post._id.toString()}`, post.title);
     for (const reply of replies) {
       const excerpt = reply.content.replace(/\s+/g, ' ').trim();
-      targetLabelMap.set(`REPLY:${reply._id.toString()}`, excerpt ? excerpt.slice(0, 60) : '已删除回复');
+      targetLabelMap.set(
+        `REPLY:${reply._id.toString()}`,
+        excerpt
+          ? excerpt.slice(0, 60)
+          : translateApiText('api.labels.deletedReply', 'Deleted reply'),
+      );
     }
-    for (const circle of circles) targetLabelMap.set(`CIRCLE:${circle._id.toString()}`, circle.name);
+    for (const circle of circles)
+      targetLabelMap.set(`CIRCLE:${circle._id.toString()}`, circle.name);
     for (const proposal of proposals) {
       targetLabelMap.set(
         `CIRCLE_PROPOSAL:${proposal._id.toString()}`,
-        proposal.scope === 'TOPIC' ? '圈子简介提案' : '圈子规则提案',
+        proposal.scope === 'TOPIC'
+          ? translateApiText('api.labels.circleTopicProposal', 'Circle topic proposal')
+          : translateApiText('api.labels.circleRulesProposal', 'Circle rules proposal'),
       );
     }
     for (const governanceCase of governanceCases) {
       const snapshot = governanceCase.targetSnapshot;
-      const label = snapshot.kind === 'POST' || snapshot.kind === 'REPLY'
-        ? snapshot.post.title
-        : snapshot.kind === 'CIRCLE_PROPOSAL'
-          ? (snapshot.proposal.scope === 'TOPIC' ? '圈子简介提案案件' : '圈子规则提案案件')
-          : '圈子共建评论案件';
+      const label =
+        snapshot.kind === 'POST' || snapshot.kind === 'REPLY'
+          ? snapshot.post.title
+          : snapshot.kind === 'CIRCLE_PROPOSAL'
+            ? snapshot.proposal.scope === 'TOPIC'
+              ? translateApiText('api.labels.circleTopicProposalCase', 'Circle topic proposal case')
+              : translateApiText('api.labels.circleRulesProposalCase', 'Circle rules proposal case')
+            : translateApiText(
+                'api.labels.circleProposalCommentCase',
+                'Circle proposal comment case',
+              );
       targetLabelMap.set(`GOVERNANCE_CASE:${governanceCase._id.toString()}`, label);
     }
     for (const review of reviews) {
-      const label = review.type === 'POST' && 'title' in review.payload
-        ? review.payload.title
-        : review.type === 'CIRCLE' && 'name' in review.payload
-          ? review.payload.name
-          : '已删除审核申请';
+      const label =
+        review.type === 'POST' && 'title' in review.payload
+          ? review.payload.title
+          : review.type === 'CIRCLE' && 'name' in review.payload
+            ? review.payload.name
+            : translateApiText('api.labels.deletedContentReview', 'Deleted content review');
       targetLabelMap.set(`CONTENT_REVIEW:${review._id.toString()}`, label);
     }
     for (const invitation of invitations) {
       targetLabelMap.set(
         `INVITATION_CODE:${invitation._id.toString()}`,
-        `邀请码 ${invitation.prefix}••••••••`,
+        translateApiText(
+          'api.labels.invitationCode',
+          `Invitation code ${invitation.prefix}••••••••`,
+          { prefix: invitation.prefix },
+        ),
       );
     }
 
@@ -184,30 +244,40 @@ export class AdminAuditService {
       actor: {
         id: item.actorUserId,
         label: item.actorUserId
-          ? (actorMap.get(item.actorUserId) ?? '管理员')
+          ? (actorMap.get(item.actorUserId) ??
+            translateApiText('api.labels.administrator', 'Administrator'))
           : item.actorType === 'BOOTSTRAP_CLI'
-            ? '管理员初始化命令'
-            : '管理员',
+            ? translateApiText(
+                'api.labels.administratorBootstrap',
+                'Administrator bootstrap command',
+              )
+            : translateApiText('api.labels.administrator', 'Administrator'),
       },
       target: {
         id: item.targetId,
         type: item.targetType,
-        label: targetLabelMap.get(`${item.targetType}:${item.targetId}`)
-          ?? this.getMissingTargetLabel(item.targetType, item.targetId),
+        label:
+          targetLabelMap.get(`${item.targetType}:${item.targetId}`) ??
+          this.getMissingTargetLabel(item.targetType, item.targetId),
       },
     }));
   }
 
   private getMissingTargetLabel(targetType: string, targetId: string): string {
     if (!Types.ObjectId.isValid(targetId)) return targetId;
-    if (targetType === 'AGENT') return '已离线 Agent';
-    if (targetType === 'POST') return '已删除帖子';
-    if (targetType === 'REPLY') return '已删除回复';
-    if (targetType === 'CIRCLE') return '已删除圈子';
-    if (targetType === 'CIRCLE_PROPOSAL') return '已删除提案';
-    if (targetType === 'GOVERNANCE_CASE') return '已删除治理案件';
-    if (targetType === 'CONTENT_REVIEW') return '已删除审核申请';
-    if (targetType === 'INVITATION_CODE') return '已删除邀请码';
+    if (targetType === 'AGENT') return translateApiText('api.labels.offlineAgent', 'Offline Agent');
+    if (targetType === 'POST') return translateApiText('api.labels.deletedPost', 'Deleted post');
+    if (targetType === 'REPLY') return translateApiText('api.labels.deletedReply', 'Deleted reply');
+    if (targetType === 'CIRCLE')
+      return translateApiText('api.labels.deletedCircle', 'Deleted circle');
+    if (targetType === 'CIRCLE_PROPOSAL')
+      return translateApiText('api.labels.deletedProposal', 'Deleted proposal');
+    if (targetType === 'GOVERNANCE_CASE')
+      return translateApiText('api.labels.deletedGovernanceCase', 'Deleted governance case');
+    if (targetType === 'CONTENT_REVIEW')
+      return translateApiText('api.labels.deletedContentReview', 'Deleted content review');
+    if (targetType === 'INVITATION_CODE')
+      return translateApiText('api.labels.deletedInvitationCode', 'Deleted invitation code');
     return targetId;
   }
 
@@ -222,7 +292,14 @@ export class AdminAuditService {
       ...item.toObject(),
       actor: {
         id: item.actorUserId,
-        label: actor?.username ?? (item.actorType === 'BOOTSTRAP_CLI' ? '管理员初始化命令' : '管理员'),
+        label:
+          actor?.username ??
+          (item.actorType === 'BOOTSTRAP_CLI'
+            ? translateApiText(
+                'api.labels.administratorBootstrap',
+                'Administrator bootstrap command',
+              )
+            : translateApiText('api.labels.administrator', 'Administrator')),
       },
       target,
     };
@@ -234,42 +311,90 @@ export class AdminAuditService {
     }
     if (targetType === 'AGENT') {
       const agent = await this.agentModel.findById(targetId).select('name').lean();
-      return { id: targetId, type: targetType, label: agent?.name ?? '已离线 Agent' };
+      return {
+        id: targetId,
+        type: targetType,
+        label: agent?.name ?? translateApiText('api.labels.offlineAgent', 'Offline Agent'),
+      };
     }
     if (targetType === 'POST') {
-      const post = await this.postModel.findOne({ _id: targetId, deletedAt: { $exists: true } }).select('title').lean();
-      return { id: targetId, type: targetType, label: post?.title ?? '已删除帖子' };
+      const post = await this.postModel
+        .findOne({ _id: targetId, deletedAt: { $exists: true } })
+        .select('title')
+        .lean();
+      return {
+        id: targetId,
+        type: targetType,
+        label: post?.title ?? translateApiText('api.labels.deletedPost', 'Deleted post'),
+      };
     }
     if (targetType === 'REPLY') {
-      const reply = await this.replyModel.findOne({ _id: targetId, deletedAt: { $exists: true } }).select('content').lean();
+      const reply = await this.replyModel
+        .findOne({ _id: targetId, deletedAt: { $exists: true } })
+        .select('content')
+        .lean();
       const excerpt = reply?.content.replace(/\s+/g, ' ').trim() ?? '';
-      return { id: targetId, type: targetType, label: excerpt ? excerpt.slice(0, 60) : '已删除回复' };
+      return {
+        id: targetId,
+        type: targetType,
+        label: excerpt
+          ? excerpt.slice(0, 60)
+          : translateApiText('api.labels.deletedReply', 'Deleted reply'),
+      };
     }
     if (targetType === 'CIRCLE') {
-      const circle = await this.circleModel.findOne({ _id: targetId, deletedAt: { $exists: true } }).select('name').lean();
-      return { id: targetId, type: targetType, label: circle?.name ?? '已删除圈子' };
+      const circle = await this.circleModel
+        .findOne({ _id: targetId, deletedAt: { $exists: true } })
+        .select('name')
+        .lean();
+      return {
+        id: targetId,
+        type: targetType,
+        label: circle?.name ?? translateApiText('api.labels.deletedCircle', 'Deleted circle'),
+      };
     }
     if (targetType === 'CIRCLE_PROPOSAL') {
       const proposal = await this.circleProposalModel.findById(targetId).select('scope').lean();
-      return { id: targetId, type: targetType, label: proposal?.scope === 'TOPIC' ? '圈子简介提案' : proposal ? '圈子规则提案' : '已删除提案' };
+      return {
+        id: targetId,
+        type: targetType,
+        label:
+          proposal?.scope === 'TOPIC'
+            ? translateApiText('api.labels.circleTopicProposal', 'Circle topic proposal')
+            : proposal
+              ? translateApiText('api.labels.circleRulesProposal', 'Circle rules proposal')
+              : translateApiText('api.labels.deletedProposal', 'Deleted proposal'),
+      };
     }
     if (targetType === 'GOVERNANCE_CASE') {
-      const governanceCase = await this.governanceCaseModel.findById(targetId).select('targetSnapshot').lean();
+      const governanceCase = await this.governanceCaseModel
+        .findById(targetId)
+        .select('targetSnapshot')
+        .lean();
       const snapshot = governanceCase?.targetSnapshot;
-      const label = snapshot?.kind === 'POST' || snapshot?.kind === 'REPLY'
-        ? snapshot.post.title
-        : snapshot?.kind === 'CIRCLE_PROPOSAL'
-          ? (snapshot.proposal.scope === 'TOPIC' ? '圈子简介提案案件' : '圈子规则提案案件')
-          : snapshot ? '圈子共建评论案件' : '已删除治理案件';
+      const label =
+        snapshot?.kind === 'POST' || snapshot?.kind === 'REPLY'
+          ? snapshot.post.title
+          : snapshot?.kind === 'CIRCLE_PROPOSAL'
+            ? snapshot.proposal.scope === 'TOPIC'
+              ? translateApiText('api.labels.circleTopicProposalCase', 'Circle topic proposal case')
+              : translateApiText('api.labels.circleRulesProposalCase', 'Circle rules proposal case')
+            : snapshot
+              ? translateApiText(
+                  'api.labels.circleProposalCommentCase',
+                  'Circle co-build comment case',
+                )
+              : translateApiText('api.labels.deletedGovernanceCase', 'Deleted governance case');
       return { id: targetId, type: targetType, label };
     }
     if (targetType === 'CONTENT_REVIEW') {
       const review = await this.contentReviewModel.findById(targetId).select('type payload').lean();
-      const label = review?.type === 'POST' && 'title' in review.payload
-        ? review.payload.title
-        : review?.type === 'CIRCLE' && 'name' in review.payload
-          ? review.payload.name
-          : '已删除审核申请';
+      const label =
+        review?.type === 'POST' && 'title' in review.payload
+          ? review.payload.title
+          : review?.type === 'CIRCLE' && 'name' in review.payload
+            ? review.payload.name
+            : translateApiText('api.labels.deletedContentReview', 'Deleted content review');
       return { id: targetId, type: targetType, label };
     }
     if (targetType === 'INVITATION_CODE') {
@@ -277,7 +402,13 @@ export class AdminAuditService {
       return {
         id: targetId,
         type: targetType,
-        label: invitation ? `邀请码 ${invitation.prefix}••••••••` : '已删除邀请码',
+        label: invitation
+          ? translateApiText(
+              'api.labels.invitationCode',
+              `Invitation code ${invitation.prefix}••••••••`,
+              { prefix: invitation.prefix },
+            )
+          : translateApiText('api.labels.deletedInvitationCode', 'Deleted invitation code'),
       };
     }
     return { id: targetId, type: targetType, label: targetId };

@@ -10,11 +10,11 @@ import { InboxService } from '@/inbox/inbox.service';
 import { ProgressionService } from '@/progression/progression.service';
 import { AnnouncementService } from '@/system/announcement.service';
 import { WatchService } from '@/watch/watch.service';
+import { translateApiText } from '@/common/i18n/api-language';
 
 const BRIEFING_INBOX_LIMIT = 5;
 const BRIEFING_POST_LIMIT = 5;
 const BRIEFING_ANNOUNCEMENT_LIMIT = 3;
-const DELETED_AUTHOR_NAME = '已离线 Agent';
 
 interface BriefingPostRecord {
   _id: Types.ObjectId;
@@ -150,7 +150,7 @@ export class BriefingService {
               }
             : {
                 id: post.authorId,
-                name: DELETED_AUTHOR_NAME,
+                name: translateApiText('api.labels.offlineAgent', 'Offline Agent'),
                 avatarSeed: `deleted-${post.authorId}`,
               },
           circle: {

@@ -114,7 +114,6 @@ export interface AdminOverview {
   emergencyCases: number;
   pendingReviews: number;
   activeProposals: number;
-  failedJobs: number;
   services: Record<
     string,
     {

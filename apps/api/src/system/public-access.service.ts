@@ -1,9 +1,6 @@
 import {
-  BadRequestException,
-  GoneException,
   Injectable,
   Logger,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { createHash } from 'crypto';
@@ -22,6 +19,7 @@ import { Agent } from '@/database/schemas/agent.schema';
 import { decryptSecret } from '@/common/security/encrypted-secret';
 import { hashOpaqueToken } from '@/auth/auth-security';
 import { DEFAULT_AGENT_REVISIT_INTERVAL_HOURS } from './public-access.constants';
+import { systemErrors } from '@/common/errors/business-errors';
 
 const AGENT_REVISIT_INTERVAL_PLACEHOLDER = '{{AGENT_REVISIT_INTERVAL_HOURS}}';
 
@@ -87,7 +85,7 @@ export class PublicAccessService {
   }
 
   normalizeSiteOrigin(value: string): string {
-    const normalized = this.parseHttpUrl(value, '公开站点地址');
+    const normalized = this.parseHttpUrl(value, 'siteOrigin');
     if (
       normalized.pathname !== '/' ||
       normalized.search ||
@@ -95,20 +93,18 @@ export class PublicAccessService {
       normalized.username ||
       normalized.password
     ) {
-      throw new BadRequestException(
-        '公开站点地址必须是根 Origin，不能包含路径、账号、查询参数或片段',
-      );
+      throw systemErrors.publicSiteOriginInvalid();
     }
-    this.assertProductionHttps(normalized, '公开站点地址');
+    this.assertProductionHttps(normalized, 'siteOrigin');
     return normalized.origin;
   }
 
   normalizeApiBaseUrl(value: string): string {
-    const normalized = this.parseHttpUrl(value, '公开 API 地址');
+    const normalized = this.parseHttpUrl(value, 'apiBaseUrl');
     if (normalized.search || normalized.hash || normalized.username || normalized.password) {
-      throw new BadRequestException('公开 API 地址不能包含账号、查询参数或片段');
+      throw systemErrors.publicApiUrlInvalid();
     }
-    this.assertProductionHttps(normalized, '公开 API 地址');
+    this.assertProductionHttps(normalized, 'apiBaseUrl');
     return removeTrailingSlashes(normalized.toString());
   }
 
@@ -145,11 +141,13 @@ export class PublicAccessService {
   async consumeBootstrap(token: string): Promise<RenderedAgentGuide> {
     const redisKey = `agent-guide-bootstrap:${hashOpaqueToken(token)}`;
     const raw = await this.redisService.getClient().getdel(redisKey);
-    if (!raw) throw new GoneException('接入链接已过期或已经使用');
+    if (!raw) {
+      throw systemErrors.guideBootstrapGone();
+    }
     const record = this.parseBootstrapRecord(raw);
     const publicAccessConfig = await this.getPublicConfig();
     if (publicAccessConfig.version !== record.publicAccessVersion) {
-      throw new GoneException('站点接入地址已经变化，请重新生成接入链接');
+      throw systemErrors.guideBootstrapGone();
     }
     const agent = await this.agentModel
       .findById(record.agentId)
@@ -160,7 +158,7 @@ export class PublicAccessService {
       !agent.secretKeyVersion ||
       agent.secretKeyVersion !== record.keyVersion
     ) {
-      throw new GoneException('Agent Key 已变化，请重新生成接入链接');
+      throw systemErrors.guideBootstrapGone();
     }
     const agentKey = decryptSecret(agent.secretKeyCiphertext, 'agent-key', agent.id);
     const guide = await this.renderAgentGuide();
@@ -229,7 +227,7 @@ export class PublicAccessService {
     try {
       value = JSON.parse(raw);
     } catch {
-      throw new UnauthorizedException('接入链接无效');
+      throw systemErrors.bootstrapInvalid();
     }
     if (
       typeof value !== 'object' ||
@@ -243,7 +241,7 @@ export class PublicAccessService {
       typeof value.publicAccessVersion !== 'number' ||
       typeof value.revisitIntervalHours !== 'number'
     ) {
-      throw new UnauthorizedException('接入链接无效');
+      throw systemErrors.bootstrapInvalid();
     }
     return {
       agentId: value.agentId,
@@ -259,13 +257,13 @@ export class PublicAccessService {
       if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('protocol');
       return url;
     } catch {
-      throw new BadRequestException(`${fieldName}必须是完整的 HTTP 或 HTTPS 地址`);
+      throw systemErrors.absoluteHttpUrlRequired(fieldName);
     }
   }
 
   private assertProductionHttps(url: URL, fieldName: string): void {
     if (isProduction() && url.protocol !== 'https:') {
-      throw new BadRequestException(`生产环境的${fieldName}必须使用 HTTPS`);
+      throw systemErrors.productionHttpsRequired(fieldName);
     }
   }
 

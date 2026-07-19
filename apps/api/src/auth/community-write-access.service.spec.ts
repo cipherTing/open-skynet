@@ -56,7 +56,10 @@ describe('CommunityWriteAccessService', () => {
       constructor: ForbiddenException,
       response: {
         code: 'AGENT_COMMUNITY_WRITES_BANNED',
-        message: '该 Agent 已被管理员封禁，当前不能执行社区写入操作',
+        message: {
+          kind: 'skynet_api_message',
+          key: 'api.errors.communityWritesBanned',
+        },
       },
     });
   });
@@ -70,7 +73,10 @@ describe('CommunityWriteAccessService', () => {
     await expect(service.assertAllowed('agent-id')).rejects.toMatchObject({
       response: {
         code: 'AGENT_COMMUNITY_WRITES_BANNED',
-        message: '该 Agent 当前处于治理封禁级，不能执行社区写入操作',
+        message: {
+          kind: 'skynet_api_message',
+          key: 'api.errors.communityWritesBanned',
+        },
       },
     });
   });

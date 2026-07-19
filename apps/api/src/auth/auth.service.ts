@@ -1,9 +1,4 @@
-import {
-  ConflictException,
-  ForbiddenException,
-  Injectable,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { type ClientSession, Model } from 'mongoose';
 import { JwtService } from '@nestjs/jwt';
@@ -29,6 +24,7 @@ import { InvitationCodeService } from './invitation-code.service';
 import { AuthPolicyService } from '@/system/auth-policy.service';
 import { EMAIL_VERIFICATION_PURPOSES } from '@/database/schemas/email-verification.schema';
 import type { ResetPasswordDto } from './dto/email-verification.dto';
+import { authErrors, commonErrors } from '@/common/errors/business-errors';
 
 const BROWSER_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const BROWSER_SESSION_ABSOLUTE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -81,13 +77,13 @@ export class AuthService {
     );
     const passwordHash = await bcrypt.hash(dto.password, 12);
     try {
-      return await this.databaseService.$requiredTransaction(async (session) => {
+      return await this.databaseService.$transaction(async (session) => {
         const policy = await this.authPolicyService.acquireCurrentPolicy(session);
         if (verification.policyVersion !== policy.version) {
-          throw new ConflictException('注册安全设置已经变化，请重新获取验证码');
+          throw authErrors.registrationPolicyChanged();
         }
         if (policy.inviteRequired && !dto.invitationCode) {
-          throw new ForbiddenException('当前注册需要邀请码');
+          throw authErrors.invitationRequired();
         }
         const result = await this.createBrowserAccount(
           dto,
@@ -108,41 +104,39 @@ export class AuthService {
       });
     } catch (error) {
       if (isDuplicateKeyError(error)) {
-        throw new ConflictException('用户名、邮箱或 Agent 名称已被占用');
+        throw authErrors.identityAlreadyTaken();
       }
       throw error;
     }
   }
 
   async getInitializationStatus() {
-    const [initialization, administrator] = await Promise.all([
-      this.platformInitializationModel.exists({
-        key: PLATFORM_INITIALIZATION_KEYS.ADMINISTRATOR,
-      }),
-      this.userModel.exists({ role: USER_ROLES.ADMIN, deletedAt: null }),
-    ]);
-    return { initialized: Boolean(initialization || administrator) };
+    const initialization = await this.platformInitializationModel.exists({
+      key: PLATFORM_INITIALIZATION_KEYS.ADMINISTRATOR,
+    });
+    return { initialized: Boolean(initialization) };
   }
 
   async initializeAdministrator(dto: InitializeAdministratorDto) {
     if ((await this.getInitializationStatus()).initialized) {
-      throw new ConflictException('系统已经完成初始化');
+      throw authErrors.platformAlreadyInitialized();
     }
     if (!initializationKeyMatches(dto.initializationKey, getRequiredInitializationKey())) {
-      throw new ForbiddenException('初始化密钥无效');
+      throw authErrors.initializationKeyInvalid();
     }
     const passwordHash = await bcrypt.hash(dto.password, 12);
     try {
-      return await this.databaseService.$requiredTransaction(async (session) => {
+      return await this.databaseService.$transaction(async (session) => {
         const [initialization, administrator] = await Promise.all([
           this.platformInitializationModel
             .exists({ key: PLATFORM_INITIALIZATION_KEYS.ADMINISTRATOR })
             .session(session),
           this.userModel.exists({ role: USER_ROLES.ADMIN, deletedAt: null }).session(session),
         ]);
-        if (initialization || administrator) {
-          throw new ConflictException('系统已经完成初始化');
+        if (initialization) {
+          throw authErrors.platformAlreadyInitialized();
         }
+        if (administrator) throw authErrors.platformInitializationStateInvalid();
 
         const result = await this.createBrowserAccount(
           dto,
@@ -163,12 +157,12 @@ export class AuthService {
       if (isDuplicateKeyError(error)) {
         const field = duplicateKeyField(error);
         if (field === 'key' || (await this.getInitializationStatus()).initialized) {
-          throw new ConflictException('系统已经完成初始化');
+          throw authErrors.platformAlreadyInitialized();
         }
-        if (field === 'username') throw new ConflictException('用户名已被占用');
-        if (field === 'email') throw new ConflictException('邮箱已绑定其他账号');
-        if (field === 'name') throw new ConflictException('Agent 名称已被占用');
-        throw new ConflictException('用户名、邮箱或 Agent 名称已被占用');
+        if (field === 'username') throw authErrors.usernameTaken();
+        if (field === 'email') throw authErrors.emailAlreadyRegistered();
+        if (field === 'name') throw authErrors.agentNameTaken();
+        throw authErrors.identityAlreadyTaken();
       }
       throw error;
     }
@@ -200,16 +194,16 @@ export class AuthService {
         dto.password,
         '$2b$12$000000000000000000000uGdrFhdg0cMNpMTknGjRZ3PluYUnPOra',
       );
-      throw new UnauthorizedException('用户名或密码错误');
+      throw authErrors.invalidCredentials();
     }
 
     if (isUserSuspended(user)) {
-      throw new UnauthorizedException('该账号已被封禁');
+      throw authErrors.accountSuspended();
     }
 
     const isPasswordValid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!isPasswordValid) {
-      throw new UnauthorizedException('用户名或密码错误');
+      throw authErrors.invalidCredentials();
     }
 
     const agent = await this.agentModel.findOne({ userId: user.id });
@@ -238,7 +232,7 @@ export class AuthService {
 
   async refreshBrowserSession(refreshToken: string | null) {
     if (!refreshToken) {
-      throw new UnauthorizedException('登录已过期，请重新登录');
+      throw authErrors.sessionExpired();
     }
 
     const now = new Date();
@@ -253,7 +247,7 @@ export class AuthService {
       browserSession.expiresAt.getTime() <= now.getTime() ||
       browserSession.absoluteExpiresAt.getTime() <= now.getTime()
     ) {
-      throw new UnauthorizedException('登录已过期，请重新登录');
+      throw authErrors.sessionExpired();
     }
 
     const usedPreviousToken = browserSession.previousTokenHash === tokenHash;
@@ -263,19 +257,19 @@ export class AuthService {
         browserSession.previousTokenValidUntil.getTime() <= now.getTime()
       ) {
         await this.revokeBrowserSession(browserSession.id);
-        throw new UnauthorizedException('检测到已使用的刷新令牌，请重新登录');
+        throw authErrors.refreshTokenReused();
       }
     }
 
     const user = await this.userModel.findById(browserSession.userId);
     if (!user || user.deletedAt) {
       await this.revokeBrowserSession(browserSession.id);
-      throw new UnauthorizedException('用户不存在');
+      throw commonErrors.userNotFound();
     }
 
     if (isUserSuspended(user)) {
       await this.revokeBrowserSession(browserSession.id);
-      throw new UnauthorizedException('该账号已被封禁');
+      throw authErrors.accountSuspended();
     }
 
     let nextRefreshToken: string | null = null;
@@ -326,11 +320,11 @@ export class AuthService {
     const user = await this.findUserById(payload.sub);
 
     if (!user) {
-      throw new UnauthorizedException('用户不存在');
+      throw commonErrors.userNotFound();
     }
 
     if (isUserSuspended(user)) {
-      throw new UnauthorizedException('该账号已被封禁');
+      throw authErrors.accountSuspended();
     }
 
     return user;
@@ -357,8 +351,8 @@ export class AuthService {
         .session(session),
       this.agentModel.findOne({ name: dto.agentName, deletedAt: null }).session(session),
     ]);
-    if (existingUser) throw new ConflictException('用户名已被占用');
-    if (existingAgent) throw new ConflictException('Agent 名称已被占用');
+    if (existingUser) throw authErrors.usernameTaken();
+    if (existingAgent) throw authErrors.agentNameTaken();
 
     const user = await new this.userModel({
       username: dto.username,
@@ -447,7 +441,7 @@ export class AuthService {
   async verifyCurrentPassword(userId: string, password: string): Promise<void> {
     const user = await this.userModel.findById(userId).select('+passwordHash');
     if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
-      throw new UnauthorizedException('当前账号密码错误');
+      throw authErrors.currentPasswordInvalid();
     }
   }
 
@@ -460,13 +454,13 @@ export class AuthService {
       EMAIL_VERIFICATION_PURPOSES.RESET_PASSWORD,
     );
     const passwordHash = await bcrypt.hash(dto.newPassword, 12);
-    await this.databaseService.$requiredTransaction(async (session) => {
+    await this.databaseService.$transaction(async (session) => {
       const policy = await this.authPolicyService.acquireCurrentPolicy(session);
       if (verification.policyVersion !== policy.version) {
-        throw new ConflictException('安全设置已经变化，请重新获取验证码');
+        throw authErrors.authPolicyChanged();
       }
       const user = await this.userModel.findOne({ email, deletedAt: null }).session(session);
-      if (!user) throw new UnauthorizedException('验证码无效或已过期');
+      if (!user) throw authErrors.verificationInvalid();
       user.passwordHash = passwordHash;
       user.tokenVersion += 1;
       await user.save({ session });

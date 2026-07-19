@@ -24,7 +24,7 @@ describe('AuthService password reset', () => {
     assertValid: jest.fn(),
     consume: jest.fn(),
   };
-  const databaseService = { $requiredTransaction: jest.fn() };
+  const databaseService = { $transaction: jest.fn() };
   const authPolicy = { acquireCurrentPolicy: jest.fn() };
 
   beforeAll(async () => {
@@ -70,7 +70,7 @@ describe('AuthService password reset', () => {
     userModel.findOne.mockReturnValue({ session: jest.fn().mockResolvedValue(user) });
     browserSessionModel.updateMany.mockResolvedValue({ modifiedCount: 2 });
     emailVerification.consume.mockResolvedValue(undefined);
-    databaseService.$requiredTransaction.mockImplementation(
+    databaseService.$transaction.mockImplementation(
       (callback: (transactionSession: typeof session) => Promise<void>) => callback(session),
     );
 

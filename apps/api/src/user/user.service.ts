@@ -1,14 +1,20 @@
 import * as crypto from 'crypto';
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { Agent } from '@/database/schemas/agent.schema';
+import { Agent, type AgentDocument } from '@/database/schemas/agent.schema';
 import { digestAgentKey } from '@/auth/auth-security';
 import { UpdateAgentDto } from './dto/update-agent.dto';
 import { encryptSecret } from '@/common/security/encrypted-secret';
 import { RedisService } from '@/redis/redis.service';
 import { hashOpaqueToken } from '@/auth/auth-security';
 import { PublicAccessService } from '@/system/public-access.service';
+import { apiErrors } from '@/common/i18n/api-message';
+import { commonErrors, userErrors } from '@/common/errors/business-errors';
+
+function isDuplicateKeyError(error: unknown): error is { code: 11000 } {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 11000;
+}
 
 @Injectable()
 export class UserService {
@@ -19,31 +25,45 @@ export class UserService {
   ) {}
 
   async updateAgent(agentId: string, dto: UpdateAgentDto) {
-    if (dto.name) {
+    const name = dto.name?.trim();
+    const description = dto.description?.trim();
+    if (dto.name !== undefined && !name) {
+      throw apiErrors.badRequest('AGENT_NAME_INVALID', 'api.errors.agentNameInvalid');
+    }
+    if (name) {
       const existing = await this.agentModel.findOne({
-        name: dto.name,
+        name,
         _id: { $ne: agentId },
+        deletedAt: null,
       });
       if (existing) {
-        throw new ConflictException('Agent 名称已被占用');
+        throw apiErrors.conflict('AGENT_NAME_TAKEN', 'api.errors.agentNameTaken');
       }
     }
 
-    const agent = await this.agentModel.findByIdAndUpdate(
-      agentId,
-      {
-        ...(dto.name !== undefined && { name: dto.name }),
-        ...(dto.description !== undefined && { description: dto.description }),
-        ...(dto.favoritesPublic !== undefined && { favoritesPublic: dto.favoritesPublic }),
-        ...(dto.ownerOperationEnabled !== undefined && {
-          ownerOperationEnabled: dto.ownerOperationEnabled,
-        }),
-      },
-      { new: true },
-    );
+    let agent: AgentDocument | null;
+    try {
+      agent = await this.agentModel.findByIdAndUpdate(
+        agentId,
+        {
+          ...(name !== undefined && { name }),
+          ...(description !== undefined && { description }),
+          ...(dto.favoritesPublic !== undefined && { favoritesPublic: dto.favoritesPublic }),
+          ...(dto.ownerOperationEnabled !== undefined && {
+            ownerOperationEnabled: dto.ownerOperationEnabled,
+          }),
+        },
+        { new: true },
+      );
+    } catch (error) {
+      if (isDuplicateKeyError(error)) {
+        throw apiErrors.conflict('AGENT_NAME_TAKEN', 'api.errors.agentNameTaken');
+      }
+      throw error;
+    }
 
     if (!agent) {
-      throw new NotFoundException('Agent 不存在');
+      throw apiErrors.notFound('AGENT_NOT_FOUND', 'api.errors.agentNotFound');
     }
 
     return {
@@ -60,7 +80,7 @@ export class UserService {
   async regenerateKey(agentId: string) {
     const agent = await this.agentModel.findById(agentId);
     if (!agent) {
-      throw new NotFoundException('Agent 不存在');
+      throw commonErrors.agentNotFound();
     }
 
     const secretKey = `sk_live_${crypto.randomBytes(32).toString('base64url')}`;
@@ -84,7 +104,7 @@ export class UserService {
       { new: true },
     );
     if (!updated) {
-      throw new ConflictException('Agent Key 已被其他操作更新，请重试');
+      throw userErrors.agentKeyVersionConflict();
     }
 
     return { secretKey };
@@ -96,7 +116,7 @@ export class UserService {
       .select('secretKeyPrefix secretKeyLastFour secretKeyCreatedAt');
 
     if (!agent) {
-      throw new NotFoundException('Agent 不存在');
+      throw commonErrors.agentNotFound();
     }
 
     if (!agent.secretKeyPrefix) {
@@ -114,9 +134,9 @@ export class UserService {
     const agent = await this.agentModel
       .findById(agentId)
       .select('+secretKeyCiphertext secretKeyVersion');
-    if (!agent) throw new NotFoundException('Agent 不存在');
+    if (!agent) throw commonErrors.agentNotFound();
     if (!agent.secretKeyCiphertext || !agent.secretKeyVersion) {
-      throw new ConflictException('请先生成 Agent Key');
+      throw userErrors.agentKeyNotCreated();
     }
     const token = crypto.randomBytes(32).toString('base64url');
     const redisKey = `agent-guide-bootstrap:${hashOpaqueToken(token)}`;

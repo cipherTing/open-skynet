@@ -1,7 +1,5 @@
 import {
-  ConflictException,
   Injectable,
-  NotFoundException,
   OnModuleInit,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -39,6 +37,7 @@ import {
   type ReportTargetStatus,
   type ReportTargetType,
 } from './report.constants';
+import { reportErrors } from '@/common/errors/business-errors';
 
 interface MongoDuplicateKeyError {
   code: number;
@@ -145,9 +144,9 @@ export class ReportService implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     const [
-      legacyViolationFeedback,
-      legacyCase,
-      legacyVersionedReportData,
+      unsupportedViolationFeedback,
+      unsupportedCaseShape,
+      unsupportedVersionedReportShape,
       inconsistentCaseState,
       inconsistentOrOrphanState,
       inconsistentStateFacts,
@@ -921,9 +920,9 @@ export class ReportService implements OnModuleInit {
       ]),
     ]);
     if (
-      legacyViolationFeedback ||
-      legacyCase ||
-      legacyVersionedReportData ||
+      unsupportedViolationFeedback ||
+      unsupportedCaseShape ||
+      unsupportedVersionedReportShape ||
       inconsistentCaseState.length > 0 ||
       inconsistentOrOrphanState.length > 0 ||
       inconsistentStateFacts.length > 0 ||
@@ -1044,10 +1043,10 @@ export class ReportService implements OnModuleInit {
       { session },
     );
     if (!targetAuthor) {
-      throw new NotFoundException('目标内容作者不存在');
+      throw reportErrors.targetAuthorNotFound();
     }
     if (targetAuthor.userId === reporterOwnerUserId) {
-      throw new ConflictException('不能举报自己或同一主人所属 Agent 发布的内容');
+      throw reportErrors.ownContentForbidden();
     }
 
     const qualification = await this.governanceService.assertCanReportViolation(
@@ -1143,7 +1142,7 @@ export class ReportService implements OnModuleInit {
         ),
       ]);
       if (!post || !revision || post.authorId !== revision.authorId) {
-        throw new NotFoundException('帖子版本不存在或已隐藏');
+        throw reportErrors.postVersionUnavailable();
       }
       return revision.authorId;
     }
@@ -1163,19 +1162,19 @@ export class ReportService implements OnModuleInit {
           { session },
         ),
       ]);
-      if (!proposal || !revision) throw new NotFoundException('圈子提案版本不存在或已结束');
+      if (!proposal || !revision) throw reportErrors.proposalVersionUnavailable();
       return proposal.creatorAgentId;
     }
     if (targetType === REPORT_TARGET_TYPES.CIRCLE_PROPOSAL_COMMENT) {
       if (targetContentVersion !== 1) {
-        throw new NotFoundException('提案评论版本不存在');
+        throw reportErrors.proposalCommentVersionUnavailable();
       }
       const comment = await this.proposalCommentModel.findOne(
         { _id: targetId, hiddenAt: null },
         'authorAgentId',
         { session },
       );
-      if (!comment) throw new NotFoundException('提案评论不存在或已隐藏');
+      if (!comment) throw reportErrors.proposalCommentUnavailable();
       return comment.authorAgentId;
     }
     const [reply, revision] = await Promise.all([
@@ -1195,7 +1194,7 @@ export class ReportService implements OnModuleInit {
       ),
     ]);
     if (!reply || !revision || reply.authorId !== revision.authorId) {
-      throw new NotFoundException('回复版本不存在或已隐藏');
+      throw reportErrors.replyVersionUnavailable();
     }
     return revision.authorId;
   }

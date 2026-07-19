@@ -1,7 +1,6 @@
 import {
   Controller,
   Delete,
-  ForbiddenException,
   Inject,
   Get,
   Patch,
@@ -12,11 +11,9 @@ import {
   Query,
   forwardRef,
 } from '@nestjs/common';
-import { ValidationPipe } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { InjectQueue } from '@nestjs/bullmq';
+import { I18nValidationPipe } from 'nestjs-i18n';
 import { Throttle } from '@nestjs/throttler';
-import { Queue } from 'bullmq';
 import { CircleService } from '@/circle/circle.service';
 import { ForumService } from './forum.service';
 import { Public } from '@/auth/decorators/public.decorator';
@@ -34,6 +31,7 @@ import { RevisePostDto } from './dto/revise-post.dto';
 import { ReviseReplyDto } from './dto/revise-reply.dto';
 import { SimilarPostsDto } from './dto/similar-posts.dto';
 import { ListChildRepliesDto, ListRepliesDto } from './dto/list-replies.dto';
+import { forumErrors } from '@/common/errors/business-errors';
 
 @ApiTags('forum')
 @Controller('forum')
@@ -42,7 +40,6 @@ export class ForumController {
     private readonly forumService: ForumService,
     @Inject(forwardRef(() => CircleService))
     private readonly circleService: CircleService,
-    @InjectQueue('view-count') private readonly viewCountQueue: Queue,
     private readonly watchService: WatchService,
     private readonly communityWriteAccessService: CommunityWriteAccessService,
   ) {}
@@ -57,11 +54,11 @@ export class ForumController {
   ) {
     if (user.authType === 'agent') {
       if (user.agentId === agentId) return;
-      throw new ForbiddenException('只能查看自己的 Agent 记录');
+      throw forumErrors.privateAgentDataForbidden();
     }
     const agent = await this.forumService.getAgentByUserId(user.userId);
     if (agent.id !== agentId) {
-      throw new ForbiddenException('只能查看自己的 Agent 记录');
+      throw forumErrors.privateAgentDataForbidden();
     }
   }
 
@@ -117,7 +114,7 @@ export class ForumController {
   @Get('posts/:postId/revisions')
   listPostRevisions(
     @Param('postId') postId: string,
-    @Query(new ValidationPipe({ transform: true })) dto: PaginationQueryDto,
+    @Query(new I18nValidationPipe({ transform: true })) dto: PaginationQueryDto,
   ) {
     return this.forumService.listPostRevisions(
       postId,
@@ -132,30 +129,14 @@ export class ForumController {
     @Param('id') id: string,
     @CurrentUser() user?: JwtAuthUser,
   ) {
-    await this.forumService.ensurePostExists(id);
-
-    try {
-      // attempts: 1 保证幂等性 — 原子增量操作无需重试
-      await this.viewCountQueue.add('increment', { postId: id }, {
-        attempts: 1,
-        removeOnComplete: true,
-      });
-    } catch (err) {
-      // Redis/BullMQ 不可用时静默降级，不阻塞用户浏览
-      console.warn('Failed to enqueue view count job:', err);
-    }
-
-    // 若用户已登录，记录浏览历史
+    let historyAgentId: string | null = null;
     if (user?.userId) {
-      try {
-        const agent = await this.forumService.getAgentByUserId(user.userId);
-        if (user.authType === 'agent' || agent.ownerOperationEnabled === true) {
-          await this.forumService.trackViewHistory(agent.id, id);
-        }
-      } catch (err) { console.error("trackViewHistory error:", err);
-        // 浏览历史记录失败不阻塞用户
+      const agent = await this.forumService.getAgentByUserId(user.userId);
+      if (user.authType === 'agent' || agent.ownerOperationEnabled === true) {
+        historyAgentId = agent.id;
       }
     }
+    return this.forumService.recordPostView(id, historyAgentId);
   }
 
   @Post('posts')
@@ -242,7 +223,7 @@ export class ForumController {
   @Get('replies/:replyId/revisions')
   listReplyRevisions(
     @Param('replyId') replyId: string,
-    @Query(new ValidationPipe({ transform: true })) dto: PaginationQueryDto,
+    @Query(new I18nValidationPipe({ transform: true })) dto: PaginationQueryDto,
   ) {
     return this.forumService.listReplyRevisions(
       replyId,
@@ -315,7 +296,7 @@ export class ForumController {
   @Get('agents/:agentId/posts')
   async listAgentPosts(
     @Param('agentId') agentId: string,
-    @Query(new ValidationPipe({ transform: true })) dto: PaginationQueryDto,
+    @Query(new I18nValidationPipe({ transform: true })) dto: PaginationQueryDto,
   ) {
     return this.forumService.listAgentPosts(
       agentId,
@@ -328,7 +309,7 @@ export class ForumController {
   async listAgentViewHistory(
     @CurrentUser() user: JwtAuthUser,
     @Param('agentId') agentId: string,
-    @Query(new ValidationPipe({ transform: true })) dto: PaginationQueryDto,
+    @Query(new I18nValidationPipe({ transform: true })) dto: PaginationQueryDto,
   ) {
     await this.ensureCanReadPrivateAgentData(user, agentId);
     return this.forumService.listAgentViewHistory(
@@ -342,7 +323,7 @@ export class ForumController {
   async listAgentInteractions(
     @CurrentUser() user: JwtAuthUser,
     @Param('agentId') agentId: string,
-    @Query(new ValidationPipe({ transform: true })) dto: PaginationQueryDto,
+    @Query(new I18nValidationPipe({ transform: true })) dto: PaginationQueryDto,
   ) {
     await this.ensureCanReadPrivateAgentData(user, agentId);
     return this.forumService.listAgentInteractions(
@@ -356,7 +337,7 @@ export class ForumController {
   @Get('agents/:agentId/circles')
   async listAgentCircles(
     @Param('agentId') agentId: string,
-    @Query(new ValidationPipe({ transform: true })) dto: PaginationQueryDto,
+    @Query(new I18nValidationPipe({ transform: true })) dto: PaginationQueryDto,
     @CurrentUser() user?: JwtAuthUser,
   ) {
     return this.circleService.listAgentCircles(
@@ -371,7 +352,7 @@ export class ForumController {
   @Get('agents/:agentId/favorites')
   async listAgentFavorites(
     @Param('agentId') agentId: string,
-    @Query(new ValidationPipe({ transform: true })) dto: PaginationQueryDto,
+    @Query(new I18nValidationPipe({ transform: true })) dto: PaginationQueryDto,
     @CurrentUser() user?: JwtAuthUser,
   ) {
     const currentUserId = user?.authType === 'jwt' ? user.userId : undefined;
@@ -387,7 +368,7 @@ export class ForumController {
   @Get('agents/:agentId/replies')
   async listAgentReplies(
     @Param('agentId') agentId: string,
-    @Query(new ValidationPipe({ transform: true })) dto: PaginationQueryDto,
+    @Query(new I18nValidationPipe({ transform: true })) dto: PaginationQueryDto,
   ) {
     return this.forumService.listAgentReplies(
       agentId,

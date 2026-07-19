@@ -2,16 +2,14 @@ import { BadRequestException, NotFoundException, UnauthorizedException } from '@
 import { Test, type TestingModule } from '@nestjs/testing';
 import { getConnectionToken, MongooseModule } from '@nestjs/mongoose';
 import { Connection } from 'mongoose';
-import { MongoMemoryServer } from 'mongodb-memory-server';
+import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { Agent, AgentSchema } from '@/database/schemas/agent.schema';
 import {
   AgentGovernanceProfile,
   AgentGovernanceProfileSchema,
 } from '@/database/schemas/agent-governance-profile.schema';
-import {
-  AgentProgress,
-  AgentProgressSchema,
-} from '@/database/schemas/agent-progress.schema';
+import { AgentProgress, AgentProgressSchema } from '@/database/schemas/agent-progress.schema';
+import { AgentXpEvent, AgentXpEventSchema } from '@/database/schemas/agent-xp-event.schema';
 import { Circle, CircleSchema } from '@/database/schemas/circle.schema';
 import { Feedback, FeedbackSchema } from '@/database/schemas/feedback.schema';
 import {
@@ -28,10 +26,7 @@ import {
   ContentReviewRequest,
   ContentReviewRequestSchema,
 } from '@/database/schemas/content-review-request.schema';
-import {
-  GovernanceCase,
-  GovernanceCaseSchema,
-} from '@/database/schemas/governance-case.schema';
+import { GovernanceCase, GovernanceCaseSchema } from '@/database/schemas/governance-case.schema';
 import { DatabaseService } from '@/database/database.service';
 import { CircleService } from '@/circle/circle.service';
 import { GovernanceService } from '@/governance/governance.service';
@@ -44,7 +39,7 @@ import { PostScope, SortBy } from './dto/list-posts.dto';
 
 describe('ForumService circle feeds', () => {
   jest.setTimeout(60_000);
-  let mongod: MongoMemoryServer;
+  let mongod: MongoMemoryReplSet;
   let moduleRef: TestingModule;
   let connection: Connection;
   let service: ForumService;
@@ -59,15 +54,15 @@ describe('ForumService circle feeds', () => {
   };
 
   beforeAll(async () => {
-    mongod = await MongoMemoryServer.create();
+    mongod = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
     const circleServiceMock = {
       ensureCircleExists: jest.fn(async (circleId: string) => {
         const circle = await connection.model(Circle.name).findById(circleId);
         if (!circle) throw new Error('circle missing');
         return circle;
       }),
-      getSubscribedCircleIdsForUser: jest.fn(async (userId: string) =>
-        subscriptionsByUser.get(userId) ?? [],
+      getSubscribedCircleIdsForUser: jest.fn(
+        async (userId: string) => subscriptionsByUser.get(userId) ?? [],
       ),
       listActiveCircleIds: jest.fn(async () => {
         const circles = await connection.model(Circle.name).find({ status: 'ACTIVE' });
@@ -89,6 +84,7 @@ describe('ForumService circle feeds', () => {
           ]),
         );
       }),
+      incrementPostCount: jest.fn().mockResolvedValue(undefined),
     };
     moduleRef = await Test.createTestingModule({
       imports: [
@@ -96,6 +92,7 @@ describe('ForumService circle feeds', () => {
         MongooseModule.forFeature([
           { name: Agent.name, schema: AgentSchema },
           { name: AgentProgress.name, schema: AgentProgressSchema },
+          { name: AgentXpEvent.name, schema: AgentXpEventSchema },
           { name: AgentGovernanceProfile.name, schema: AgentGovernanceProfileSchema },
           { name: Circle.name, schema: CircleSchema },
           { name: Post.name, schema: PostSchema },
@@ -121,13 +118,7 @@ describe('ForumService circle feeds', () => {
           provide: CircleService,
           useValue: circleServiceMock,
         },
-        {
-          provide: ProgressionService,
-          useValue: {
-            getPublicLevelSummaries: jest.fn().mockResolvedValue(new Map()),
-            applySuccessfulAction: jest.fn().mockResolvedValue({}),
-          },
-        },
+        ProgressionService,
         {
           provide: RedisService,
           useValue: { getClient: () => redisClient },
@@ -149,9 +140,12 @@ describe('ForumService circle feeds', () => {
 
   beforeEach(async () => {
     subscriptionsByUser.clear();
+    jest.clearAllMocks();
     featureFlagServiceMock.assertEnabled.mockResolvedValue(undefined);
     featureFlagServiceMock.isEnabled.mockResolvedValue(false);
     await Promise.all([
+      connection.model(AgentProgress.name).deleteMany({}),
+      connection.model(AgentXpEvent.name).deleteMany({}),
       connection.model(Post.name).deleteMany({}),
       connection.model(PostRevision.name).deleteMany({}),
       connection.model(Reply.name).deleteMany({}),
@@ -162,6 +156,7 @@ describe('ForumService circle feeds', () => {
       connection.model(Agent.name).deleteMany({}),
       connection.model(Feedback.name).deleteMany({}),
       connection.model(PostFavorite.name).deleteMany({}),
+      connection.model(ViewHistory.name).deleteMany({}),
       connection.collection('reports').deleteMany({}),
       connection.collection('interaction_histories').deleteMany({}),
       connection.collection('circle_subscriptions').deleteMany({}),
@@ -199,11 +194,7 @@ describe('ForumService circle feeds', () => {
     });
   }
 
-  async function createPost(
-    circleId: string,
-    authorId: string,
-    index: number,
-  ) {
+  async function createPost(circleId: string, authorId: string, index: number) {
     const post = await connection.model(Post.name).create({
       title: `post-${index}`,
       content: `content-${index}`,
@@ -230,9 +221,7 @@ describe('ForumService circle feeds', () => {
     const circle = await createCircle('circle-pagination');
     const author = await createAgent('circle-author');
     const posts = await Promise.all(
-      Array.from({ length: 12 }, (_, index) =>
-        createPost(circle.id, author.id, index),
-      ),
+      Array.from({ length: 12 }, (_, index) => createPost(circle.id, author.id, index)),
     );
 
     const first = await service.listPosts({
@@ -248,25 +237,81 @@ describe('ForumService circle feeds', () => {
       cursor: first.nextCursor,
     });
 
-    expect(first.posts.map((post) => post.id)).toEqual(posts.slice(7).reverse().map((post) => post.id));
+    expect(first.posts.map((post) => post.id)).toEqual(
+      posts
+        .slice(7)
+        .reverse()
+        .map((post) => post.id),
+    );
     expect(first.posts).toHaveLength(5);
     expect(second.posts).toHaveLength(5);
     expect(new Set([...first.posts, ...second.posts].map((post) => post.id)).size).toBe(10);
-    expect(second.posts.map((post) => post.id)).toEqual(posts.slice(2, 7).reverse().map((post) => post.id));
+    expect(second.posts.map((post) => post.id)).toEqual(
+      posts
+        .slice(2, 7)
+        .reverse()
+        .map((post) => post.id),
+    );
     expect(first.meta).toBeNull();
     expect(second.nextCursor).not.toBeNull();
   });
 
+  it('returns a committed view count and Agent history, and rolls both back on failure', async () => {
+    const circle = await createCircle('view-contract');
+    const [author, viewer] = await Promise.all([
+      createAgent('view-author'),
+      createAgent('view-viewer'),
+    ]);
+    const post = await createPost(circle.id, author.id, 1);
+
+    const recorded = await service.recordPostView(post.id, viewer.id);
+    expect(recorded).toEqual({
+      postId: post.id,
+      viewCount: 1,
+      viewHistory: { recordedAt: expect.any(String) },
+    });
+    expect(
+      await connection.model(ViewHistory.name).countDocuments({
+        agentId: viewer.id,
+        postId: post.id,
+      }),
+    ).toBe(1);
+
+    const firstRecordedAt = recorded.viewHistory?.recordedAt;
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    const repeated = await service.recordPostView(post.id, viewer.id);
+    expect(repeated.viewHistory?.recordedAt).not.toBe(firstRecordedAt);
+    expect(
+      await connection.model(ViewHistory.name).countDocuments({
+        agentId: viewer.id,
+        postId: post.id,
+      }),
+    ).toBe(1);
+
+    const createHistory = jest
+      .spyOn(connection.model(ViewHistory.name), 'create')
+      .mockRejectedValueOnce(new Error('history unavailable'));
+    const secondPost = await createPost(circle.id, author.id, 2);
+    await expect(service.recordPostView(secondPost.id, viewer.id)).rejects.toThrow(
+      'history unavailable',
+    );
+    expect((await connection.model(Post.name).findById(secondPost.id))?.viewCount).toBe(0);
+    createHistory.mockRestore();
+
+    await expect(service.recordPostView(secondPost.id, null)).resolves.toEqual({
+      postId: secondPost.id,
+      viewCount: 1,
+      viewHistory: null,
+    });
+  });
+
   it('rejects anonymous and conflicting subscribed-feed requests', async () => {
-    await expect(
-      service.listPosts({ scope: PostScope.SUBSCRIBED }),
-    ).rejects.toBeInstanceOf(UnauthorizedException);
+    await expect(service.listPosts({ scope: PostScope.SUBSCRIBED })).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
     const circle = await createCircle('conflicting-scope');
     await expect(
-      service.listPosts(
-        { scope: PostScope.SUBSCRIBED, circleId: circle.id },
-        'viewer-user',
-      ),
+      service.listPosts({ scope: PostScope.SUBSCRIBED, circleId: circle.id }, 'viewer-user'),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
@@ -282,9 +327,18 @@ describe('ForumService circle feeds', () => {
       tags: ['QUESTION'],
     });
 
-    expect(result.outcome).toBe('PENDING_REVIEW');
+    if (result.outcome !== 'PENDING_REVIEW') throw new Error('帖子应进入审核');
+    expect(result.progressDelta).toMatchObject({
+      xpGained: 0,
+      staminaCost: 8,
+      progression: {
+        level: { xpTotal: 0 },
+        stamina: { current: 92 },
+      },
+    });
     expect(await connection.model(Post.name).countDocuments()).toBe(0);
     const request = await connection.model(ContentReviewRequest.name).findOne();
+    if (!request) throw new Error('待审核帖子工单未创建');
     expect(request).toMatchObject({
       type: 'POST',
       status: 'PENDING',
@@ -295,6 +349,34 @@ describe('ForumService circle feeds', () => {
         circleId: circle.id,
       },
     });
+    expect(
+      await connection.model(AgentProgress.name).findOne({ agentId: author.id }),
+    ).toMatchObject({
+      xpTotal: 0,
+      staminaCurrent: 92,
+      dailyCounters: { posts: 0 },
+    });
+    expect(await connection.model(AgentXpEvent.name).find({ agentId: author.id })).toEqual([
+      expect.objectContaining({
+        sourceType: 'CREATE_POST',
+        sourceId: request.id,
+        reasonKey: 'stamina-charge',
+        xp: 0,
+      }),
+    ]);
+
+    await connection.transaction((session) => service.publishReviewedPost(request, session));
+    expect(await connection.model(Post.name).countDocuments()).toBe(1);
+    expect(
+      await connection.model(AgentProgress.name).findOne({ agentId: author.id }),
+    ).toMatchObject({
+      xpTotal: 18,
+      staminaCurrent: 92,
+      dailyCounters: { posts: 1 },
+    });
+    expect(await connection.model(AgentXpEvent.name).countDocuments({ agentId: author.id })).toBe(
+      3,
+    );
   });
 
   it('allows administrator reads of soft-deleted posts while regular reads stay hidden', async () => {
@@ -306,7 +388,9 @@ describe('ForumService circle feeds', () => {
       removalSource: 'ADMIN',
     });
 
-    await expect(service.getPost(removedPost.id)).rejects.toThrow('帖子不存在');
+    await expect(service.getPost(removedPost.id)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'POST_NOT_FOUND' }),
+    });
     await expect(service.getPost(removedPost.id, undefined, true)).resolves.toMatchObject({
       id: removedPost.id,
       deletedAt: expect.any(Date),
@@ -413,7 +497,11 @@ describe('ForumService circle feeds', () => {
 
     expect(filtered.posts.map((post) => post.id)).toEqual([question.id, discussion.id]);
     expect(similar).toEqual([
-      expect.objectContaining({ id: question.id, title: question.title, tags: ['QUESTION', 'VERIFY'] }),
+      expect.objectContaining({
+        id: question.id,
+        title: question.title,
+        tags: ['QUESTION', 'VERIFY'],
+      }),
     ]);
     expect(similar[0]).not.toHaveProperty('feedbackCounts');
   });
@@ -424,7 +512,7 @@ describe('ForumService circle feeds', () => {
     const replier = await createAgent('revision-replier');
     const post = await createPost(circle.id, author.id, 1);
 
-    const reply = await service.createReply(replier.id, post.id, {
+    const result = await service.createReply(replier.id, post.id, {
       content: '这段信息需要进一步讨论。',
       quote: {
         sourceType: 'POST',
@@ -433,7 +521,7 @@ describe('ForumService circle feeds', () => {
         text: 'content-1',
       },
     });
-    expect(reply.quote).toMatchObject({ available: true, text: 'content-1' });
+    expect(result.reply.quote).toMatchObject({ available: true, text: 'content-1' });
 
     await service.revisePost(author.id, post.id, {
       expectedVersion: 1,
@@ -451,7 +539,11 @@ describe('ForumService circle feeds', () => {
       publicContentHideReason: '旧版本包含访问密钥',
     });
     const replies = await service.listReplies(post.id, {});
-    expect(replies.items[0]?.quote).toMatchObject({ available: false, text: null, sourceAuthor: null });
+    expect(replies.items[0]?.quote).toMatchObject({
+      available: false,
+      text: null,
+      sourceAuthor: null,
+    });
     expect(await connection.model(PostRevision.name).countDocuments({ postId: post.id })).toBe(2);
   });
 

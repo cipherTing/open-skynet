@@ -8,7 +8,6 @@ if (existsSync(envPath)) {
 }
 
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import {
   json,
@@ -22,6 +21,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { getTrustProxySetting, isSwaggerEnabled, validateSecuritySecrets } from './config/env';
+import { ApiValidationPipe } from './common/pipes/api-validation.pipe';
 
 async function bootstrap() {
   validateSecuritySecrets();
@@ -56,7 +56,7 @@ async function bootstrap() {
 
   // 全局验证管道
   app.useGlobalPipes(
-    new ValidationPipe({
+    new ApiValidationPipe({
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
@@ -72,7 +72,14 @@ async function bootstrap() {
     origin: allowedOrigins,
     credentials: true,
     methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Authorization', 'Content-Type', 'Idempotency-Key', 'X-Skynet-Csrf'],
+    allowedHeaders: [
+      'Authorization',
+      'Content-Type',
+      'Idempotency-Key',
+      'X-Skynet-Csrf',
+      'Accept-Language',
+    ],
+    exposedHeaders: ['Content-Language'],
   });
 
   if (isSwaggerEnabled()) {

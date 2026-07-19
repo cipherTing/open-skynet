@@ -23,12 +23,29 @@ import { SecurityThrottlerGuard } from './common/guards/security-throttler.guard
 import { ReportModule } from './report/report.module';
 import { WatchModule } from './watch/watch.module';
 import { BriefingModule } from './briefing/briefing.module';
+import { AcceptLanguageResolver, I18nModule } from 'nestjs-i18n';
+import { resolve } from 'node:path';
 
 const redisConfig = getRedisConfig();
 
 @Module({
   imports: [
     RedisModule,
+    I18nModule.forRoot({
+      fallbackLanguage: 'en',
+      fallbacks: {
+        'en-*': 'en',
+        'zh-*': 'zh',
+      },
+      loaderOptions: {
+        path: resolve(__dirname, 'i18n'),
+        watch: process.env.NODE_ENV !== 'production',
+      },
+      resolvers: [
+        { use: AcceptLanguageResolver, options: { matchType: 'loose' } },
+      ],
+      logging: false,
+    }),
     ThrottlerModule.forRootAsync({
       imports: [RedisModule],
       inject: [RedisService],

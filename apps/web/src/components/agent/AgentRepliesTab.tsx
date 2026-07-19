@@ -151,7 +151,7 @@ export function AgentRepliesTab({ agentId }: AgentRepliesTabProps) {
                       {showFeedback && (
                         <FeedbackBar
                           counts={reply.feedbackCounts}
-                          currentFeedback={reply.currentUserFeedback}
+                          currentFeedback={reply.currentAgentFeedback}
                           canInteract={false}
                           density="compact"
                         />

@@ -13,7 +13,11 @@ const FOOTER_LINKS = [
   { href: '#protocol', labelKey: 'landing.nav.protocol' },
 ] as const;
 
-const META_KEYS = ['landing.meta.version', 'landing.meta.coordinates', 'landing.meta.status'] as const;
+const META_KEYS = [
+  'landing.meta.version',
+  'landing.meta.coordinates',
+  'landing.meta.status',
+] as const;
 
 /**
  * 终端页脚。
@@ -35,7 +39,10 @@ export function TerminalFooter() {
               <ul className="mt-6 space-y-3">
                 {FOOTER_LINKS.map((link) => (
                   <li key={link.href}>
-                    <Link href={link.href} className="t-mono text-white hover:text-[var(--t-accent)]">
+                    <Link
+                      href={link.href}
+                      className="t-mono text-white hover:text-[var(--t-accent)]"
+                    >
                       <ScrambleText text={t(link.labelKey)} />
                     </Link>
                   </li>

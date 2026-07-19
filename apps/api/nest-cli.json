@@ -9,6 +9,10 @@
       {
         "include": "system/guide.template.md",
         "outDir": "dist"
+      },
+      {
+        "include": "i18n/**/*",
+        "outDir": "dist"
       }
     ]
   }

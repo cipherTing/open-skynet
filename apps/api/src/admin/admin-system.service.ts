@@ -1,9 +1,4 @@
-import {
-  BadRequestException,
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, Model, Types } from 'mongoose';
 import {
@@ -40,13 +35,14 @@ import { TurnstileService } from '@/system/turnstile.service';
 import { MailDeliveryService } from '@/system/mail.service';
 import { InvitationCodeService } from '@/auth/invitation-code.service';
 import type { UpdateAuthPolicyDto } from './dto/auth-policy.dto';
+import { adminErrors } from '@/common/errors/business-errors';
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function ensureObjectId(id: string, message: string): void {
-  if (!Types.ObjectId.isValid(id)) throw new NotFoundException(message);
+function ensureObjectId(id: string, errorFactory: () => Error): void {
+  if (!Types.ObjectId.isValid(id)) throw errorFactory();
 }
 
 function parseOptionalDate(value: string | null | undefined): Date | null {
@@ -174,7 +170,7 @@ export class AdminSystemService {
       );
       const currentVersion = config?.version ?? 0;
       if (currentVersion !== dto.expectedVersion) {
-        throw new ConflictException('公开访问地址已经发生变化，请刷新后重新修改');
+        throw adminErrors.publicAccessVersionConflict();
       }
       const previous = {
         siteOrigin: config?.siteOrigin ?? DEFAULT_PUBLIC_SITE_ORIGIN,
@@ -182,7 +178,7 @@ export class AdminSystemService {
         version: currentVersion,
       };
       if (previous.siteOrigin === siteOrigin && previous.apiBaseUrl === apiBaseUrl) {
-        throw new BadRequestException('公开访问地址没有发生变化');
+        throw adminErrors.publicAccessUnchanged();
       }
 
       const nextConfig = config ?? new this.publicAccessConfigModel({ key: PUBLIC_ACCESS_CONFIG_KEY });
@@ -289,7 +285,7 @@ export class AdminSystemService {
     announcementId: string,
     dto: UpdateAnnouncementDto,
   ) {
-    ensureObjectId(announcementId, '公告不存在');
+    ensureObjectId(announcementId, adminErrors.announcementNotFound);
     return this.databaseService.$transaction(async (session) => {
       const announcement = await this.announcementModel.findById(
         announcementId,
@@ -298,7 +294,7 @@ export class AdminSystemService {
       );
       this.assertAnnouncementVersion(announcement, dto.expectedUpdatedAt);
       if (announcement.status !== ANNOUNCEMENT_STATUSES.DRAFT) {
-        throw new ConflictException('只有草稿公告可以修改');
+        throw adminErrors.announcementDraftRequired();
       }
 
       const updatedFields: string[] = [];
@@ -333,7 +329,7 @@ export class AdminSystemService {
         updatedFields.push('linkUrl');
       }
       if (updatedFields.length === 0) {
-        throw new BadRequestException('至少需要修改一个公告字段');
+        throw adminErrors.announcementUpdateRequired();
       }
       this.assertAnnouncementRange(announcement.startsAt, announcement.endsAt);
       announcement.updatedByUserId = admin.userId;
@@ -385,7 +381,7 @@ export class AdminSystemService {
     announcementId: string,
     dto: VersionedAnnouncementDto,
   ) {
-    ensureObjectId(announcementId, '公告不存在');
+    ensureObjectId(announcementId, adminErrors.announcementNotFound);
     return this.databaseService.$transaction(async (session) => {
       const announcement = await this.announcementModel.findById(
         announcementId,
@@ -394,7 +390,7 @@ export class AdminSystemService {
       );
       this.assertAnnouncementVersion(announcement, dto.expectedUpdatedAt);
       if (announcement.status !== ANNOUNCEMENT_STATUSES.DRAFT) {
-        throw new ConflictException('只有草稿公告可以删除');
+        throw adminErrors.announcementDraftRequired();
       }
       await this.announcementModel.deleteOne({ _id: announcement.id }, { session });
       await this.auditService.record({
@@ -424,10 +420,10 @@ export class AdminSystemService {
         let flag = await this.featureFlagModel.findOne({ key }, null, { session });
         if (dto.expectedUpdatedAt) {
           if (!flag || flag.updatedAt.getTime() !== new Date(dto.expectedUpdatedAt).getTime()) {
-            throw new ConflictException('功能开关已被其他管理员修改，请刷新后重试');
+            throw adminErrors.featureFlagVersionConflict();
           }
         } else if (flag) {
-          throw new ConflictException('功能开关已存在，请刷新后重试');
+          throw adminErrors.featureFlagVersionConflict();
         }
         const previousEnabled = flag?.enabled ?? this.featureFlagService.defaultValue(key);
         if (!flag) {
@@ -452,7 +448,7 @@ export class AdminSystemService {
       });
     } catch (error) {
       if (isDuplicateKeyError(error)) {
-        throw new ConflictException('功能开关已被其他管理员修改，请刷新后重试');
+        throw adminErrors.featureFlagVersionConflict();
       }
       throw error;
     }
@@ -468,7 +464,7 @@ export class AdminSystemService {
     dto: VersionedAnnouncementDto,
     nextStatus: AnnouncementStatus,
   ) {
-    ensureObjectId(announcementId, '公告不存在');
+    ensureObjectId(announcementId, adminErrors.announcementNotFound);
     return this.databaseService.$transaction(async (session) => {
       const announcement = await this.announcementModel.findById(
         announcementId,
@@ -481,13 +477,13 @@ export class AdminSystemService {
         nextStatus === ANNOUNCEMENT_STATUSES.PUBLISHED &&
         previousStatus !== ANNOUNCEMENT_STATUSES.DRAFT
       ) {
-        throw new ConflictException('只有草稿公告可以发布');
+        throw adminErrors.announcementDraftRequired();
       }
       if (
         nextStatus === ANNOUNCEMENT_STATUSES.WITHDRAWN &&
         previousStatus !== ANNOUNCEMENT_STATUSES.PUBLISHED
       ) {
-        throw new ConflictException('只有已发布公告可以撤回');
+        throw adminErrors.announcementPublishedRequired();
       }
       this.assertAnnouncementRange(announcement.startsAt, announcement.endsAt);
       announcement.status = nextStatus;
@@ -513,18 +509,18 @@ export class AdminSystemService {
     announcement: Announcement | null,
     expectedUpdatedAt: string,
   ): asserts announcement is Announcement {
-    if (!announcement) throw new NotFoundException('公告不存在');
+    if (!announcement) throw adminErrors.announcementNotFound();
     if (announcement.updatedAt.getTime() !== new Date(expectedUpdatedAt).getTime()) {
-      throw new ConflictException('公告已被其他管理员修改，请刷新后重试');
+      throw adminErrors.announcementVersionConflict();
     }
   }
 
   private assertAnnouncementRange(startsAt: Date, endsAt: Date | null): void {
     if (Number.isNaN(startsAt.getTime()) || (endsAt && Number.isNaN(endsAt.getTime()))) {
-      throw new BadRequestException('公告时间格式无效');
+      throw adminErrors.announcementDateInvalid();
     }
     if (endsAt && endsAt.getTime() <= startsAt.getTime()) {
-      throw new BadRequestException('公告结束时间必须晚于开始时间');
+      throw adminErrors.announcementDateRangeInvalid();
     }
   }
 

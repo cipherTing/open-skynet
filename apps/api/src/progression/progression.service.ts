@@ -9,6 +9,7 @@ import {
 import { AgentXpEvent } from '@/database/schemas/agent-xp-event.schema';
 import { DatabaseService } from '@/database/database.service';
 import { InsufficientStaminaException } from './insufficient-stamina.exception';
+import { apiMessage, type ApiMessage } from '@/common/i18n/api-message';
 import {
   AGENT_LEVELS,
   DAILY_TASKS,
@@ -21,12 +22,12 @@ import {
 
 export interface AgentLevelSummary {
   level: number;
-  name: string;
+  name: ApiMessage;
   xpTotal: number;
   currentLevelMinXp: number;
   nextLevelXp: number | null;
   progressToNextLevel: number;
-  unlocks: string[];
+  unlocks: ApiMessage[];
 }
 
 export interface AgentStamina {
@@ -41,8 +42,8 @@ export interface AgentStamina {
 
 interface DailyTaskProgress {
   id: string;
-  title: string;
-  description: string;
+  title: ApiMessage;
+  description: ApiMessage;
   progress: number;
   target: number;
   rewardXp: number;
@@ -77,7 +78,7 @@ export interface AgentScorePoint {
   value: number;
 }
 
-interface ApplySuccessfulActionParams {
+interface ApplyActionParams {
   agentId: string;
   action: ProgressionAction;
   sourceId: string;
@@ -93,6 +94,9 @@ interface XpEventKey {
 
 type CounterKey = keyof DailyCounters;
 
+const ACTION_REWARD_REASON_KEY = 'active-action';
+const ACTION_STAMINA_REASON_KEY = 'stamina-charge';
+
 const EMPTY_COUNTERS: DailyCounters = {
   posts: 0,
   replies: 0,
@@ -105,12 +109,7 @@ function cloneEmptyCounters(): DailyCounters {
 }
 
 function isDuplicateKeyError(error: unknown): error is { code: 11000 } {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    error.code === 11000
-  );
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 11000;
 }
 
 function clampNumber(value: number, min: number, max: number): number {
@@ -178,19 +177,17 @@ export class ProgressionService {
     const level = getLevelByXp(xpTotal);
     const nextLevel = getNextLevel(level.level);
     const nextLevelXp = nextLevel?.minXp ?? null;
-    const span =
-      nextLevelXp === null ? 1 : Math.max(1, nextLevelXp - level.minXp);
-    const rawProgress =
-      nextLevelXp === null ? 1 : (xpTotal - level.minXp) / span;
+    const span = nextLevelXp === null ? 1 : Math.max(1, nextLevelXp - level.minXp);
+    const rawProgress = nextLevelXp === null ? 1 : (xpTotal - level.minXp) / span;
 
     return {
       level: level.level,
-      name: level.name,
+      name: apiMessage(level.nameKey),
       xpTotal,
       currentLevelMinXp: level.minXp,
       nextLevelXp,
       progressToNextLevel: clampNumber(rawProgress, 0, 1),
-      unlocks: [...level.unlocks],
+      unlocks: level.unlockKeys.map((key) => apiMessage(key)),
     };
   }
 
@@ -204,11 +201,7 @@ export class ProgressionService {
 
   private buildStaminaSummary(progress: AgentProgressDocument, now: Date): AgentStamina {
     const level = this.getStaminaConfig(progress.xpTotal);
-    const current = clampNumber(
-      progress.staminaCurrent,
-      0,
-      level.staminaMax,
-    );
+    const current = clampNumber(progress.staminaCurrent, 0, level.staminaMax);
     const recoveryPerHour = level.dailyRecovery / 24;
     const secondsPerPoint = this.getSecondsPerStaminaPoint(level.dailyRecovery);
     const remaining = Math.max(0, level.staminaMax - current);
@@ -216,19 +209,13 @@ export class ProgressionService {
       0,
       (now.getTime() - progress.staminaLastSettledAt.getTime()) / 1000,
     );
-    const secondsUntilNextPoint = Math.max(
-      0,
-      Math.ceil(secondsPerPoint - elapsedSinceSettlement),
-    );
+    const secondsUntilNextPoint = Math.max(0, Math.ceil(secondsPerPoint - elapsedSinceSettlement));
     const secondsUntilFull =
       remaining === 0
         ? null
-        : secondsUntilNextPoint +
-          Math.ceil(Math.max(0, remaining - 1) * secondsPerPoint);
+        : secondsUntilNextPoint + Math.ceil(Math.max(0, remaining - 1) * secondsPerPoint);
     const nextPointAt =
-      remaining === 0
-        ? null
-        : new Date(now.getTime() + secondsUntilNextPoint * 1000).toISOString();
+      remaining === 0 ? null : new Date(now.getTime() + secondsUntilNextPoint * 1000).toISOString();
 
     return {
       current,
@@ -241,10 +228,7 @@ export class ProgressionService {
     };
   }
 
-  private buildDailyTasks(
-    progress: AgentProgressDocument,
-    now: Date,
-  ): AgentDailyTasks {
+  private buildDailyTasks(progress: AgentProgressDocument, now: Date): AgentDailyTasks {
     const counters = normalizeCounters(progress.dailyCounters);
     const awarded = new Set(progress.awardedDailyTaskIds);
     const items = DAILY_TASKS.map((task) => {
@@ -253,8 +237,8 @@ export class ProgressionService {
       const completed = value >= task.target;
       return {
         id: task.id,
-        title: task.title,
-        description: task.description,
+        title: apiMessage(task.titleKey),
+        description: apiMessage(task.descriptionKey),
         progress: taskProgress,
         target: task.target,
         rewardXp: task.rewardXp,
@@ -290,11 +274,7 @@ export class ProgressionService {
     now: Date,
     session?: ClientSession,
   ): Promise<AgentProgressDocument> {
-    const existing = await this.progressModel.findOne(
-      { agentId },
-      null,
-      { session },
-    );
+    const existing = await this.progressModel.findOne({ agentId }, null, { session });
     if (existing) return existing;
 
     const dayKey = getShanghaiDayKey(now);
@@ -312,20 +292,13 @@ export class ProgressionService {
       return created;
     } catch (error) {
       if (!isDuplicateKeyError(error)) throw error;
-      const raced = await this.progressModel.findOne(
-        { agentId },
-        null,
-        { session },
-      );
+      const raced = await this.progressModel.findOne({ agentId }, null, { session });
       if (!raced) throw error;
       return raced;
     }
   }
 
-  private resetDailyProgressIfNeeded(
-    progress: AgentProgressDocument,
-    now: Date,
-  ): boolean {
+  private resetDailyProgressIfNeeded(progress: AgentProgressDocument, now: Date): boolean {
     const dayKey = getShanghaiDayKey(now);
     if (progress.dailyProgressDate === dayKey) return false;
     progress.dailyProgressDate = dayKey;
@@ -336,11 +309,7 @@ export class ProgressionService {
 
   private settleStamina(progress: AgentProgressDocument, now: Date): boolean {
     const level = this.getStaminaConfig(progress.xpTotal);
-    const current = clampNumber(
-      progress.staminaCurrent,
-      0,
-      level.staminaMax,
-    );
+    const current = clampNumber(progress.staminaCurrent, 0, level.staminaMax);
     let changed = current !== progress.staminaCurrent;
     progress.staminaCurrent = current;
 
@@ -358,10 +327,7 @@ export class ProgressionService {
 
     if (recovered <= 0) return changed;
 
-    progress.staminaCurrent = Math.min(
-      level.staminaMax,
-      progress.staminaCurrent + recovered,
-    );
+    progress.staminaCurrent = Math.min(level.staminaMax, progress.staminaCurrent + recovered);
     progress.staminaLastSettledAt = new Date(
       progress.staminaLastSettledAt.getTime() +
         recovered * this.getSecondsPerStaminaPoint(level.dailyRecovery) * 1000,
@@ -374,12 +340,13 @@ export class ProgressionService {
     agentId: string,
     action: ProgressionAction,
     sourceId: string,
+    reasonKey = ACTION_REWARD_REASON_KEY,
   ): XpEventKey {
     return {
       agentId,
       sourceType: action,
       sourceId,
-      reasonKey: 'active-action',
+      reasonKey,
     };
   }
 
@@ -416,10 +383,7 @@ export class ProgressionService {
     }
   }
 
-  private applyTaskCounters(
-    progress: AgentProgressDocument,
-    action: ProgressionAction,
-  ): void {
+  private applyTaskCounters(progress: AgentProgressDocument, action: ProgressionAction): void {
     const counters = normalizeCounters(progress.dailyCounters);
     const actionConfig = PROGRESSION_ACTION_CONFIG[action];
 
@@ -464,8 +428,8 @@ export class ProgressionService {
       awarded.add(task.id);
       newlyAwarded.push({
         id: task.id,
-        title: task.title,
-        description: task.description,
+        title: apiMessage(task.titleKey),
+        description: apiMessage(task.descriptionKey),
         progress: Math.min(value, task.target),
         target: task.target,
         rewardXp: task.rewardXp,
@@ -491,8 +455,133 @@ export class ProgressionService {
     });
   }
 
+  async chargeActionStamina(
+    params: ApplyActionParams,
+    session?: ClientSession,
+  ): Promise<ActionProgressDelta> {
+    const now = params.occurredAt ?? new Date();
+    const actionConfig = PROGRESSION_ACTION_CONFIG[params.action];
+    const progress = await this.getOrCreateProgress(params.agentId, now, session);
+    const changedDaily = this.resetDailyProgressIfNeeded(progress, now);
+    const changedStamina = this.settleStamina(progress, now);
+    const levelBefore = getLevelByXp(progress.xpTotal).level;
+    const eventKey = this.getActionEventKey(
+      params.agentId,
+      params.action,
+      params.sourceId,
+      ACTION_STAMINA_REASON_KEY,
+    );
+    const existingEvent = await this.xpEventModel
+      .findOne(eventKey, null, { session })
+      .select('_id');
+
+    if (existingEvent) {
+      if (changedDaily || changedStamina) await progress.save({ session });
+      return {
+        xpGained: 0,
+        staminaCost: 0,
+        levelBefore,
+        levelAfter: levelBefore,
+        dailyTaskUpdates: [],
+        progression: this.buildProgressionSummary(progress, now),
+      };
+    }
+
+    if (progress.staminaCurrent < actionConfig.staminaCost) {
+      throw new InsufficientStaminaException({
+        currentStamina: progress.staminaCurrent,
+        requiredStamina: actionConfig.staminaCost,
+        nextRecoverAt: this.buildStaminaSummary(progress, now).nextPointAt,
+      });
+    }
+
+    const eventCreated = await this.createXpEventIfAbsent(eventKey, 0, now, session);
+    if (eventCreated) {
+      progress.staminaCurrent -= actionConfig.staminaCost;
+      progress.staminaLastSettledAt = now;
+    }
+    await progress.save({ session });
+
+    return {
+      xpGained: 0,
+      staminaCost: eventCreated ? actionConfig.staminaCost : 0,
+      levelBefore,
+      levelAfter: levelBefore,
+      dailyTaskUpdates: [],
+      progression: this.buildProgressionSummary(progress, now),
+    };
+  }
+
+  async completePrechargedAction(
+    params: ApplyActionParams,
+    session?: ClientSession,
+  ): Promise<ActionProgressDelta> {
+    const now = params.occurredAt ?? new Date();
+    const actionConfig = PROGRESSION_ACTION_CONFIG[params.action];
+    const progress = await this.getOrCreateProgress(params.agentId, now, session);
+    const changedDaily = this.resetDailyProgressIfNeeded(progress, now);
+    const changedStamina = this.settleStamina(progress, now);
+    const levelBefore = getLevelByXp(progress.xpTotal).level;
+    const staminaEventKey = this.getActionEventKey(
+      params.agentId,
+      params.action,
+      params.sourceId,
+      ACTION_STAMINA_REASON_KEY,
+    );
+    const staminaEvent = await this.xpEventModel
+      .findOne(staminaEventKey, null, { session })
+      .select('_id');
+    if (!staminaEvent) {
+      throw new Error('Precharged action is missing its stamina event');
+    }
+
+    const rewardEventKey = this.getActionEventKey(params.agentId, params.action, params.sourceId);
+    const existingReward = await this.xpEventModel
+      .findOne(rewardEventKey, null, { session })
+      .select('_id');
+    if (existingReward) {
+      if (changedDaily || changedStamina) await progress.save({ session });
+      return {
+        xpGained: 0,
+        staminaCost: 0,
+        levelBefore,
+        levelAfter: levelBefore,
+        dailyTaskUpdates: [],
+        progression: this.buildProgressionSummary(progress, now),
+      };
+    }
+
+    const rewardCreated = await this.createXpEventIfAbsent(
+      rewardEventKey,
+      actionConfig.xp,
+      now,
+      session,
+    );
+    let xpGained = 0;
+    const dailyTaskUpdates: DailyTaskProgress[] = [];
+    if (rewardCreated) {
+      progress.xpTotal += actionConfig.xp;
+      xpGained += actionConfig.xp;
+      this.applyTaskCounters(progress, params.action);
+      const taskAwards = await this.awardCompletedDailyTasks(progress, now, session);
+      dailyTaskUpdates.push(...taskAwards);
+      xpGained += taskAwards.reduce((sum, task) => sum + task.rewardXp, 0);
+    }
+    await progress.save({ session });
+    const levelAfter = getLevelByXp(progress.xpTotal).level;
+
+    return {
+      xpGained,
+      staminaCost: 0,
+      levelBefore,
+      levelAfter,
+      dailyTaskUpdates,
+      progression: this.buildProgressionSummary(progress, now),
+    };
+  }
+
   async applySuccessfulAction(
-    params: ApplySuccessfulActionParams,
+    params: ApplyActionParams,
     session?: ClientSession,
   ): Promise<ActionProgressDelta> {
     const now = params.occurredAt ?? new Date();
@@ -502,11 +591,7 @@ export class ProgressionService {
     const changedStamina = this.settleStamina(progress, now);
 
     const levelBefore = getLevelByXp(progress.xpTotal).level;
-    const eventKey = this.getActionEventKey(
-      params.agentId,
-      params.action,
-      params.sourceId,
-    );
+    const eventKey = this.getActionEventKey(params.agentId, params.action, params.sourceId);
     const actionEventExists = await this.xpEventModel
       .findOne(
         {
@@ -557,11 +642,7 @@ export class ProgressionService {
       progress.xpTotal += actionConfig.xp;
       xpGained += actionConfig.xp;
       this.applyTaskCounters(progress, params.action);
-      const taskAwards = await this.awardCompletedDailyTasks(
-        progress,
-        now,
-        session,
-      );
+      const taskAwards = await this.awardCompletedDailyTasks(progress, now, session);
       dailyTaskUpdates.push(...taskAwards);
       xpGained += taskAwards.reduce((sum, task) => sum + task.rewardXp, 0);
     }
@@ -578,9 +659,7 @@ export class ProgressionService {
     };
   }
 
-  async getPublicLevelSummaries(
-    agentIds: string[],
-  ): Promise<Map<string, AgentLevelSummary>> {
+  async getPublicLevelSummaries(agentIds: string[]): Promise<Map<string, AgentLevelSummary>> {
     const uniqueIds = [...new Set(agentIds.filter(Boolean))];
     if (uniqueIds.length === 0) return new Map();
 
@@ -589,21 +668,14 @@ export class ProgressionService {
       .select('agentId xpTotal')
       .lean<Array<Pick<AgentProgress, 'agentId' | 'xpTotal'>>>();
 
-    const summaries = new Map(
-      uniqueIds.map((agentId) => [agentId, this.buildLevelSummary(0)]),
-    );
+    const summaries = new Map(uniqueIds.map((agentId) => [agentId, this.buildLevelSummary(0)]));
     for (const progress of progresses) {
-      summaries.set(
-        progress.agentId,
-        this.buildLevelSummary(progress.xpTotal),
-      );
+      summaries.set(progress.agentId, this.buildLevelSummary(progress.xpTotal));
     }
     return summaries;
   }
 
-  async getPublicLevelSummary(
-    agentId: string,
-  ): Promise<AgentLevelSummary | null> {
+  async getPublicLevelSummary(agentId: string): Promise<AgentLevelSummary | null> {
     const progress = await this.progressModel
       .findOne({ agentId })
       .select('xpTotal')

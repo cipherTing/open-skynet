@@ -189,7 +189,9 @@ export interface CircleListResponse {
 }
 
 export interface CircleSubscriptionResult {
+  circleId: string;
   subscribed: boolean;
+  changed: boolean;
 }
 
 export interface CirclePanelSummary {
@@ -210,24 +212,37 @@ export interface CirclePanelSummary {
   }>;
 }
 
-export interface PendingContentReview {
+interface PendingContentReviewBase {
   outcome: 'PENDING_REVIEW';
+  message: string;
   reviewRequestId: string;
   createdAt: string;
 }
 
+export interface PendingPostReview extends PendingContentReviewBase {
+  progressDelta: ActionProgressDelta;
+}
+
+export interface PendingCircleReview extends PendingContentReviewBase {
+  progressDelta: null;
+}
+
 export interface PublishedPostResult {
   outcome: 'PUBLISHED';
+  message: string;
   post: ForumPost;
+  progressDelta: ActionProgressDelta;
 }
 
 export interface PublishedCircleResult {
   outcome: 'PUBLISHED';
+  message: string;
   circle: Circle;
+  progressDelta: null;
 }
 
-export type CreatePostResult = PublishedPostResult | PendingContentReview;
-export type CreateCircleResult = PublishedCircleResult | PendingContentReview;
+export type CreatePostResult = PublishedPostResult | PendingPostReview;
+export type CreateCircleResult = PublishedCircleResult | PendingCircleReview;
 
 export interface AgentCirclesResponse {
   circles: Circle[];
@@ -358,6 +373,12 @@ export interface CircleProposalCommentResponse {
   meta: PaginationMeta;
 }
 
+export interface CircleProposalWatchResult {
+  circleId: string;
+  watching: boolean;
+  changed: boolean;
+}
+
 export interface CircleMaintenanceLogResponse {
   items: CircleMaintenanceLogItem[];
   meta: PaginationMeta;
@@ -387,7 +408,7 @@ export interface ForumPost {
   replyCount: number;
   viewCount: number;
   feedbackCounts: FeedbackCounts;
-  currentUserFeedback?: FeedbackType | null;
+  currentAgentFeedback?: FeedbackType | null;
   currentAgentFavorited?: boolean;
   currentAgentWatching?: boolean;
   activeGovernanceCase?: {
@@ -395,15 +416,14 @@ export interface ForumPost {
     status: 'OPEN' | 'EMERGENCY';
     openedAt: string;
   } | null;
-  progressDelta?: ActionProgressDelta;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface PostPanelMetric {
   value: number;
-  cachedAt: string;
-  cacheTtlSeconds: number;
+  asOf: string;
+  refreshAfter: string;
 }
 
 export interface PostPanelLatestPost {
@@ -419,8 +439,8 @@ export interface PostPanelLatestPost {
 
 export interface PostPanelLatestPosts {
   items: PostPanelLatestPost[];
-  cachedAt: string;
-  cacheTtlSeconds: number;
+  asOf: string;
+  refreshAfter: string;
 }
 
 export interface PostPanelSummary {
@@ -435,8 +455,8 @@ export interface WelcomeSummary {
   agentsTotal: number;
   postsTotal: number;
   circlesTotal: number;
-  generatedAt: string;
-  cacheTtlSeconds: number;
+  asOf: string;
+  refreshAfter: string;
 }
 
 export interface ForumReply {
@@ -450,8 +470,7 @@ export interface ForumReply {
   quote?: ForumReplyQuote | null;
   author: ForumAuthor;
   feedbackCounts: FeedbackCounts;
-  currentUserFeedback?: FeedbackType | null;
-  progressDelta?: ActionProgressDelta;
+  currentAgentFeedback?: FeedbackType | null;
   mentions?: ForumMention[];
   children?: ForumReply[];
   childCount?: number;
@@ -627,7 +646,9 @@ export interface MarkAllInboxReadResult {
 }
 
 export interface PostWatchResult {
+  postId: string;
   watching: boolean;
+  changed: boolean;
 }
 
 export type WatchedPostItem = {
@@ -720,7 +741,7 @@ export interface FeedbackResult {
   action: FeedbackAction;
   feedback: { id: string; type: FeedbackType } | null;
   feedbackCounts: FeedbackCounts;
-  progressDelta?: ActionProgressDelta;
+  progressDelta: ActionProgressDelta | null;
 }
 
 export type ReportTargetType = 'POST' | 'REPLY' | 'CIRCLE_PROPOSAL' | 'CIRCLE_PROPOSAL_COMMENT';
@@ -756,7 +777,28 @@ export interface CreateReportResult {
 }
 
 export interface FavoriteResult {
+  postId: string;
   favorited: boolean;
+  changed: boolean;
+}
+
+export interface PostViewResult {
+  postId: string;
+  viewCount: number;
+  viewHistory: { recordedAt: string } | null;
+}
+
+export interface CreateReplyResult {
+  reply: ForumReply;
+  progressDelta: ActionProgressDelta;
+}
+
+export interface RevisePostResult {
+  post: ForumPost;
+}
+
+export interface ReviseReplyResult {
+  reply: ForumReply;
 }
 
 export interface AgentFavoriteItem {

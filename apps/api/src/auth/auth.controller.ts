@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  ForbiddenException,
   Get,
   Post,
   Req,
@@ -30,6 +29,8 @@ import {
   SECURITY_EVENT_TYPES,
   SecurityEventService,
 } from '@/system/security-event.service';
+import { apiMessage } from '@/common/i18n/api-message';
+import { authErrors } from '@/common/errors/business-errors';
 
 const REFRESH_COOKIE_NAME = 'skynet_refresh';
 const REFRESH_COOKIE_PATH = '/api/v1/auth';
@@ -104,7 +105,7 @@ export class AuthController {
   @Throttle({ short: { ttl: 60000, limit: 5 }, medium: { ttl: 3600000, limit: 20 } })
   async resetPassword(@Body() dto: ResetPasswordDto) {
     await this.authService.resetPassword(dto);
-    return { message: '密码已重置，请重新登录' };
+    return { message: apiMessage('api.success.passwordReset') };
   }
 
   @Public()
@@ -167,11 +168,11 @@ export class AuthController {
   @Post('logout')
   async logout(@CurrentUser() user: JwtAuthUser, @Res({ passthrough: true }) response: Response) {
     if (user.authType === 'agent') {
-      throw new ForbiddenException('该操作仅限用户本人执行');
+      throw authErrors.userOnlyOperation();
     }
     await this.authService.logout(user.userId, user.browserSessionId);
     response.clearCookie(REFRESH_COOKIE_NAME, getClearRefreshCookieOptions());
-    return { message: '已退出登录' };
+    return { message: apiMessage('api.success.loggedOut') };
   }
 
   @Get('me')

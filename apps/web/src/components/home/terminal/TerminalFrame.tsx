@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrambleText } from '@/components/home/terminal/ScrambleText';
 import { useUtcNow } from '@/components/home/terminal/terminal-hooks';
+import { ProjectGithubLink } from '@/components/ui/ProjectGithubLink';
 
 type TerminalSectionId = 'manifesto' | 'systems' | 'telemetry' | 'protocol';
 
@@ -25,7 +26,7 @@ function pad2(value: number): string {
 /**
  * 终端 HUD 框架层：fixed 定位，不随内容滚动。
  * 顶栏（logo / 锚点导航 / ONLINE 状态点 / UTC 时钟）、左右竖排边轨、
- * 底栏（坐标 / 滚动提示 / 滚动进度）与四角 L 型角标。
+ * 底栏（坐标 / 项目地址 / 滚动提示与进度）与四角 L 型角标。
  * 容器本身不拦截指针，仅可交互子元素恢复 pointer-events。
  */
 export function TerminalFrame({ activeSection }: TerminalFrameProps) {
@@ -98,18 +99,12 @@ export function TerminalFrame({ activeSection }: TerminalFrameProps) {
       </header>
 
       {/* 左 / 右竖排边轨 */}
-      <aside
-        className="absolute left-3 top-1/2 hidden -translate-y-1/2 md:block"
-        aria-hidden
-      >
+      <aside className="absolute left-3 top-1/2 hidden -translate-y-1/2 md:block" aria-hidden>
         <span className="t-mono text-[var(--t-faint)] [writing-mode:vertical-rl]">
           {t('landing.meta.railLeft')}
         </span>
       </aside>
-      <aside
-        className="absolute right-3 top-1/2 hidden -translate-y-1/2 md:block"
-        aria-hidden
-      >
+      <aside className="absolute right-3 top-1/2 hidden -translate-y-1/2 md:block" aria-hidden>
         <span className="t-mono text-[var(--t-faint)] [writing-mode:vertical-rl]">
           {t('landing.meta.railRight')}
         </span>
@@ -118,16 +113,19 @@ export function TerminalFrame({ activeSection }: TerminalFrameProps) {
       {/* 底栏 */}
       <footer className="absolute inset-x-0 bottom-0 bg-[rgba(0,0,0,0.72)] backdrop-blur-md">
         <div className="h-px w-full bg-[var(--t-noise)]" aria-hidden />
-        <div className="flex h-10 items-center justify-between gap-4 px-4 md:px-6">
-          <span className="t-mono truncate text-[var(--t-faint)]">
+        <div className="grid h-10 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 px-4 md:px-6">
+          <span className="t-mono hidden truncate text-[var(--t-faint)] md:block">
             {t('landing.meta.coordinates')}
           </span>
-          <span className="t-mono hidden text-[var(--t-faint)] md:inline">
-            {t('landing.meta.scrollHint')}
-          </span>
-          <span className="t-mono tabular-nums text-[var(--t-ink)]">
-            {Math.round(scrollPct).toString().padStart(3, '0')}%
-          </span>
+          <ProjectGithubLink className="pointer-events-auto justify-self-center t-mono text-[var(--t-sub)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)] focus-visible:text-[var(--t-accent)]" />
+          <div className="hidden min-w-0 items-center justify-end gap-4 sm:flex">
+            <span className="t-mono hidden truncate text-[var(--t-faint)] lg:inline">
+              {t('landing.meta.scrollHint')}
+            </span>
+            <span className="t-mono shrink-0 tabular-nums text-[var(--t-ink)]">
+              {Math.round(scrollPct).toString().padStart(3, '0')}%
+            </span>
+          </div>
         </div>
       </footer>
 

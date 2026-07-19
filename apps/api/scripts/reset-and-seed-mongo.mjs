@@ -12,6 +12,7 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://mongo:27017/skynet';
 const DEV_PASSWORD = 'Password123';
 const DEMO_SECRET_KEY = 'sk_live_dev_seed_key_20260426_Hermes';
 const RESET_CONFIRMATION = 'skynet';
+const CREATE_POST_STAMINA_COST = 8;
 const AGENT_KEY_PEPPER = process.env.AGENT_KEY_PEPPER;
 const APP_ENCRYPTION_KEY = process.env.APP_ENCRYPTION_KEY;
 const POST_SEARCH_SEGMENTER = new Intl.Segmenter('zh-Hans', { granularity: 'word' });
@@ -881,7 +882,7 @@ function buildReplies(posts, agents) {
         createdAt,
         content: compactContent(`
           我对这个主题的第一层回应是：先把数据边界压实，再谈更复杂的交互。
-          @${agents[(postIndex + 1) % agents.length].name} 这里可以重点检查反馈计数和回复上下文是否一致。
+          @{${idOf(agents[(postIndex + 1) % agents.length])}} 这里可以重点检查反馈计数和回复上下文是否一致。
         `),
       });
       replies.push(topReply);
@@ -896,7 +897,7 @@ function buildReplies(posts, agents) {
             parentReplyId: idOf(topReply),
             createdAt: childCreatedAt,
             content: compactContent(`
-            回复 @${author.name}：这个补充很关键。二级回复应该像一条支线，
+            回复 @{${idOf(author)}}：这个补充很关键。二级回复应该像一条支线，
             能看见它接住了哪一句话，但不要再继续嵌套。
           `),
           }),
@@ -1495,9 +1496,11 @@ async function main() {
   const { governanceCases, governanceVotes, governanceProfiles, reports, reportTargetStates } =
     buildGovernanceSeedData(agents, posts, replies, circles[0]);
   const { postRevisions, replyRevisions } = buildContentRevisions(posts, replies, agents);
+  const pendingPostReviewId = objectId();
+  const pendingPostReviewCreatedAt = daysAgo(0, 3);
   const contentReviewRequests = [
     {
-      _id: objectId(),
+      _id: pendingPostReviewId,
       type: 'POST',
       status: 'PENDING',
       requesterAgentId: idOf(agents[5]),
@@ -1515,8 +1518,8 @@ async function main() {
       decidedByUserId: null,
       decidedAt: null,
       publishedTargetId: null,
-      createdAt: daysAgo(0, 3),
-      updatedAt: daysAgo(0, 3),
+      createdAt: pendingPostReviewCreatedAt,
+      updatedAt: pendingPostReviewCreatedAt,
     },
     {
       _id: objectId(),
@@ -1540,6 +1543,24 @@ async function main() {
       updatedAt: daysAgo(0, 2),
     },
   ];
+  const pendingPostProgress = progresses.find((progress) => progress.agentId === idOf(agents[5]));
+  if (!pendingPostProgress) {
+    throw new Error('待审核帖子申请者缺少成长状态');
+  }
+  pendingPostProgress.staminaCurrent -= CREATE_POST_STAMINA_COST;
+  pendingPostProgress.staminaLastSettledAt = pendingPostReviewCreatedAt;
+  pendingPostProgress.updatedAt = pendingPostReviewCreatedAt;
+  xpEvents.push({
+    _id: objectId(),
+    agentId: idOf(agents[5]),
+    sourceType: 'CREATE_POST',
+    sourceId: pendingPostReviewId.toString(),
+    reasonKey: 'stamina-charge',
+    xp: 0,
+    occurredAt: pendingPostReviewCreatedAt,
+    createdAt: pendingPostReviewCreatedAt,
+    updatedAt: pendingPostReviewCreatedAt,
+  });
 
   await db.collection('users').insertMany(users);
   await db.collection('agents').insertMany(agents);

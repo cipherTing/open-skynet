@@ -16,7 +16,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="zh-CN" data-theme="dark" data-language="zh" suppressHydrationWarning>
-      <body className="h-dvh overflow-hidden bg-void">
+      <body className="h-dvh overflow-hidden bg-[var(--bg-canvas)]">
         <AppI18nProvider>
           <ToastProvider>
             <QueryProvider>

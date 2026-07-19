@@ -1,10 +1,4 @@
-import {
-  ConflictException,
-  Inject,
-  Injectable,
-  NotFoundException,
-  forwardRef,
-} from '@nestjs/common';
+import { Inject, Injectable, forwardRef } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model, Types } from 'mongoose';
 import { AgentProgress } from '@/database/schemas/agent-progress.schema';
@@ -32,26 +26,19 @@ import {
 } from '@/database/schemas/agent-governance-history.schema';
 import { DatabaseService } from '@/database/database.service';
 import { ProgressionService } from '@/progression/progression.service';
-import {
-  AgentGovernanceProfile,
-} from '@/database/schemas/agent-governance-profile.schema';
-import {
-  GovernanceAssignment,
-} from '@/database/schemas/governance-assignment.schema';
+import { AgentGovernanceProfile } from '@/database/schemas/agent-governance-profile.schema';
+import { GovernanceAssignment } from '@/database/schemas/governance-assignment.schema';
 import {
   GovernanceCase,
   type GovernanceCaseDocument,
   type GovernanceTargetSnapshot,
 } from '@/database/schemas/governance-case.schema';
-import {
-  GovernanceDailyQuota,
-} from '@/database/schemas/governance-daily-quota.schema';
+import { GovernanceDailyQuota } from '@/database/schemas/governance-daily-quota.schema';
 import { GovernanceVote } from '@/database/schemas/governance-vote.schema';
 import {
   GOVERNANCE_ASSIGNMENT_STATUS,
   GOVERNANCE_CASE_STATUS,
   GOVERNANCE_DECISIONS,
-  GOVERNANCE_ERROR_CODES,
   GOVERNANCE_HEALTH_LEVEL,
   GOVERNANCE_TARGET_TYPES,
   type GovernanceCaseStatus,
@@ -71,6 +58,8 @@ import {
 } from './governance.rules';
 import { ListGovernanceFeedDto } from './dto/list-governance-feed.dto';
 import { InboxService } from '@/inbox/inbox.service';
+import { commonErrors, governanceErrors } from '@/common/errors/business-errors';
+import { translateApiText } from '@/common/i18n/api-language';
 
 interface OpenCaseFromReportsParams {
   targetType: GovernanceTargetType;
@@ -90,39 +79,59 @@ export interface GovernanceVoteTally {
 
 export type GovernanceTargetSummary =
   | {
-    kind: 'POST';
-    post: { id: string; title: string; excerpt: string; authorId: string; createdAt: string };
-  }
+      kind: 'POST';
+      post: { id: string; title: string; excerpt: string; authorId: string; createdAt: string };
+    }
   | {
-    kind: 'REPLY';
-    post: { id: string; title: string };
-    reply: { id: string; excerpt: string; authorId: string; createdAt: string };
-    parentReply?: { id: string; excerpt: string };
-    depth: 1 | 2;
-  }
+      kind: 'REPLY';
+      post: { id: string; title: string };
+      reply: { id: string; excerpt: string; authorId: string; createdAt: string };
+      parentReply?: { id: string; excerpt: string };
+      depth: 1 | 2;
+    }
   | {
-    kind: 'CIRCLE_PROPOSAL';
-    proposal: { id: string; scope: 'TOPIC' | 'RULES'; excerpt: string; authorId: string; createdAt: string };
-  }
+      kind: 'CIRCLE_PROPOSAL';
+      proposal: {
+        id: string;
+        scope: 'TOPIC' | 'RULES';
+        excerpt: string;
+        authorId: string;
+        createdAt: string;
+      };
+    }
   | {
-    kind: 'CIRCLE_PROPOSAL_COMMENT';
-    proposal: { id: string; circleId: string };
-    comment: { id: string; excerpt: string; authorId: string; createdAt: string };
-  };
+      kind: 'CIRCLE_PROPOSAL_COMMENT';
+      proposal: { id: string; circleId: string };
+      comment: { id: string; excerpt: string; authorId: string; createdAt: string };
+    };
 
 export type GovernanceTimelineEvent =
   | { type: 'CASE_OPENED'; date: string; occurredAt: string }
   | {
-    type: 'VOTES_CAST';
-    date: string;
-    voterCount: number;
-    violation: { voterCount: number; votes: number };
-    notViolation: { voterCount: number; votes: number };
-    firstOccurredAt: string;
-    lastOccurredAt: string;
-  }
-  | { type: 'CASE_RESOLVED'; date: string; occurredAt: string; result: GovernancePublicResultCode; durationMinutes: number; resolutionSource: 'COMMUNITY' | 'ADMIN' }
-  | { type: 'ADMIN_CORRECTION'; date: string; occurredAt: string; action: 'RESTORE_CONTENT'; publicReason: string; nextRound: number };
+      type: 'VOTES_CAST';
+      date: string;
+      voterCount: number;
+      violation: { voterCount: number; votes: number };
+      notViolation: { voterCount: number; votes: number };
+      firstOccurredAt: string;
+      lastOccurredAt: string;
+    }
+  | {
+      type: 'CASE_RESOLVED';
+      date: string;
+      occurredAt: string;
+      result: GovernancePublicResultCode;
+      durationMinutes: number;
+      resolutionSource: 'COMMUNITY' | 'ADMIN';
+    }
+  | {
+      type: 'ADMIN_CORRECTION';
+      date: string;
+      occurredAt: string;
+      action: 'RESTORE_CONTENT';
+      publicReason: string;
+      nextRound: number;
+    };
 
 export interface GovernancePublicCorrection {
   id: string;
@@ -138,7 +147,9 @@ export interface GovernancePublicResultItem {
   targetType: GovernanceTargetType;
   targetId: string;
   targetContentVersion: number;
-  status: typeof GOVERNANCE_CASE_STATUS.RESOLVED_VIOLATION | typeof GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION;
+  status:
+    | typeof GOVERNANCE_CASE_STATUS.RESOLVED_VIOLATION
+    | typeof GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION;
   result: GovernancePublicResultCode;
   targetSummary: GovernanceTargetSummary;
   tally: GovernanceVoteTally;
@@ -163,66 +174,82 @@ export interface GovernanceResultDetail extends GovernancePublicResultItem {
 
 export type SerializedGovernanceTargetSnapshot =
   | {
-    kind: 'POST';
-    post: {
-      id: string;
-      title: string;
-      content: string;
-      authorId: string;
-      createdAt: string;
-      circleRules: { circleId: string; version: number; rules: Array<{ id: string; text: string }> };
-    };
-  }
+      kind: 'POST';
+      post: {
+        id: string;
+        title: string;
+        content: string;
+        authorId: string;
+        createdAt: string;
+        circleRules: {
+          circleId: string;
+          version: number;
+          rules: Array<{ id: string; text: string }>;
+        };
+      };
+    }
   | {
-    kind: 'REPLY';
-    post: {
-      id: string;
-      title: string;
-      content: string;
-      authorId: string;
-      createdAt: string;
-      circleRules: { circleId: string; version: number; rules: Array<{ id: string; text: string }> };
-    };
-    reply: {
-      id: string;
-      content: string;
-      authorId: string;
-      createdAt: string;
-      circleRules: { circleId: string; version: number; rules: Array<{ id: string; text: string }> };
-    };
-    parentReply?: {
-      id: string;
-      content: string;
-      authorId: string;
-      createdAt: string;
-      circleRules: { circleId: string; version: number; rules: Array<{ id: string; text: string }> };
-    };
-  }
+      kind: 'REPLY';
+      post: {
+        id: string;
+        title: string;
+        content: string;
+        authorId: string;
+        createdAt: string;
+        circleRules: {
+          circleId: string;
+          version: number;
+          rules: Array<{ id: string; text: string }>;
+        };
+      };
+      reply: {
+        id: string;
+        content: string;
+        authorId: string;
+        createdAt: string;
+        circleRules: {
+          circleId: string;
+          version: number;
+          rules: Array<{ id: string; text: string }>;
+        };
+      };
+      parentReply?: {
+        id: string;
+        content: string;
+        authorId: string;
+        createdAt: string;
+        circleRules: {
+          circleId: string;
+          version: number;
+          rules: Array<{ id: string; text: string }>;
+        };
+      };
+    }
   | {
-    kind: 'CIRCLE_PROPOSAL';
-    proposal: {
-      id: string;
-      circleId: string;
-      scope: 'TOPIC' | 'RULES';
-      revisionNumber: number;
-      reason: string;
-      topicSnapshot: string | null;
-      rulesSnapshot: Array<{ id: string; text: string }> | null;
-      authorId: string;
-      createdAt: string;
-    };
-  }
+      kind: 'CIRCLE_PROPOSAL';
+      proposal: {
+        id: string;
+        circleId: string;
+        scope: 'TOPIC' | 'RULES';
+        revisionNumber: number;
+        reason: string;
+        topicSnapshot: string | null;
+        rulesSnapshot: Array<{ id: string; text: string }> | null;
+        authorId: string;
+        createdAt: string;
+      };
+    }
   | {
-    kind: 'CIRCLE_PROPOSAL_COMMENT';
-    proposal: { id: string; circleId: string };
-    comment: {
-      id: string;
-      revisionNumber: number;
-      content: string;
-      authorId: string;
-      createdAt: string;
+      kind: 'CIRCLE_PROPOSAL_COMMENT';
+      proposal: { id: string; circleId: string };
+      comment: {
+        id: string;
+        revisionNumber: number;
+        content: string;
+        authorId: string;
+        createdAt: string;
+      };
     };
-  };
 
 export interface GovernanceStats {
   todayResolvedCount: number;
@@ -235,7 +262,6 @@ export interface GovernanceStats {
   averageResolutionMinutes: number | null;
 }
 
-
 const GOVERNANCE_PUBLIC_PREVIEW_LENGTH = 140;
 
 const GOVERNANCE_PUBLIC_RESULT_STATUSES = [
@@ -246,7 +272,7 @@ const GOVERNANCE_PUBLIC_RESULT_STATUSES = [
 const GOVERNANCE_FEED_DEFAULT_LIMIT = 10;
 const GOVERNANCE_FEED_MAX_LIMIT = 20;
 const GOVERNANCE_FEED_RECENT_DAYS = 7;
-const GOVERNANCE_FEED_FALLBACK_LIMIT = 200;
+const GOVERNANCE_FEED_CANDIDATE_LIMIT = 200;
 const GOVERNANCE_FEED_HALF_LIFE_HOURS = 24;
 
 @Injectable()
@@ -304,10 +330,7 @@ export class GovernanceService {
     const profile = await this.getOrCreateGovernanceProfile(agentId, session);
     const level = await this.getAgentLevel(agentId);
     if (!canAgentParticipateInGovernance(profile.healthLevel, level)) {
-      throw new ConflictException({
-        code: GOVERNANCE_ERROR_CODES.NOT_ELIGIBLE,
-        message: '当前健康等级或普通等级不足，暂不能举报违规',
-      });
+      throw governanceErrors.reportNotEligible();
     }
     return { level, healthLevel: profile.healthLevel };
   }
@@ -316,11 +339,11 @@ export class GovernanceService {
     const reporterAgentIds = params.reporters.map((reporter) => reporter.agentId);
     const reporterOwnerUserIds = params.reporters.map((reporter) => reporter.ownerUserId);
     if (
-      params.reporters.length < 3
-      || new Set(reporterAgentIds).size !== params.reporters.length
-      || new Set(reporterOwnerUserIds).size !== params.reporters.length
-      || reporterAgentIds.some((agentId) => agentId.trim().length === 0)
-      || reporterOwnerUserIds.some((ownerUserId) => ownerUserId.trim().length === 0)
+      params.reporters.length < 3 ||
+      new Set(reporterAgentIds).size !== params.reporters.length ||
+      new Set(reporterOwnerUserIds).size !== params.reporters.length ||
+      reporterAgentIds.some((agentId) => agentId.trim().length === 0) ||
+      reporterOwnerUserIds.some((ownerUserId) => ownerUserId.trim().length === 0)
     ) {
       throw new Error('A governance case requires at least three unique Agents and owners');
     }
@@ -331,10 +354,7 @@ export class GovernanceService {
       params.session,
     );
     if (!snapshot) {
-      throw new NotFoundException({
-        code: GOVERNANCE_ERROR_CODES.CASE_NOT_FOUND,
-        message: '举报目标不存在或已被移除',
-      });
+      throw governanceErrors.caseNotFound();
     }
     const targetAuthorId = this.getSnapshotAuthorId(snapshot);
     const agentIdsToVerify = [...new Set([...reporterAgentIds, targetAuthorId])];
@@ -343,9 +363,7 @@ export class GovernanceService {
       '_id userId',
       { session: params.session },
     );
-    const ownerByAgentId = new Map(
-      verifiedAgents.map((agent) => [agent.id, agent.userId]),
-    );
+    const ownerByAgentId = new Map(verifiedAgents.map((agent) => [agent.id, agent.userId]));
     if (ownerByAgentId.size !== agentIdsToVerify.length) {
       throw new Error('Cannot verify every reporter and target author owner');
     }
@@ -359,8 +377,8 @@ export class GovernanceService {
       throw new Error('Cannot verify the target author owner');
     }
     if (
-      reporterAgentIds.includes(targetAuthorId)
-      || reporterOwnerUserIds.includes(targetAuthorOwnerUserId)
+      reporterAgentIds.includes(targetAuthorId) ||
+      reporterOwnerUserIds.includes(targetAuthorOwnerUserId)
     ) {
       throw new Error('The target author Agent or owner cannot be included in reporters');
     }
@@ -403,27 +421,32 @@ export class GovernanceService {
         { session: params.session },
       );
       if (locked.modifiedCount !== 1) {
-        throw new ConflictException('圈子提案已结束或正在审理中');
+        throw governanceErrors.proposalUnavailable();
       }
     }
     return governanceCase.save({ session: params.session });
   }
 
-
   async getRandomResultBatch(dto: ListGovernanceFeedDto): Promise<GovernanceResultsBatch> {
-    const limit = Math.min(GOVERNANCE_FEED_MAX_LIMIT, Math.max(1, dto.limit ?? GOVERNANCE_FEED_DEFAULT_LIMIT));
+    const limit = Math.min(
+      GOVERNANCE_FEED_MAX_LIMIT,
+      Math.max(1, dto.limit ?? GOVERNANCE_FEED_DEFAULT_LIMIT),
+    );
     const now = new Date();
     const recentSince = new Date(now.getTime() - GOVERNANCE_FEED_RECENT_DAYS * 24 * 60 * 60 * 1000);
-    const baseFilter = { status: { $in: GOVERNANCE_PUBLIC_RESULT_STATUSES }, resolvedAt: { $ne: null } };
+    const baseFilter = {
+      status: { $in: GOVERNANCE_PUBLIC_RESULT_STATUSES },
+      resolvedAt: { $ne: null },
+    };
     let candidates = await this.caseModel
       .find({ ...baseFilter, resolvedAt: { $gte: recentSince } })
       .sort({ resolvedAt: -1, _id: -1 })
-      .limit(GOVERNANCE_FEED_FALLBACK_LIMIT);
+      .limit(GOVERNANCE_FEED_CANDIDATE_LIMIT);
     if (candidates.length < limit) {
       candidates = await this.caseModel
         .find(baseFilter)
         .sort({ resolvedAt: -1, _id: -1 })
-        .limit(GOVERNANCE_FEED_FALLBACK_LIMIT);
+        .limit(GOVERNANCE_FEED_CANDIDATE_LIMIT);
     }
     const sampled = this.weightedSampleCases(candidates, limit, now);
     const sampledAt = now.toISOString();
@@ -436,10 +459,7 @@ export class GovernanceService {
 
   async getResultDetail(caseId: string): Promise<GovernanceResultDetail> {
     if (!Types.ObjectId.isValid(caseId)) {
-      throw new NotFoundException({
-        code: GOVERNANCE_ERROR_CODES.CASE_NOT_FOUND,
-        message: '未找到已完成的评审案件',
-      });
+      throw governanceErrors.caseNotFound();
     }
     const governanceCase = await this.caseModel.findOne({
       _id: caseId,
@@ -447,10 +467,7 @@ export class GovernanceService {
       resolvedAt: { $ne: null },
     });
     if (!governanceCase) {
-      throw new NotFoundException({
-        code: GOVERNANCE_ERROR_CODES.CASE_NOT_FOUND,
-        message: '未找到已完成的评审案件',
-      });
+      throw governanceErrors.caseNotFound();
     }
     const corrections = await this.correctionModel
       .find({ caseId: governanceCase.id })
@@ -482,17 +499,30 @@ export class GovernanceService {
       correctionCount,
       averageRows,
     ] = await Promise.all([
-      this.caseModel.countDocuments({ status: { $in: GOVERNANCE_PUBLIC_RESULT_STATUSES }, resolvedAt: { $gte: todayStart } }),
+      this.caseModel.countDocuments({
+        status: { $in: GOVERNANCE_PUBLIC_RESULT_STATUSES },
+        resolvedAt: { $gte: todayStart },
+      }),
       this.caseModel.countDocuments(terminalRecentFilter),
       this.caseModel.countDocuments({ status: GOVERNANCE_CASE_STATUS.OPEN }),
       this.caseModel.countDocuments({ status: GOVERNANCE_CASE_STATUS.EMERGENCY }),
-      this.caseModel.countDocuments({ status: GOVERNANCE_CASE_STATUS.RESOLVED_VIOLATION, resolvedAt: { $gte: sevenDaysAgo } }),
-      this.caseModel.countDocuments({ status: GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION, resolvedAt: { $gte: sevenDaysAgo } }),
+      this.caseModel.countDocuments({
+        status: GOVERNANCE_CASE_STATUS.RESOLVED_VIOLATION,
+        resolvedAt: { $gte: sevenDaysAgo },
+      }),
+      this.caseModel.countDocuments({
+        status: GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION,
+        resolvedAt: { $gte: sevenDaysAgo },
+      }),
       this.correctionModel.countDocuments({ createdAt: { $gte: sevenDaysAgo } }),
       this.caseModel.aggregate<{ averageResolutionMinutes: number }>([
         { $match: terminalRecentFilter },
         { $match: { resolvedAt: { $ne: null } } },
-        { $project: { durationMinutes: { $divide: [{ $subtract: ['$resolvedAt', '$openedAt'] }, 60000] } } },
+        {
+          $project: {
+            durationMinutes: { $divide: [{ $subtract: ['$resolvedAt', '$openedAt'] }, 60000] },
+          },
+        },
         { $group: { _id: null, averageResolutionMinutes: { $avg: '$durationMinutes' } } },
       ]),
     ]);
@@ -504,14 +534,17 @@ export class GovernanceService {
       violationResolvedCount,
       notViolationResolvedCount,
       correctionCount,
-      averageResolutionMinutes: averageRows[0]?.averageResolutionMinutes == null ? null : Math.round(averageRows[0].averageResolutionMinutes),
+      averageResolutionMinutes:
+        averageRows[0]?.averageResolutionMinutes == null
+          ? null
+          : Math.round(averageRows[0].averageResolutionMinutes),
     };
   }
 
   async getPublicCaseSummary(caseId: string) {
-    if (!Types.ObjectId.isValid(caseId)) throw new NotFoundException('治理案件不存在');
+    if (!Types.ObjectId.isValid(caseId)) throw governanceErrors.caseNotFound();
     const governanceCase = await this.caseModel.findById(caseId);
-    if (!governanceCase) throw new NotFoundException('治理案件不存在');
+    if (!governanceCase) throw governanceErrors.caseNotFound();
     return {
       id: governanceCase.id,
       targetType: governanceCase.targetType,
@@ -520,9 +553,10 @@ export class GovernanceService {
       triggerScore: governanceCase.triggerScore,
       triggerThreshold: governanceCase.triggerThreshold,
       openedAt: governanceCase.openedAt.toISOString(),
-      deadlineAt: governanceCase.status === GOVERNANCE_CASE_STATUS.EMERGENCY
-        ? governanceCase.emergencyDeadlineAt.toISOString()
-        : governanceCase.normalDeadlineAt.toISOString(),
+      deadlineAt:
+        governanceCase.status === GOVERNANCE_CASE_STATUS.EMERGENCY
+          ? governanceCase.emergencyDeadlineAt.toISOString()
+          : governanceCase.normalDeadlineAt.toISOString(),
       resolvedAt: governanceCase.resolvedAt?.toISOString() ?? null,
       resolutionSource: governanceCase.resolutionSource,
       resolutionReason: governanceCase.resolutionReason,
@@ -542,11 +576,16 @@ export class GovernanceService {
       if (assignment.agentOwnerUserIdSnapshot !== ownerUserId) {
         throw new Error('Governance assignment owner snapshot does not match current Agent owner');
       }
-      const governanceCase = await this.caseModel.findOne(
-        { _id: assignment.caseId, status: { $in: [GOVERNANCE_CASE_STATUS.OPEN, GOVERNANCE_CASE_STATUS.EMERGENCY] } },
-        null,
-        { session },
-      ).select('+reporterAgentIds +reporterOwnerUserIds +targetAuthorOwnerUserId');
+      const governanceCase = await this.caseModel
+        .findOne(
+          {
+            _id: assignment.caseId,
+            status: { $in: [GOVERNANCE_CASE_STATUS.OPEN, GOVERNANCE_CASE_STATUS.EMERGENCY] },
+          },
+          null,
+          { session },
+        )
+        .select('+reporterAgentIds +reporterOwnerUserIds +targetAuthorOwnerUserId');
       if (!governanceCase) {
         assignment.status = GOVERNANCE_ASSIGNMENT_STATUS.CASE_CLOSED;
         assignment.statusReason = 'case-closed';
@@ -569,9 +608,7 @@ export class GovernanceService {
   }
 
   async dispatchNextCase(agentId: string) {
-    await this.featureFlagService.assertEnabled(
-      FEATURE_FLAG_KEYS.GOVERNANCE_PARTICIPATION,
-    );
+    await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.GOVERNANCE_PARTICIPATION);
     return this.databaseService.$transaction(async (session) => {
       const ownerUserId = await this.getActiveAgentOwnerUserId(agentId, session);
       const existing = await this.assignmentModel.findOne(
@@ -583,27 +620,18 @@ export class GovernanceService {
         { session },
       );
       if (existing) {
-        throw new ConflictException({
-          code: GOVERNANCE_ERROR_CODES.ACTIVE_CASE_EXISTS,
-          message: '当前已有待处理治理案件，请先完成后再获取下一案',
-        });
+        throw governanceErrors.activeCaseExists();
       }
 
       const profile = await this.getOrCreateGovernanceProfile(agentId, session);
       const level = await this.getAgentLevel(agentId);
       if (!canAgentParticipateInGovernance(profile.healthLevel, level)) {
-        throw new ConflictException({
-          code: GOVERNANCE_ERROR_CODES.NOT_ELIGIBLE,
-          message: '当前健康等级或普通等级不足，暂不能参与治理',
-        });
+        throw governanceErrors.notEligible();
       }
 
       const quota = await this.getOrCreateDailyQuota(agentId, level, profile.healthLevel, session);
       if (quota.quotaUsed >= quota.quotaTotal) {
-        throw new ConflictException({
-          code: GOVERNANCE_ERROR_CODES.QUOTA_EXHAUSTED,
-          message: '今日治理判决额度已用完',
-        });
+        throw governanceErrors.quotaExhausted();
       }
 
       await this.advanceDeadlines(session);
@@ -618,26 +646,25 @@ export class GovernanceService {
         .filter((caseId) => Types.ObjectId.isValid(caseId))
         .map((caseId) => new Types.ObjectId(caseId));
 
-      const candidate = await this.caseModel.findOne(
-        {
-          status: { $in: [GOVERNANCE_CASE_STATUS.EMERGENCY, GOVERNANCE_CASE_STATUS.OPEN] },
-          targetAuthorId: { $ne: agentId },
-          targetAuthorOwnerUserId: { $ne: ownerUserId },
-          reporterAgentIds: { $ne: agentId },
-          reporterOwnerUserIds: { $ne: ownerUserId },
-          _id: { $nin: participatedObjectIds },
-        },
-        null,
-        {
-          session,
-          sort: { status: 1, emergencyDeadlineAt: 1, normalDeadlineAt: 1, openedAt: 1 },
-        },
-      ).select('+reporterAgentIds +reporterOwnerUserIds +targetAuthorOwnerUserId');
+      const candidate = await this.caseModel
+        .findOne(
+          {
+            status: { $in: [GOVERNANCE_CASE_STATUS.EMERGENCY, GOVERNANCE_CASE_STATUS.OPEN] },
+            targetAuthorId: { $ne: agentId },
+            targetAuthorOwnerUserId: { $ne: ownerUserId },
+            reporterAgentIds: { $ne: agentId },
+            reporterOwnerUserIds: { $ne: ownerUserId },
+            _id: { $nin: participatedObjectIds },
+          },
+          null,
+          {
+            session,
+            sort: { status: 1, emergencyDeadlineAt: 1, normalDeadlineAt: 1, openedAt: 1 },
+          },
+        )
+        .select('+reporterAgentIds +reporterOwnerUserIds +targetAuthorOwnerUserId');
       if (!candidate) {
-        throw new NotFoundException({
-          code: GOVERNANCE_ERROR_CODES.NO_AVAILABLE_CASE,
-          message: '暂无可派发治理案件',
-        });
+        throw governanceErrors.noAvailableCase();
       }
       if (this.isAgentOrOwnerExcluded(candidate, agentId, ownerUserId)) {
         throw new Error('Agent or owner exclusion invariant failed during governance dispatch');
@@ -645,37 +672,35 @@ export class GovernanceService {
 
       const now = new Date();
       try {
-        const [assignment] = await this.assignmentModel.create([
-          {
-            caseId: candidate.id,
-            agentId,
-            agentOwnerUserIdSnapshot: ownerUserId,
-            status: GOVERNANCE_ASSIGNMENT_STATUS.ACTIVE,
-            decision: null,
-            weight: 0,
-            agentLevelSnapshot: level,
-            healthLevelSnapshot: profile.healthLevel,
-            assignedAt: now,
-            deadlineAt: candidate.emergencyDeadlineAt,
-          },
-        ], { session });
+        const [assignment] = await this.assignmentModel.create(
+          [
+            {
+              caseId: candidate.id,
+              agentId,
+              agentOwnerUserIdSnapshot: ownerUserId,
+              status: GOVERNANCE_ASSIGNMENT_STATUS.ACTIVE,
+              decision: null,
+              weight: 0,
+              agentLevelSnapshot: level,
+              healthLevelSnapshot: profile.healthLevel,
+              assignedAt: now,
+              deadlineAt: candidate.emergencyDeadlineAt,
+            },
+          ],
+          { session },
+        );
         candidate.lastDispatchedAt = now;
         await candidate.save({ session });
         return this.serializeAssignedCase(candidate, assignment, quota);
       } catch (error) {
         if (!this.isDuplicateKeyError(error)) throw error;
-        throw new ConflictException({
-          code: GOVERNANCE_ERROR_CODES.ACTIVE_CASE_EXISTS,
-          message: '当前已有待处理治理案件，请先完成后再获取下一案',
-        });
+        throw governanceErrors.activeCaseExists();
       }
     });
   }
 
   async submitDecision(agentId: string, caseId: string, decision: GovernanceDecision) {
-    await this.featureFlagService.assertEnabled(
-      FEATURE_FLAG_KEYS.GOVERNANCE_PARTICIPATION,
-    );
+    await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.GOVERNANCE_PARTICIPATION);
     const result = await this.databaseService.$transaction(async (session) => {
       const ownerUserId = await this.getActiveAgentOwnerUserId(agentId, session);
       await this.advanceDeadlines(session);
@@ -685,19 +710,21 @@ export class GovernanceService {
         { session },
       );
       if (!assignment) {
-        throw new NotFoundException({
-          code: GOVERNANCE_ERROR_CODES.ASSIGNMENT_NOT_FOUND,
-          message: '未找到当前待处理治理案件',
-        });
+        throw governanceErrors.assignmentNotFound();
       }
       if (assignment.agentOwnerUserIdSnapshot !== ownerUserId) {
         throw new Error('Governance assignment owner snapshot does not match current Agent owner');
       }
-      const governanceCase = await this.caseModel.findOne(
-        { _id: caseId, status: { $in: [GOVERNANCE_CASE_STATUS.OPEN, GOVERNANCE_CASE_STATUS.EMERGENCY] } },
-        null,
-        { session },
-      ).select('+reporterAgentIds +reporterOwnerUserIds +targetAuthorOwnerUserId');
+      const governanceCase = await this.caseModel
+        .findOne(
+          {
+            _id: caseId,
+            status: { $in: [GOVERNANCE_CASE_STATUS.OPEN, GOVERNANCE_CASE_STATUS.EMERGENCY] },
+          },
+          null,
+          { session },
+        )
+        .select('+reporterAgentIds +reporterOwnerUserIds +targetAuthorOwnerUserId');
       if (!governanceCase) {
         assignment.status = GOVERNANCE_ASSIGNMENT_STATUS.CASE_CLOSED;
         assignment.statusReason = 'case-closed';
@@ -716,41 +743,35 @@ export class GovernanceService {
       const profile = await this.getOrCreateGovernanceProfile(agentId, session);
       const level = assignment.agentLevelSnapshot;
       if (!canAgentParticipateInGovernance(profile.healthLevel, level)) {
-        throw new ConflictException({
-          code: GOVERNANCE_ERROR_CODES.NOT_ELIGIBLE,
-          message: '当前健康等级或普通等级不足，暂不能参与治理',
-        });
+        throw governanceErrors.notEligible();
       }
       const quota = await this.getOrCreateDailyQuota(agentId, level, profile.healthLevel, session);
       if (quota.quotaUsed >= quota.quotaTotal) {
-        throw new ConflictException({
-          code: GOVERNANCE_ERROR_CODES.QUOTA_EXHAUSTED,
-          message: '今日治理判决额度已用完',
-        });
+        throw governanceErrors.quotaExhausted();
       }
 
       const now = new Date();
       const weight = calculateGovernanceWeight(level);
       try {
-        await this.voteModel.create([
-          {
-            caseId: governanceCase.id,
-            voterAgentId: agentId,
-            voterOwnerUserIdSnapshot: ownerUserId,
-            targetType: governanceCase.targetType,
-            targetId: governanceCase.targetId,
-            choice: decision,
-            weight,
-            voterLevel: level,
-            voterHealthLevel: profile.healthLevel,
-          },
-        ], { session });
+        await this.voteModel.create(
+          [
+            {
+              caseId: governanceCase.id,
+              voterAgentId: agentId,
+              voterOwnerUserIdSnapshot: ownerUserId,
+              targetType: governanceCase.targetType,
+              targetId: governanceCase.targetId,
+              choice: decision,
+              weight,
+              voterLevel: level,
+              voterHealthLevel: profile.healthLevel,
+            },
+          ],
+          { session },
+        );
       } catch (error) {
         if (!this.isDuplicateKeyError(error)) throw error;
-        throw new ConflictException({
-          code: GOVERNANCE_ERROR_CODES.ALREADY_PARTICIPATED,
-          message: '已经参与过该治理投票',
-        });
+        throw governanceErrors.alreadyParticipated();
       }
 
       assignment.status = GOVERNANCE_ASSIGNMENT_STATUS.SUBMITTED;
@@ -775,16 +796,10 @@ export class GovernanceService {
       } as const;
     });
     if (result.kind === 'reporter-ineligible') {
-      throw new ConflictException({
-        code: GOVERNANCE_ERROR_CODES.NOT_ELIGIBLE,
-        message: '举报者不能参与同一案件的治理判断',
-      });
+      throw governanceErrors.reporterConflict();
     }
     if (result.kind === 'case-closed') {
-      throw new ConflictException({
-        code: GOVERNANCE_ERROR_CODES.CASE_NOT_FOUND,
-        message: '案件已关闭',
-      });
+      throw governanceErrors.caseClosed();
     }
     return result.value;
   }
@@ -794,23 +809,23 @@ export class GovernanceService {
     agentId: string,
     ownerUserId: string,
   ): boolean {
-    return governanceCase.targetAuthorId === agentId
-      || governanceCase.targetAuthorOwnerUserId === ownerUserId
-      || governanceCase.reporterAgentIds.includes(agentId)
-      || governanceCase.reporterOwnerUserIds.includes(ownerUserId);
+    return (
+      governanceCase.targetAuthorId === agentId ||
+      governanceCase.targetAuthorOwnerUserId === ownerUserId ||
+      governanceCase.reporterAgentIds.includes(agentId) ||
+      governanceCase.reporterOwnerUserIds.includes(ownerUserId)
+    );
   }
 
   private async getActiveAgentOwnerUserId(
     agentId: string,
     session?: ClientSession,
   ): Promise<string> {
-    const agent = await this.agentModel.findOne(
-      { _id: agentId, deletedAt: null },
-      'userId',
-      { session },
-    );
+    const agent = await this.agentModel.findOne({ _id: agentId, deletedAt: null }, 'userId', {
+      session,
+    });
     if (!agent) {
-      throw new NotFoundException('Agent 不存在或已被删除');
+      throw commonErrors.agentNotFound();
     }
     return agent.userId;
   }
@@ -824,11 +839,9 @@ export class GovernanceService {
     if (targetType === GOVERNANCE_TARGET_TYPES.POST) {
       const [post, revision] = await Promise.all([
         this.postModel.findById(targetId, null, { session }),
-        this.postRevisionModel.findOne(
-          { postId: targetId, version: targetContentVersion },
-          null,
-          { session },
-        ),
+        this.postRevisionModel.findOne({ postId: targetId, version: targetContentVersion }, null, {
+          session,
+        }),
       ]);
       if (!post || !revision) return null;
       const circleRules = await this.getCircleRulesSnapshot(
@@ -892,11 +905,9 @@ export class GovernanceService {
     }
     const [reply, replyRevision] = await Promise.all([
       this.replyModel.findById(targetId, null, { session }),
-      this.replyRevisionModel.findOne(
-        { replyId: targetId, version: targetContentVersion },
-        null,
-        { session },
-      ),
+      this.replyRevisionModel.findOne({ replyId: targetId, version: targetContentVersion }, null, {
+        session,
+      }),
     ]);
     if (!reply || !replyRevision) return null;
     const post = await this.postModel.findById(reply.postId, null, { session });
@@ -908,26 +919,23 @@ export class GovernanceService {
       this.getCircleRulesSnapshot(post.circleId, post.circleRulesVersion, session),
       this.getCircleRulesSnapshot(post.circleId, reply.circleRulesVersion, session),
       parentReply
-        ? this.getCircleRulesSnapshot(
-            post.circleId,
-            parentReply.circleRulesVersion,
-            session,
-          )
+        ? this.getCircleRulesSnapshot(post.circleId, parentReply.circleRulesVersion, session)
         : Promise.resolve(null),
     ]);
     if (parentReply && parentReplyCircleRules === null) {
       throw new Error('Missing parent reply circle rule revision');
     }
-    const parentSnapshot = parentReply && parentReplyCircleRules
-      ? {
-          id: parentReply.id,
-          content: parentReply.content,
-          contentVersion: parentReply.contentVersion,
-          authorId: parentReply.authorId,
-          createdAt: parentReply.createdAt,
-          circleRules: parentReplyCircleRules,
-        }
-      : null;
+    const parentSnapshot =
+      parentReply && parentReplyCircleRules
+        ? {
+            id: parentReply.id,
+            content: parentReply.content,
+            contentVersion: parentReply.contentVersion,
+            authorId: parentReply.authorId,
+            createdAt: parentReply.createdAt,
+            circleRules: parentReplyCircleRules,
+          }
+        : null;
     return {
       kind: GOVERNANCE_TARGET_TYPES.REPLY,
       post: {
@@ -950,8 +958,8 @@ export class GovernanceService {
       },
       ...(parentSnapshot
         ? {
-          parentReply: parentSnapshot,
-        }
+            parentReply: parentSnapshot,
+          }
         : {}),
     };
   }
@@ -961,11 +969,9 @@ export class GovernanceService {
     version: number,
     session?: ClientSession,
   ): Promise<{ circleId: string; version: number; rules: Array<{ id: string; text: string }> }> {
-    const revision = await this.circleRuleRevisionModel.findOne(
-      { circleId, version },
-      null,
-      { session },
-    );
+    const revision = await this.circleRuleRevisionModel.findOne({ circleId, version }, null, {
+      session,
+    });
     if (!revision) {
       throw new Error(`Missing immutable circle rule revision ${circleId}@${version}`);
     }
@@ -980,9 +986,10 @@ export class GovernanceService {
     const existing = await this.profileModel.findOne({ agentId }, null, { session });
     if (existing) return existing;
     try {
-      const [created] = await this.profileModel.create([
-        { agentId, healthLevel: GOVERNANCE_HEALTH_LEVEL.GOOD, violationCount: 0 },
-      ], { session });
+      const [created] = await this.profileModel.create(
+        [{ agentId, healthLevel: GOVERNANCE_HEALTH_LEVEL.GOOD, violationCount: 0 }],
+        { session },
+      );
       return created;
     } catch (error) {
       if (!this.isDuplicateKeyError(error)) throw error;
@@ -1007,16 +1014,19 @@ export class GovernanceService {
     const existing = await this.quotaModel.findOne({ agentId, dateKey }, null, { session });
     if (existing) return existing;
     try {
-      const [created] = await this.quotaModel.create([
-        {
-          agentId,
-          dateKey,
-          quotaTotal: getGovernanceQuotaTotal(level),
-          quotaUsed: 0,
-          levelSnapshot: level,
-          healthLevelSnapshot: healthLevel,
-        },
-      ], { session });
+      const [created] = await this.quotaModel.create(
+        [
+          {
+            agentId,
+            dateKey,
+            quotaTotal: getGovernanceQuotaTotal(level),
+            quotaUsed: 0,
+            levelSnapshot: level,
+            healthLevelSnapshot: healthLevel,
+          },
+        ],
+        { session },
+      );
       return created;
     } catch (error) {
       if (!this.isDuplicateKeyError(error)) throw error;
@@ -1042,10 +1052,7 @@ export class GovernanceService {
     }
   }
 
-  private async listDeadlineCandidateIds(
-    now: Date,
-    session?: ClientSession,
-  ): Promise<string[]> {
+  private async listDeadlineCandidateIds(now: Date, session?: ClientSession): Promise<string[]> {
     const candidates = await this.caseModel
       .find(
         {
@@ -1125,9 +1132,10 @@ export class GovernanceService {
     governanceCase.status = resolution;
     governanceCase.resolution = resolution;
     governanceCase.resolvedAt = resolvedAt;
-    const reportStateStatus = resolution === GOVERNANCE_CASE_STATUS.RESOLVED_VIOLATION
-      ? REPORT_TARGET_STATUSES.RESOLVED_VIOLATION
-      : REPORT_TARGET_STATUSES.RESOLVED_NOT_VIOLATION;
+    const reportStateStatus =
+      resolution === GOVERNANCE_CASE_STATUS.RESOLVED_VIOLATION
+        ? REPORT_TARGET_STATUSES.RESOLVED_VIOLATION
+        : REPORT_TARGET_STATUSES.RESOLVED_NOT_VIOLATION;
     const stateUpdate = await this.reportTargetStateModel.updateOne(
       {
         targetType: governanceCase.targetType,
@@ -1141,7 +1149,9 @@ export class GovernanceService {
       { session },
     );
     if (stateUpdate.matchedCount !== 1) {
-      throw new Error(`Missing CASE_OPEN report target state for governance case ${governanceCase.id}`);
+      throw new Error(
+        `Missing CASE_OPEN report target state for governance case ${governanceCase.id}`,
+      );
     }
     await this.assignmentModel.updateMany(
       { caseId: governanceCase.id, status: GOVERNANCE_ASSIGNMENT_STATUS.ACTIVE },
@@ -1167,7 +1177,9 @@ export class GovernanceService {
         { session },
       );
       if (released.modifiedCount !== 1) {
-        throw new Error(`Cannot release governance hold for circle proposal ${governanceCase.targetId}`);
+        throw new Error(
+          `Cannot release governance hold for circle proposal ${governanceCase.targetId}`,
+        );
       }
     }
     await governanceCase.save({ session });
@@ -1187,7 +1199,7 @@ export class GovernanceService {
     adminUserId: string,
     session: ClientSession,
   ): Promise<GovernanceCaseDocument> {
-    if (!Types.ObjectId.isValid(caseId)) throw new NotFoundException('治理案件不存在');
+    if (!Types.ObjectId.isValid(caseId)) throw governanceErrors.caseNotFound();
     const governanceCase = await this.caseModel.findOne(
       {
         _id: caseId,
@@ -1196,7 +1208,7 @@ export class GovernanceService {
       null,
       { session },
     );
-    if (!governanceCase) throw new ConflictException('治理案件不存在或已经结案');
+    if (!governanceCase) throw governanceErrors.caseClosed();
     governanceCase.resolutionSource = 'ADMIN';
     governanceCase.resolutionReason = reason;
     governanceCase.resolvedByUserId = adminUserId;
@@ -1217,7 +1229,7 @@ export class GovernanceService {
     adminUserId: string,
     session: ClientSession,
   ): Promise<GovernanceCorrection> {
-    if (!Types.ObjectId.isValid(caseId)) throw new NotFoundException('治理案件不存在');
+    if (!Types.ObjectId.isValid(caseId)) throw governanceErrors.caseNotFound();
     const governanceCase = await this.caseModel.findOne(
       {
         _id: caseId,
@@ -1228,14 +1240,10 @@ export class GovernanceService {
       { session },
     );
     if (!governanceCase) {
-      throw new ConflictException('只有已判定违规并移除的帖子或回复可以纠正恢复');
+      throw governanceErrors.correctionNotAllowed();
     }
-    const existingCorrection = await this.correctionModel.findOne(
-      { caseId },
-      '_id',
-      { session },
-    );
-    if (existingCorrection) throw new ConflictException('该治理案件已经完成管理员纠正');
+    const existingCorrection = await this.correctionModel.findOne({ caseId }, '_id', { session });
+    if (existingCorrection) throw governanceErrors.correctionAlreadyApplied();
     const state = await this.reportTargetStateModel.findOne(
       {
         caseId: governanceCase.id,
@@ -1258,11 +1266,12 @@ export class GovernanceService {
     const contentUpdate = {
       $set: { deletedAt: null, removalSource: CONTENT_REMOVAL_SOURCES.NONE },
     };
-    const restored = governanceCase.targetType === GOVERNANCE_TARGET_TYPES.POST
-      ? await this.postModel.updateOne(contentWhere, contentUpdate, { session })
-      : await this.replyModel.updateOne(contentWhere, contentUpdate, { session });
+    const restored =
+      governanceCase.targetType === GOVERNANCE_TARGET_TYPES.POST
+        ? await this.postModel.updateOne(contentWhere, contentUpdate, { session })
+        : await this.replyModel.updateOne(contentWhere, contentUpdate, { session });
     if (restored.modifiedCount !== 1) {
-      throw new ConflictException('目标内容当前不是由治理移除，无法执行纠正恢复');
+      throw governanceErrors.targetNotGovernanceRemoved();
     }
 
     const nextRound = governanceCase.round + 1;
@@ -1284,16 +1293,18 @@ export class GovernanceService {
     }).save({ session });
 
     const [correction] = await this.correctionModel.create(
-      [{
-        caseId: governanceCase.id,
-        targetType: governanceCase.targetType,
-        targetId: governanceCase.targetId,
-        previousRound: governanceCase.round,
-        nextRound,
-        action: 'RESTORE_CONTENT',
-        publicReason,
-        adminUserId,
-      }],
+      [
+        {
+          caseId: governanceCase.id,
+          targetType: governanceCase.targetType,
+          targetId: governanceCase.targetId,
+          previousRound: governanceCase.round,
+          nextRound,
+          action: 'RESTORE_CONTENT',
+          publicReason,
+          adminUserId,
+        },
+      ],
       { session },
     );
     return correction;
@@ -1328,7 +1339,11 @@ export class GovernanceService {
       const moderated = await this.circleProposalService.moderateProposalFromGovernance(
         governanceCase.targetId,
         governanceCase.id,
-        governanceCase.resolutionReason ?? '治理案件判定提案违规',
+        governanceCase.resolutionReason ??
+          translateApiText(
+            'api.labels.governanceProposalViolation',
+            'Governance case found the proposal in violation',
+          ),
         session,
       );
       if (!moderated) throw new Error('治理案件对应的提案不存在、已经结束或审理锁不一致');
@@ -1336,7 +1351,11 @@ export class GovernanceService {
       const moderated = await this.circleProposalService.moderateCommentFromGovernance(
         governanceCase.targetId,
         governanceCase.id,
-        governanceCase.resolutionReason ?? '治理案件判定提案评论违规',
+        governanceCase.resolutionReason ??
+          translateApiText(
+            'api.labels.governanceProposalCommentViolation',
+            'Governance case found the proposal comment in violation',
+          ),
         session,
       );
       if (!moderated) throw new Error('治理案件对应的提案评论不存在或已经隐藏');
@@ -1359,21 +1378,34 @@ export class GovernanceService {
     profile.lastPenaltyAt = now;
     await profile.save({ session });
     await this.agentGovernanceHistoryModel.create(
-      [{
-        agentId: governanceCase.targetAuthorId,
-        source: AGENT_GOVERNANCE_HISTORY_SOURCES.COMMUNITY_CASE,
-        previousHealthLevel: previousLogicalHealth,
-        nextHealthLevel: nextHealth,
-        publicReason: governanceCase.resolutionReason ?? '社区治理判定违规',
-        governanceCaseId: governanceCase.id,
-        adminUserId: null,
-        relatedRecordId: null,
-      }],
+      [
+        {
+          agentId: governanceCase.targetAuthorId,
+          source: AGENT_GOVERNANCE_HISTORY_SOURCES.COMMUNITY_CASE,
+          previousHealthLevel: previousLogicalHealth,
+          nextHealthLevel: nextHealth,
+          publicReason:
+            governanceCase.resolutionReason ??
+            translateApiText(
+              'api.labels.communityGovernanceViolation',
+              'Community governance found a violation',
+            ),
+          governanceCaseId: governanceCase.id,
+          adminUserId: null,
+          relatedRecordId: null,
+        },
+      ],
       { session },
     );
     const xpPenalty = getGovernancePenaltyXpForHealthLevel(nextHealth);
     if (xpPenalty > 0) {
-      await this.applyXpPenalty(governanceCase.targetAuthorId, governanceCase.id, xpPenalty, now, session);
+      await this.applyXpPenalty(
+        governanceCase.targetAuthorId,
+        governanceCase.id,
+        xpPenalty,
+        now,
+        session,
+      );
     }
   }
 
@@ -1395,16 +1427,19 @@ export class GovernanceService {
       { session },
     );
     if (existing) return;
-    await this.xpEventModel.create([
-      {
-        agentId,
-        sourceType: 'GOVERNANCE_PENALTY',
-        sourceId: caseId,
-        reasonKey: 'violation-health-penalty',
-        xp: -xpPenalty,
-        occurredAt,
-      },
-    ], { session });
+    await this.xpEventModel.create(
+      [
+        {
+          agentId,
+          sourceType: 'GOVERNANCE_PENALTY',
+          sourceId: caseId,
+          reasonKey: 'violation-health-penalty',
+          xp: -xpPenalty,
+          occurredAt,
+        },
+      ],
+      { session },
+    );
     await this.progressModel.findOneAndUpdate(
       { agentId },
       { $inc: { xpTotal: -xpPenalty } },
@@ -1439,13 +1474,16 @@ export class GovernanceService {
       },
     ];
 
-    const voteGroups = new Map<string, {
-      voterCount: number;
-      violation: { voterCount: number; votes: number };
-      notViolation: { voterCount: number; votes: number };
-      firstOccurredAt: Date;
-      lastOccurredAt: Date;
-    }>();
+    const voteGroups = new Map<
+      string,
+      {
+        voterCount: number;
+        violation: { voterCount: number; votes: number };
+        notViolation: { voterCount: number; votes: number };
+        firstOccurredAt: Date;
+        lastOccurredAt: Date;
+      }
+    >();
 
     for (const vote of voteRows) {
       const createdAt = vote.createdAt;
@@ -1473,7 +1511,9 @@ export class GovernanceService {
       voteGroups.set(dateKey, group);
     }
 
-    for (const [date, group] of [...voteGroups.entries()].sort(([left], [right]) => left.localeCompare(right))) {
+    for (const [date, group] of [...voteGroups.entries()].sort(([left], [right]) =>
+      left.localeCompare(right),
+    )) {
       events.push({
         type: 'VOTES_CAST',
         date,
@@ -1533,7 +1573,10 @@ export class GovernanceService {
       },
       openedAt: governanceCase.openedAt.toISOString(),
       resolvedAt: resolvedAt.toISOString(),
-      durationMinutes: Math.max(0, Math.round((resolvedAt.getTime() - governanceCase.openedAt.getTime()) / 60000)),
+      durationMinutes: Math.max(
+        0,
+        Math.round((resolvedAt.getTime() - governanceCase.openedAt.getTime()) / 60000),
+      ),
       resolutionSource: governanceCase.resolutionSource,
       resolutionReason: governanceCase.resolutionReason,
     };
@@ -1578,9 +1621,10 @@ export class GovernanceService {
       };
     }
     if (snapshot.kind === GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL) {
-      const content = snapshot.proposal.topicSnapshot
-        ?? snapshot.proposal.rulesSnapshot?.map((rule) => rule.text).join('\n')
-        ?? snapshot.proposal.reason;
+      const content =
+        snapshot.proposal.topicSnapshot ??
+        snapshot.proposal.rulesSnapshot?.map((rule) => rule.text).join('\n') ??
+        snapshot.proposal.reason;
       return {
         kind: snapshot.kind,
         proposal: {
@@ -1614,13 +1658,20 @@ export class GovernanceService {
         createdAt: snapshot.reply.createdAt.toISOString(),
       },
       ...(snapshot.parentReply
-        ? { parentReply: { id: snapshot.parentReply.id, excerpt: this.compactPreview(snapshot.parentReply.content) } }
+        ? {
+            parentReply: {
+              id: snapshot.parentReply.id,
+              excerpt: this.compactPreview(snapshot.parentReply.content),
+            },
+          }
         : {}),
       depth: snapshot.parentReply ? 2 : 1,
     };
   }
 
-  private serializeTargetSnapshot(snapshot: GovernanceTargetSnapshot): SerializedGovernanceTargetSnapshot {
+  private serializeTargetSnapshot(
+    snapshot: GovernanceTargetSnapshot,
+  ): SerializedGovernanceTargetSnapshot {
     if (snapshot.kind === GOVERNANCE_TARGET_TYPES.POST) {
       return {
         kind: snapshot.kind,
@@ -1655,17 +1706,20 @@ export class GovernanceService {
       },
       ...(snapshot.parentReply
         ? {
-          parentReply: {
-            ...snapshot.parentReply,
-            createdAt: snapshot.parentReply.createdAt.toISOString(),
-          },
-        }
+            parentReply: {
+              ...snapshot.parentReply,
+              createdAt: snapshot.parentReply.createdAt.toISOString(),
+            },
+          }
         : {}),
     };
   }
 
   private toPublicResultStatus(status: GovernanceCaseStatus): GovernancePublicResultItem['status'] {
-    if (status === GOVERNANCE_CASE_STATUS.RESOLVED_VIOLATION || status === GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION) {
+    if (
+      status === GOVERNANCE_CASE_STATUS.RESOLVED_VIOLATION ||
+      status === GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION
+    ) {
       return status;
     }
     throw new Error(`Unsupported public governance result status: ${status}`);
@@ -1676,7 +1730,6 @@ export class GovernanceService {
     if (status === GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION) return 'not_violation';
     throw new Error(`Unsupported public governance result status: ${status}`);
   }
-
 
   private weightedSampleCases(cases: GovernanceCase[], limit: number, now: Date): GovernanceCase[] {
     const pool = cases.map((governanceCase) => {
@@ -1767,9 +1820,11 @@ export class GovernanceService {
   }
 
   private isDuplicateKeyError(error: unknown): boolean {
-    return typeof error === 'object'
-      && error !== null
-      && 'code' in error
-      && (error as { code?: number }).code === 11000;
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      (error as { code?: number }).code === 11000
+    );
   }
 }

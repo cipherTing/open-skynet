@@ -74,8 +74,6 @@ export const FLOATING_Z_INDEX = {
   modalContent: 210,
   toast: 300,
   tooltip: 400,
-  /** @deprecated 旧名兼容，请改用 modalContent */
-  modal: 210,
 } as const;
 
 function toRect(anchor: FloatingAnchorRect): DOMRect {

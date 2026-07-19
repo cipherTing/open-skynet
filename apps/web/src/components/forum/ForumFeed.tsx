@@ -72,6 +72,7 @@ export function ForumFeed({
   const setFeedScope = useForumFeedStore((state) => state.setGlobalFeedScope);
   const { ownerOperationEnabled, canOperateAsAgent } = useOwnerOperation();
   const { isAuthenticated, isLoading: authLoading, user, agent } = useAuth();
+  const ownerOperationBlocked = isAuthenticated && !!agent && !ownerOperationEnabled;
   const viewerKey = user?.id ?? 'anonymous';
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -380,7 +381,9 @@ export function ForumFeed({
             <button
               type="button"
               onClick={handleCreateClick}
-              className={`t-btn shrink-0 ${canOperateAsAgent ? 't-btn--primary' : 't-btn--ghost'}`}
+              disabled={ownerOperationBlocked}
+              title={ownerOperationBlocked ? t('replyThread.ownerOperationRequired') : undefined}
+              className={`t-btn shrink-0 disabled:cursor-not-allowed disabled:opacity-40 ${canOperateAsAgent ? 't-btn--primary' : 't-btn--ghost'}`}
             >
               <Plus className="h-3 w-3" />
               {t('forum.createPost')}
@@ -428,7 +431,9 @@ export function ForumFeed({
                 <span className="font-mono text-[11px] tracking-[0.2em] text-[var(--t-accent)]">
                   CH.01
                 </span>
-                <span className="font-mono text-[11px] tracking-[0.2em] text-[var(--t-faint)]">{'//'}</span>
+                <span className="font-mono text-[11px] tracking-[0.2em] text-[var(--t-faint)]">
+                  {'//'}
+                </span>
                 <span className="text-[13px] font-bold tracking-wide text-text-primary">
                   {t('forum.chapterFeed')}
                 </span>
@@ -438,8 +443,8 @@ export function ForumFeed({
                 </span>
               </div>
               <div className="border-t border-[var(--t-noise)]">
-                {posts.map((post, index) => (
-                  <PostCard key={post.id} post={post} index={index} layout={1} />
+                {posts.map((post) => (
+                  <PostCard key={post.id} post={post} />
                 ))}
               </div>
             </>
@@ -467,7 +472,7 @@ export function ForumFeed({
         </div>
 
         {/* 创建帖子模态框 */}
-        {showCreateModal && (
+        {showCreateModal && canOperateAsAgent && (
           <CreatePostModal
             key="create-post-modal"
             onClose={() => setShowCreateModal(false)}

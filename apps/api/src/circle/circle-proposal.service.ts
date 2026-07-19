@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -55,6 +54,8 @@ import type {
   ReviseCircleProposalDto,
   SetCircleProposalStanceDto,
 } from './dto/circle-proposal.dto';
+import { circleProposalErrors, commonErrors } from '@/common/errors/business-errors';
+import { isApiMessage } from '@/common/i18n/api-message';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -88,10 +89,10 @@ function addHours(date: Date, hours: number): Date {
 function normalizeMarkdown(value: string): string {
   const normalized = value.trim();
   if (/<\/?[a-z][^>]*>/iu.test(normalized)) {
-    throw new BadRequestException('Markdown 不允许包含 HTML 标签');
+    throw circleProposalErrors.markdownHtmlNotAllowed();
   }
   if (/\]\(\s*(?:javascript|data|vbscript):/iu.test(normalized)) {
-    throw new BadRequestException('Markdown 包含不允许的链接协议');
+    throw circleProposalErrors.markdownLinkProtocolNotAllowed();
   }
   return normalized;
 }
@@ -102,7 +103,7 @@ function normalizeRules(rules: ReadonlyArray<{ id: string; text: string }>): Cir
     new Set(normalized.map((rule) => rule.id)).size !== normalized.length ||
     new Set(normalized.map((rule) => rule.text)).size !== normalized.length
   ) {
-    throw new BadRequestException('圈子规则 ID 或正文不能重复');
+    throw circleProposalErrors.duplicateRules();
   }
   return normalized;
 }
@@ -116,7 +117,7 @@ function rulesEqual(left: CircleRuleItem[], right: CircleRuleItem[]): boolean {
 
 function assertIdempotencyKey(key: string | undefined): string {
   if (!key || !IDEMPOTENCY_KEY_PATTERN.test(key)) {
-    throw new BadRequestException('Idempotency-Key 必须是 UUID');
+    throw circleProposalErrors.invalidIdempotencyKey();
   }
   return key;
 }
@@ -280,15 +281,15 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
         const actor = await this.getParticipant(circle.id, actorAgentId, true, session);
         const currentVersion = this.getScopeVersion(circle, dto.scope);
         if (currentVersion !== dto.expectedVersion) {
-          throw new ConflictException('圈子内容版本已更新，请刷新后重新发起');
+          throw circleProposalErrors.circleVersionConflict();
         }
         const payload = this.normalizePayload(circle, dto.scope, dto);
         const eligibleMembers = await this.getEligibleMembers(circle.id, session);
         if (eligibleMembers.length < 3) {
-          throw new ConflictException('当前圈子合资格成员不足 3 人，暂时不能发起共建提案');
+          throw circleProposalErrors.eligibleMembersInsufficient(3);
         }
         if (!eligibleMembers.some((member) => member.ownerUserId === actor.ownerUserId)) {
-          throw new ForbiddenException('当前 Agent 不具备共建资格');
+          throw circleProposalErrors.notEligible();
         }
         const now = new Date();
         const quorum = Math.min(20, Math.max(3, Math.ceil(eligibleMembers.length * 0.1)));
@@ -301,8 +302,7 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
           creatorAgentNameSnapshot: actor.name,
           creatorAgentAvatarSeedSnapshot: actor.avatarSeed,
           baseVersion: currentVersion,
-          baseTopicSnapshot:
-            dto.scope === CIRCLE_PROPOSAL_SCOPES.TOPIC ? circle.topic : null,
+          baseTopicSnapshot: dto.scope === CIRCLE_PROPOSAL_SCOPES.TOPIC ? circle.topic : null,
           baseRulesSnapshot:
             dto.scope === CIRCLE_PROPOSAL_SCOPES.RULES
               ? circle.rules.map((rule) => ({ ...rule }))
@@ -368,7 +368,7 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
           idempotencyKey,
         });
         if (duplicate) return duplicate;
-        throw new ConflictException('该范围已经存在进行中的共建提案');
+        throw circleProposalErrors.activeScopeExists();
       });
     return this.detail(circleId, created.id, actorAgentId);
   }
@@ -398,17 +398,17 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
         proposal.status !== CIRCLE_PROPOSAL_STATUSES.DISCUSSION ||
         proposal.creatorOwnerUserIdSnapshot !== transactionActor.ownerUserId
       ) {
-        throw new ForbiddenException('只有提案人可以在讨论期修订提案');
+        throw circleProposalErrors.authorRevisionRequired();
       }
       const now = new Date();
       if (proposal.discussionDeadlineAt <= now) {
-        throw new ConflictException('当前 revision 的讨论期已经结束');
+        throw circleProposalErrors.discussionEnded();
       }
       if (
         proposal.expiresAt.getTime() - now.getTime() <
         CIRCLE_PROPOSAL_DISCUSSION_HOURS * HOUR_MS
       ) {
-        throw new ConflictException('提案剩余时间不足一个完整讨论期，不能继续修订');
+        throw circleProposalErrors.revisionLifetimeInsufficient();
       }
       const payload = this.normalizePayload(circle, proposal.scope, dto);
       const nextRevisionNumber = proposal.currentRevisionNumber + 1;
@@ -458,7 +458,7 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
         },
         { session },
       );
-      if (updated.modifiedCount !== 1) throw new ConflictException('提案已被其他操作更新');
+      if (updated.modifiedCount !== 1) throw circleProposalErrors.versionConflict();
     });
     await this.notifyProposalParticipants(
       await this.getProposal(circleId, proposalId),
@@ -477,9 +477,9 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
     await this.advanceDueProposals(circleId);
     const reason = dto.reason ? normalizeMarkdown(dto.reason) : null;
     if (dto.stance === CIRCLE_PROPOSAL_STANCES.OBJECTION && !reason) {
-      throw new BadRequestException('提出异议时必须说明理由');
+      throw circleProposalErrors.objectionReasonRequired();
     }
-    await this.databaseService.$requiredTransaction(async (session) => {
+    await this.databaseService.$transaction(async (session) => {
       const circle = await this.getActiveCircle(circleId, session);
       const actor = await this.getParticipant(circle.id, actorAgentId, true, session);
       const proposal = await this.getProposal(circle.id, proposalId, session);
@@ -497,7 +497,7 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
         { session },
       );
       if (touched.modifiedCount !== 1) {
-        throw new ConflictException('当前提案不在可表态的讨论期');
+        throw circleProposalErrors.discussionClosed();
       }
       await this.stanceModel.findOneAndUpdate(
         {
@@ -540,7 +540,7 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
     dto: ExpectedCircleProposalVersionDto,
   ) {
     await this.advanceDueProposals(circleId);
-    await this.databaseService.$requiredTransaction(async (session) => {
+    await this.databaseService.$transaction(async (session) => {
       const circle = await this.getActiveCircle(circleId, session);
       const actor = await this.getParticipant(circle.id, actorAgentId, true, session);
       const proposal = await this.getProposal(circle.id, proposalId, session);
@@ -558,7 +558,7 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
         { session },
       );
       if (touched.modifiedCount !== 1) {
-        throw new ConflictException('当前提案不在可表态的讨论期');
+        throw circleProposalErrors.discussionClosed();
       }
       await this.stanceModel.updateOne(
         {
@@ -590,7 +590,7 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
     });
     if (existing) return this.serializeComment(existing);
     const comment = await this.databaseService
-      .$requiredTransaction(async (session) => {
+      .$transaction(async (session) => {
         const circle = await this.getActiveCircle(circleId, session);
         const transactionActor = await this.getParticipant(circle.id, actorAgentId, false, session);
         const proposal = await this.getProposal(circle.id, proposalId, session);
@@ -604,7 +604,7 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
           !activeDeadline ||
           activeDeadline <= now
         ) {
-          throw new ConflictException('已结束的提案不能继续评论');
+          throw circleProposalErrors.commentsClosed();
         }
         const touched = await this.proposalModel.updateOne(
           {
@@ -619,7 +619,7 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
           { session },
         );
         if (touched.modifiedCount !== 1) {
-          throw new ConflictException('已结束的提案不能继续评论');
+          throw circleProposalErrors.commentsClosed();
         }
         const [created] = await this.commentModel.create(
           [
@@ -685,12 +685,12 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
     });
     if (existingVote) {
       if (existingVote.choice !== dto.choice) {
-        throw new ConflictException('第一票已经提交，不能修改');
+        throw circleProposalErrors.voteImmutable();
       }
       return this.detail(circleId, proposalId, actorAgentId);
     }
     try {
-      await this.databaseService.$requiredTransaction(async (session) => {
+      await this.databaseService.$transaction(async (session) => {
         const circle = await this.getActiveCircle(circleId, session);
         const transactionActor = await this.getParticipant(circle.id, actorAgentId, true, session);
         const proposal = await this.getProposal(circle.id, proposalId, session);
@@ -702,7 +702,7 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
           proposal.votingDeadlineAt <= now ||
           proposal.expiresAt <= now
         ) {
-          throw new ConflictException('当前提案不在可表决时段');
+          throw circleProposalErrors.votingClosed();
         }
         const existing = await this.voteModel.findOne(
           {
@@ -714,7 +714,7 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
         );
         if (existing) {
           if (existing.choice !== dto.choice) {
-            throw new ConflictException('第一票已经提交，不能修改');
+            throw circleProposalErrors.voteImmutable();
           }
           return;
         }
@@ -732,7 +732,7 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
           { session },
         );
         if (touched.modifiedCount !== 1) {
-          throw new ConflictException('当前提案不在可表决时段');
+          throw circleProposalErrors.votingClosed();
         }
         await this.voteModel.create(
           [
@@ -754,8 +754,7 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
         proposalId,
         ownerUserIdSnapshot: actor.ownerUserId,
       });
-      if (!raced || raced.choice !== dto.choice)
-        throw new ConflictException('第一票已经提交，不能修改');
+      if (!raced || raced.choice !== dto.choice) throw circleProposalErrors.voteImmutable();
     }
     return this.detail(circleId, proposalId, actorAgentId);
   }
@@ -776,7 +775,7 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
         proposal.status !== CIRCLE_PROPOSAL_STATUSES.DISCUSSION ||
         proposal.creatorOwnerUserIdSnapshot !== actor.ownerUserId
       ) {
-        throw new ForbiddenException('只有提案人可以在讨论期撤回提案');
+        throw circleProposalErrors.authorWithdrawalRequired();
       }
       await this.closeProposal(proposal, CIRCLE_PROPOSAL_STATUSES.WITHDRAWN, new Date(), session);
     });
@@ -786,12 +785,13 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
   async setWatch(circleId: string, actorAgentId: string, enabled: boolean) {
     if (enabled) await this.getActiveCircle(circleId);
     const subscription = await this.subscriptionModel.findOne({ circleId, agentId: actorAgentId });
-    if (!subscription) throw new ConflictException('需要先订阅圈子才能关注共建动态');
-    if (subscription.coBuildWatchEnabled !== enabled) {
+    if (!subscription) throw circleProposalErrors.watchSubscriptionRequired();
+    const changed = subscription.coBuildWatchEnabled !== enabled;
+    if (changed) {
       subscription.coBuildWatchEnabled = enabled;
       await subscription.save();
     }
-    return { watching: subscription.coBuildWatchEnabled };
+    return { circleId, watching: subscription.coBuildWatchEnabled, changed };
   }
 
   async moderateProposalForAdmin(
@@ -802,7 +802,7 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
   ): Promise<CircleProposalDocument> {
     const proposal = await this.getProposal(circleId, proposalId, session);
     if (!ACTIVE_STATUSES.includes(proposal.status)) {
-      throw new ConflictException('提案已经结束，不能重复终止');
+      throw circleProposalErrors.alreadyEnded();
     }
     this.assertNotUnderGovernance(proposal);
     proposal.moderationReason = reason;
@@ -849,7 +849,8 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
           !proposal ||
           !ACTIVE_STATUSES.includes(proposal.status) ||
           proposal.activeGovernanceCaseId !== null
-        ) return;
+        )
+          return;
         const circle = await this.getCircle(proposal.circleId, session);
         if (circle.status !== CIRCLE_STATUSES.ACTIVE) return;
         const transactionNow = new Date();
@@ -965,8 +966,7 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
       await this.closeProposal(proposal, CIRCLE_PROPOSAL_STATUSES.SUPERSEDED, resolvedAt, session);
       return;
     }
-    const previousTopic =
-      proposal.scope === CIRCLE_PROPOSAL_SCOPES.TOPIC ? circle.topic : null;
+    const previousTopic = proposal.scope === CIRCLE_PROPOSAL_SCOPES.TOPIC ? circle.topic : null;
     if (proposal.scope === CIRCLE_PROPOSAL_SCOPES.TOPIC) {
       if (!revision.topicSnapshot) throw new Error('简介提案缺少最终简介快照');
       circle.topic = revision.topicSnapshot;
@@ -1072,17 +1072,19 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
       { session },
     );
     await this.maintenanceLogModel.create(
-      [{
-        circleId: proposal.circleId,
-        action: CIRCLE_MAINTENANCE_ACTIONS.PROPOSAL_MODERATED,
-        actorType: CIRCLE_MAINTENANCE_ACTOR_TYPES.SYSTEM,
-        actorAgentId: null,
-        targetPostId: null,
-        proposalId: proposal.id,
-        proposalRevisionNumber: proposal.currentRevisionNumber,
-        publicReason,
-        metadata: { scope: proposal.scope, governanceCaseId },
-      }],
+      [
+        {
+          circleId: proposal.circleId,
+          action: CIRCLE_MAINTENANCE_ACTIONS.PROPOSAL_MODERATED,
+          actorType: CIRCLE_MAINTENANCE_ACTOR_TYPES.SYSTEM,
+          actorAgentId: null,
+          targetPostId: null,
+          proposalId: proposal.id,
+          proposalRevisionNumber: proposal.currentRevisionNumber,
+          publicReason,
+          metadata: { scope: proposal.scope, governanceCaseId },
+        },
+      ],
       { session },
     );
     await this.notifyProposalParticipants(proposal, 'CO_BUILD_STATUS', undefined, session);
@@ -1095,11 +1097,9 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
     publicReason: string,
     session?: ClientSession,
   ): Promise<boolean> {
-    const comment = await this.commentModel.findOne(
-      { _id: commentId, hiddenAt: null },
-      null,
-      { session },
-    );
+    const comment = await this.commentModel.findOne({ _id: commentId, hiddenAt: null }, null, {
+      session,
+    });
     if (!comment) return false;
     const proposal = await this.proposalModel.findById(comment.proposalId, null, { session });
     if (!proposal) throw new Error(`提案评论 ${comment.id} 缺少所属提案`);
@@ -1110,22 +1110,24 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
     );
     if (hidden.modifiedCount !== 1) return false;
     await this.maintenanceLogModel.create(
-      [{
-        circleId: comment.circleId,
-        action: CIRCLE_MAINTENANCE_ACTIONS.PROPOSAL_COMMENT_MODERATED,
-        actorType: CIRCLE_MAINTENANCE_ACTOR_TYPES.SYSTEM,
-        actorAgentId: null,
-        targetPostId: null,
-        proposalId: proposal.id,
-        proposalRevisionNumber: comment.revisionNumber,
-        publicReason,
-        metadata: {
-          governanceCaseId,
-          commentId: comment.id,
-          previousStatus: 'VISIBLE',
-          nextStatus: 'HIDDEN',
+      [
+        {
+          circleId: comment.circleId,
+          action: CIRCLE_MAINTENANCE_ACTIONS.PROPOSAL_COMMENT_MODERATED,
+          actorType: CIRCLE_MAINTENANCE_ACTOR_TYPES.SYSTEM,
+          actorAgentId: null,
+          targetPostId: null,
+          proposalId: proposal.id,
+          proposalRevisionNumber: comment.revisionNumber,
+          publicReason,
+          metadata: {
+            governanceCaseId,
+            commentId: comment.id,
+            previousStatus: 'VISIBLE',
+            nextStatus: 'HIDDEN',
+          },
         },
-      }],
+      ],
       { session },
     );
     await this.notifyProposalParticipants(proposal, 'CO_BUILD_STATUS', undefined, session);
@@ -1168,15 +1170,13 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
   ): ProposalPayload {
     if (scope === CIRCLE_PROPOSAL_SCOPES.TOPIC) {
       const topic = dto.topic?.trim();
-      if (!topic || dto.rules !== undefined)
-        throw new BadRequestException('简介提案必须且只能提交 topic');
-      if (topic === circle.topic) throw new BadRequestException('提案简介与当前简介相同');
+      if (!topic || dto.rules !== undefined) throw circleProposalErrors.topicPayloadInvalid();
+      if (topic === circle.topic) throw circleProposalErrors.topicUnchanged();
       return { topicSnapshot: topic, rulesSnapshot: null };
     }
-    if (!dto.rules || dto.topic !== undefined)
-      throw new BadRequestException('规则提案必须且只能提交 rules');
+    if (!dto.rules || dto.topic !== undefined) throw circleProposalErrors.rulesPayloadInvalid();
     const rules = normalizeRules(dto.rules);
-    if (rulesEqual(rules, circle.rules)) throw new BadRequestException('提案规则与当前规则相同');
+    if (rulesEqual(rules, circle.rules)) throw circleProposalErrors.rulesUnchanged();
     return { topicSnapshot: null, rulesSnapshot: rules };
   }
 
@@ -1185,13 +1185,12 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
   }
 
   private assertProposalVersion(proposal: CircleProposal, expectedVersion: number): void {
-    if (proposal.version !== expectedVersion)
-      throw new ConflictException('提案已更新，请刷新后重试');
+    if (proposal.version !== expectedVersion) throw circleProposalErrors.versionConflict();
   }
 
   private assertNotUnderGovernance(proposal: CircleProposal): void {
     if (proposal.activeGovernanceCaseId) {
-      throw new ConflictException('提案正在治理审理中，请先完成治理案件');
+      throw circleProposalErrors.governanceActive();
     }
   }
 
@@ -1201,23 +1200,23 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
       proposal.status !== CIRCLE_PROPOSAL_STATUSES.DISCUSSION ||
       proposal.discussionDeadlineAt <= new Date()
     ) {
-      throw new ConflictException('当前提案不在可表态的讨论期');
+      throw circleProposalErrors.discussionClosed();
     }
   }
 
   private async getCircle(circleId: string, session?: ClientSession): Promise<Circle> {
-    if (!Types.ObjectId.isValid(circleId)) throw new NotFoundException('圈子不存在');
+    if (!Types.ObjectId.isValid(circleId)) throw commonErrors.circleNotFound();
     const circle = await this.circleModel.findOne({ _id: circleId, deletedAt: null }, null, {
       session,
     });
-    if (!circle) throw new NotFoundException('圈子不存在');
+    if (!circle) throw commonErrors.circleNotFound();
     return circle;
   }
 
   private async getActiveCircle(circleId: string, session?: ClientSession): Promise<Circle> {
     const circle = await this.getCircle(circleId, session);
     if (circle.status !== CIRCLE_STATUSES.ACTIVE) {
-      throw new ConflictException('圈子已被封禁，不能参与社区共建');
+      throw circleProposalErrors.circleBanned();
     }
     return circle;
   }
@@ -1232,11 +1231,11 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
     proposalId: string,
     session?: ClientSession,
   ): Promise<CircleProposalDocument> {
-    if (!Types.ObjectId.isValid(proposalId)) throw new NotFoundException('共建提案不存在');
+    if (!Types.ObjectId.isValid(proposalId)) throw circleProposalErrors.proposalNotFound();
     const proposal = await this.proposalModel.findOne({ _id: proposalId, circleId }, null, {
       session,
     });
-    if (!proposal) throw new NotFoundException('共建提案不存在');
+    if (!proposal) throw circleProposalErrors.proposalNotFound();
     return proposal;
   }
 
@@ -1249,13 +1248,13 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
     const subscription = await this.subscriptionModel.findOne({ circleId, agentId }, null, {
       session,
     });
-    if (!subscription) throw new ForbiddenException('需要先订阅圈子才能参与共建');
+    if (!subscription) throw circleProposalErrors.subscriptionRequired();
     const agent = await this.agentModel.findOne(
       { _id: agentId, deletedAt: null },
       PUBLIC_AGENT_FIELDS,
       { session },
     );
-    if (!agent) throw new NotFoundException('Agent 不存在');
+    if (!agent) throw commonErrors.agentNotFound();
     const [progress, profile] = await Promise.all([
       this.progressModel.findOne({ agentId }, null, { session }),
       this.governanceProfileModel.findOne({ agentId }, null, { session }),
@@ -1263,7 +1262,7 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
     const level = this.getLevel(progress?.xpTotal ?? 0);
     const healthLevel = profile?.healthLevel ?? GOVERNANCE_HEALTH_LEVEL.GOOD;
     if (formal && (level < 4 || healthLevel < GOVERNANCE_HEALTH_LEVEL.WARNING)) {
-      throw new ForbiddenException('正式参与共建需要达到 Lv4 且健康状态不低于 WARNING');
+      throw circleProposalErrors.notEligible();
     }
     return {
       agentId: agent.id,
@@ -1288,13 +1287,19 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       if (error instanceof ForbiddenException || error instanceof ConflictException) {
         const response = error.getResponse();
-        const reason =
-          typeof response === 'string'
-            ? response
-            : typeof response === 'object' && response !== null && 'message' in response
-              ? String(response.message)
-              : '当前 Agent 不具备共建资格';
-        return { eligible: false, reason, level: null, healthLevel: null };
+        if (
+          typeof response === 'object' &&
+          response !== null &&
+          'message' in response &&
+          isApiMessage(response.message)
+        ) {
+          return {
+            eligible: false,
+            reason: response.message,
+            level: null,
+            healthLevel: null,
+          };
+        }
       }
       throw error;
     }

@@ -1,4 +1,5 @@
 import { ConflictException } from '@nestjs/common';
+import { apiMessage } from '@/common/i18n/api-message';
 
 export class InsufficientStaminaException extends ConflictException {
   constructor(params: {
@@ -7,12 +8,12 @@ export class InsufficientStaminaException extends ConflictException {
     nextRecoverAt: string | null;
   }) {
     super({
-      message: '体力不足，无法执行该操作',
+      code: 'INSUFFICIENT_STAMINA',
+      message: apiMessage('api.errors.insufficientStamina'),
       currentStamina: params.currentStamina,
       requiredStamina: params.requiredStamina,
       nextRecoverAt: params.nextRecoverAt,
     });
-    this.name = 'INSUFFICIENT_STAMINA';
+    this.name = 'InsufficientStaminaException';
   }
 }
-

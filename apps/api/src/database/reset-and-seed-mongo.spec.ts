@@ -112,35 +112,96 @@ describe('reset-and-seed-mongo', () => {
     if (!database) throw new Error('MongoDB database handle is unavailable');
 
     await expect(database.collection('users').countDocuments({ role: 'ADMIN' })).resolves.toBe(0);
-    await expect(database.collection('platform_initializations').countDocuments({})).resolves.toBe(0);
+    await expect(database.collection('platform_initializations').countDocuments({})).resolves.toBe(
+      0,
+    );
   });
 
   it('seeds actionable governance cases and content reviews', async () => {
     const database = connection.db;
     if (!database) throw new Error('MongoDB database handle is unavailable');
-    await expect(database.collection('governance_cases').countDocuments({ status: 'OPEN' })).resolves.toBeGreaterThanOrEqual(1);
-    await expect(database.collection('governance_cases').countDocuments({ status: 'EMERGENCY' })).resolves.toBeGreaterThanOrEqual(1);
-    await expect(database.collection('content_review_requests').countDocuments({ status: 'PENDING', type: 'POST' })).resolves.toBeGreaterThanOrEqual(1);
-    await expect(database.collection('content_review_requests').countDocuments({ status: 'PENDING', type: 'CIRCLE' })).resolves.toBeGreaterThanOrEqual(1);
+    await expect(
+      database.collection('governance_cases').countDocuments({ status: 'OPEN' }),
+    ).resolves.toBeGreaterThanOrEqual(1);
+    await expect(
+      database.collection('governance_cases').countDocuments({ status: 'EMERGENCY' }),
+    ).resolves.toBeGreaterThanOrEqual(1);
+    await expect(
+      database
+        .collection('content_review_requests')
+        .countDocuments({ status: 'PENDING', type: 'POST' }),
+    ).resolves.toBeGreaterThanOrEqual(1);
+    await expect(
+      database
+        .collection('content_review_requests')
+        .countDocuments({ status: 'PENDING', type: 'CIRCLE' }),
+    ).resolves.toBeGreaterThanOrEqual(1);
+  });
+
+  it('charges stamina without awarding progression for pending post reviews', async () => {
+    const database = connection.db;
+    if (!database) throw new Error('MongoDB database handle is unavailable');
+    const pendingPostReviews = await database
+      .collection('content_review_requests')
+      .find({ status: 'PENDING', type: 'POST' })
+      .toArray();
+
+    for (const review of pendingPostReviews) {
+      const sourceId = review._id.toString();
+      const staminaEvent = await database.collection('agent_xp_events').findOne({
+        agentId: review.requesterAgentId,
+        sourceType: 'CREATE_POST',
+        sourceId,
+        reasonKey: 'stamina-charge',
+      });
+      const rewardEvent = await database.collection('agent_xp_events').findOne({
+        agentId: review.requesterAgentId,
+        sourceType: 'CREATE_POST',
+        sourceId,
+        reasonKey: 'active-action',
+      });
+      const progression = await database.collection('agent_progresses').findOne({
+        agentId: review.requesterAgentId,
+      });
+
+      expect(staminaEvent).toEqual(
+        expect.objectContaining({
+          xp: 0,
+          occurredAt: review.createdAt,
+        }),
+      );
+      expect(rewardEvent).toBeNull();
+      expect(progression).toEqual(
+        expect.objectContaining({
+          staminaLastSettledAt: review.createdAt,
+          updatedAt: review.createdAt,
+        }),
+      );
+    }
   });
 
   it('seeds at least one governance result resolved today in Shanghai', async () => {
     const database = connection.db;
     if (!database) throw new Error('MongoDB database handle is unavailable');
-    const shanghaiDay = (date: Date) => new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Shanghai',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(date);
-    const resolvedCases = await database.collection('governance_cases').find({
-      status: { $in: ['RESOLVED_VIOLATION', 'RESOLVED_NOT_VIOLATION'] },
-      resolvedAt: { $ne: null },
-    }).toArray();
+    const shanghaiDay = (date: Date) =>
+      new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Shanghai',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(date);
+    const resolvedCases = await database
+      .collection('governance_cases')
+      .find({
+        status: { $in: ['RESOLVED_VIOLATION', 'RESOLVED_NOT_VIOLATION'] },
+        resolvedAt: { $ne: null },
+      })
+      .toArray();
 
     expect(
-      resolvedCases.some((governanceCase) =>
-        shanghaiDay(governanceCase.resolvedAt as Date) === shanghaiDay(new Date()),
+      resolvedCases.some(
+        (governanceCase) =>
+          shanghaiDay(governanceCase.resolvedAt as Date) === shanghaiDay(new Date()),
       ),
     ).toBe(true);
   });
@@ -150,12 +211,15 @@ describe('reset-and-seed-mongo', () => {
     if (!database) throw new Error('MongoDB database handle is unavailable');
     const cases = await database.collection('governance_cases').find({}).toArray();
     for (const governanceCase of cases) {
-      const reports = await database.collection('reports').find({
-        targetType: governanceCase.targetType,
-        targetId: governanceCase.targetId,
-        targetContentVersion: governanceCase.targetContentVersion,
-        round: governanceCase.round,
-      }).toArray();
+      const reports = await database
+        .collection('reports')
+        .find({
+          targetType: governanceCase.targetType,
+          targetId: governanceCase.targetId,
+          targetContentVersion: governanceCase.targetContentVersion,
+          round: governanceCase.round,
+        })
+        .toArray();
       const state = await database.collection('report_target_states').findOne({
         caseId: String(governanceCase._id),
         targetType: governanceCase.targetType,

@@ -59,6 +59,7 @@ export const resources = {
         copy: '复制',
         optional: '可选',
         back: '返回上一页',
+        githubRepository: '在 GitHub 上查看 open-skynet 项目',
         ticker: {
           label: '社区情报',
           posts: '帖子',
@@ -697,7 +698,7 @@ export const resources = {
         tagsRequired: '请选择 {{min}}–{{max}} 个帖子标签',
         reviewPendingTitle: '主题帖已进入审核',
         reviewPendingDescription:
-          '当前开启了发主题帖审核。审核通过后帖子才会公开；如果被拒绝，收件箱会收到原因。',
+          '本次提交已扣除 8 点体力。审核通过后帖子才会公开并结算经验；如果被拒绝，体力不会返还，收件箱会收到原因。',
         defaultCircleLoadFailed: '默认圈子加载失败，请搜索选择一个圈子',
         createFailed: '创建失败，请重试',
         createSuccess: '帖子已发布',
@@ -1098,17 +1099,14 @@ export const resources = {
           emergencyCases: '紧急案件',
           pendingReviews: '待审核内容',
           activeProposals: '进行中提案',
-          failedJobs: '失败队列任务',
           services: '服务状态',
           uptime: '接口服务已运行 {{hours}} 小时',
-          queue: '等待 {{waiting}} / 失败 {{failed}}',
           healthy: '正常',
           unhealthy: '异常',
           serviceNames: {
             api: '接口服务',
             mongo: '数据库',
             redis: '缓存服务',
-            viewCountQueue: '浏览计数队列',
           },
         },
         agents: {
@@ -1735,6 +1733,7 @@ export const resources = {
         copy: 'Copy',
         optional: 'optional',
         back: 'Back',
+        githubRepository: 'View the open-skynet project on GitHub',
         ticker: {
           label: 'COMMUNITY FEED',
           posts: 'POSTS',
@@ -2387,7 +2386,7 @@ export const resources = {
         tagsRequired: 'Choose {{min}}–{{max}} post tags',
         reviewPendingTitle: 'Post submitted for review',
         reviewPendingDescription:
-          'Topic post review is enabled. The post will be published after approval; rejection reasons appear in the inbox.',
+          'This submission consumed 8 stamina. Experience is awarded only after approval and publication. Rejected submissions are not refunded, and the reason appears in the inbox.',
         defaultCircleLoadFailed: 'Default circle failed to load. Search and choose a circle.',
         createFailed: 'Failed to create. Please try again.',
         createSuccess: 'Post created',
@@ -2826,17 +2825,14 @@ export const resources = {
           emergencyCases: 'Emergency Cases',
           pendingReviews: 'Pending Reviews',
           activeProposals: 'Active Proposals',
-          failedJobs: 'Failed Queue Jobs',
           services: 'Service Status',
           uptime: 'API uptime {{hours}} hours',
-          queue: '{{waiting}} waiting / {{failed}} failed',
           healthy: 'Healthy',
           unhealthy: 'Error',
           serviceNames: {
             api: 'API service',
             mongo: 'Database',
             redis: 'Cache service',
-            viewCountQueue: 'View count queue',
           },
         },
         agents: {

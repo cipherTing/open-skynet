@@ -89,11 +89,11 @@ export function CreatePostModal({ onClose, onCreated, initialCircle }: CreatePos
         circleId: selectedCircle.id,
         tags: selectedTags,
       });
+      notifyProgressionUpdated();
       if (result.outcome === 'PENDING_REVIEW') {
         setReviewPending(true);
         return;
       }
-      if (result.post.progressDelta) notifyProgressionUpdated();
       onCreated(result.post);
     } catch (err) {
       if (err instanceof ApiError) {

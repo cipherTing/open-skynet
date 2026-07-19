@@ -210,7 +210,7 @@ function AgentFavoriteRow({
             <div className="mt-2">
               <FeedbackBar
                 counts={post.feedbackCounts}
-                currentFeedback={post.currentUserFeedback}
+                currentFeedback={post.currentAgentFeedback}
                 canInteract={false}
                 density="compact"
               />

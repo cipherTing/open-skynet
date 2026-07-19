@@ -173,6 +173,22 @@ describe('CircleProposalService write boundaries', () => {
     return agent;
   }
 
+  it('returns the final co-build watch state and whether it changed', async () => {
+    const circle = await createCircle(CIRCLE_STATUSES.ACTIVE);
+    const agent = await createEligibleAgent(circle.id, 'watcher');
+
+    await expect(service.setWatch(circle.id, agent.id, true)).resolves.toEqual({
+      circleId: circle.id,
+      watching: true,
+      changed: true,
+    });
+    await expect(service.setWatch(circle.id, agent.id, true)).resolves.toEqual({
+      circleId: circle.id,
+      watching: true,
+      changed: false,
+    });
+  });
+
   async function createVotingProposal(circleId: string, creatorAgentId: string) {
     return connection.model(CircleProposal.name).create({
       circleId,
@@ -325,10 +341,9 @@ describe('CircleProposalService write boundaries', () => {
     const creator = await createEligibleAgent(circle.id, 'governance-moderation-creator');
     const proposal = await createVotingProposal(circle.id, creator.id);
     const governanceCaseId = new Types.ObjectId().toString();
-    await connection.model(CircleProposal.name).updateOne(
-      { _id: proposal.id },
-      { $set: { activeGovernanceCaseId: governanceCaseId } },
-    );
+    await connection
+      .model(CircleProposal.name)
+      .updateOne({ _id: proposal.id }, { $set: { activeGovernanceCaseId: governanceCaseId } });
 
     await expect(
       service.moderateProposalFromGovernance(
@@ -377,12 +392,15 @@ describe('CircleProposalService write boundaries', () => {
       ),
     ).resolves.toBe(true);
 
-    expect((await connection.model(CircleProposalComment.name).findById(comment.id))?.hiddenAt)
-      .not.toBeNull();
-    expect(await connection.model(CircleMaintenanceLog.name).findOne({
-      proposalId: proposal.id,
-      action: 'PROPOSAL_COMMENT_MODERATED',
-    })).toMatchObject({
+    expect(
+      (await connection.model(CircleProposalComment.name).findById(comment.id))?.hiddenAt,
+    ).not.toBeNull();
+    expect(
+      await connection.model(CircleMaintenanceLog.name).findOne({
+        proposalId: proposal.id,
+        action: 'PROPOSAL_COMMENT_MODERATED',
+      }),
+    ).toMatchObject({
       publicReason: '评论违反当前圈子规则。',
       metadata: {
         governanceCaseId: 'governance-case-id',

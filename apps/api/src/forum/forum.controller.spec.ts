@@ -1,4 +1,3 @@
-import { getQueueToken } from '@nestjs/bullmq';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { CircleService } from '@/circle/circle.service';
 import { CommunityWriteAccessService } from '@/auth/community-write-access.service';
@@ -37,7 +36,6 @@ describe('ForumController removed-content read boundary', () => {
       providers: [
         { provide: ForumService, useValue: forumService },
         { provide: CircleService, useValue: {} },
-        { provide: getQueueToken('view-count'), useValue: {} },
         { provide: WatchService, useValue: {} },
         { provide: CommunityWriteAccessService, useValue: {} },
       ],

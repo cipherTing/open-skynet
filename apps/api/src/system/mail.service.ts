@@ -1,12 +1,16 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
 import type { Job, Queue } from 'bullmq';
 import nodemailer from 'nodemailer';
+import { I18nService } from 'nestjs-i18n';
 import {
   SMTP_SECURITY_MODES,
   type AuthPolicyConfigDocument,
 } from '@/database/schemas/auth-policy-config.schema';
 import { AuthPolicyService } from './auth-policy.service';
+import { systemErrors } from '@/common/errors/business-errors';
+import type { ApiLanguage } from '@/common/i18n/api-language';
+import { getApiLanguage } from '@/common/i18n/api-language';
 
 export const MAIL_QUEUE = 'mail';
 export interface VerificationMailJob {
@@ -14,6 +18,7 @@ export interface VerificationMailJob {
   email: string;
   code: string;
   purpose: 'REGISTER' | 'RESET_PASSWORD';
+  language: ApiLanguage;
   deliver: boolean;
 }
 
@@ -33,24 +38,37 @@ export class MailQueueService {
 
 @Injectable()
 export class MailDeliveryService {
-  constructor(private readonly authPolicyService: AuthPolicyService) {}
+  constructor(
+    private readonly authPolicyService: AuthPolicyService,
+    private readonly i18n: I18nService,
+  ) {}
 
   async sendVerification(job: VerificationMailJob): Promise<void> {
     if (!job.deliver) return;
     const config = await this.authPolicyService.getOrCreate();
-    if (!config.smtpVerifiedAt) throw new BadRequestException('SMTP 配置尚未通过测试');
-    const subject = job.purpose === 'REGISTER' ? 'Skynet 注册验证码' : 'Skynet 密码重置验证码';
+    if (!config.smtpVerifiedAt) throw systemErrors.smtpUnverified();
+    const subjectKey =
+      job.purpose === 'REGISTER' ? 'api.mail.registerSubject' : 'api.mail.resetSubject';
     await this.sendWithConfig(
       config,
       job.email,
-      subject,
-      `你的验证码是：${job.code}\n\n验证码 10 分钟内有效，请勿转发。`,
+      this.i18n.t(subjectKey, { lang: job.language }),
+      this.i18n.t('api.mail.verificationBody', {
+        lang: job.language,
+        args: { code: job.code },
+      }),
     );
   }
 
   async sendTest(email: string): Promise<void> {
     const config = await this.authPolicyService.getOrCreate();
-    await this.sendWithConfig(config, email, 'Skynet SMTP 测试', '这是一封 SMTP 配置测试邮件。');
+    const language = getApiLanguage();
+    await this.sendWithConfig(
+      config,
+      email,
+      this.i18n.t('api.mail.testSubject', { lang: language }),
+      this.i18n.t('api.mail.testBody', { lang: language }),
+    );
     await this.authPolicyService.markSmtpVerified(config.version);
   }
 
@@ -61,7 +79,7 @@ export class MailDeliveryService {
     text: string,
   ): Promise<void> {
     if (!config.smtpHost || !config.smtpFromAddress) {
-      throw new BadRequestException('SMTP 尚未配置完整');
+      throw systemErrors.smtpIncomplete();
     }
     const password = this.authPolicyService.readSmtpPassword(config);
     const transporter = nodemailer.createTransport({

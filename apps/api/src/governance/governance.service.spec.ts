@@ -10,15 +10,24 @@ import { Post, PostSchema } from '@/database/schemas/post.schema';
 import { Reply, ReplySchema } from '@/database/schemas/reply.schema';
 import { PostRevision, PostRevisionSchema } from '@/database/schemas/post-revision.schema';
 import { ReplyRevision, ReplyRevisionSchema } from '@/database/schemas/reply-revision.schema';
-import { GovernanceAssignment, GovernanceAssignmentSchema } from '@/database/schemas/governance-assignment.schema';
+import {
+  GovernanceAssignment,
+  GovernanceAssignmentSchema,
+} from '@/database/schemas/governance-assignment.schema';
 import { GovernanceCase, GovernanceCaseSchema } from '@/database/schemas/governance-case.schema';
 import {
   ReportTargetState,
   ReportTargetStateSchema,
 } from '@/database/schemas/report-target-state.schema';
-import { GovernanceDailyQuota, GovernanceDailyQuotaSchema } from '@/database/schemas/governance-daily-quota.schema';
+import {
+  GovernanceDailyQuota,
+  GovernanceDailyQuotaSchema,
+} from '@/database/schemas/governance-daily-quota.schema';
 import { GovernanceVote, GovernanceVoteSchema } from '@/database/schemas/governance-vote.schema';
-import { AgentGovernanceProfile, AgentGovernanceProfileSchema } from '@/database/schemas/agent-governance-profile.schema';
+import {
+  AgentGovernanceProfile,
+  AgentGovernanceProfileSchema,
+} from '@/database/schemas/agent-governance-profile.schema';
 import { AgentProgress, AgentProgressSchema } from '@/database/schemas/agent-progress.schema';
 import { AgentXpEvent, AgentXpEventSchema } from '@/database/schemas/agent-xp-event.schema';
 import { FeatureFlag, FeatureFlagSchema } from '@/database/schemas/feature-flag.schema';
@@ -27,10 +36,7 @@ import {
   CircleRuleRevisionSchema,
 } from '@/database/schemas/circle-rule-revision.schema';
 import { Circle, CircleSchema } from '@/database/schemas/circle.schema';
-import {
-  CircleProposal,
-  CircleProposalSchema,
-} from '@/database/schemas/circle-proposal.schema';
+import { CircleProposal, CircleProposalSchema } from '@/database/schemas/circle-proposal.schema';
 import {
   CircleProposalComment,
   CircleProposalCommentSchema,
@@ -39,16 +45,26 @@ import {
   CircleProposalRevision,
   CircleProposalRevisionSchema,
 } from '@/database/schemas/circle-proposal-revision.schema';
-import { GOVERNANCE_ASSIGNMENT_STATUS, GOVERNANCE_CASE_STATUS, GOVERNANCE_DECISIONS, GOVERNANCE_ERROR_CODES, GOVERNANCE_HEALTH_LEVEL, GOVERNANCE_TARGET_TYPES } from './governance.constants';
+import {
+  GOVERNANCE_ASSIGNMENT_STATUS,
+  GOVERNANCE_CASE_STATUS,
+  GOVERNANCE_DECISIONS,
+  GOVERNANCE_ERROR_CODES,
+  GOVERNANCE_HEALTH_LEVEL,
+  GOVERNANCE_TARGET_TYPES,
+} from './governance.constants';
 import { FeatureFlagService } from '@/system/feature-flag.service';
-import { GovernanceCorrection, GovernanceCorrectionSchema } from '@/database/schemas/governance-correction.schema';
-import { AgentGovernanceHistory, AgentGovernanceHistorySchema } from '@/database/schemas/agent-governance-history.schema';
+import {
+  GovernanceCorrection,
+  GovernanceCorrectionSchema,
+} from '@/database/schemas/governance-correction.schema';
+import {
+  AgentGovernanceHistory,
+  AgentGovernanceHistorySchema,
+} from '@/database/schemas/agent-governance-history.schema';
 import { CircleProposalService } from '@/circle/circle-proposal.service';
 import { InboxService } from '@/inbox/inbox.service';
-import {
-  getReportTargetKey,
-  REPORT_TARGET_STATUSES,
-} from '@/report/report.constants';
+import { getReportTargetKey, REPORT_TARGET_STATUSES } from '@/report/report.constants';
 
 let sequence = 0;
 const TEST_CIRCLE_ID = '64f000000000000000000001';
@@ -157,10 +173,12 @@ describe('GovernanceService integration', () => {
         },
       },
     );
-    await connection.model(ReportTargetState.name).updateMany(
-      { status: REPORT_TARGET_STATUSES.CASE_OPEN },
-      { $set: { status: REPORT_TARGET_STATUSES.RESOLVED_NOT_VIOLATION } },
-    );
+    await connection
+      .model(ReportTargetState.name)
+      .updateMany(
+        { status: REPORT_TARGET_STATUSES.CASE_OPEN },
+        { $set: { status: REPORT_TARGET_STATUSES.RESOLVED_NOT_VIOLATION } },
+      );
   });
 
   afterAll(async () => {
@@ -312,12 +330,7 @@ describe('GovernanceService integration', () => {
       })),
     });
     await connection.model(ReportTargetState.name).create({
-      targetKey: getReportTargetKey(
-        GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL,
-        proposal.id,
-        1,
-        1,
-      ),
+      targetKey: getReportTargetKey(GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL, proposal.id, 1, 1),
       targetType: GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL,
       targetId: proposal.id,
       targetContentVersion: 1,
@@ -490,9 +503,45 @@ describe('GovernanceService integration', () => {
       notViolationTally: 1.5,
     });
     await connection.model(GovernanceVote.name).insertMany([
-      { caseId: governanceCase.id, voterAgentId: 'v1', voterOwnerUserIdSnapshot: 'owner-v1', targetType: governanceCase.targetType, targetId: governanceCase.targetId, choice: GOVERNANCE_DECISIONS.VIOLATION, weight: 1, voterLevel: 4, voterHealthLevel: GOVERNANCE_HEALTH_LEVEL.GOOD, createdAt: dayOne, updatedAt: dayOne },
-      { caseId: governanceCase.id, voterAgentId: 'v2', voterOwnerUserIdSnapshot: 'owner-v2', targetType: governanceCase.targetType, targetId: governanceCase.targetId, choice: GOVERNANCE_DECISIONS.VIOLATION, weight: 1.5, voterLevel: 5, voterHealthLevel: GOVERNANCE_HEALTH_LEVEL.GOOD, createdAt: new Date('2026-05-20T04:00:00.000Z'), updatedAt: new Date('2026-05-20T04:00:00.000Z') },
-      { caseId: governanceCase.id, voterAgentId: 'v3', voterOwnerUserIdSnapshot: 'owner-v3', targetType: governanceCase.targetType, targetId: governanceCase.targetId, choice: GOVERNANCE_DECISIONS.NOT_VIOLATION, weight: 1.5, voterLevel: 5, voterHealthLevel: GOVERNANCE_HEALTH_LEVEL.GOOD, createdAt: dayTwo, updatedAt: dayTwo },
+      {
+        caseId: governanceCase.id,
+        voterAgentId: 'v1',
+        voterOwnerUserIdSnapshot: 'owner-v1',
+        targetType: governanceCase.targetType,
+        targetId: governanceCase.targetId,
+        choice: GOVERNANCE_DECISIONS.VIOLATION,
+        weight: 1,
+        voterLevel: 4,
+        voterHealthLevel: GOVERNANCE_HEALTH_LEVEL.GOOD,
+        createdAt: dayOne,
+        updatedAt: dayOne,
+      },
+      {
+        caseId: governanceCase.id,
+        voterAgentId: 'v2',
+        voterOwnerUserIdSnapshot: 'owner-v2',
+        targetType: governanceCase.targetType,
+        targetId: governanceCase.targetId,
+        choice: GOVERNANCE_DECISIONS.VIOLATION,
+        weight: 1.5,
+        voterLevel: 5,
+        voterHealthLevel: GOVERNANCE_HEALTH_LEVEL.GOOD,
+        createdAt: new Date('2026-05-20T04:00:00.000Z'),
+        updatedAt: new Date('2026-05-20T04:00:00.000Z'),
+      },
+      {
+        caseId: governanceCase.id,
+        voterAgentId: 'v3',
+        voterOwnerUserIdSnapshot: 'owner-v3',
+        targetType: governanceCase.targetType,
+        targetId: governanceCase.targetId,
+        choice: GOVERNANCE_DECISIONS.NOT_VIOLATION,
+        weight: 1.5,
+        voterLevel: 5,
+        voterHealthLevel: GOVERNANCE_HEALTH_LEVEL.GOOD,
+        createdAt: dayTwo,
+        updatedAt: dayTwo,
+      },
     ]);
 
     const detail = await service.getResultDetail(governanceCase.id);
@@ -524,7 +573,11 @@ describe('GovernanceService integration', () => {
     const first = await service.dispatchNextCase(violationJudge.id);
     await service.submitDecision(violationJudge.id, first.case.id, GOVERNANCE_DECISIONS.VIOLATION);
     const second = await service.dispatchNextCase(notViolationJudge.id);
-    await service.submitDecision(notViolationJudge.id, second.case.id, GOVERNANCE_DECISIONS.NOT_VIOLATION);
+    await service.submitDecision(
+      notViolationJudge.id,
+      second.case.id,
+      GOVERNANCE_DECISIONS.NOT_VIOLATION,
+    );
 
     const updated = await connection.model(GovernanceCase.name).findById(first.case.id);
     expect(updated?.violationTally).toBeGreaterThan(1);
@@ -556,11 +609,15 @@ describe('GovernanceService integration', () => {
 
     expect(created.triggerScore).toBe(3);
     expect(created.triggerThreshold).toBe(3);
-    const defaultSelection = await connection.model(GovernanceCase.name).findById(created.id).lean();
+    const defaultSelection = await connection
+      .model(GovernanceCase.name)
+      .findById(created.id)
+      .lean();
     expect(defaultSelection).not.toHaveProperty('reporterAgentIds');
     expect(defaultSelection).not.toHaveProperty('reporterOwnerUserIds');
     expect(defaultSelection).not.toHaveProperty('targetAuthorOwnerUserId');
-    const privateSelection = await connection.model(GovernanceCase.name)
+    const privateSelection = await connection
+      .model(GovernanceCase.name)
       .findById(created.id)
       .select('+reporterAgentIds +reporterOwnerUserIds +targetAuthorOwnerUserId')
       .lean<{
@@ -582,26 +639,30 @@ describe('GovernanceService integration', () => {
       authorId: author.id,
     });
 
-    await expect(service.openCaseFromReports({
-      targetType: GOVERNANCE_TARGET_TYPES.POST,
-      targetId: post.id,
-      targetContentVersion: 1,
-      round: 1,
-      reporters: [reporters[0], reporters[0], reporters[1]].map((reporter) => ({
-        agentId: reporter.id,
-        ownerUserId: reporter.userId,
-      })),
-    })).rejects.toThrow('at least three unique Agents and owners');
-    await expect(service.openCaseFromReports({
-      targetType: GOVERNANCE_TARGET_TYPES.POST,
-      targetId: post.id,
-      targetContentVersion: 1,
-      round: 1,
-      reporters: [author, reporters[0], reporters[1]].map((reporter) => ({
-        agentId: reporter.id,
-        ownerUserId: reporter.userId,
-      })),
-    })).rejects.toThrow('target author Agent or owner');
+    await expect(
+      service.openCaseFromReports({
+        targetType: GOVERNANCE_TARGET_TYPES.POST,
+        targetId: post.id,
+        targetContentVersion: 1,
+        round: 1,
+        reporters: [reporters[0], reporters[0], reporters[1]].map((reporter) => ({
+          agentId: reporter.id,
+          ownerUserId: reporter.userId,
+        })),
+      }),
+    ).rejects.toThrow('at least three unique Agents and owners');
+    await expect(
+      service.openCaseFromReports({
+        targetType: GOVERNANCE_TARGET_TYPES.POST,
+        targetId: post.id,
+        targetContentVersion: 1,
+        round: 1,
+        reporters: [author, reporters[0], reporters[1]].map((reporter) => ({
+          agentId: reporter.id,
+          ownerUserId: reporter.userId,
+        })),
+      }),
+    ).rejects.toThrow('target author Agent or owner');
   });
 
   it('rejects three Agents that claim the same owner', async () => {
@@ -613,16 +674,18 @@ describe('GovernanceService integration', () => {
       authorId: author.id,
     });
 
-    await expect(service.openCaseFromReports({
-      targetType: GOVERNANCE_TARGET_TYPES.POST,
-      targetId: post.id,
-      targetContentVersion: 1,
-      round: 1,
-      reporters: reporters.map((reporter) => ({
-        agentId: reporter.id,
-        ownerUserId: reporters[0].userId,
-      })),
-    })).rejects.toThrow('at least three unique Agents and owners');
+    await expect(
+      service.openCaseFromReports({
+        targetType: GOVERNANCE_TARGET_TYPES.POST,
+        targetId: post.id,
+        targetContentVersion: 1,
+        round: 1,
+        reporters: reporters.map((reporter) => ({
+          agentId: reporter.id,
+          ownerUserId: reporters[0].userId,
+        })),
+      }),
+    ).rejects.toThrow('at least three unique Agents and owners');
   });
 
   it('verifies historical owners even after reporter and author Agents are deleted', async () => {
@@ -633,10 +696,12 @@ describe('GovernanceService integration', () => {
       content: 'content',
       authorId: author.id,
     });
-    await connection.model(Agent.name).updateMany(
-      { _id: { $in: [author.id, reporters[0].id] } },
-      { $set: { deletedAt: new Date() } },
-    );
+    await connection
+      .model(Agent.name)
+      .updateMany(
+        { _id: { $in: [author.id, reporters[0].id] } },
+        { $set: { deletedAt: new Date() } },
+      );
 
     const governanceCase = await service.openCaseFromReports({
       targetType: GOVERNANCE_TARGET_TYPES.POST,
@@ -648,19 +713,14 @@ describe('GovernanceService integration', () => {
         ownerUserId: reporter.userId,
       })),
     });
-    const privateCase = await connection.model(GovernanceCase.name)
+    const privateCase = await connection
+      .model(GovernanceCase.name)
       .findById(governanceCase.id)
       .select('+reporterOwnerUserIds +targetAuthorOwnerUserId');
-    expect(privateCase?.reporterOwnerUserIds).toEqual(
-      reporters.map((reporter) => reporter.userId),
-    );
+    expect(privateCase?.reporterOwnerUserIds).toEqual(reporters.map((reporter) => reporter.userId));
     expect(privateCase?.targetAuthorOwnerUserId).toBe(author.userId);
 
-    const authorReplacement = await createAgent(
-      'deleted-author-replacement',
-      5000,
-      author.userId,
-    );
+    const authorReplacement = await createAgent('deleted-author-replacement', 5000, author.userId);
     await expect(service.dispatchNextCase(authorReplacement.id)).rejects.toMatchObject({
       response: expect.objectContaining({ code: GOVERNANCE_ERROR_CODES.NO_AVAILABLE_CASE }),
     });
@@ -670,10 +730,9 @@ describe('GovernanceService integration', () => {
     const agent = await createAgent('immutable-owner');
     const originalOwnerUserId = agent.userId;
 
-    await connection.model(Agent.name).updateOne(
-      { _id: agent.id },
-      { $set: { userId: 'different-owner' } },
-    );
+    await connection
+      .model(Agent.name)
+      .updateOne({ _id: agent.id }, { $set: { userId: 'different-owner' } });
 
     const unchanged = await connection.model(Agent.name).findById(agent.id);
     expect(unchanged?.userId).toBe(originalOwnerUserId);
@@ -699,7 +758,7 @@ describe('GovernanceService integration', () => {
     });
   });
 
-  it('closes a legacy reporter assignment before rejecting its decision', async () => {
+  it('closes an invalid reporter assignment before rejecting its decision', async () => {
     const { governanceCase, reporters } = await createViolationCase();
     const reporter = reporters[0];
     await connection.model(GovernanceAssignment.name).create({
@@ -715,11 +774,9 @@ describe('GovernanceService integration', () => {
       deadlineAt: governanceCase.emergencyDeadlineAt,
     });
 
-    await expect(service.submitDecision(
-      reporter.id,
-      governanceCase.id,
-      GOVERNANCE_DECISIONS.VIOLATION,
-    )).rejects.toMatchObject({
+    await expect(
+      service.submitDecision(reporter.id, governanceCase.id, GOVERNANCE_DECISIONS.VIOLATION),
+    ).rejects.toMatchObject({
       response: expect.objectContaining({ code: GOVERNANCE_ERROR_CODES.NOT_ELIGIBLE }),
     });
 
@@ -743,10 +800,9 @@ describe('GovernanceService integration', () => {
   it('blocks a replacement Agent owned by the same reporter from dispatch and submission', async () => {
     const { governanceCase, reporters } = await createViolationCase();
     const originalReporter = reporters[0];
-    await connection.model(Agent.name).updateOne(
-      { _id: originalReporter.id },
-      { $set: { deletedAt: new Date() } },
-    );
+    await connection
+      .model(Agent.name)
+      .updateOne({ _id: originalReporter.id }, { $set: { deletedAt: new Date() } });
     const replacement = await createAgent(
       'reporter-owner-replacement',
       5000,
@@ -769,11 +825,9 @@ describe('GovernanceService integration', () => {
       assignedAt: new Date(),
       deadlineAt: governanceCase.emergencyDeadlineAt,
     });
-    await expect(service.submitDecision(
-      replacement.id,
-      governanceCase.id,
-      GOVERNANCE_DECISIONS.VIOLATION,
-    )).rejects.toMatchObject({
+    await expect(
+      service.submitDecision(replacement.id, governanceCase.id, GOVERNANCE_DECISIONS.VIOLATION),
+    ).rejects.toMatchObject({
       response: expect.objectContaining({ code: GOVERNANCE_ERROR_CODES.NOT_ELIGIBLE }),
     });
 
@@ -795,10 +849,9 @@ describe('GovernanceService integration', () => {
       firstCase.governanceCase.id,
       GOVERNANCE_DECISIONS.NOT_VIOLATION,
     );
-    await connection.model(Agent.name).updateOne(
-      { _id: judge.id },
-      { $set: { deletedAt: new Date() } },
-    );
+    await connection
+      .model(Agent.name)
+      .updateOne({ _id: judge.id }, { $set: { deletedAt: new Date() } });
     const replacement = await createAgent('owner-history-replacement', 5000, judge.userId);
     const secondCase = await createViolationCase();
 
@@ -806,17 +859,19 @@ describe('GovernanceService integration', () => {
     expect(replacementAssignment.case.id).toBe(secondCase.governanceCase.id);
     expect(replacementAssignment.case.id).not.toBe(firstCase.governanceCase.id);
 
-    await expect(connection.model(GovernanceVote.name).create({
-      caseId: firstCase.governanceCase.id,
-      voterAgentId: replacement.id,
-      voterOwnerUserIdSnapshot: replacement.userId,
-      targetType: firstCase.governanceCase.targetType,
-      targetId: firstCase.governanceCase.targetId,
-      choice: GOVERNANCE_DECISIONS.VIOLATION,
-      weight: 1,
-      voterLevel: 4,
-      voterHealthLevel: GOVERNANCE_HEALTH_LEVEL.GOOD,
-    })).rejects.toMatchObject({ code: 11000 });
+    await expect(
+      connection.model(GovernanceVote.name).create({
+        caseId: firstCase.governanceCase.id,
+        voterAgentId: replacement.id,
+        voterOwnerUserIdSnapshot: replacement.userId,
+        targetType: firstCase.governanceCase.targetType,
+        targetId: firstCase.governanceCase.targetId,
+        choice: GOVERNANCE_DECISIONS.VIOLATION,
+        weight: 1,
+        voterLevel: 4,
+        voterHealthLevel: GOVERNANCE_HEALTH_LEVEL.GOOD,
+      }),
+    ).rejects.toMatchObject({ code: 11000 });
   });
 
   it('persists assignment closure before rejecting a decision for a closed case', async () => {
@@ -840,11 +895,9 @@ describe('GovernanceService integration', () => {
       resolvedAt: new Date(),
     });
 
-    await expect(service.submitDecision(
-      judge.id,
-      governanceCase.id,
-      GOVERNANCE_DECISIONS.NOT_VIOLATION,
-    )).rejects.toMatchObject({
+    await expect(
+      service.submitDecision(judge.id, governanceCase.id, GOVERNANCE_DECISIONS.NOT_VIOLATION),
+    ).rejects.toMatchObject({
       response: expect.objectContaining({ code: GOVERNANCE_ERROR_CODES.CASE_NOT_FOUND }),
     });
 
@@ -863,10 +916,13 @@ describe('GovernanceService integration', () => {
     const dispatched = await service.dispatchNextCase(judge.id);
     await service.submitDecision(judge.id, dispatched.case.id, GOVERNANCE_DECISIONS.NOT_VIOLATION);
 
-    const vote = await connection.model(GovernanceVote.name).findOne({
-      caseId: dispatched.case.id,
-      voterAgentId: judge.id,
-    }).lean<{ choice?: string; weight?: number; voterLevel?: number; voterHealthLevel?: number }>();
+    const vote = await connection
+      .model(GovernanceVote.name)
+      .findOne({
+        caseId: dispatched.case.id,
+        voterAgentId: judge.id,
+      })
+      .lean<{ choice?: string; weight?: number; voterLevel?: number; voterHealthLevel?: number }>();
     expect(vote?.choice).toBe(GOVERNANCE_DECISIONS.NOT_VIOLATION);
     expect(vote?.weight).toBeGreaterThan(0);
     expect(vote?.voterLevel).toBeGreaterThanOrEqual(4);
@@ -900,7 +956,11 @@ describe('GovernanceService integration', () => {
     const judge = await createAgent('judge', 5000);
 
     const first = await service.dispatchNextCase(judge.id);
-    const result = await service.submitDecision(judge.id, first.case.id, GOVERNANCE_DECISIONS.NOT_VIOLATION);
+    const result = await service.submitDecision(
+      judge.id,
+      first.case.id,
+      GOVERNANCE_DECISIONS.NOT_VIOLATION,
+    );
     expect(result.assignment.status).toBe(GOVERNANCE_ASSIGNMENT_STATUS.SUBMITTED);
 
     const secondCase = await createViolationCase();
@@ -919,7 +979,11 @@ describe('GovernanceService integration', () => {
     for (const judge of judges) {
       const dispatched = await service.dispatchNextCase(judge.id);
       expect(dispatched.case.id).toBe(governanceCase.id);
-      const result = await service.submitDecision(judge.id, governanceCase.id, GOVERNANCE_DECISIONS.VIOLATION);
+      const result = await service.submitDecision(
+        judge.id,
+        governanceCase.id,
+        GOVERNANCE_DECISIONS.VIOLATION,
+      );
       expect(result.case.status).toBe(GOVERNANCE_CASE_STATUS.OPEN);
     }
 
@@ -935,10 +999,16 @@ describe('GovernanceService integration', () => {
     expect(resolved?.status).toBe(GOVERNANCE_CASE_STATUS.RESOLVED_VIOLATION);
     expect(reportState?.status).toBe(REPORT_TARGET_STATUSES.RESOLVED_VIOLATION);
 
-    const hiddenPost = await connection.model(Post.name).findOne({ _id: post.id, deletedAt: { $ne: null } }).lean<{ deletedAt?: Date | null }>();
+    const hiddenPost = await connection
+      .model(Post.name)
+      .findOne({ _id: post.id, deletedAt: { $ne: null } })
+      .lean<{ deletedAt?: Date | null }>();
     expect(hiddenPost?.deletedAt).toBeTruthy();
 
-    const profile = await connection.model(AgentGovernanceProfile.name).findOne({ agentId: author.id }).lean<{ healthLevel?: number }>();
+    const profile = await connection
+      .model(AgentGovernanceProfile.name)
+      .findOne({ agentId: author.id })
+      .lean<{ healthLevel?: number }>();
     expect(profile?.healthLevel).toBe(GOVERNANCE_HEALTH_LEVEL.WARNING);
   });
 
@@ -1028,7 +1098,9 @@ describe('GovernanceService integration', () => {
 
     const [profile, history] = await Promise.all([
       connection.model(AgentGovernanceProfile.name).findOne({ agentId: author.id }),
-      connection.model(AgentGovernanceHistory.name).findOne({ governanceCaseId: governanceCase.id }),
+      connection
+        .model(AgentGovernanceHistory.name)
+        .findOne({ governanceCaseId: governanceCase.id }),
     ]);
     expect(profile).toMatchObject({
       healthLevel: GOVERNANCE_HEALTH_LEVEL.BANNED,
@@ -1161,7 +1233,9 @@ describe('GovernanceService integration', () => {
     const normal = await createViolationCase();
     const judge = await createAgent('judge', 5000);
 
-    const authorProgress = await connection.model(AgentProgress.name).findOne({ agentId: author.id });
+    const authorProgress = await connection
+      .model(AgentProgress.name)
+      .findOne({ agentId: author.id });
     expect(authorProgress).toBeTruthy();
     authorProgress!.xpTotal = 5000;
     await authorProgress!.save();
@@ -1191,8 +1265,14 @@ describe('GovernanceService integration', () => {
     for (let index = 0; index < 11; index += 1) {
       const { governanceCase } = await createViolationCase();
       await connection.model(GovernanceCase.name).findByIdAndUpdate(governanceCase.id, {
-        status: index % 2 === 0 ? GOVERNANCE_CASE_STATUS.RESOLVED_VIOLATION : GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION,
-        resolution: index % 2 === 0 ? GOVERNANCE_CASE_STATUS.RESOLVED_VIOLATION : GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION,
+        status:
+          index % 2 === 0
+            ? GOVERNANCE_CASE_STATUS.RESOLVED_VIOLATION
+            : GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION,
+        resolution:
+          index % 2 === 0
+            ? GOVERNANCE_CASE_STATUS.RESOLVED_VIOLATION
+            : GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION,
         resolvedAt: new Date(Date.now() - index * 1000),
         violationTally: index + 1,
         notViolationTally: index,

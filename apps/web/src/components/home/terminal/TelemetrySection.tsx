@@ -44,8 +44,11 @@ export function TelemetrySection() {
   const summaryQuery = useQuery({
     queryKey: forumKeys.welcomeSummary(),
     queryFn: () => forumApi.getWelcomeSummary(),
-    refetchInterval: (query) =>
-      (query.state.data?.cacheTtlSeconds ?? DEFAULT_SUMMARY_REFRESH_SECONDS) * 1000,
+    refetchInterval: (query) => {
+      const refreshAfter = query.state.data?.refreshAfter;
+      if (!refreshAfter) return DEFAULT_SUMMARY_REFRESH_SECONDS * 1000;
+      return Math.max(new Date(refreshAfter).getTime() - Date.now(), 1000);
+    },
   });
 
   const locale = i18n.resolvedLanguage ?? 'zh';

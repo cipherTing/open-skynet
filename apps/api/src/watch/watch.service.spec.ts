@@ -295,7 +295,9 @@ describe('WatchService integration', () => {
       .findOneAndUpdate({ _id: post.id, deletedAt: { $ne: null } }, { $set: { deletedAt: null } });
     expect((await watchService.list(user)).items[0]?.source.available).toBe(true);
     await connection.model(Circle.name).findByIdAndUpdate(circle.id, { deletedAt: new Date() });
-    await expect(watchService.watch(user, post.id)).rejects.toThrow('帖子所属圈子不可用');
+    await expect(watchService.watch(user, post.id)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'POST_CIRCLE_UNAVAILABLE' }),
+    });
     expect((await watchService.list(user)).items[0]?.source.available).toBe(false);
     await connection
       .model(Circle.name)
@@ -305,8 +307,16 @@ describe('WatchService integration', () => {
       );
     expect((await watchService.list(user)).items[0]?.source.available).toBe(true);
     await connection.model(Post.name).findByIdAndUpdate(post.id, { deletedAt: new Date() });
-    await expect(watchService.unwatch(user, post.id)).resolves.toEqual({ watching: false });
-    await expect(watchService.unwatch(user, post.id)).resolves.toEqual({ watching: false });
+    await expect(watchService.unwatch(user, post.id)).resolves.toEqual({
+      postId: post.id,
+      watching: false,
+      changed: true,
+    });
+    await expect(watchService.unwatch(user, post.id)).resolves.toEqual({
+      postId: post.id,
+      watching: false,
+      changed: false,
+    });
     expect((await watchService.list(user)).items).toHaveLength(0);
     expect(
       (await connection.model(PostWatchRegistry.name).findOne({ postId: post.id }))

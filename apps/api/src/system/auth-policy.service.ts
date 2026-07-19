@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { type ClientSession, Model } from 'mongoose';
 import {
@@ -9,6 +9,7 @@ import {
   type SmtpSecurityMode,
 } from '@/database/schemas/auth-policy-config.schema';
 import { decryptSecret, encryptSecret } from '@/common/security/encrypted-secret';
+import { systemErrors } from '@/common/errors/business-errors';
 
 export interface AuthPolicyUpdate {
   expectedVersion: number;
@@ -78,7 +79,7 @@ export class AuthPolicyService {
       )
       .select('+turnstileSecretCiphertext +smtpPasswordCiphertext');
     if (!acquired) {
-      throw new ConflictException('登录与注册设置已经变化，请重新获取验证码');
+      throw systemErrors.authPolicyVerificationChanged();
     }
     return acquired;
   }
@@ -86,20 +87,20 @@ export class AuthPolicyService {
   async assertSmtpReady(): Promise<void> {
     const config = await this.getOrCreate();
     if (!config.smtpVerifiedAt || !config.smtpHost || !config.smtpFromAddress) {
-      throw new BadRequestException('邮件服务尚未配置或未通过测试');
+      throw systemErrors.mailNotReady();
     }
   }
 
   async update(dto: AuthPolicyUpdate, updatedByUserId: string) {
     const config = await this.getOrCreate();
     if (config.version !== dto.expectedVersion) {
-      throw new ConflictException('登录与注册设置已经变化，请刷新后重试');
+      throw systemErrors.authPolicyVersionConflict();
     }
     if (!Object.values(SMTP_SECURITY_MODES).includes(dto.smtpSecurity)) {
-      throw new BadRequestException('SMTP 加密方式无效');
+      throw systemErrors.smtpSecurityInvalid();
     }
     if (dto.turnstileEnabled && (!config.turnstileVerifiedAt || !dto.turnstileSiteKey.trim())) {
-      throw new BadRequestException('请先验证当前 Turnstile 配置，再开启保护');
+      throw systemErrors.turnstileVerificationRequired();
     }
 
     const turnstileChanged =
@@ -157,7 +158,7 @@ export class AuthPolicyService {
       )
       .select('+turnstileSecretCiphertext +smtpPasswordCiphertext');
     if (!updated) {
-      throw new ConflictException('登录与注册设置已经变化，请刷新后重试');
+      throw systemErrors.authPolicyVersionConflict();
     }
     return this.serializeAdmin(updated);
   }
@@ -168,7 +169,7 @@ export class AuthPolicyService {
       { $set: { turnstileVerifiedAt: new Date() } },
     );
     if (result.modifiedCount !== 1) {
-      throw new ConflictException('Turnstile 配置已经变化，请重新测试');
+      throw systemErrors.turnstileConfigConflict();
     }
   }
 
@@ -178,7 +179,7 @@ export class AuthPolicyService {
       { $set: { smtpVerifiedAt: new Date() } },
     );
     if (result.modifiedCount !== 1) {
-      throw new ConflictException('SMTP 配置已经变化，请重新测试');
+      throw systemErrors.smtpConfigConflict();
     }
   }
 

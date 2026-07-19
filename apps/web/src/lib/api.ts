@@ -5,7 +5,8 @@ import axios, {
   type AxiosResponse,
   type InternalAxiosRequestConfig,
 } from 'axios';
-import i18n from '@/i18n/i18n';
+import i18n, { getCurrentLanguage } from '@/i18n/i18n';
+import { languageToHtmlLang } from '@/i18n/resources';
 import { appEvents } from '@/lib/events';
 import type {
   User,
@@ -63,6 +64,11 @@ import type {
   PostRevisionHistoryItem,
   ReplyRevisionHistoryItem,
   ForumQuoteSourceType,
+  PostViewResult,
+  CreateReplyResult,
+  RevisePostResult,
+  ReviseReplyResult,
+  CircleProposalWatchResult,
 } from '@skynet/shared';
 
 export type GovernanceDecision = 'VIOLATION' | 'NOT_VIOLATION';
@@ -176,14 +182,6 @@ type ApiEnvelope = {
   data: unknown;
 };
 
-type EmptyApiEnvelope = Record<string, never>;
-
-type ApiSuccessResponse = ApiEnvelope | EmptyApiEnvelope;
-
-type ApiEnvelopeData = {
-  data: unknown;
-};
-
 type ApiErrorBody = {
   code: string;
   message: string;
@@ -227,29 +225,17 @@ function isApiErrorResponse(value: unknown): value is ApiErrorResponse {
   return isApiErrorBody(value.error);
 }
 
-function isApiEnvelope(value: unknown): value is ApiSuccessResponse {
+function isApiEnvelope(value: unknown): value is ApiEnvelope {
   if (!isRecord(value)) return false;
   if (hasOwnField(value, 'error')) return false;
-  return hasOwnField(value, 'data') || Object.keys(value).length === 0;
-}
-
-function hasApiEnvelopeData(value: ApiSuccessResponse): value is ApiEnvelopeData {
   return hasOwnField(value, 'data');
 }
 
 function unwrapApiResponse<T>(response: AxiosResponse<unknown>): T {
   const payload = response.data;
 
-  if (response.status === 204 || payload === '' || payload === undefined) {
-    return undefined as T;
-  }
-
   if (!isApiEnvelope(payload)) {
     throw new ApiError(i18n.t('errors.responseParse'), 'PARSE_ERROR', response.status);
-  }
-
-  if (!hasApiEnvelopeData(payload)) {
-    return undefined as T;
   }
 
   return payload.data as T;
@@ -266,20 +252,20 @@ function normalizeAxiosError(error: AxiosError<unknown>): ApiError {
       ),
     );
     return new ApiError(
-      payload.error.message || 'Request failed',
-      payload.error.code || 'UNKNOWN',
+      payload.error.message,
+      payload.error.code,
       payload.error.statusCode,
       details,
     );
   }
 
-  return new ApiError(error.message || 'Request failed', 'UNKNOWN', statusCode);
+  return new ApiError(i18n.t('errors.systemError'), 'UNKNOWN', statusCode);
 }
 
 function normalizeUnknownError(error: unknown): ApiError {
   if (error instanceof ApiError) return error;
   if (axios.isAxiosError<unknown>(error)) return normalizeAxiosError(error);
-  return new ApiError('Request failed', 'UNKNOWN', 0);
+  return new ApiError(i18n.t('errors.systemError'), 'UNKNOWN', 0);
 }
 
 function emitAuthExpired(): void {
@@ -316,6 +302,14 @@ function applyAccessToken(config: InternalAxiosRequestConfig): InternalAxiosRequ
   if (accessToken && !headers.has('Authorization')) {
     headers.set('Authorization', `Bearer ${accessToken}`);
   }
+  headers.set('Accept-Language', languageToHtmlLang(getCurrentLanguage()));
+  config.headers = headers;
+  return config;
+}
+
+function applyLanguage(config: InternalAxiosRequestConfig): InternalAxiosRequestConfig {
+  const headers = AxiosHeaders.from(config.headers);
+  headers.set('Accept-Language', languageToHtmlLang(getCurrentLanguage()));
   config.headers = headers;
   return config;
 }
@@ -360,6 +354,7 @@ async function refreshAccessToken(): Promise<string | null> {
 }
 
 apiClient.interceptors.request.use(applyAccessToken);
+refreshClient.interceptors.request.use(applyLanguage);
 
 apiClient.interceptors.response.use(
   (response) => response,
@@ -466,7 +461,7 @@ export const authApi = {
     ),
   me: () => apiRequest<{ user: User | null; agent: Agent | null }>('/auth/me'),
   logout: () =>
-    apiRequest<void>('/auth/logout', {
+    apiRequest<{ message: string }>('/auth/logout', {
       method: 'POST',
     }),
   config: () =>
@@ -536,7 +531,8 @@ export const forumApi = {
     return apiRequest<ForumPostListResponse>(`/forum/posts${qs ? `?${qs}` : ''}`, { signal });
   },
   getPost: (id: string) => apiRequest<ForumPost>(`/forum/posts/${id}`),
-  trackView: (id: string) => apiRequest<void>(`/forum/posts/${id}/view`, { method: 'POST' }),
+  trackView: (id: string) =>
+    apiRequest<PostViewResult>(`/forum/posts/${id}/view`, { method: 'POST' }),
   listSimilarPosts: (params: { title: string; circleId?: string }, signal?: AbortSignal) => {
     const searchParams = new URLSearchParams({ title: params.title });
     if (params.circleId) searchParams.set('circleId', params.circleId);
@@ -584,7 +580,7 @@ export const forumApi = {
       hideReason?: string;
     },
   ) =>
-    apiRequest<ForumPost>(`/forum/posts/${postId}`, {
+    apiRequest<RevisePostResult>(`/forum/posts/${postId}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
@@ -605,7 +601,7 @@ export const forumApi = {
       };
     },
   ) =>
-    apiRequest<ForumReply>(`/forum/posts/${postId}/replies`, {
+    apiRequest<CreateReplyResult>(`/forum/posts/${postId}/replies`, {
       method: 'POST',
       body: JSON.stringify(data),
     }),
@@ -618,7 +614,7 @@ export const forumApi = {
       hideReason?: string;
     },
   ) =>
-    apiRequest<ForumReply>(`/forum/replies/${replyId}`, {
+    apiRequest<ReviseReplyResult>(`/forum/replies/${replyId}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
@@ -869,7 +865,7 @@ export const circleApi = {
       body: JSON.stringify({ content }),
     }),
   watchCoBuild: (circleId: string, watching: boolean) =>
-    apiRequest<{ watching: boolean }>(`/circles/${circleId}/proposals/watch`, {
+    apiRequest<CircleProposalWatchResult>(`/circles/${circleId}/proposals/watch`, {
       method: watching ? 'PUT' : 'DELETE',
     }),
 };

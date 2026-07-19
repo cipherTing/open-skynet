@@ -60,6 +60,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
   const [replyQuote, setReplyQuote] = useState<ReplyQuoteDraft | null>(null);
   const { ownerOperationEnabled, canOperateAsAgent } = useOwnerOperation();
   const { agent, isAuthenticated, isLoading: authLoading, user } = useAuth();
+  const ownerOperationBlocked = isAuthenticated && !!agent && !ownerOperationEnabled;
   const toast = useToast();
   const queryClient = useQueryClient();
   const viewerKey = user?.id ?? 'anonymous';
@@ -346,7 +347,10 @@ function PostDetailContent({ postId }: PostDetailProps) {
           <span className="font-mono text-[10px] tracking-[0.2em] text-[var(--t-accent)]">
             FILE #{post.id.slice(0, 8).toUpperCase()}
           </span>
-          <span aria-hidden className="font-mono text-[10px] tracking-[0.2em] text-[var(--t-faint)]">
+          <span
+            aria-hidden
+            className="font-mono text-[10px] tracking-[0.2em] text-[var(--t-faint)]"
+          >
             {'//'}
           </span>
           <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--t-faint)]">
@@ -412,9 +416,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
                 post.activeGovernanceCase ? 'text-[var(--t-accent)]' : 'text-white/70'
               }`}
             >
-              {post.activeGovernanceCase
-                ? t('post.meta.statusCase')
-                : t('post.meta.statusActive')}
+              {post.activeGovernanceCase ? t('post.meta.statusCase') : t('post.meta.statusActive')}
             </p>
           </div>
         </div>
@@ -436,7 +438,9 @@ function PostDetailContent({ postId }: PostDetailProps) {
             disabled={favoriteBusy}
             onClick={handleFavorite}
             className={`inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.15em] transition-colors [transition-timing-function:steps(2,end)] disabled:cursor-not-allowed disabled:opacity-60 ${
-              postFavorited ? 'text-[var(--t-accent)]' : 'text-[var(--t-faint)] hover:text-[var(--t-accent)]'
+              postFavorited
+                ? 'text-[var(--t-accent)]'
+                : 'text-[var(--t-faint)] hover:text-[var(--t-accent)]'
             }`}
           >
             {postFavorited ? (
@@ -458,11 +462,13 @@ function PostDetailContent({ postId }: PostDetailProps) {
             {postWatching ? <BellRing className="h-3 w-3" /> : <Bell className="h-3 w-3" />}
             {postWatching ? t('forum.watching') : t('forum.watch')}
           </button>
-          {canOperateAsAgent ? (
+          {isAuthenticated && agent ? (
             <button
               type="button"
               onClick={quoteSelectedPostText}
-              className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)]"
+              disabled={ownerOperationBlocked}
+              title={ownerOperationBlocked ? t('replyThread.ownerOperationRequired') : undefined}
+              className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-[var(--t-faint)]"
             >
               <Quote className="h-3 w-3" />
               {t('replyInput.quoteSelection')}
@@ -481,7 +487,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
           <div className="relative flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-[var(--t-noise2)] px-4 py-2 sm:px-6">
             <FeedbackBar
               counts={post.feedbackCounts}
-              currentFeedback={post.currentUserFeedback}
+              currentFeedback={post.currentAgentFeedback}
               canInteract={canFeedbackOnPost}
               unavailableReason={postFeedbackReason}
               onSelect={handleFeedback}
@@ -518,7 +524,10 @@ function PostDetailContent({ postId }: PostDetailProps) {
           <span className="font-mono text-[11px] tracking-[0.2em] text-[var(--t-accent)]">
             {'> APPEND.LOG'}
           </span>
-          <span aria-hidden className="font-mono text-[11px] tracking-[0.2em] text-[var(--t-faint)]">
+          <span
+            aria-hidden
+            className="font-mono text-[11px] tracking-[0.2em] text-[var(--t-faint)]"
+          >
             {'//'}
           </span>
           <span className="text-[13px] font-bold tracking-wide text-text-primary">
@@ -531,13 +540,14 @@ function PostDetailContent({ postId }: PostDetailProps) {
         </div>
 
         {/* 新回复输入 */}
-        {canOperateAsAgent && (
+        {isAuthenticated && agent && (
           <div id="post-reply-composer" className="mb-5">
             <ReplyInput
               onSubmit={handleReply}
               placeholder={t('forum.replyPlaceholder')}
               quoteText={replyQuote?.text ?? null}
               onClearQuote={() => setReplyQuote(null)}
+              disabled={ownerOperationBlocked}
             />
           </div>
         )}

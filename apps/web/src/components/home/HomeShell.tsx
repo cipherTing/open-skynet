@@ -13,24 +13,35 @@ import { useAuth } from '@/contexts/AuthContext';
 import { governanceApi } from '@/lib/api';
 import { useHomeNavigationStore, type HomeSection } from '@/stores/home-navigation-store';
 import { AgentConnectDialog } from '@/components/agent/AgentConnectDialog';
+import { ProjectGithubLink } from '@/components/ui/ProjectGithubLink';
 
-const ForumFeed = dynamic(() => import('@/components/forum/ForumFeed').then((mod) => mod.ForumFeed), {
-  loading: () => <SectionLoading />,
-});
-const CircleGrid = dynamic(() => import('@/components/circle/CircleGrid').then((mod) => mod.CircleGrid), {
-  loading: () => <SectionLoading />,
-});
+const ForumFeed = dynamic(
+  () => import('@/components/forum/ForumFeed').then((mod) => mod.ForumFeed),
+  {
+    loading: () => <SectionLoading />,
+  },
+);
+const CircleGrid = dynamic(
+  () => import('@/components/circle/CircleGrid').then((mod) => mod.CircleGrid),
+  {
+    loading: () => <SectionLoading />,
+  },
+);
 const SignalInbox = dynamic(
   () => import('@/components/inbox/SignalInbox').then((mod) => mod.SignalInbox),
   { loading: () => <SectionLoading /> },
 );
 const GovernanceResultGrid = dynamic(
-  () => import('@/components/governance/GovernanceResultGrid').then((mod) => mod.GovernanceResultGrid),
+  () =>
+    import('@/components/governance/GovernanceResultGrid').then((mod) => mod.GovernanceResultGrid),
   { loading: () => <SectionLoading /> },
 );
-const SignalPanelContent = dynamic(() => import('@/components/layout/SignalPanel').then((mod) => mod.SignalPanelContent), {
-  loading: () => <PanelLoading />,
-});
+const SignalPanelContent = dynamic(
+  () => import('@/components/layout/SignalPanel').then((mod) => mod.SignalPanelContent),
+  {
+    loading: () => <PanelLoading />,
+  },
+);
 const GovernancePanelContent = dynamic(
   () => import('@/components/governance/GovernancePanel').then((mod) => mod.GovernancePanelContent),
   { loading: () => <PanelLoading /> },
@@ -75,13 +86,14 @@ export function HomeShell() {
   const setActiveSection = useHomeNavigationStore((state) => state.setActiveSection);
   const activeSection = storedActiveSection;
   const isGovernanceActive = activeSection === 'governance';
-  const topBarMode = activeSection === 'governance'
-    ? 'governance'
-    : activeSection === 'inbox'
-      ? 'inbox'
-    : activeSection === 'circles'
-      ? 'circles'
-      : 'feed';
+  const topBarMode =
+    activeSection === 'governance'
+      ? 'governance'
+      : activeSection === 'inbox'
+        ? 'inbox'
+        : activeSection === 'circles'
+          ? 'circles'
+          : 'feed';
   const [isDocumentVisible, setIsDocumentVisible] = useState(true);
   const [isGovernanceDetailOpen, setIsGovernanceDetailOpen] = useState(false);
   const [isNavOpen, setIsNavOpen] = useState(false);
@@ -153,12 +165,11 @@ export function HomeShell() {
       !isDocumentVisible ||
       isGovernanceDetailOpen ||
       reducedMotionEnabled);
-  const shouldAutoRefresh =
-    isGovernanceActive &&
-    !isGovernanceRefreshPaused;
-  const queryNextRefreshAt = governanceResultsQuery.dataUpdatedAt > 0
-    ? governanceResultsQuery.dataUpdatedAt + GOVERNANCE_AUTO_REFRESH_MS
-    : nextRefreshAt;
+  const shouldAutoRefresh = isGovernanceActive && !isGovernanceRefreshPaused;
+  const queryNextRefreshAt =
+    governanceResultsQuery.dataUpdatedAt > 0
+      ? governanceResultsQuery.dataUpdatedAt + GOVERNANCE_AUTO_REFRESH_MS
+      : nextRefreshAt;
   const scheduledNextRefreshAt = Math.max(nextRefreshAt, queryNextRefreshAt);
 
   useEffect(() => {
@@ -220,7 +231,13 @@ export function HomeShell() {
     setNowMs(current);
     setNextRefreshAt(current + GOVERNANCE_AUTO_REFRESH_MS);
     void refetchGovernanceResults();
-  }, [isAuthLoading, isAuthUnavailable, isAuthenticated, isGovernanceDetailOpen, refetchGovernanceResults]);
+  }, [
+    isAuthLoading,
+    isAuthUnavailable,
+    isAuthenticated,
+    isGovernanceDetailOpen,
+    refetchGovernanceResults,
+  ]);
 
   const governanceControls = useMemo<TopBarGovernanceControls | undefined>(() => {
     if (!isGovernanceActive) return undefined;
@@ -235,23 +252,24 @@ export function HomeShell() {
     const statusLabel = isAuthLoading
       ? t('governance.panel.syncing')
       : isAuthUnavailable || hasGovernanceAuthError
-          ? t('governance.syncFailed')
-          : requiresGovernanceLogin
-            ? t('governance.loginRequiredTitle')
-            : isGovernanceDetailOpen
-              ? t('governance.autoRefresh.pausedForModal')
-              : reducedMotionEnabled
-                ? t('governance.autoRefresh.pausedForReducedMotion')
-                : !isDocumentVisible
-                  ? t('governance.autoRefresh.pausedForHiddenPage')
-                  : t('governance.autoRefresh.active', { seconds: remainingSeconds });
+        ? t('governance.syncFailed')
+        : requiresGovernanceLogin
+          ? t('governance.loginRequiredTitle')
+          : isGovernanceDetailOpen
+            ? t('governance.autoRefresh.pausedForModal')
+            : reducedMotionEnabled
+              ? t('governance.autoRefresh.pausedForReducedMotion')
+              : !isDocumentVisible
+                ? t('governance.autoRefresh.pausedForHiddenPage')
+                : t('governance.autoRefresh.active', { seconds: remainingSeconds });
 
     return {
       statusLabel,
       progressValue,
       isProgressPaused: isGovernanceRefreshPaused,
       isRefreshing: isGovernanceFetching,
-      refreshDisabled: isAuthLoading || isAuthUnavailable || !isAuthenticated || isGovernanceDetailOpen,
+      refreshDisabled:
+        isAuthLoading || isAuthUnavailable || !isAuthenticated || isGovernanceDetailOpen,
       refreshLabel,
       onRefresh: handleGovernanceRefresh,
     };
@@ -292,7 +310,7 @@ export function HomeShell() {
         />
         <div className="t-corner relative min-h-0 flex-1 bg-black">
           <div aria-hidden="true" className="t-ambient-scan pointer-events-none absolute inset-0" />
-          <div className="relative h-full min-h-0 px-4 pb-6 pt-0 sm:px-6">
+          <div className="relative h-full min-h-0 px-4 pb-10 pt-0 sm:px-6">
             {bootState !== 'pending' ? (
               activeSection === 'governance' ? (
                 <div className="h-full pb-1">
@@ -311,13 +329,15 @@ export function HomeShell() {
             ) : null}
           </div>
           {bootState === 'booting' ? <DeckBootSequence onComplete={handleBootComplete} /> : null}
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 bottom-0 z-20 flex items-center justify-between px-3 pb-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]"
-          >
-            <span>{'NODE:ONLINE // LINK:STABLE'}</span>
-            <span>{`${DECK_FRAME_CODES[activeSection]} // GRID:OK`}</span>
-          </div>
+          <footer className="absolute inset-x-0 bottom-0 z-20 grid h-8 grid-cols-1 items-center border-t border-[var(--t-noise)] bg-black px-3 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)] sm:grid-cols-[1fr_auto_1fr] sm:gap-4">
+            <span aria-hidden="true" className="hidden sm:block">
+              {'NODE:ONLINE // LINK:STABLE'}
+            </span>
+            <ProjectGithubLink className="justify-self-center normal-case tracking-[0.08em] text-[var(--t-sub)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)] focus-visible:text-[var(--t-accent)]" />
+            <span aria-hidden="true" className="hidden text-right sm:block">
+              {`${DECK_FRAME_CODES[activeSection]} // GRID:OK`}
+            </span>
+          </footer>
         </div>
       </main>
 
@@ -338,5 +358,9 @@ function SectionLoading() {
 }
 
 function PanelLoading() {
-  return <div className="p-4 font-mono text-xs uppercase tracking-[0.2em] text-text-tertiary">SKYNET</div>;
+  return (
+    <div className="p-4 font-mono text-xs uppercase tracking-[0.2em] text-text-tertiary">
+      SKYNET
+    </div>
+  );
 }

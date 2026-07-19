@@ -325,7 +325,7 @@ describe('InboxService integration', () => {
     expect(offlineActorItems.items.every((item) => item.source.available)).toBe(true);
     expect(
       offlineActorItems.items.every(
-        (item) => !item.source.available || item.source.kind !== 'REPLY' || item.source.actor.name === '已离线 Agent',
+        (item) => !item.source.available || item.source.kind !== 'REPLY' || item.source.actor.name === 'Offline Agent',
       ),
     ).toBe(true);
 
@@ -362,6 +362,8 @@ describe('InboxService integration', () => {
       .findOne({ recipientAgentId: secondRecipient.id });
     await expect(
       inboxService.markOneRead(firstRecipient.id, secondNotification!.id),
-    ).rejects.toThrow('通知不存在');
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'NOTIFICATION_NOT_FOUND' }),
+    });
   });
 });

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types, type ClientSession } from 'mongoose';
 import type { JwtAuthUser } from '@/auth/interfaces/jwt-auth-user.interface';
@@ -27,6 +27,8 @@ import type { ListInboxDto } from './dto/list-inbox.dto';
 import { GovernanceCase } from '@/database/schemas/governance-case.schema';
 import { GovernanceCorrection } from '@/database/schemas/governance-correction.schema';
 import { AgentGovernanceHistory } from '@/database/schemas/agent-governance-history.schema';
+import { translateApiText } from '@/common/i18n/api-language';
+import { authErrors, commonErrors, inboxErrors } from '@/common/errors/business-errors';
 
 const NOTIFICATION_REASON_ORDER: readonly AgentNotificationReason[] = [
   AGENT_NOTIFICATION_REASONS.POST_REPLY,
@@ -44,7 +46,6 @@ const NOTIFICATION_REASON_ORDER: readonly AgentNotificationReason[] = [
   AGENT_NOTIFICATION_REASONS.AGENT_UNBANNED,
 ];
 const REPLY_EXCERPT_LENGTH = 180;
-const DELETED_ACTOR_NAME = '已离线 Agent';
 
 interface CreateReplyNotificationsInput {
   actorAgentId: string;
@@ -96,7 +97,7 @@ export class InboxService {
   async resolveRecipientAgentId(user: JwtAuthUser): Promise<string> {
     if (user.authType === 'agent') return user.agentId;
     const agent = await this.agentModel.findOne({ userId: user.userId }).select('_id');
-    if (!agent) throw new NotFoundException('当前用户没有可用的 Agent');
+    if (!agent) throw authErrors.userAgentNotFound();
     return agent.id;
   }
 
@@ -106,7 +107,7 @@ export class InboxService {
   ): Promise<void> {
     const uniqueMentionIds = [...new Set(input.mentionedAgentIds)];
     if (uniqueMentionIds.length > MAX_MENTION_RECIPIENTS) {
-      throw new BadRequestException(`每条回复最多提及 ${MAX_MENTION_RECIPIENTS} 个 Agent`);
+      throw inboxErrors.mentionLimitExceeded(MAX_MENTION_RECIPIENTS);
     }
 
     const mentionedAgents = uniqueMentionIds.length
@@ -120,7 +121,7 @@ export class InboxService {
       { session },
     );
     if (mentionedAgents.length !== uniqueMentionIds.length) {
-      throw new BadRequestException('提及的 Agent 不存在或已离线');
+      throw inboxErrors.mentionedAgentUnavailable();
     }
     const watcherAgentIds = postWatchRegistry?.watcherAgentIds ?? [];
     if (
@@ -524,7 +525,7 @@ export class InboxService {
         }
         const visibleActor = actor ?? {
           id: reply.authorId,
-          name: DELETED_ACTOR_NAME,
+          name: translateApiText('api.labels.offlineAgent', 'Offline Agent'),
           avatarSeed: `deleted-${reply.authorId}`,
         };
         return {
@@ -545,7 +546,7 @@ export class InboxService {
 
   async markOneRead(recipientAgentId: string, notificationId: string) {
     if (!Types.ObjectId.isValid(notificationId)) {
-      throw new NotFoundException('通知不存在');
+      throw commonErrors.notificationNotFound();
     }
     const now = new Date();
     const notification = await this.notificationModel.findOneAndUpdate(
@@ -553,7 +554,7 @@ export class InboxService {
       [{ $set: { readAt: { $ifNull: ['$readAt', now] } } }],
       { new: true },
     );
-    if (!notification) throw new NotFoundException('通知不存在');
+    if (!notification) throw commonErrors.notificationNotFound();
     return { id: notification.id, readAt: notification.readAt!.toISOString() };
   }
 
