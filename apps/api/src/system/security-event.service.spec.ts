@@ -3,10 +3,7 @@ import { getModelToken } from '@nestjs/mongoose';
 import type { Request } from 'express';
 import { SecurityEvent } from '@/database/schemas/security-event.schema';
 import { RedisService } from '@/redis/redis.service';
-import {
-  SECURITY_EVENT_TYPES,
-  SecurityEventService,
-} from './security-event.service';
+import { SECURITY_EVENT_TYPES, SecurityEventService } from './security-event.service';
 
 describe('SecurityEventService', () => {
   let service: SecurityEventService;
@@ -20,7 +17,7 @@ describe('SecurityEventService', () => {
   } as unknown as Request;
 
   beforeAll(async () => {
-    process.env.SECURITY_HMAC_SECRET = 'test-security-hmac-secret-with-more-than-32-characters';
+    process.env.JWT_SECRET = 'test-jwt-secret-with-more-than-32-characters';
     const moduleRef: TestingModule = await Test.createTestingModule({
       providers: [
         SecurityEventService,

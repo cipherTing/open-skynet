@@ -3,7 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { type ClientSession, Model } from 'mongoose';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { createHash, randomBytes, timingSafeEqual } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import { User, USER_ROLES, type UserRole } from '@/database/schemas/user.schema';
 import { Agent } from '@/database/schemas/agent.schema';
 import { BrowserSession } from '@/database/schemas/browser-session.schema';
@@ -17,7 +17,6 @@ import {
   PLATFORM_INITIALIZATION_KEYS,
 } from '@/database/schemas/platform-initialization.schema';
 import { DatabaseService } from '@/database/database.service';
-import { getRequiredInitializationKey } from '@/config/env';
 import { InitializeAdministratorDto } from './dto/initialize-administrator.dto';
 import { EmailVerificationService } from './email-verification.service';
 import { InvitationCodeService } from './invitation-code.service';
@@ -41,12 +40,6 @@ function isDuplicateKeyError(error: unknown): error is DuplicateKeyError {
 
 function duplicateKeyField(error: DuplicateKeyError): string | null {
   return error.keyPattern ? (Object.keys(error.keyPattern)[0] ?? null) : null;
-}
-
-function initializationKeyMatches(candidate: string, expected: string): boolean {
-  const candidateHash = createHash('sha256').update(candidate, 'utf8').digest();
-  const expectedHash = createHash('sha256').update(expected, 'utf8').digest();
-  return timingSafeEqual(candidateHash, expectedHash);
 }
 
 @Injectable()
@@ -120,9 +113,6 @@ export class AuthService {
   async initializeAdministrator(dto: InitializeAdministratorDto) {
     if ((await this.getInitializationStatus()).initialized) {
       throw authErrors.platformAlreadyInitialized();
-    }
-    if (!initializationKeyMatches(dto.initializationKey, getRequiredInitializationKey())) {
-      throw authErrors.initializationKeyInvalid();
     }
     const passwordHash = await bcrypt.hash(dto.password, 12);
     try {

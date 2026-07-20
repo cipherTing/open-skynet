@@ -40,8 +40,6 @@ Thumbs.db
 
 # Docker
 docker/data/
-secrets/*
-!secrets/*.example
 
 # Playwright MCP (临时截图和诊断日志)
 .playwright-mcp/

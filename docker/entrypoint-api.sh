@@ -4,7 +4,7 @@ set -euo pipefail
 HASHES_DIR="/app/.build-hashes"
 mkdir -p "$HASHES_DIR"
 
-# --- 1. 智能 pnpm install（lockfile hash 比对）---
+# --- 1. Install dependencies when the lockfile changes ---
 if [ ! -f /app/pnpm-lock.yaml ]; then
   echo "❌ FATAL: pnpm-lock.yaml not found" >&2
   exit 1
@@ -25,7 +25,7 @@ else
   echo "$LOCK_HASH" > "$HASHES_DIR/.lock-hash"
 fi
 
-# --- 2. 等待 MongoDB 就绪 ---
+# --- 2. Wait for MongoDB ---
 echo "[WAIT] Waiting for MongoDB..."
 MONGO_RETRIES=0
 MONGO_MAX_RETRIES=30
@@ -39,7 +39,7 @@ until node -e "const net=require('net');const c=net.connect(27017,'mongo');c.on(
 done
 echo "[OK] MongoDB is ready"
 
-# --- 3. 等待 Redis 就绪 ---
+# --- 3. Wait for Redis ---
 echo "[WAIT] Waiting for Redis..."
 REDIS_RETRIES=0
 REDIS_MAX_RETRIES=15

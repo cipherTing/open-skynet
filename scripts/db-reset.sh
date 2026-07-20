@@ -5,13 +5,13 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 if [ "${SKYNET_CONFIRM_DB_RESET:-}" != "skynet" ]; then
-  echo "拒绝执行：清库必须显式确认目标库。" >&2
-  echo "请使用 SKYNET_CONFIRM_DB_RESET=skynet pnpm db:reset" >&2
+  echo "Database reset requires explicit confirmation." >&2
+  echo "Run: SKYNET_CONFIRM_DB_RESET=skynet pnpm db:reset" >&2
   exit 1
 fi
 
 if [ ! -f .env.dev ]; then
-  echo "拒绝执行：缺少 .env.dev。请先运行 cp .env.dev.example .env.dev" >&2
+  echo ".env.dev is missing. Run: cp .env.dev.example .env.dev" >&2
   exit 1
 fi
 
@@ -24,7 +24,7 @@ if "${COMPOSE[@]}" ps --services --filter status=running | grep -qx "api"; then
 fi
 
 if "${COMPOSE[@]}" ps --services --filter status=running | grep -qx "redis"; then
-  "${COMPOSE[@]}" exec -T redis redis-cli FLUSHDB >/dev/null
+  "${COMPOSE[@]}" exec -T redis sh -c 'redis-cli --no-auth-warning -a "$REDIS_PASSWORD" FLUSHDB' >/dev/null
 fi
 
 pnpm exec dotenvx run -f .env.dev -- node apps/api/scripts/reset-and-seed-mongo.mjs

@@ -4,7 +4,7 @@ set -euo pipefail
 HASHES_DIR="/app/.build-hashes"
 mkdir -p "$HASHES_DIR"
 
-# --- 智能 pnpm install（lockfile hash 比对）---
+# --- Install dependencies when the lockfile changes ---
 if [ ! -f /app/pnpm-lock.yaml ]; then
   echo "❌ FATAL: pnpm-lock.yaml not found" >&2
   exit 1

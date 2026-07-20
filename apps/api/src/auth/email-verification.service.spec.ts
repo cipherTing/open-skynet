@@ -25,10 +25,10 @@ describe('EmailVerificationService', () => {
   const mailQueue = { enqueueVerification: jest.fn() };
   const turnstile = { verifyIfEnabled: jest.fn() };
   const authPolicy = { assertSmtpReady: jest.fn() };
-  const previousHmacSecret = process.env.SECURITY_HMAC_SECRET;
+  const previousJwtSecret = process.env.JWT_SECRET;
 
   beforeAll(async () => {
-    process.env.SECURITY_HMAC_SECRET = 'unit-test-security-hmac-0123456789-abcdef';
+    process.env.JWT_SECRET = 'unit-test-jwt-secret-0123456789-abcdef';
     replicaSet = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
     moduleRef = await Test.createTestingModule({
       imports: [
@@ -71,8 +71,8 @@ describe('EmailVerificationService', () => {
   afterAll(async () => {
     await moduleRef.close();
     await replicaSet.stop();
-    if (previousHmacSecret === undefined) delete process.env.SECURITY_HMAC_SECRET;
-    else process.env.SECURITY_HMAC_SECRET = previousHmacSecret;
+    if (previousJwtSecret === undefined) delete process.env.JWT_SECRET;
+    else process.env.JWT_SECRET = previousJwtSecret;
   });
 
   it('creates a single-use challenge and consumes it atomically', async () => {
@@ -91,7 +91,9 @@ describe('EmailVerificationService', () => {
     );
     const session = await connection.startSession();
     try {
-      await session.withTransaction(() => service.consume(sent.challengeId, verified.digest, session));
+      await session.withTransaction(() =>
+        service.consume(sent.challengeId, verified.digest, session),
+      );
       await expect(
         session.withTransaction(() => service.consume(sent.challengeId, verified.digest, session)),
       ).rejects.toBeInstanceOf(UnauthorizedException);
@@ -109,28 +111,30 @@ describe('EmailVerificationService', () => {
     const realCode = mailQueue.enqueueVerification.mock.calls[0]?.[0]?.code as string;
     const wrongCode = realCode === '000000' ? '111111' : '000000';
     for (let attempt = 0; attempt < 5; attempt += 1) {
-      await expect(service.assertValid(
+      await expect(
+        service.assertValid(
+          sent.challengeId,
+          'agent@example.com',
+          wrongCode,
+          EMAIL_VERIFICATION_PURPOSES.REGISTER,
+        ),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    }
+    await expect(
+      service.assertValid(
         sent.challengeId,
         'agent@example.com',
-        wrongCode,
+        realCode,
         EMAIL_VERIFICATION_PURPOSES.REGISTER,
-      )).rejects.toBeInstanceOf(UnauthorizedException);
-    }
-    await expect(service.assertValid(
-      sent.challengeId,
-      'agent@example.com',
-      realCode,
-      EMAIL_VERIFICATION_PURPOSES.REGISTER,
-    )).rejects.toBeInstanceOf(UnauthorizedException);
+      ),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
   });
 
   it('does not create a challenge when SMTP is unavailable', async () => {
     authPolicy.assertSmtpReady.mockRejectedValue(new BadRequestException('邮件服务尚未配置'));
-    await expect(service.send(
-      'agent@example.com',
-      EMAIL_VERIFICATION_PURPOSES.REGISTER,
-      undefined,
-    )).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      service.send('agent@example.com', EMAIL_VERIFICATION_PURPOSES.REGISTER, undefined),
+    ).rejects.toBeInstanceOf(BadRequestException);
     expect(turnstile.verifyIfEnabled).not.toHaveBeenCalled();
     expect(mailQueue.enqueueVerification).not.toHaveBeenCalled();
   });

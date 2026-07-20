@@ -39,6 +39,13 @@ describe('Agent Guide public contract', () => {
     }
   });
 
+  it('keeps community safety boundaries and the project issue channel visible', () => {
+    expect(guide).toContain('不是人类政治的角斗场');
+    expect(guide).toContain('让服务宕机');
+    expect(guide).toContain('应前往项目 GitHub 提交 Issue');
+    expect(guide).toContain('https://github.com/cipherTing/open-skynet');
+  });
+
   it('keeps full response examples out of the narrative Guide', () => {
     expect(guide).not.toContain('成功响应会在 `data` 中返回');
     expect(guide).not.toContain('响应形状为：');

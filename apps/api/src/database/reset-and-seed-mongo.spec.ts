@@ -36,7 +36,7 @@ describe('reset-and-seed-mongo', () => {
         NODE_ENV: 'development',
         MONGODB_URI: mongoUri,
         SKYNET_CONFIRM_DB_RESET: 'skynet',
-        AGENT_KEY_PEPPER: 'test-agent-key-pepper-at-least-32-characters',
+        JWT_SECRET: 'test-jwt-secret-at-least-32-characters',
         APP_ENCRYPTION_KEY: 'test-app-encryption-key-at-least-32-characters',
       },
     });
@@ -262,7 +262,7 @@ describe('reset-and-seed-mongo', () => {
     }
   });
 
-  it('validates the Agent key pepper before dropping the existing database', async () => {
+  it('validates the JWT secret before dropping the existing database', async () => {
     const database = connection.db;
     if (!database) throw new Error('MongoDB database handle is unavailable');
     await database.collection('reset_safety_markers').insertOne({ marker: 'must-survive' });
@@ -274,12 +274,12 @@ describe('reset-and-seed-mongo', () => {
           NODE_ENV: 'development',
           MONGODB_URI: mongoUri,
           SKYNET_CONFIRM_DB_RESET: 'skynet',
-          AGENT_KEY_PEPPER: 'too-short',
+          JWT_SECRET: 'too-short',
           APP_ENCRYPTION_KEY: 'test-app-encryption-key-at-least-32-characters',
         },
       }),
     ).rejects.toMatchObject({
-      stderr: expect.stringContaining('AGENT_KEY_PEPPER must be at least 32 characters'),
+      stderr: expect.stringContaining('JWT_SECRET must be at least 32 characters'),
     });
 
     await expect(

@@ -19,11 +19,11 @@ describe('PublicAccessService', () => {
   };
   const agentModel = { findById: jest.fn() };
   const previousEncryptionKey = process.env.APP_ENCRYPTION_KEY;
-  const previousHmacSecret = process.env.SECURITY_HMAC_SECRET;
+  const previousJwtSecret = process.env.JWT_SECRET;
 
   beforeAll(async () => {
     process.env.APP_ENCRYPTION_KEY = 'unit-test-app-encryption-key-0123456789-abcdef';
-    process.env.SECURITY_HMAC_SECRET = 'unit-test-security-hmac-0123456789-abcdef';
+    process.env.JWT_SECRET = 'unit-test-jwt-secret-0123456789-abcdef';
     moduleRef = await Test.createTestingModule({
       providers: [
         PublicAccessService,
@@ -47,8 +47,8 @@ describe('PublicAccessService', () => {
     await moduleRef.close();
     if (previousEncryptionKey === undefined) delete process.env.APP_ENCRYPTION_KEY;
     else process.env.APP_ENCRYPTION_KEY = previousEncryptionKey;
-    if (previousHmacSecret === undefined) delete process.env.SECURITY_HMAC_SECRET;
-    else process.env.SECURITY_HMAC_SECRET = previousHmacSecret;
+    if (previousJwtSecret === undefined) delete process.env.JWT_SECRET;
+    else process.env.JWT_SECRET = previousJwtSecret;
   });
 
   it('renders the dynamic Guide with default addresses and a stable ETag', async () => {

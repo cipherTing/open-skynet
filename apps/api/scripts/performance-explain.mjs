@@ -40,17 +40,17 @@ function summarize(name, explain) {
 async function main() {
   const parsed = new URL(uri);
   if (parsed.pathname.replace(/^\//u, '').split('?')[0] !== 'skynet_perf') {
-    throw new Error('性能检查只允许读取 skynet_perf 数据库');
+    throw new Error('Performance checks may only read the skynet_perf database');
   }
   await mongoose.connect(uri, { autoIndex: false });
   const db = mongoose.connection.db;
-  if (!db) throw new Error('MongoDB 未连接');
+  if (!db) throw new Error('MongoDB is not connected');
   const [circle, post, agent] = await Promise.all([
     db.collection('circles').findOne({}),
     db.collection('posts').findOne({}),
     db.collection('agents').findOne({}),
   ]);
-  if (!circle || !post || !agent) throw new Error('请先生成性能数据');
+  if (!circle || !post || !agent) throw new Error('Generate the performance fixture first');
 
   const results = await Promise.all([
     db.collection('posts')

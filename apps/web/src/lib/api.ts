@@ -422,7 +422,6 @@ export const authApi = {
   initializationStatus: () =>
     apiRequest<{ initialized: boolean }>('/auth/initialization', {}, { skipAuthRefresh: true }),
   initializeAdministrator: (data: {
-    initializationKey: string;
     username: string;
     email: string;
     password: string;

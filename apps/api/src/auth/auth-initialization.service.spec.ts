@@ -1,5 +1,5 @@
 import { getConnectionToken, MongooseModule } from '@nestjs/mongoose';
-import { ConflictException, ForbiddenException } from '@nestjs/common';
+import { ConflictException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { Connection } from 'mongoose';
@@ -24,11 +24,8 @@ describe('AuthService administrator initialization', () => {
   let moduleRef: TestingModule;
   let connection: Connection;
   let service: AuthService;
-  const initializationKey = 'unit-test-initialization-key-0123456789-abcdef';
-  const originalInitializationKey = process.env.INITIALIZATION_KEY;
 
   beforeAll(async () => {
-    process.env.INITIALIZATION_KEY = initializationKey;
     replicaSet = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
     moduleRef = await Test.createTestingModule({
       imports: [
@@ -90,8 +87,6 @@ describe('AuthService administrator initialization', () => {
   afterAll(async () => {
     await moduleRef.close();
     await replicaSet.stop();
-    if (originalInitializationKey === undefined) delete process.env.INITIALIZATION_KEY;
-    else process.env.INITIALIZATION_KEY = originalInitializationKey;
   });
 
   it('starts uninitialized and becomes initialized after creating the first administrator', async () => {
@@ -100,7 +95,6 @@ describe('AuthService administrator initialization', () => {
     const result = await service.initializeAdministrator({
       username: 'first_admin',
       email: 'first-admin@example.com',
-      initializationKey,
       password: 'Password123',
       agentName: 'FirstAdminAgent',
       agentDescription: '平台首位管理员',
@@ -114,7 +108,6 @@ describe('AuthService administrator initialization', () => {
       service.initializeAdministrator({
         username: 'second_admin',
         email: 'second-admin@example.com',
-        initializationKey,
         password: 'Password123',
         agentName: 'SecondAdminAgent',
       }),
@@ -126,14 +119,12 @@ describe('AuthService administrator initialization', () => {
       service.initializeAdministrator({
         username: 'concurrent_admin_a',
         email: 'concurrent-a@example.com',
-        initializationKey,
         password: 'Password123',
         agentName: 'ConcurrentAdminA',
       }),
       service.initializeAdministrator({
         username: 'concurrent_admin_b',
         email: 'concurrent-b@example.com',
-        initializationKey,
         password: 'Password123',
         agentName: 'ConcurrentAdminB',
       }),
@@ -168,7 +159,6 @@ describe('AuthService administrator initialization', () => {
       service.initializeAdministrator({
         username: 'replacement_admin',
         email: 'replacement@example.com',
-        initializationKey,
         password: 'Password123',
         agentName: 'ReplacementAdmin',
       }),
@@ -199,7 +189,6 @@ describe('AuthService administrator initialization', () => {
       service.initializeAdministrator({
         username: 'occupied_username',
         email: 'different@example.com',
-        initializationKey,
         password: 'Password123',
         agentName: 'NewAdminAgent',
       }),
@@ -210,7 +199,6 @@ describe('AuthService administrator initialization', () => {
       service.initializeAdministrator({
         username: 'new_admin_username',
         email: 'new-admin@example.com',
-        initializationKey,
         password: 'Password123',
         agentName: 'OccupiedAgent',
       }),
@@ -262,7 +250,6 @@ describe('AuthService administrator initialization', () => {
     const result = await service.initializeAdministrator({
       username: 'reusable_admin',
       email: 'reusable@example.com',
-      initializationKey,
       password: 'Password123',
       agentName: 'ReusableAgent',
     });
@@ -274,22 +261,5 @@ describe('AuthService administrator initialization', () => {
     await expect(
       connection.model(Agent.name).countDocuments({ name: 'ReusableAgent' }),
     ).resolves.toBe(2);
-  });
-
-  it('rejects an invalid initialization key before writing any account data', async () => {
-    await expect(
-      service.initializeAdministrator({
-        initializationKey: 'wrong',
-        username: 'blocked_admin',
-        email: 'blocked@example.com',
-        password: 'Password123',
-        agentName: 'BlockedAdmin',
-      }),
-    ).rejects.toBeInstanceOf(ForbiddenException);
-
-    await expect(connection.model(User.name).countDocuments({})).resolves.toBe(0);
-    await expect(connection.model(Agent.name).countDocuments({})).resolves.toBe(0);
-    await expect(connection.model(BrowserSession.name).countDocuments({})).resolves.toBe(0);
-    await expect(connection.model(PlatformInitialization.name).countDocuments({})).resolves.toBe(0);
   });
 });

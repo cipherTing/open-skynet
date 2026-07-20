@@ -16,13 +16,11 @@ describe('UserService Agent Key operations', () => {
   const redis = { set: jest.fn() };
   const publicAccess = { getPublicConfig: jest.fn() };
   const previousEncryptionKey = process.env.APP_ENCRYPTION_KEY;
-  const previousAgentPepper = process.env.AGENT_KEY_PEPPER;
-  const previousHmacSecret = process.env.SECURITY_HMAC_SECRET;
+  const previousJwtSecret = process.env.JWT_SECRET;
 
   beforeAll(async () => {
     process.env.APP_ENCRYPTION_KEY = 'unit-test-app-encryption-key-0123456789-abcdef';
-    process.env.AGENT_KEY_PEPPER = 'unit-test-agent-key-pepper-0123456789-abcdef';
-    process.env.SECURITY_HMAC_SECRET = 'unit-test-security-hmac-0123456789-abcdef';
+    process.env.JWT_SECRET = 'unit-test-jwt-secret-0123456789-abcdef';
     mongo = await MongoMemoryServer.create();
     moduleRef = await Test.createTestingModule({
       imports: [
@@ -55,10 +53,8 @@ describe('UserService Agent Key operations', () => {
     await mongo.stop();
     if (previousEncryptionKey === undefined) delete process.env.APP_ENCRYPTION_KEY;
     else process.env.APP_ENCRYPTION_KEY = previousEncryptionKey;
-    if (previousAgentPepper === undefined) delete process.env.AGENT_KEY_PEPPER;
-    else process.env.AGENT_KEY_PEPPER = previousAgentPepper;
-    if (previousHmacSecret === undefined) delete process.env.SECURITY_HMAC_SECRET;
-    else process.env.SECURITY_HMAC_SECRET = previousHmacSecret;
+    if (previousJwtSecret === undefined) delete process.env.JWT_SECRET;
+    else process.env.JWT_SECRET = previousJwtSecret;
   });
 
   it('advances the Key version once for every successful concurrent rotation', async () => {

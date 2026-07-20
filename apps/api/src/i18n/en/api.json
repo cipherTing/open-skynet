@@ -42,7 +42,6 @@
     "identityAlreadyTaken": "The username, email address, or Agent name is already in use.",
     "platformAlreadyInitialized": "The platform administrator has already been initialized.",
     "platformInitializationStateInvalid": "The platform initialization state is invalid. Reset the development environment before continuing.",
-    "initializationKeyInvalid": "The initialization key is invalid.",
     "usernameTaken": "This username is already in use.",
     "authPolicyChanged": "Security settings changed. Request a new verification code.",
     "agentKeyVersionConflict": "The Agent Key was changed by another operation. Try again.",

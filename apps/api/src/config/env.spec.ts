@@ -1,50 +1,33 @@
-import * as fs from 'node:fs';
 import { readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { parse } from 'dotenv';
 import {
-  getRequiredAgentKeyPepper,
+  getMongoConnectionOptions,
+  getRedisPassword,
   getRequiredAppEncryptionKey,
-  getRequiredInitializationKey,
   getRequiredJwtSecret,
-  getRequiredSecurityHmacSecret,
+  getRequiredMongoUri,
   validateSecuritySecrets,
 } from './env';
 
-const SECRET_NAMES = [
-  'JWT_SECRET',
-  'AGENT_KEY_PEPPER',
-  'SECURITY_HMAC_SECRET',
-  'INITIALIZATION_KEY',
-  'APP_ENCRYPTION_KEY',
-] as const;
-
+const SECRET_NAMES = ['JWT_SECRET', 'APP_ENCRYPTION_KEY'] as const;
 type SecretName = (typeof SECRET_NAMES)[number];
 
 const ORIGINAL_ENVIRONMENT = new Map<string, string | undefined>(
-  ['NODE_ENV', ...SECRET_NAMES, ...SECRET_NAMES.map((name) => `${name}_FILE`)].map((name) => [
-    name,
-    process.env[name],
-  ]),
+  [
+    'NODE_ENV',
+    'MONGODB_URI',
+    'MONGO_USERNAME',
+    'MONGO_PASSWORD',
+    'REDIS_PASSWORD',
+    ...SECRET_NAMES,
+  ].map((name) => [name, process.env[name]]),
 );
 
 const VALID_SECRETS: Record<SecretName, string> = {
   JWT_SECRET: 'unit-test-jwt-secret-0123456789-abcdef',
-  AGENT_KEY_PEPPER: 'unit-test-agent-pepper-0123456789-abcdef',
-  SECURITY_HMAC_SECRET: 'unit-test-security-hmac-0123456789-abcdef',
-  INITIALIZATION_KEY: 'unit-test-initialization-key-0123456789-abcdef',
   APP_ENCRYPTION_KEY: 'unit-test-app-encryption-key-0123456789-abcdef',
 };
-const TEMPORARY_DIRECTORIES: string[] = [];
-
-function createSecretFile(value: string): string {
-  const directory = fs.mkdtempSync(join(tmpdir(), 'skynet-env-'));
-  TEMPORARY_DIRECTORIES.push(directory);
-  const filePath = join(directory, 'secret');
-  fs.writeFileSync(filePath, value);
-  return filePath;
-}
 
 interface PublicSecretCase {
   source: string;
@@ -52,62 +35,33 @@ interface PublicSecretCase {
   value: string;
 }
 
-function fromRepositoryRoot(fileName: string): string {
-  return resolve(__dirname, '../../../../', fileName);
-}
-
 function loadEnvironmentExample(fileName: string): Record<string, string> {
   return parse(readFileSync(resolve(__dirname, '../../../../', fileName)));
 }
 
 const DEVELOPMENT_EXAMPLE = loadEnvironmentExample('.env.dev.example');
+const PRODUCTION_EXAMPLE = loadEnvironmentExample('.env.example');
 const PUBLIC_SECRET_CASES: PublicSecretCase[] = [
   ...SECRET_NAMES.map((name) => ({
     source: '.env.dev.example',
     name,
     value: DEVELOPMENT_EXAMPLE[name],
   })),
-  {
-    source: 'secrets/jwt_secret.example',
-    name: 'JWT_SECRET',
-    value: readFileSync(fromRepositoryRoot('secrets/jwt_secret.example'), 'utf8').trim(),
-  },
-  {
-    source: 'secrets/agent_key_pepper.example',
-    name: 'AGENT_KEY_PEPPER',
-    value: readFileSync(fromRepositoryRoot('secrets/agent_key_pepper.example'), 'utf8').trim(),
-  },
-  {
-    source: 'secrets/security_hmac_secret.example',
-    name: 'SECURITY_HMAC_SECRET',
-    value: readFileSync(fromRepositoryRoot('secrets/security_hmac_secret.example'), 'utf8').trim(),
-  },
-  {
-    source: 'secrets/initialization_key.example',
-    name: 'INITIALIZATION_KEY',
-    value: readFileSync(fromRepositoryRoot('secrets/initialization_key.example'), 'utf8').trim(),
-  },
-  {
-    source: 'secrets/app_encryption_key.example',
-    name: 'APP_ENCRYPTION_KEY',
-    value: readFileSync(fromRepositoryRoot('secrets/app_encryption_key.example'), 'utf8').trim(),
-  },
+  ...SECRET_NAMES.map((name) => ({
+    source: '.env.example',
+    name,
+    value: PRODUCTION_EXAMPLE[name],
+  })),
 ];
 
 describe('security secret validation', () => {
   beforeEach(() => {
     process.env.NODE_ENV = 'production';
-    for (const name of SECRET_NAMES) {
-      process.env[name] = VALID_SECRETS[name];
-      delete process.env[`${name}_FILE`];
-    }
-  });
-
-  afterEach(() => {
-    jest.restoreAllMocks();
-    for (const directory of TEMPORARY_DIRECTORIES.splice(0)) {
-      fs.rmSync(directory, { recursive: true, force: true });
-    }
+    for (const name of SECRET_NAMES) process.env[name] = VALID_SECRETS[name];
+    delete process.env.MONGODB_URI;
+    delete process.env.MONGO_USERNAME;
+    delete process.env.MONGO_PASSWORD;
+    delete process.env.REDIS_PASSWORD;
   });
 
   afterAll(() => {
@@ -119,9 +73,7 @@ describe('security secret validation', () => {
 
   it.each(SECRET_NAMES)('requires %s', (name) => {
     delete process.env[name];
-    expect(() => validateSecuritySecrets()).toThrow(
-      `${name} environment variable or ${name}_FILE is required`,
-    );
+    expect(() => validateSecuritySecrets()).toThrow(`${name} environment variable is required`);
   });
 
   it.each(SECRET_NAMES)('rejects a short %s', (name) => {
@@ -140,56 +92,45 @@ describe('security secret validation', () => {
   );
 
   it('requires independent values', () => {
-    process.env.SECURITY_HMAC_SECRET = process.env.JWT_SECRET;
+    process.env.APP_ENCRYPTION_KEY = process.env.JWT_SECRET;
     expect(() => validateSecuritySecrets()).toThrow('must use independent values');
   });
 
-  it('accepts independent non-public secrets', () => {
+  it('accepts direct environment values', () => {
     expect(() => validateSecuritySecrets()).not.toThrow();
     expect(getRequiredJwtSecret()).toBe(VALID_SECRETS.JWT_SECRET);
-    expect(getRequiredAgentKeyPepper()).toBe(VALID_SECRETS.AGENT_KEY_PEPPER);
-    expect(getRequiredSecurityHmacSecret()).toBe(VALID_SECRETS.SECURITY_HMAC_SECRET);
-    expect(getRequiredInitializationKey()).toBe(VALID_SECRETS.INITIALIZATION_KEY);
     expect(getRequiredAppEncryptionKey()).toBe(VALID_SECRETS.APP_ENCRYPTION_KEY);
   });
 
-  it('prefers and caches a secret file by path', () => {
-    const firstValue = 'file-backed-jwt-secret-0123456789-abcdef';
-    const filePath = createSecretFile(firstValue);
-    process.env.JWT_SECRET_FILE = filePath;
-    process.env.JWT_SECRET = 'environment-jwt-secret-0123456789-abcdef';
-    expect(getRequiredJwtSecret()).toBe(firstValue);
-    fs.writeFileSync(filePath, 'changed-file-jwt-secret-0123456789-abcdef');
-    expect(getRequiredJwtSecret()).toBe(firstValue);
+  it('reads MongoDB credentials as driver authentication options', () => {
+    process.env.NODE_ENV = 'development';
+    process.env.MONGO_USERNAME = 'skynet';
+    process.env.MONGO_PASSWORD = 'mongo-password';
+    expect(getMongoConnectionOptions()).toEqual({
+      auth: { username: 'skynet', password: 'mongo-password' },
+      authSource: 'admin',
+    });
   });
 
-  it('reads a new file when the configured path changes', () => {
-    const firstPath = createSecretFile('first-path-jwt-secret-0123456789-abcdef');
-    const secondPath = createSecretFile('second-path-jwt-secret-0123456789-abcdef');
-    process.env.JWT_SECRET_FILE = firstPath;
-    expect(getRequiredJwtSecret()).toContain('first-path');
-
-    process.env.JWT_SECRET_FILE = secondPath;
-    expect(getRequiredJwtSecret()).toContain('second-path');
+  it('requires the MongoDB connection URI', () => {
+    expect(() => getRequiredMongoUri()).toThrow('MONGODB_URI is required');
+    process.env.MONGODB_URI = 'mongodb://mongo:27017/skynet?replicaSet=rs0';
+    expect(getRequiredMongoUri()).toBe('mongodb://mongo:27017/skynet?replicaSet=rs0');
   });
 
-  it('reads direct environment values live after removing the file source', () => {
-    process.env.JWT_SECRET_FILE = createSecretFile('file-source-jwt-secret-0123456789-abcdef');
-    expect(getRequiredJwtSecret()).toContain('file-source');
-
-    delete process.env.JWT_SECRET_FILE;
-    process.env.JWT_SECRET = 'first-live-jwt-secret-0123456789-abcdef';
-    expect(getRequiredJwtSecret()).toContain('first-live');
-    process.env.JWT_SECRET = 'second-live-jwt-secret-0123456789-abcdef';
-    expect(getRequiredJwtSecret()).toContain('second-live');
+  it('requires MongoDB credentials in every environment', () => {
+    expect(() => getMongoConnectionOptions()).toThrow(
+      'MONGO_USERNAME and MONGO_PASSWORD are required',
+    );
   });
 
-  it('does not cache failed file reads', () => {
-    const missingPath = join(tmpdir(), `skynet-missing-secret-${Date.now()}`);
-    process.env.JWT_SECRET_FILE = missingPath;
-    expect(() => getRequiredJwtSecret()).toThrow();
-    fs.writeFileSync(missingPath, 'recovered-file-jwt-secret-0123456789-abcdef');
-    expect(getRequiredJwtSecret()).toContain('recovered-file');
-    fs.rmSync(missingPath, { force: true });
+  it('reads the Redis password directly from the environment', () => {
+    process.env.NODE_ENV = 'development';
+    process.env.REDIS_PASSWORD = 'redis-password';
+    expect(getRedisPassword()).toBe('redis-password');
+  });
+
+  it('requires the Redis password in every environment', () => {
+    expect(() => getRedisPassword()).toThrow('REDIS_PASSWORD is required');
   });
 });

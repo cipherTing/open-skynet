@@ -1,27 +1,13 @@
-import { readFileSync } from 'node:fs';
-
-const SECURITY_SECRET_NAMES = [
-  'JWT_SECRET',
-  'AGENT_KEY_PEPPER',
-  'SECURITY_HMAC_SECRET',
-  'INITIALIZATION_KEY',
-  'APP_ENCRYPTION_KEY',
-] as const;
-const secretFileCache = new Map<string, string>();
-
+const SECURITY_SECRET_NAMES = ['JWT_SECRET', 'APP_ENCRYPTION_KEY'] as const;
 type SecuritySecretName = (typeof SECURITY_SECRET_NAMES)[number];
 
 const PUBLIC_SECRET_EXAMPLES = new Set([
   'replace-with-a-strong-random-secret-at-least-32-chars',
-  'replace-with-an-independent-agent-key-pepper-32-chars-min',
-  'replace-with-an-independent-security-hmac-secret-32-chars-min',
+  'change-this-jwt-secret-at-least-32-characters',
   'dev-only-insecure-change-me-at-least-32-characters',
-  'dev-only-agent-key-pepper-at-least-32-characters',
-  'dev-only-security-hmac-at-least-32-characters',
-  'dev-only-initialization-key-at-least-32-characters',
-  'replace-with-an-independent-initialization-key-32-chars-min',
   'dev-only-app-encryption-key-at-least-32-characters',
   'replace-with-an-independent-app-encryption-key-32-chars-min',
+  'change-this-app-encryption-key-at-least-32-characters',
 ]);
 
 export function isDevelopment(): boolean {
@@ -44,20 +30,16 @@ export function getRedisConfig(): { host: string; port: number } {
   return { host, port };
 }
 
+export function getRequiredMongoUri(): string {
+  const uri = process.env.MONGODB_URI?.trim();
+  if (!uri) {
+    throw new Error('MONGODB_URI is required');
+  }
+  return uri;
+}
+
 export function getRequiredJwtSecret(): string {
   return getRequiredSecret('JWT_SECRET');
-}
-
-export function getRequiredAgentKeyPepper(): string {
-  return getRequiredSecret('AGENT_KEY_PEPPER');
-}
-
-export function getRequiredSecurityHmacSecret(): string {
-  return getRequiredSecret('SECURITY_HMAC_SECRET');
-}
-
-export function getRequiredInitializationKey(): string {
-  return getRequiredSecret('INITIALIZATION_KEY');
 }
 
 export function getRequiredAppEncryptionKey(): string {
@@ -67,10 +49,28 @@ export function getRequiredAppEncryptionKey(): string {
 export function validateSecuritySecrets(): void {
   const secrets = SECURITY_SECRET_NAMES.map((name) => getRequiredSecret(name));
   if (new Set(secrets).size !== SECURITY_SECRET_NAMES.length) {
-    throw new Error(
-      'JWT_SECRET, AGENT_KEY_PEPPER, SECURITY_HMAC_SECRET, INITIALIZATION_KEY, and APP_ENCRYPTION_KEY must use independent values',
-    );
+    throw new Error('JWT_SECRET and APP_ENCRYPTION_KEY must use independent values');
   }
+}
+
+export function getMongoConnectionOptions(): {
+  auth: { username: string; password: string };
+  authSource: string;
+} {
+  const username = process.env.MONGO_USERNAME?.trim();
+  const password = process.env.MONGO_PASSWORD?.trim();
+  if (!username || !password) {
+    throw new Error('MONGO_USERNAME and MONGO_PASSWORD are required');
+  }
+  return { auth: { username, password }, authSource: 'admin' };
+}
+
+export function getRedisPassword(): string {
+  const password = process.env.REDIS_PASSWORD?.trim();
+  if (!password) {
+    throw new Error('REDIS_PASSWORD is required');
+  }
+  return password;
 }
 
 export function getTrustProxySetting(): number | string | false {
@@ -96,7 +96,7 @@ export function getTrustProxySetting(): number | string | false {
 function getRequiredSecret(name: SecuritySecretName): string {
   const secret = readSecret(name);
   if (!secret) {
-    throw new Error(`${name} environment variable or ${name}_FILE is required`);
+    throw new Error(`${name} environment variable is required`);
   }
   if (secret.length < 32) {
     throw new Error(`${name} must be at least 32 characters`);
@@ -108,13 +108,6 @@ function getRequiredSecret(name: SecuritySecretName): string {
 }
 
 function readSecret(name: string): string | undefined {
-  const filePath = process.env[`${name}_FILE`]?.trim();
-  if (filePath) {
-    if (secretFileCache.has(filePath)) return secretFileCache.get(filePath);
-    const secret = readFileSync(filePath, 'utf8').trim();
-    secretFileCache.set(filePath, secret);
-    return secret;
-  }
   return process.env[name]?.trim();
 }
 

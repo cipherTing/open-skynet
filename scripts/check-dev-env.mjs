@@ -33,7 +33,7 @@ function readPort(env, name) {
   const rawValue = env[name];
   const port = Number(rawValue);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    throw new Error(`${name} 必须是 1-65535 的端口号，当前值：${rawValue ?? '(missing)'}`);
+    throw new Error(`${name} must be an integer between 1 and 65535; received ${rawValue ?? '(missing)'}`);
   }
   return port;
 }
@@ -43,7 +43,7 @@ function assertUniquePorts(namedPorts) {
   for (const [name, port] of Object.entries(namedPorts)) {
     const existing = seen.get(port);
     if (existing) {
-      throw new Error(`${name} 与 ${existing} 使用了相同端口 ${port}`);
+      throw new Error(`${name} and ${existing} cannot use the same port ${port}`);
     }
     seen.set(port, name);
   }
@@ -90,7 +90,7 @@ function assertLocalHttpUrl(value, expectedPort, expectedPath, name) {
   try {
     url = new URL(value);
   } catch {
-    throw new Error(`${name} 必须是合法 URL`);
+    throw new Error(`${name} must be a valid URL`);
   }
 
   const expectedPathname = expectedPath || '/';
@@ -100,7 +100,7 @@ function assertLocalHttpUrl(value, expectedPort, expectedPath, name) {
     url.port !== String(expectedPort) ||
     url.pathname !== expectedPathname
   ) {
-    throw new Error(`${name} 必须指向本机 ${expectedPort}${expectedPath}`);
+    throw new Error(`${name} must point to localhost:${expectedPort}${expectedPath}`);
   }
 }
 
@@ -109,7 +109,7 @@ function assertLocalMongoUri(value, expectedPort) {
   try {
     url = new URL(value);
   } catch {
-    throw new Error('MONGODB_URI 必须是合法 MongoDB URI');
+    throw new Error('MONGODB_URI must be a valid MongoDB URI');
   }
 
   if (
@@ -117,7 +117,7 @@ function assertLocalMongoUri(value, expectedPort) {
     !LOCAL_HOSTS.has(url.hostname) ||
     url.port !== String(expectedPort)
   ) {
-    throw new Error(`MONGODB_URI 必须指向本机 MongoDB ${expectedPort}`);
+    throw new Error(`MONGODB_URI must point to local MongoDB port ${expectedPort}`);
   }
 }
 
@@ -154,11 +154,11 @@ function assertComposeWaitSupport() {
       stdio: ['ignore', 'pipe', 'ignore'],
     });
   } catch {
-    throw new Error('Docker Compose 不可用，请先安装或启动 Docker');
+    throw new Error('Docker Compose is unavailable. Install or start Docker first');
   }
 
   if (!help.includes('--wait') || !help.includes('--wait-timeout')) {
-    throw new Error('Docker Compose 版本过旧，请升级到支持 --wait 和 --wait-timeout 的版本');
+    throw new Error('Docker Compose must support --wait and --wait-timeout');
   }
 }
 
@@ -234,14 +234,14 @@ async function assertPortAvailable(name, port) {
   if (await canBindPort(port)) return;
 
   const listeners = queryPortListeners(port);
-  const listenerSummary = listeners.length > 0 ? `：${formatListeners(listeners)}` : '';
+  const listenerSummary = listeners.length > 0 ? `: ${formatListeners(listeners)}` : '';
   throw new Error(
-    `${name}=${port} 已被占用${listenerSummary}。如果开发服务已经运行，请先在原终端按 Ctrl+C，再重新启动`,
+    `${name}=${port} is already in use${listenerSummary}. If Skynet dev services are running, stop them with Ctrl+C before restarting`,
   );
 }
 
 if (!existsSync(ENV_PATH)) {
-  fail(`缺少 ${ENV_PATH}。请先运行：cp ${EXAMPLE_PATH} ${ENV_PATH}`);
+  fail(`${ENV_PATH} is missing. Run: cp ${EXAMPLE_PATH} ${ENV_PATH}`);
 }
 
 try {
@@ -259,13 +259,23 @@ try {
   assertUniquePorts(ports);
 
   if (env.NODE_ENV !== 'development') {
-    throw new Error('NODE_ENV 必须是 development');
+    throw new Error('NODE_ENV must be development');
+  }
+
+  for (const name of [
+    'MONGO_USERNAME',
+    'MONGO_PASSWORD',
+    'REDIS_PASSWORD',
+    'JWT_SECRET',
+    'APP_ENCRYPTION_KEY',
+  ]) {
+    if (!env[name]) throw new Error(`${name} must be configured in .env.dev`);
   }
 
   assertLocalMongoUri(env.MONGODB_URI, ports.MONGO_PORT);
 
   if (!LOCAL_HOSTS.has(env.REDIS_HOST)) {
-    throw new Error('REDIS_HOST 必须是本机地址');
+    throw new Error('REDIS_HOST must point to localhost');
   }
 
   assertLocalHttpUrl(env.CORS_ORIGIN, ports.WEB_PORT, '', 'CORS_ORIGIN');
@@ -285,7 +295,9 @@ try {
     if (await isPortOpen(ports[portName])) {
       const publishedPort = getComposePublishedPort(serviceName, containerPort);
       if (!isComposeServiceRunning(serviceName) || publishedPort !== ports[portName]) {
-        throw new Error(`${portName}=${ports[portName]} 已被非本项目 ${serviceName} 服务占用`);
+        throw new Error(
+          `${portName}=${ports[portName]} is occupied by a ${serviceName} service outside this Compose project`,
+        );
       }
     }
   }

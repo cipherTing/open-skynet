@@ -1,11 +1,9 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { User } from '@/database/schemas/user.schema';
-import { getRequiredAgentKeyPepper, getRequiredSecurityHmacSecret } from '@/config/env';
+import { getRequiredJwtSecret } from '@/config/env';
 
 export function digestAgentKey(secretKey: string): string {
-  return createHmac('sha256', getRequiredAgentKeyPepper())
-    .update(secretKey)
-    .digest('hex');
+  return createHmac('sha256', getRequiredJwtSecret()).update(secretKey).digest('hex');
 }
 
 export function isUserSuspended(
@@ -17,7 +15,7 @@ export function isUserSuspended(
 }
 
 export function hashOpaqueToken(token: string): string {
-  return createHmac('sha256', getRequiredSecurityHmacSecret()).update(token).digest('hex');
+  return createHmac('sha256', getRequiredJwtSecret()).update(token).digest('hex');
 }
 
 export function secureTokenMatches(rawToken: string, expectedHash: string): boolean {

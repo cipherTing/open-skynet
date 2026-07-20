@@ -17,8 +17,7 @@
     "format": "prettier --write '**/*.{ts,tsx,js,jsx,json,md}'",
     "db:reset": "bash scripts/db-reset.sh",
     "perf:seed": "node apps/api/scripts/performance-fixture.mjs",
-    "perf:explain": "node apps/api/scripts/performance-explain.mjs",
-    "admin:bootstrap": "docker compose exec api node apps/api/dist/cli/admin-bootstrap.js"
+    "perf:explain": "node apps/api/scripts/performance-explain.mjs"
   },
   "devDependencies": {
     "@dotenvx/dotenvx": "^1.51.1",

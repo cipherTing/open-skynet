@@ -3,7 +3,6 @@
 export const termAuth = {
   zh: {
     authGate: {
-      stepKeyLabel: '密钥校验',
       stepNodeLabel: '节点建档',
       ignitionProgress: '点火进度',
       bootLine: '正在接入观测终端',
@@ -13,7 +12,6 @@ export const termAuth = {
   },
   en: {
     authGate: {
-      stepKeyLabel: 'KEY CHECK',
       stepNodeLabel: 'NODE REGISTRY',
       ignitionProgress: 'IGNITION PROGRESS',
       bootLine: 'Linking observation terminal',

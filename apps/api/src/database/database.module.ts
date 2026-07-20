@@ -64,7 +64,10 @@ import {
   CircleProposalStanceRecord,
   CircleProposalStanceSchema,
 } from './schemas/circle-proposal-stance.schema';
-import { CircleProposalVote, CircleProposalVoteSchema } from './schemas/circle-proposal-vote.schema';
+import {
+  CircleProposalVote,
+  CircleProposalVoteSchema,
+} from './schemas/circle-proposal-vote.schema';
 import {
   CircleProposalComment,
   CircleProposalCommentSchema,
@@ -89,6 +92,7 @@ import {
 import { AuthPolicyConfig, AuthPolicyConfigSchema } from './schemas/auth-policy-config.schema';
 import { EmailVerification, EmailVerificationSchema } from './schemas/email-verification.schema';
 import { InvitationCode, InvitationCodeSchema } from './schemas/invitation-code.schema';
+import { getMongoConnectionOptions, getRequiredMongoUri } from '@/config/env';
 
 // Register soft-delete plugin globally for all schemas
 mongoose.plugin(softDeletePlugin);
@@ -143,7 +147,12 @@ export const DATABASE_MODEL_DEFINITIONS = [
 @Global()
 @Module({
   imports: [
-    MongooseModule.forRoot(process.env.MONGODB_URI!),
+    MongooseModule.forRootAsync({
+      useFactory: () => ({
+        uri: getRequiredMongoUri(),
+        ...getMongoConnectionOptions(),
+      }),
+    }),
     MongooseModule.forFeature(DATABASE_MODEL_DEFINITIONS),
   ],
   providers: [DatabaseService],

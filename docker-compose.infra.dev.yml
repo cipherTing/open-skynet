@@ -40,22 +40,16 @@ services:
       NODE_ENV: development
       API_PORT: 8081
       MONGODB_URI: mongodb://mongo:27017/skynet?replicaSet=rs0
+      MONGO_USERNAME: ${MONGO_USERNAME:?MONGO_USERNAME is required}
+      MONGO_PASSWORD: ${MONGO_PASSWORD:?MONGO_PASSWORD is required}
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080}
-      JWT_SECRET_FILE: !reset null
-      AGENT_KEY_PEPPER_FILE: !reset null
-      SECURITY_HMAC_SECRET_FILE: !reset null
-      INITIALIZATION_KEY_FILE: !reset null
-      APP_ENCRYPTION_KEY_FILE: !reset null
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
-      AGENT_KEY_PEPPER: ${AGENT_KEY_PEPPER:?AGENT_KEY_PEPPER is required}
-      SECURITY_HMAC_SECRET: ${SECURITY_HMAC_SECRET:?SECURITY_HMAC_SECRET is required}
-      INITIALIZATION_KEY: ${INITIALIZATION_KEY:?INITIALIZATION_KEY is required}
       APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?APP_ENCRYPTION_KEY is required}
       TRUST_PROXY: ${TRUST_PROXY:-false}
       SWAGGER_ENABLED: ${SWAGGER_ENABLED:-true}
-    secrets: !reset []
     volumes:
       - ./package.json:/app/package.json:ro
       - ./pnpm-workspace.yaml:/app/pnpm-workspace.yaml:ro
@@ -78,11 +72,6 @@ services:
         condition: service_started
       mailpit:
         condition: service_started
-
-secrets:
-  jwt_secret: !reset null
-  agent_key_pepper: !reset null
-  security_hmac_secret: !reset null
 
 networks:
   data:

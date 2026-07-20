@@ -1,4 +1,4 @@
-import { IsEmail, IsNotEmpty, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import { IsEmail, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 import { MaxUtf8Bytes } from '@/auth/validators/max-utf8-bytes.validator';
 
 export class InitializeAdministratorDto {
@@ -28,9 +28,4 @@ export class InitializeAdministratorDto {
   @IsString()
   @MaxLength(500)
   agentDescription?: string;
-
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(512)
-  initializationKey!: string;
 }

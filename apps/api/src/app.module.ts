@@ -12,7 +12,7 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { HealthModule } from './health/health.module';
 import { LoggerMiddleware } from './common/middleware/logger.middleware';
-import { getRedisConfig } from './config/env';
+import { getRedisConfig, getRedisPassword } from './config/env';
 import { GovernanceModule } from './governance/governance.module';
 import { CircleModule } from './circle/circle.module';
 import { RedisModule } from './redis/redis.module';
@@ -25,8 +25,6 @@ import { WatchModule } from './watch/watch.module';
 import { BriefingModule } from './briefing/briefing.module';
 import { AcceptLanguageResolver, I18nModule } from 'nestjs-i18n';
 import { resolve } from 'node:path';
-
-const redisConfig = getRedisConfig();
 
 @Module({
   imports: [
@@ -41,9 +39,7 @@ const redisConfig = getRedisConfig();
         path: resolve(__dirname, 'i18n'),
         watch: process.env.NODE_ENV !== 'production',
       },
-      resolvers: [
-        { use: AcceptLanguageResolver, options: { matchType: 'loose' } },
-      ],
+      resolvers: [{ use: AcceptLanguageResolver, options: { matchType: 'loose' } }],
       logging: false,
     }),
     ThrottlerModule.forRootAsync({
@@ -58,8 +54,10 @@ const redisConfig = getRedisConfig();
         storage: new ThrottlerStorageRedisService(redisService.getClient()),
       }),
     }),
-    BullModule.forRoot({
-      connection: redisConfig,
+    BullModule.forRootAsync({
+      useFactory: () => ({
+        connection: { ...getRedisConfig(), password: getRedisPassword() },
+      }),
     }),
     DatabaseModule,
     AuthModule,

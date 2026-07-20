@@ -5,7 +5,7 @@ import { FilterQuery, Model } from 'mongoose';
 import type { Request } from 'express';
 import { SecurityEvent } from '@/database/schemas/security-event.schema';
 import { RedisService } from '@/redis/redis.service';
-import { getRequiredSecurityHmacSecret } from '@/config/env';
+import { getRequiredJwtSecret } from '@/config/env';
 
 const EVENT_BUCKET_MS = 15 * 60 * 1000;
 const EVENT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -21,8 +21,7 @@ export const SECURITY_EVENT_TYPES = {
   RATE_LIMITED: 'RATE_LIMITED',
 } as const;
 
-export type SecurityEventType =
-  (typeof SECURITY_EVENT_TYPES)[keyof typeof SECURITY_EVENT_TYPES];
+export type SecurityEventType = (typeof SECURITY_EVENT_TYPES)[keyof typeof SECURITY_EVENT_TYPES];
 
 export const SECURITY_EVENT_SEVERITIES = {
   LOW: 'LOW',
@@ -88,22 +87,17 @@ export class SecurityEventService {
     try {
       const now = new Date();
       const routePath = input.request.route?.path;
-      const route = typeof routePath === 'string'
-        ? `${input.request.baseUrl || ''}${routePath}`
-        : 'unresolved-route';
-      const fingerprintHmac = createHmac('sha256', getRequiredSecurityHmacSecret())
+      const route =
+        typeof routePath === 'string'
+          ? `${input.request.baseUrl || ''}${routePath}`
+          : 'unresolved-route';
+      const fingerprintHmac = createHmac('sha256', getRequiredJwtSecret())
         .update(`${input.request.ip}|${input.request.get('user-agent') ?? ''}`)
         .digest('hex');
       const bucketStart = new Date(Math.floor(now.getTime() / EVENT_BUCKET_MS) * EVENT_BUCKET_MS);
       const sampleKey = `skynet:security-event:${input.type}:${fingerprintHmac}:${route}`;
       const accepted = await this.withWriteTimeout(
-        this.redisService.getClient().set(
-          sampleKey,
-          '1',
-          'EX',
-          EVENT_SAMPLE_SECONDS,
-          'NX',
-        ),
+        this.redisService.getClient().set(sampleKey, '1', 'EX', EVENT_SAMPLE_SECONDS, 'NX'),
       );
       if (accepted !== 'OK') return;
       const severity = EVENT_SEVERITY[input.type];

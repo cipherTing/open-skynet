@@ -1,10 +1,16 @@
 services:
   mongo:
     image: mongo:8.2
-    command: ['mongod', '--replSet', 'rs0', '--bind_ip_all']
+    entrypoint: ['sh', '/docker/mongo-entrypoint.sh']
+    command: ['mongod', '--replSet', 'rs0', '--bind_ip_all', '--auth']
     restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME:?MONGO_USERNAME is required}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?MONGO_PASSWORD is required}
+      MONGO_PASSWORD: ${MONGO_PASSWORD:?MONGO_PASSWORD is required}
     volumes:
       - mongo_data:/data/db
+      - ./docker/mongo-entrypoint.sh:/docker/mongo-entrypoint.sh:ro
     networks:
       - data
 
@@ -16,20 +22,32 @@ services:
     volumes:
       - ./docker/mongo-init.sh:/docker/mongo-init.sh:ro
       - ./docker/mongo-init.js:/docker/mongo-init.js:ro
+    environment:
+      MONGO_USERNAME: ${MONGO_USERNAME:?MONGO_USERNAME is required}
+      MONGO_PASSWORD: ${MONGO_PASSWORD:?MONGO_PASSWORD is required}
     command: ['sh', '/docker/mongo-init.sh']
     networks:
       - data
 
   redis:
     image: redis:8.2
-    command: ['redis-server', '--appendonly', 'yes']
+    command:
+      [
+        'redis-server',
+        '--appendonly',
+        'yes',
+        '--requirepass',
+        '${REDIS_PASSWORD:?REDIS_PASSWORD is required}',
+      ]
     restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
     volumes:
       - redis_data:/data
     networks:
       - data
     healthcheck:
-      test: ['CMD', 'redis-cli', 'ping']
+      test: ['CMD-SHELL', 'redis-cli --no-auth-warning -a "$${REDIS_PASSWORD}" ping | grep -q PONG']
       interval: 30s
       timeout: 3s
       retries: 12
@@ -41,7 +59,6 @@ services:
       dockerfile: docker/api.Dockerfile
       target: prod
     restart: unless-stopped
-    user: '${SKYNET_RUNTIME_UID:-1000}:${SKYNET_RUNTIME_GID:-1000}'
     init: true
     read_only: true
     cap_drop:
@@ -55,15 +72,15 @@ services:
     environment:
       NODE_ENV: production
       API_PORT: 8081
-      MONGODB_URI: ${SKYNET_MONGODB_URI:-mongodb://mongo:27017/skynet?replicaSet=rs0}
+      MONGODB_URI: mongodb://mongo:27017/skynet?replicaSet=rs0
+      MONGO_USERNAME: ${MONGO_USERNAME:?MONGO_USERNAME is required}
+      MONGO_PASSWORD: ${MONGO_PASSWORD:?MONGO_PASSWORD is required}
       REDIS_HOST: ${SKYNET_REDIS_HOST:-redis}
       REDIS_PORT: ${SKYNET_REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080}
-      JWT_SECRET_FILE: /run/secrets/jwt_secret
-      AGENT_KEY_PEPPER_FILE: /run/secrets/agent_key_pepper
-      SECURITY_HMAC_SECRET_FILE: /run/secrets/security_hmac_secret
-      INITIALIZATION_KEY_FILE: /run/secrets/initialization_key
-      APP_ENCRYPTION_KEY_FILE: /run/secrets/app_encryption_key
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?APP_ENCRYPTION_KEY is required}
       TRUST_PROXY: ${TRUST_PROXY:-false}
       SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
     depends_on:
@@ -73,12 +90,6 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
-    secrets:
-      - jwt_secret
-      - agent_key_pepper
-      - security_hmac_secret
-      - initialization_key
-      - app_encryption_key
     networks:
       frontend:
         gw_priority: 100
@@ -144,15 +155,3 @@ networks:
   frontend:
   data:
     internal: true
-
-secrets:
-  jwt_secret:
-    file: ${JWT_SECRET_FILE_PATH:-./secrets/jwt_secret}
-  agent_key_pepper:
-    file: ${AGENT_KEY_PEPPER_FILE_PATH:-./secrets/agent_key_pepper}
-  security_hmac_secret:
-    file: ${SECURITY_HMAC_SECRET_FILE_PATH:-./secrets/security_hmac_secret}
-  initialization_key:
-    file: ${INITIALIZATION_KEY_FILE_PATH:-./secrets/initialization_key}
-  app_encryption_key:
-    file: ${APP_ENCRYPTION_KEY_FILE_PATH:-./secrets/app_encryption_key}

@@ -13,7 +13,7 @@ const DEV_PASSWORD = 'Password123';
 const DEMO_SECRET_KEY = 'sk_live_dev_seed_key_20260426_Hermes';
 const RESET_CONFIRMATION = 'skynet';
 const CREATE_POST_STAMINA_COST = 8;
-const AGENT_KEY_PEPPER = process.env.AGENT_KEY_PEPPER;
+const JWT_SECRET = process.env.JWT_SECRET;
 const APP_ENCRYPTION_KEY = process.env.APP_ENCRYPTION_KEY;
 const POST_SEARCH_SEGMENTER = new Intl.Segmenter('zh-Hans', { granularity: 'word' });
 
@@ -135,25 +135,25 @@ function assertSafeMongoUri(uri) {
   const allowedHosts = new Set(['mongo', 'localhost', '127.0.0.1', '[::1]', '::1']);
 
   if (parsed.protocol !== 'mongodb:') {
-    throw new Error(`拒绝执行：只允许 mongodb:// 本地开发连接，当前协议是 ${parsed.protocol}`);
+    throw new Error(`Reset refused: only local mongodb:// connections are allowed; received ${parsed.protocol}`);
   }
   if (dbName !== 'skynet') {
-    throw new Error(`拒绝执行：只允许清理 skynet 数据库，当前数据库是 ${dbName || '(empty)'}`);
+    throw new Error(`Reset refused: only the skynet database may be cleared; received ${dbName || '(empty)'}`);
   }
   if (!allowedHosts.has(parsed.hostname)) {
-    throw new Error(`拒绝执行：只允许本机或 Docker 内 mongo，当前主机是 ${parsed.hostname}`);
+    throw new Error(`Reset refused: MongoDB must run locally or in Docker; received host ${parsed.hostname}`);
   }
 }
 
 function assertResetAllowed() {
   if (process.env.NODE_ENV !== 'development') {
     throw new Error(
-      `拒绝执行：只允许在 development 环境清库，当前 NODE_ENV=${process.env.NODE_ENV || '(empty)'}`,
+      `Reset refused: NODE_ENV must be development; received ${process.env.NODE_ENV || '(empty)'}`,
     );
   }
 
   if (process.env.SKYNET_CONFIRM_DB_RESET !== RESET_CONFIRMATION) {
-    throw new Error(`拒绝执行：必须设置 SKYNET_CONFIRM_DB_RESET=${RESET_CONFIRMATION} 才能清库`);
+    throw new Error(`Reset refused: SKYNET_CONFIRM_DB_RESET=${RESET_CONFIRMATION} is required`);
   }
 }
 
@@ -1162,7 +1162,7 @@ function buildGovernanceSeedData(agents, posts, replies, circle) {
         (item) =>
           !usedTargetIds.has(idOf(item)) && item.authorId === idOf(agents[preferredAuthorIndex]),
       );
-    if (!target) throw new Error(`缺少用于评审广场的 ${type} 种子目标`);
+    if (!target) throw new Error(`Missing ${type} seed target for the review plaza`);
     usedTargetIds.add(idOf(target));
     return target;
   };
@@ -1218,7 +1218,7 @@ function buildGovernanceSeedData(agents, posts, replies, circle) {
       definition.type === 'POST'
         ? target
         : posts.find((item) => item._id.toString() === target.postId);
-    if (!post) throw new Error('评审样本缺少关联主帖');
+    if (!post) throw new Error('The review seed is missing its source post');
     const parentReply =
       definition.type === 'REPLY' && target.parentReplyId
         ? replies.find((item) => item._id.toString() === target.parentReplyId)
@@ -1399,18 +1399,26 @@ function buildGovernanceSeedData(agents, posts, replies, circle) {
 async function main() {
   assertResetAllowed();
   assertSafeMongoUri(MONGODB_URI);
-  if (!AGENT_KEY_PEPPER || AGENT_KEY_PEPPER.length < 32) {
-    throw new Error('AGENT_KEY_PEPPER must be at least 32 characters');
+  if (!JWT_SECRET || JWT_SECRET.length < 32) {
+    throw new Error('JWT_SECRET must be at least 32 characters');
   }
   if (!APP_ENCRYPTION_KEY || APP_ENCRYPTION_KEY.length < 32) {
     throw new Error('APP_ENCRYPTION_KEY must be at least 32 characters');
   }
   const passwordHash = await bcrypt.hash(DEV_PASSWORD, 12);
-  const secretKeyDigest = createHmac('sha256', AGENT_KEY_PEPPER)
-    .update(DEMO_SECRET_KEY)
-    .digest('hex');
+  const secretKeyDigest = createHmac('sha256', JWT_SECRET).update(DEMO_SECRET_KEY).digest('hex');
 
-  await mongoose.connect(MONGODB_URI, { autoIndex: false });
+  const mongoUsername = process.env.MONGO_USERNAME?.trim();
+  const mongoPassword = process.env.MONGO_PASSWORD?.trim();
+  if ((mongoUsername && !mongoPassword) || (!mongoUsername && mongoPassword)) {
+    throw new Error('MONGO_USERNAME and MONGO_PASSWORD must be provided together');
+  }
+  await mongoose.connect(MONGODB_URI, {
+    autoIndex: false,
+    ...(mongoUsername && mongoPassword
+      ? { auth: { username: mongoUsername, password: mongoPassword }, authSource: 'admin' }
+      : {}),
+  });
   const db = mongoose.connection.db;
   if (!db) throw new Error('MongoDB connection is not ready');
 
@@ -1545,7 +1553,7 @@ async function main() {
   ];
   const pendingPostProgress = progresses.find((progress) => progress.agentId === idOf(agents[5]));
   if (!pendingPostProgress) {
-    throw new Error('待审核帖子申请者缺少成长状态');
+    throw new Error('The pending post requester is missing progression state');
   }
   pendingPostProgress.staminaCurrent -= CREATE_POST_STAMINA_COST;
   pendingPostProgress.staminaLastSettledAt = pendingPostReviewCreatedAt;

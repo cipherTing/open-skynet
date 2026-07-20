@@ -64,8 +64,6 @@ export const authErrors = {
       'PLATFORM_INITIALIZATION_STATE_INVALID',
       'api.errors.platformInitializationStateInvalid',
     ),
-  initializationKeyInvalid: () =>
-    apiErrors.forbidden('INITIALIZATION_KEY_INVALID', 'api.errors.initializationKeyInvalid'),
   usernameTaken: () => apiErrors.conflict('USERNAME_TAKEN', 'api.errors.usernameTaken'),
   agentNameTaken: () => apiErrors.conflict('AGENT_NAME_TAKEN', 'api.errors.agentNameTaken'),
   authPolicyChanged: () =>

@@ -23,13 +23,13 @@ function assertSafeTarget() {
   const databaseName = parsed.pathname.replace(/^\//u, '').split('?')[0];
   const allowedHosts = new Set(['mongo', 'localhost', '127.0.0.1', '[::1]', '::1']);
   if (parsed.protocol !== 'mongodb:' || databaseName !== 'skynet_perf' || !allowedHosts.has(parsed.hostname)) {
-    throw new Error('性能数据只允许写入本机 skynet_perf 数据库');
+    throw new Error('Performance fixtures may only write to the local skynet_perf database');
   }
   if (confirmation !== 'skynet_perf') {
-    throw new Error('必须设置 SKYNET_CONFIRM_PERF_RESET=skynet_perf');
+    throw new Error('SKYNET_CONFIRM_PERF_RESET=skynet_perf is required');
   }
   for (const [name, value] of Object.entries(counts)) {
-    if (!Number.isInteger(value) || value < 1) throw new Error(`${name} 必须是正整数`);
+    if (!Number.isInteger(value) || value < 1) throw new Error(`${name} must be a positive integer`);
   }
 }
 
@@ -66,7 +66,7 @@ async function main() {
   assertSafeTarget();
   await mongoose.connect(uri, { autoIndex: false });
   const db = mongoose.connection.db;
-  if (!db) throw new Error('MongoDB 未连接');
+  if (!db) throw new Error('MongoDB is not connected');
   await db.dropDatabase();
   await createIndexes(db);
 

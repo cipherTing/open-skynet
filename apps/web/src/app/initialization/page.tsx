@@ -36,7 +36,6 @@ function InitializationForm({
   onInitialized: (session?: BrowserAuthPayload) => void;
 }) {
   const { t } = useTranslation();
-  const [initializationKey, setInitializationKey] = useState('');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -46,7 +45,7 @@ function InitializationForm({
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
-  const requiredValues = [initializationKey, username, agentName, email, password, confirmPassword];
+  const requiredValues = [username, agentName, email, password, confirmPassword];
   const doneCount = requiredValues.filter((value) => value.trim().length > 0).length;
   const filledSegments = Math.round((doneCount / requiredValues.length) * PROGRESS_SEGMENTS);
 
@@ -79,7 +78,6 @@ function InitializationForm({
     setSubmitting(true);
     try {
       const session = await authApi.initializeAdministrator({
-        initializationKey,
         username: normalizedUsername,
         email: email.trim().toLowerCase(),
         password,
@@ -88,10 +86,6 @@ function InitializationForm({
       });
       onInitialized(session);
     } catch (error) {
-      if (error instanceof ApiError && error.statusCode === 403) {
-        setErrorMessage(t('initialization.keyInvalid'));
-        return;
-      }
       if (error instanceof ApiError && error.statusCode === 409) {
         try {
           const status = await authApi.initializationStatus();
@@ -106,7 +100,6 @@ function InitializationForm({
       }
       setErrorMessage(t('initialization.failed'));
     } finally {
-      setInitializationKey('');
       setSubmitting(false);
     }
   };
@@ -154,9 +147,12 @@ function InitializationForm({
             {/* 点火进度：必填项完成度，12 格 steps 硬跳 */}
             <div className="mt-6">
               <div className="flex items-center justify-between gap-3">
-                <span className="t-mono text-[var(--t-faint)]">{t('authGate.ignitionProgress')}</span>
+                <span className="t-mono text-[var(--t-faint)]">
+                  {t('authGate.ignitionProgress')}
+                </span>
                 <span className="t-mono text-[var(--t-accent)]">
-                  {String(doneCount).padStart(2, '0')}/{String(requiredValues.length).padStart(2, '0')}
+                  {String(doneCount).padStart(2, '0')}/
+                  {String(requiredValues.length).padStart(2, '0')}
                 </span>
               </div>
               <div
@@ -170,28 +166,17 @@ function InitializationForm({
                   <span
                     key={index}
                     aria-hidden
-                    className={index < filledSegments ? 'h-1 bg-[var(--t-accent)]' : 'h-1 bg-[var(--t-noise)]'}
+                    className={
+                      index < filledSegments
+                        ? 'h-1 bg-[var(--t-accent)]'
+                        : 'h-1 bg-[var(--t-noise)]'
+                    }
                   />
                 ))}
               </div>
             </div>
 
-            <StepHeader step="STEP 01" label={t('authGate.stepKeyLabel')} />
-            <div className="mt-4">
-              <InitializationField label={t('initialization.key')} code="S.01">
-                <TInput
-                  required
-                  maxLength={512}
-                  type="password"
-                  autoComplete="off"
-                  className="h-11"
-                  value={initializationKey}
-                  onChange={(event) => setInitializationKey(event.target.value)}
-                />
-              </InitializationField>
-            </div>
-
-            <StepHeader step="STEP 02" label={t('authGate.stepNodeLabel')} />
+            <StepHeader step="STEP 01" label={t('authGate.stepNodeLabel')} />
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <InitializationField
                 label={t('initialization.username')}
