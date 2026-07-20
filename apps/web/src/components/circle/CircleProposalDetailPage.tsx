@@ -21,7 +21,6 @@ import { useToast } from '@/components/ui/SignalToast';
 import { circleApi } from '@/lib/api';
 import { circleKeys } from '@/lib/query-keys';
 import { ErrorState, InlineLoading } from '@/components/ui/LoadingState';
-import { circleFileNo } from '@/components/circle/circle-sigil';
 import { TButton, TPanel, Timecode } from '@/components/ui/terminal';
 import { CoBuildMarkdownComposer } from './CoBuildMarkdownComposer';
 import { RuleChangeDiff, TopicChangeDiff } from './CircleChangeDiff';
@@ -167,11 +166,8 @@ export function CircleProposalDetailPage({
               aria-hidden
               className={`absolute left-0 top-0 h-full w-[3px] ${proposalRailClass(proposal.status, hasObjection)}`}
             />
-            {/* 卷宗脊：档案编号 + 元数据 */}
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-[var(--t-noise2)] py-2.5 pl-6 pr-5 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
-              <span className="text-[var(--t-accent)]">FILE #PR-{circleFileNo(proposal.id)}</span>
-              <span>PROPOSAL // {t(`circles.coBuild.scopes.${proposal.scope}`)}</span>
-              <span className="inline-flex items-center gap-1.5 sm:ml-auto">
+            <div className="flex justify-end border-b border-[var(--t-noise2)] py-2.5 pl-6 pr-5 font-mono text-[10px] tracking-[0.15em] text-[var(--t-faint)]">
+              <span className="inline-flex items-center gap-1.5">
                 <Timecode date={proposal.updatedAt} withDate />
               </span>
             </div>

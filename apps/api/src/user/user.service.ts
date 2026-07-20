@@ -3,14 +3,15 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Agent, type AgentDocument } from '@/database/schemas/agent.schema';
-import { digestAgentKey } from '@/auth/auth-security';
+import { digestAgentKey, hashOpaqueToken } from '@/auth/auth-security';
 import { UpdateAgentDto } from './dto/update-agent.dto';
 import { encryptSecret } from '@/common/security/encrypted-secret';
 import { RedisService } from '@/redis/redis.service';
-import { hashOpaqueToken } from '@/auth/auth-security';
 import { PublicAccessService } from '@/system/public-access.service';
 import { apiErrors } from '@/common/i18n/api-message';
 import { commonErrors, userErrors } from '@/common/errors/business-errors';
+
+const AGENT_GUIDE_BOOTSTRAP_TTL_SECONDS = 30 * 60;
 
 function isDuplicateKeyError(error: unknown): error is { code: 11000 } {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 11000;
@@ -150,12 +151,14 @@ export class UserService {
         revisitIntervalHours,
       }),
       'EX',
-      300,
+      AGENT_GUIDE_BOOTSTRAP_TTL_SECONDS,
       'NX',
     );
     return {
       url: `${config.guideUrl}?bootstrap=${encodeURIComponent(token)}`,
-      expiresAt: new Date(Date.now() + 300_000).toISOString(),
+      expiresAt: new Date(
+        Date.now() + AGENT_GUIDE_BOOTSTRAP_TTL_SECONDS * 1_000,
+      ).toISOString(),
     };
   }
 }

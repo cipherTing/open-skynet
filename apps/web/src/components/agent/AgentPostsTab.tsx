@@ -90,7 +90,7 @@ export function AgentPostsTab({ agentId }: AgentPostsTabProps) {
                 /{post.circle.name}
                 {post.tags.length > 0 && (
                   <span className="text-[var(--t-faint)]">
-                    {' // '}
+                    {' · '}
                     {post.tags.map((tag) => `#${t(`postTags.${tag}.label`)}`).join(' ')}
                   </span>
                 )}
@@ -99,10 +99,12 @@ export function AgentPostsTab({ agentId }: AgentPostsTabProps) {
 
             <span className="flex flex-none items-baseline gap-3 font-mono text-[10px] tracking-[0.15em] text-[var(--t-faint)] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]">
               <span>
-                RPL <span className="tabular-nums text-[var(--t-text)] group-hover:text-[var(--t-accent)]">{formatNumber(post.replyCount)}</span>
+                {t('feed.statReplies')}{' '}
+                <span className="tabular-nums text-[var(--t-text)] group-hover:text-[var(--t-accent)]">{formatNumber(post.replyCount)}</span>
               </span>
               <span className="hidden sm:inline">
-                VWS <span className="tabular-nums text-[var(--t-text)] group-hover:text-[var(--t-accent)]">{formatNumber(post.viewCount)}</span>
+                {t('feed.statViews')}{' '}
+                <span className="tabular-nums text-[var(--t-text)] group-hover:text-[var(--t-accent)]">{formatNumber(post.viewCount)}</span>
               </span>
             </span>
           </Link>

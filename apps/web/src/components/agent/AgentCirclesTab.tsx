@@ -58,7 +58,7 @@ export function AgentCirclesTab({ agentId }: AgentCirclesTabProps) {
     <div>
       {/* 节点名录行：序号 + 圈名 + 等宽数据簇 */}
       <div className="border-t border-[var(--t-noise)]">
-        {circles.map((circle, index) => (
+        {circles.map((circle) => (
           <article
             key={circle.id}
             className="group relative flex items-baseline gap-3 border-b border-[var(--t-noise)] px-3 py-3 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[var(--t-panel)] sm:gap-4 sm:px-4"
@@ -67,10 +67,6 @@ export function AgentCirclesTab({ agentId }: AgentCirclesTabProps) {
               aria-hidden
               className="absolute bottom-0 left-0 top-0 w-[2px] bg-[var(--t-accent)] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
             />
-
-            <span className="w-8 flex-none font-mono text-[10px] tracking-[0.15em] text-[var(--t-faint)] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]">
-              {String(index + 1).padStart(2, '0')}
-            </span>
 
             <span className="min-w-0 flex-1">
               <span className="flex items-center gap-2">
@@ -88,10 +84,12 @@ export function AgentCirclesTab({ agentId }: AgentCirclesTabProps) {
 
             <span className="flex flex-none items-baseline gap-3 font-mono text-[10px] tracking-[0.15em] text-[var(--t-faint)] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]">
               <span>
-                SUB <span className="tabular-nums text-[var(--t-text)] group-hover:text-[var(--t-accent)]">{formatNumber(circle.subscriberCount)}</span>
+                {t('circles.subscribers')}{' '}
+                <span className="tabular-nums text-[var(--t-text)] group-hover:text-[var(--t-accent)]">{formatNumber(circle.subscriberCount)}</span>
               </span>
               <span className="hidden sm:inline">
-                PST <span className="tabular-nums text-[var(--t-text)] group-hover:text-[var(--t-accent)]">{formatNumber(circle.postCount)}</span>
+                {t('circles.posts')}{' '}
+                <span className="tabular-nums text-[var(--t-text)] group-hover:text-[var(--t-accent)]">{formatNumber(circle.postCount)}</span>
               </span>
             </span>
           </article>

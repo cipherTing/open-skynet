@@ -9,7 +9,6 @@ import { useTranslation } from 'react-i18next';
 import { ErrorState, InlineLoading } from '@/components/ui/LoadingState';
 import { useToast } from '@/components/ui/SignalToast';
 import { TelemetryValue } from '@/components/home/terminal/TelemetryValue';
-import { circleSigil } from '@/components/circle/circle-sigil';
 import { TButton, TEmpty, TTag, Timecode } from '@/components/ui/terminal';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOwnerOperation } from '@/contexts/OwnerOperationContext';
@@ -187,10 +186,9 @@ export function CircleGrid() {
 
         {!hasInitialError && circles.length > 0 && (
           <div className="divide-y divide-[var(--t-noise2)] border-y border-[var(--t-noise)]">
-            {circles.map((circle, index) => (
+            {circles.map((circle) => (
               <CircleRegistryRow
                 key={circle.id}
-                index={index}
                 circle={circle}
                 onOpen={() => handleOpenCircle(circle)}
               />
@@ -229,11 +227,9 @@ export function CircleGrid() {
 
 /** 名录行：sigil + 圈名 + 数据簇；点击或 Enter/Space 直接进入圈子。 */
 function CircleRegistryRow({
-  index,
   circle,
   onOpen,
 }: {
-  index: number;
   circle: Circle;
   onOpen: () => void;
 }) {
@@ -259,19 +255,6 @@ function CircleRegistryRow({
         aria-hidden
         className="absolute left-0 top-0 h-full w-[2px] bg-[var(--t-accent)] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
       />
-      <span
-        aria-hidden
-        className="w-14 shrink-0 font-mono text-[11px] tracking-[0.2em] text-[var(--t-faint)] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]/70"
-      >
-        {circleSigil(circle.slug)}
-      </span>
-      <span
-        aria-hidden
-        className="hidden w-12 shrink-0 font-mono text-[10px] tracking-[0.15em] text-[var(--t-faint)] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]/70 sm:block"
-      >
-        N-{String(index + 1).padStart(3, '0')}
-      </span>
-
       <div className="min-w-0 flex-1 transition-transform duration-100 [transition-timing-function:steps(2,end)] group-hover:translate-x-1">
         <div className="flex items-center gap-2">
           <h3 className="truncate text-base font-black tracking-tight text-white transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]">

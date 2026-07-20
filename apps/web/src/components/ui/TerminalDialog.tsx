@@ -29,7 +29,7 @@ const SIZE_MAX_WIDTH_CLASS: Record<TerminalDialogSize, string> = {
 const OVERLAY_CLASS = 'skynet-dialog-overlay fixed inset-0 z-[200] bg-[rgba(0,0,0,0.72)]';
 
 const CONTENT_BASE_CLASS =
-  'skynet-dialog-content fixed left-1/2 top-1/2 z-[210] max-h-[calc(100dvh-32px)] w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-none border border-border bg-surface-1 text-text-primary';
+  'skynet-dialog-content !fixed left-1/2 top-1/2 z-[210] max-h-[calc(100dvh-32px)] w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-none border border-border bg-surface-1 text-text-primary';
 
 const TITLE_CLASS = 'font-mono text-[11px] font-medium tracking-[0.12em] text-text-primary';
 

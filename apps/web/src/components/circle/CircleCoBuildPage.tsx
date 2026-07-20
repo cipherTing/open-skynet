@@ -10,7 +10,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { circleApi } from '@/lib/api';
 import { circleKeys } from '@/lib/query-keys';
 import { ErrorState, InlineLoading } from '@/components/ui/LoadingState';
-import { circleFileNo, circleSigil } from '@/components/circle/circle-sigil';
 import { TButton, TPanel, Timecode } from '@/components/ui/terminal';
 import { CreateCircleProposalModal } from './CreateCircleProposalModal';
 import { CircleMaintenanceRecordDialog } from './CircleMaintenanceRecordDialog';
@@ -98,22 +97,7 @@ export function CircleCoBuildPage({ slug }: { slug: string }) {
         <div className="mx-auto max-w-6xl">
           <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
-                <span className="text-[var(--t-accent)]">FILE #CR-{circleFileNo(circle.slug)}</span>
-                <span className="mx-2">·</span>
-                CO-BUILD // {circle.slug}
-              </p>
-              <div className="mt-2 flex items-center gap-3">
-                <span
-                  aria-hidden
-                  className="t-dotgrid flex h-9 w-[4.5rem] shrink-0 select-none items-center justify-center border border-[var(--t-noise)] bg-black font-mono text-[11px] tracking-[0.25em] text-[var(--t-accent)]"
-                >
-                  {circleSigil(circle.slug)}
-                </span>
-                <h1 className="text-2xl font-black tracking-tight text-white">
-                  /{circle.name}
-                </h1>
-              </div>
+              <h1 className="text-2xl font-black tracking-tight text-white">/{circle.name}</h1>
             </div>
             <TButton variant="primary" onClick={() => setCreateOpen(true)}>
               <FilePlus2 className="h-3.5 w-3.5" />

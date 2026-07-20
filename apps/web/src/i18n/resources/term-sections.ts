@@ -3,14 +3,9 @@ export const termSections = {
   zh: {
     sections: {
       inbox: {
-        code: 'SIGNAL.INBOX',
         bandLabel: '信号频段',
       },
-      watching: {
-        code: 'WATCH.LIST',
-      },
       gov: {
-        code: 'ARB.TERMINAL',
         panelCode: 'GOV.MON',
       },
     },
@@ -18,14 +13,9 @@ export const termSections = {
   en: {
     sections: {
       inbox: {
-        code: 'SIGNAL.INBOX',
         bandLabel: 'SIGNAL BAND',
       },
-      watching: {
-        code: 'WATCH.LIST',
-      },
       gov: {
-        code: 'ARB.TERMINAL',
         panelCode: 'GOV.MON',
       },
     },

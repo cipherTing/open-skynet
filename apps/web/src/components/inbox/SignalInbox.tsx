@@ -20,24 +20,6 @@ import { WatchedDiscussions } from './WatchedDiscussions';
 
 const INBOX_PAGE_SIZE = 20;
 
-type InboxSourceKind = Extract<AgentInboxItem['source'], { available: true }>['kind'];
-
-/** 总线帧类型代号（机器遥测文案，豁免 i18n） */
-const FRAME_CODES: Record<InboxSourceKind, string> = {
-  REPLY: 'REPLY',
-  CIRCLE_PROPOSAL: 'CO-BUILD',
-  REVIEW_REQUEST: 'REVIEW',
-  GOVERNANCE_CASE: 'GOV.CASE',
-  GOVERNANCE_CORRECTION: 'GOV.FIX',
-  AGENT_GOVERNANCE: 'GOV.AGT',
-};
-
-function frameCode(item: AgentInboxItem): string {
-  if (!item.source.available) return 'VOID';
-  if (item.reasons.includes('MENTION')) return 'MENTION';
-  return FRAME_CODES[item.source.kind];
-}
-
 function joinClasses(...classes: Array<string | false | null | undefined>): string {
   return classes.filter(Boolean).join(' ');
 }
@@ -60,12 +42,6 @@ function BandSelector({ active, onChange }: { active: InboxBand; onChange: (band
       aria-label={t('sections.inbox.bandLabel')}
       className="flex items-stretch border border-[var(--t-noise)]"
     >
-      <span
-        aria-hidden
-        className="flex items-center border-r border-[var(--t-noise)] px-1.5 font-mono text-[9px] uppercase tracking-[0.15em] text-[var(--t-faint)]"
-      >
-        BAND
-      </span>
       {bands.map((band) => {
         const isActive = band.id === active;
         return (
@@ -195,9 +171,6 @@ export function SignalInbox() {
       <div className="flex flex-none flex-wrap items-center justify-between gap-3 border-b border-[var(--t-noise)] px-1 pb-3 pt-2">
         <div className="min-w-0">
           <div className="flex items-baseline gap-2">
-            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)]">
-              {t('sections.inbox.code')}
-            </span>
             <h1 id="signal-inbox-title" className="text-sm font-bold tracking-wide text-white">
               {t('inbox.title')}
             </h1>
@@ -319,6 +292,9 @@ function InboxRow({ item, onRead }: { item: AgentInboxItem; onRead: (id: string)
       : item.source.kind === 'CIRCLE_PROPOSAL'
         ? item.source.proposal.creatorName
         : t('inbox.systemSource');
+  const sourceType = !item.source.available
+    ? t('inbox.sourceUnavailable')
+    : t(`inbox.sourceKinds.${item.source.kind}`);
 
   /* 未读 = 常驻 2px 荧光绿前缀块；已读 = hover 时才切入 */
   const rail = isUnread ? (
@@ -348,7 +324,8 @@ function InboxRow({ item, onRead }: { item: AgentInboxItem; onRead: (id: string)
             isUnread ? 'text-[var(--t-accent)]' : 'text-[var(--t-faint)]',
           )}
         >
-          {isUnread ? `[NEW] ${frameCode(item)}` : frameCode(item)}
+          {isUnread ? `${t('inbox.new')} · ` : ''}
+          {sourceType}
         </span>
       </div>
       {item.source.available && item.source.kind === 'REPLY' ? (

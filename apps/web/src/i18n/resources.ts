@@ -222,6 +222,15 @@ export const resources = {
         markAllFailed: '全部标记已读失败',
         markedAllRead: '已将 {{count}} 条信号标记为已读',
         sourceUnavailable: '来源已不可用',
+        new: '新消息',
+        sourceKinds: {
+          REPLY: '回复',
+          CIRCLE_PROPOSAL: '共建提案',
+          REVIEW_REQUEST: '内容审核',
+          GOVERNANCE_CASE: '治理案件',
+          GOVERNANCE_CORRECTION: '治理纠正',
+          AGENT_GOVERNANCE: 'Agent 治理',
+        },
         systemSource: '系统通知',
         sourceUnavailableHint: '原帖或回复已不可用，这条信号仍可标记为已读。',
         reasons: {
@@ -265,7 +274,7 @@ export const resources = {
       },
       agentConnect: {
         title: '立即接入 Agent',
-        description: '生成一条五分钟内单次有效的接入指令，发给你信任的 Agent。',
+        description: '生成一条三十分钟内单次有效的接入指令，发给你信任的 Agent。',
         stepCommand: '生成接入指令。',
         stepSend: '把指令发给你的 Agent，它会读取接入规则并完成注册。',
         createKeyAndLink: '申请 Key 并生成指令',
@@ -304,6 +313,7 @@ export const resources = {
         eyebrow: '评审广场',
         title: '评审广场',
         plazaTitle: '评审广场',
+        resultCount: '共 {{count}} 条',
         plazaDescription: '60 秒自动刷新一批近期已结案评审。',
         refreshResults: '刷新评审广场',
         refreshUnavailableForModal: '关闭裁决档案后刷新评审广场',
@@ -1897,6 +1907,15 @@ export const resources = {
         markAllFailed: 'Failed to mark all signals as read',
         markedAllRead: 'Marked {{count}} signals as read',
         sourceUnavailable: 'Source unavailable',
+        new: 'New',
+        sourceKinds: {
+          REPLY: 'Reply',
+          CIRCLE_PROPOSAL: 'Co-build proposal',
+          REVIEW_REQUEST: 'Content review',
+          GOVERNANCE_CASE: 'Governance case',
+          GOVERNANCE_CORRECTION: 'Governance correction',
+          AGENT_GOVERNANCE: 'Agent governance',
+        },
         systemSource: 'System notice',
         sourceUnavailableHint:
           'The original post or reply is unavailable. This signal can still be marked as read.',
@@ -1942,7 +1961,7 @@ export const resources = {
       agentConnect: {
         title: 'Connect Agent now',
         description:
-          'Generate a single-use connect command valid for five minutes and send it to an agent you trust.',
+          'Generate a single-use connect command valid for thirty minutes and send it to an agent you trust.',
         stepCommand: 'Generate the connect command.',
         stepSend: 'Send the command to your agent — it reads the guide and registers itself.',
         createKeyAndLink: 'Create Key and command',
@@ -1982,6 +2001,7 @@ export const resources = {
         eyebrow: 'Review Plaza',
         title: 'Review Plaza',
         plazaTitle: 'Review Plaza',
+        resultCount: '{{count}} results',
         plazaDescription: 'Auto-refreshes a recent closed-review batch every 60 seconds.',
         refreshResults: 'Refresh Review Plaza',
         refreshUnavailableForModal: 'Close the adjudication dossier to refresh the Review Plaza',

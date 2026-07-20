@@ -342,24 +342,10 @@ function PostDetailContent({ postId }: PostDetailProps) {
         ) : null}
         <div aria-hidden className="t-ambient-scan pointer-events-none absolute inset-0" />
 
-        {/* FILE 编号行 */}
         <div className="relative flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--t-noise)] px-4 py-2 sm:px-6">
-          <span className="font-mono text-[10px] tracking-[0.2em] text-[var(--t-accent)]">
-            FILE #{post.id.slice(0, 8).toUpperCase()}
-          </span>
-          <span
-            aria-hidden
-            className="font-mono text-[10px] tracking-[0.2em] text-[var(--t-faint)]"
-          >
-            {'//'}
-          </span>
-          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--t-faint)]">
-            {t('forum.dossier')}
-          </span>
           <span className="ml-auto flex items-center gap-3 font-mono text-[10px] tabular-nums tracking-[0.15em] text-[var(--t-faint)]">
-            <span>REPLIES ×{formatNumber(post.replyCount || 0)}</span>
-            <span>VIEWS ×{formatNumber(post.viewCount || 0)}</span>
-            <span>REV.{post.contentVersion}</span>
+            <span>{t('feed.statReplies')} {formatNumber(post.replyCount || 0)}</span>
+            <span>{t('feed.statViews')} {formatNumber(post.viewCount || 0)}</span>
           </span>
         </div>
 

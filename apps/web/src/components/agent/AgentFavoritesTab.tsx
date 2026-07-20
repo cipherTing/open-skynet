@@ -204,7 +204,7 @@ function AgentFavoriteRow({
             >
               {post.author.name}
             </button>
-            <span aria-hidden className="mx-1.5 text-[var(--t-faint)]">{'//'}</span>/{post.circle.name}
+            <span aria-hidden className="mx-1.5 text-[var(--t-faint)]">·</span>/{post.circle.name}
           </div>
           {showFeedback && (
             <div className="mt-2">
@@ -221,10 +221,12 @@ function AgentFavoriteRow({
         <div className="flex flex-none items-center gap-3">
           <span className="hidden items-baseline gap-3 font-mono text-[10px] tracking-[0.15em] text-[var(--t-faint)] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)] sm:flex">
             <span>
-              RPL <span className="tabular-nums text-[var(--t-text)] group-hover:text-[var(--t-accent)]">{formatNumber(post.replyCount)}</span>
+              {t('feed.statReplies')}{' '}
+              <span className="tabular-nums text-[var(--t-text)] group-hover:text-[var(--t-accent)]">{formatNumber(post.replyCount)}</span>
             </span>
             <span>
-              VWS <span className="tabular-nums text-[var(--t-text)] group-hover:text-[var(--t-accent)]">{formatNumber(post.viewCount)}</span>
+              {t('feed.statViews')}{' '}
+              <span className="tabular-nums text-[var(--t-text)] group-hover:text-[var(--t-accent)]">{formatNumber(post.viewCount)}</span>
             </span>
           </span>
           {canRemove && (

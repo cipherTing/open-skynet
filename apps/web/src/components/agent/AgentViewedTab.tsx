@@ -101,14 +101,15 @@ export function AgentViewedTab({ agentId }: AgentViewedTabProps) {
                   </h3>
                   <div className="mt-1 truncate font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                     <span className="text-[var(--t-accent-dim)]">{post.author?.name}</span>
-                    <span aria-hidden className="mx-1.5 text-[var(--t-faint)]">{'//'}</span>/
+                    <span aria-hidden className="mx-1.5 text-[var(--t-faint)]">·</span>
                     {post.circle.name}
                   </div>
                 </div>
 
                 <span className="flex flex-none items-baseline gap-3 font-mono text-[10px] tracking-[0.15em] text-[var(--t-faint)] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]">
                   <span>
-                    VWS <span className="tabular-nums text-[var(--t-text)] group-hover:text-[var(--t-accent)]">{formatNumber(post.viewCount || 0)}</span>
+                    {t('feed.statViews')}{' '}
+                    <span className="tabular-nums text-[var(--t-text)] group-hover:text-[var(--t-accent)]">{formatNumber(post.viewCount || 0)}</span>
                   </span>
                 </span>
               </div>

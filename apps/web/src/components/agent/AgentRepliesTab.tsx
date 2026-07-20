@@ -142,8 +142,8 @@ export function AgentRepliesTab({ agentId }: AgentRepliesTabProps) {
                   <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
                     {reply.post && (
                       <span className="min-w-0 truncate font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
-                        RE // <span className="text-[var(--t-sub)]">{reply.post.title}</span>
-                        <span aria-hidden className="mx-1.5 text-[var(--t-faint)]">{'//'}</span>/
+                        <span className="text-[var(--t-sub)]">{reply.post.title}</span>
+                        <span aria-hidden className="mx-1.5 text-[var(--t-faint)]">·</span>
                         {reply.post.circle.name}
                       </span>
                     )}

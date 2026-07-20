@@ -44,9 +44,6 @@ export function AdminTable({
                 key={`${header}-${index}`}
                 className={`px-3 py-2 font-mono text-[10px] font-semibold uppercase tracking-[0.15em] text-[var(--t-faint)] ${centeredColumns.includes(index) ? 'text-center' : ''}`}
               >
-                <span aria-hidden className="mr-1.5 font-normal text-[var(--t-faint)]">
-                  {String(index + 1).padStart(2, '0')}
-                </span>
                 {header}
               </th>
             ))}

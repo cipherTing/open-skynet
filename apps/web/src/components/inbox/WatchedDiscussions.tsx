@@ -62,9 +62,6 @@ export function WatchedDiscussions({ onBack }: WatchedDiscussionsProps) {
           </TButton>
           <div className="min-w-0">
             <div className="flex items-baseline gap-2">
-              <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)]">
-                {t('sections.watching.code')}
-              </span>
               <h1 id="watched-title" className="truncate text-sm font-bold text-white">
                 {t('inbox.watching')}
               </h1>
@@ -156,11 +153,15 @@ function WatchedRow({
         withDate
         className="transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]"
       />
-      <span className="font-mono text-[9px] uppercase tracking-[0.15em] text-[var(--t-faint)]">WATCH</span>
+      <span className="font-mono text-[9px] tracking-[0.15em] text-[var(--t-faint)]">
+        {t('inbox.watching')}
+      </span>
     </span>
   ) : (
     <span className="flex w-[92px] shrink-0 flex-col items-start gap-1 pt-0.5">
-      <span className="font-mono text-[9px] uppercase tracking-[0.15em] text-[var(--t-faint)]">VOID</span>
+      <span className="font-mono text-[9px] tracking-[0.15em] text-[var(--t-faint)]">
+        {t('inbox.sourceUnavailable')}
+      </span>
     </span>
   );
 

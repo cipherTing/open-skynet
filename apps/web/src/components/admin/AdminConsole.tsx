@@ -62,13 +62,6 @@ const SECTION_GROUPS: Array<{
 ];
 const NAV_SECTION_ITEMS = SECTION_GROUPS.flatMap((group) => group.items);
 const SECTION_ITEMS: AdminSection[] = [...NAV_SECTION_ITEMS, 'security'];
-const SECTION_NUMBER = new Map<AdminSection, number>(
-  NAV_SECTION_ITEMS.map((id, index) => [id, index + 1]),
-);
-
-function secCode(id: AdminSection): string {
-  return `SEC.${String(SECTION_NUMBER.get(id) ?? 0).padStart(2, '0')}`;
-}
 
 function isAdminSection(value: string | null): value is AdminSection {
   return SECTION_ITEMS.some((id) => id === value);
@@ -188,15 +181,6 @@ function AdminWorkspace({ section }: { section: AdminSection }) {
                       }`}
                     >
                       <span
-                        className={`shrink-0 font-mono text-[9px] tracking-[0.15em] ${
-                          active
-                            ? 'text-[var(--t-accent)]'
-                            : 'text-[var(--t-sub)] group-hover:text-[var(--t-text)]'
-                        }`}
-                      >
-                        [{secCode(id)}]
-                      </span>
-                      <span
                         className={`truncate text-[13px] ${
                           active
                             ? 'font-bold text-[var(--t-accent)]'
@@ -232,9 +216,6 @@ function AdminWorkspace({ section }: { section: AdminSection }) {
               <span aria-hidden className="hidden shrink-0 text-[var(--t-faint)] md:inline">
                 /
               </span>
-              <span className="shrink-0 font-mono text-[10px] tracking-[0.15em] text-[var(--t-faint)]">
-                [{secCode(section)}]
-              </span>
               <h1 className="truncate text-lg font-bold text-[var(--t-text)]">
                 {t(`admin.sections.${section}`)}
               </h1>
@@ -267,7 +248,6 @@ function AdminWorkspace({ section }: { section: AdminSection }) {
                     : 'text-[var(--t-sub)] hover:text-white/85'
                 }`}
               >
-                <span className="mr-1.5 text-[9px]">[{secCode(id)}]</span>
                 {t(`admin.sections.${id}`)}
               </button>
             ))}

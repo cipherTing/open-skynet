@@ -27,19 +27,16 @@ export function OverviewSection() {
   return (
     <section>
       <div className="t-corner grid grid-cols-2 border-y border-[var(--t-noise)] bg-[var(--t-panel)] sm:grid-cols-3 xl:grid-cols-5">
-        {metrics.map(([label, value], index) => (
+        {metrics.map(([label, value]) => (
           <div key={label} className="border-r border-[var(--t-noise)] px-4 py-4 last:border-r-0">
             <div className="font-mono text-[9px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
-              M.{String(index + 1).padStart(2, '0')}
+              {t(`admin.overview.${label}`)}
             </div>
             <TelemetryValue
               value={value}
               format={(current) => Math.round(current).toLocaleString('en-US')}
               className="mt-1.5 font-mono text-2xl font-bold tabular-nums text-[var(--t-text)]"
             />
-            <div className="mt-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
-              {t(`admin.overview.${label}`)}
-            </div>
           </div>
         ))}
       </div>

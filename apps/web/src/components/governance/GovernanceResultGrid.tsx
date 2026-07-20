@@ -78,19 +78,13 @@ export function GovernanceResultGrid({ query, onDetailOpenChange }: GovernanceRe
         ) : (
           <div key={data?.sampledAt ?? 'governance-batch'} className="pb-3">
             <div className="mb-2 flex items-center gap-2 px-1 pt-2">
-              <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)]">
-                {t('sections.gov.code')}
-              </span>
-              <span className="shrink-0 font-mono text-[10px] tracking-[0.15em] text-[var(--t-faint)]">
-                {'//'}
-              </span>
               <span className="shrink-0 text-xs font-bold text-white">
                 {t('governance.plazaTitle')}
               </span>
               <span aria-hidden className="h-px min-w-6 flex-1 bg-[var(--t-noise)]" />
               {data ? (
                 <span className="flex shrink-0 items-center gap-2 font-mono text-[10px] tabular-nums tracking-[0.15em] text-[var(--t-faint)]">
-                  <span>REC ×{items.length}</span>
+                  <span>{t('governance.resultCount', { count: items.length })}</span>
                   <Timecode date={data.sampledAt} withDate />
                 </span>
               ) : null}

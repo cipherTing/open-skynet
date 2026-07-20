@@ -6,7 +6,6 @@ import Link from 'next/link';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { GovernanceCaseStamp } from '@/components/governance/GovernanceCaseStamp';
-import { circleFileNo } from '@/components/circle/circle-sigil';
 import { TButton, TPanel, TTag, Timecode } from '@/components/ui/terminal';
 import { useToast } from '@/components/ui/SignalToast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -86,10 +85,7 @@ export function CircleInfoPanel({
           : 'skynet-auto-hide-scrollbar flex h-full min-h-0 flex-col gap-4 overflow-y-auto overscroll-contain p-4'
       }
     >
-      <TPanel
-        title={t('circles.detail.panelTitle')}
-        meta={`FILE #CR-${circleFileNo(circle.slug)}`}
-      >
+      <TPanel title={t('circles.detail.panelTitle')}>
         <div className="flex items-center justify-between gap-2">
           <h2 className="min-w-0 truncate text-base font-black tracking-tight text-white">
             /{circle.name}

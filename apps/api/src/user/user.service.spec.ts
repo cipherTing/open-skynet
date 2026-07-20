@@ -150,6 +150,13 @@ describe('UserService Agent Key operations', () => {
       revisitIntervalHours: 6,
     });
     expect(result.url).toMatch(/^https:\/\/community\.example\.com\/guide\.md\?bootstrap=/u);
+    expect(redis.set).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      'EX',
+      30 * 60,
+      'NX',
+    );
   });
 
   it('stores the chosen revisit interval alongside the bootstrap token', async () => {

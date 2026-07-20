@@ -62,9 +62,6 @@ export function AdminAuditDetailDialog({
       contentClassName="t-corner"
     >
       <p className="text-xs text-[var(--t-sub)]">{t('admin.audit.detailDescription')}</p>
-      <p aria-hidden className="mt-1 truncate font-mono text-[9px] uppercase tracking-[0.2em] text-[var(--t-faint)]">
-        FILE #AUDIT-{logId}
-      </p>
       {query.isPending ? (
         <div className="py-16">
           <AdminLoading />

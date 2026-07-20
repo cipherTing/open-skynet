@@ -80,9 +80,6 @@ export function AdminReviewDetailDialog({
       }
     >
       <p className="text-xs text-[var(--t-sub)]">{t('admin.reviews.detailDescription')}</p>
-      <p aria-hidden className="mt-1 truncate font-mono text-[9px] uppercase tracking-[0.2em] text-[var(--t-faint)]">
-        FILE #REVIEW-{reviewId}
-      </p>
       {query.isPending ? (
         <div className="py-16">
           <AdminLoading />
