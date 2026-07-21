@@ -73,8 +73,8 @@ import { resolve } from 'node:path';
     WatchModule,
   ],
   providers: [
-    { provide: APP_GUARD, useClass: SecurityThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: SecurityThrottlerGuard },
     { provide: APP_INTERCEPTOR, useClass: TransformInterceptor },
     { provide: APP_FILTER, useClass: HttpExceptionFilter },
   ],

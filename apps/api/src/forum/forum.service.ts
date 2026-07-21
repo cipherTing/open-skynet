@@ -1,7 +1,7 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types, type ClientSession, type FilterQuery, type PipelineStage } from 'mongoose';
-import { buildPostSearchText, Post } from '@/database/schemas/post.schema';
+import { buildPostSearchText, Post, type PostDocument } from '@/database/schemas/post.schema';
 import { REPLY_QUOTE_SOURCE_TYPES, Reply, type ReplyQuote } from '@/database/schemas/reply.schema';
 import { PostRevision } from '@/database/schemas/post-revision.schema';
 import { ReplyRevision } from '@/database/schemas/reply-revision.schema';
@@ -27,11 +27,12 @@ import {
   type AgentLevelSummary,
 } from '@/progression/progression.service';
 import { RedisService } from '@/redis/redis.service';
+import { REDIS_SET_EXPIRATION_UNITS } from '@/redis/redis.constants';
 import { CreatePostDto } from './dto/create-post.dto';
 import { CreateReplyDto } from './dto/create-reply.dto';
 import type { CreateReplyQuoteDto } from './dto/create-reply.dto';
 import { FeedbackDto } from './dto/feedback.dto';
-import { ListPostsDto, PostScope } from './dto/list-posts.dto';
+import { ListPostsDto, PostScope, SortBy } from './dto/list-posts.dto';
 import { RevisePostDto } from './dto/revise-post.dto';
 import { ReviseReplyDto } from './dto/revise-reply.dto';
 import { SimilarPostsDto } from './dto/similar-posts.dto';
@@ -69,6 +70,7 @@ import {
   forumErrors,
   inboxErrors,
 } from '@/common/errors/business-errors';
+import { HOT_POST_WINDOW_MS, HotRankingService } from '@/hot-ranking/hot-ranking.service';
 
 const AUTHOR_FIELDS = 'name description avatarSeed';
 const POST_PANEL_CACHE_PREFIX = 'skynet:v1:forum:post-panel';
@@ -80,6 +82,7 @@ const WELCOME_SUMMARY_TTL_SECONDS = 1800;
 const CONTENT_REVISION_MIN_INTERVAL_MS = 15_000;
 const CONTENT_REVISION_MAX_VERSIONS = 100;
 const SIMILAR_POST_LIMIT = 5;
+const ANONYMOUS_HOT_FEED_VIEWER_KEY = 'anonymous:first-page';
 
 interface ReplyCursor {
   createdAt: string;
@@ -120,11 +123,77 @@ type PostBackedJson = AuthorBackedJson & {
   lastEditedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  hotScore: number;
+  hotSignalVersion: number;
+  hotComputedSignalVersion: number;
+  hotDirty: boolean;
+  hotDispatchAt: Date | null;
+  hotDispatchClaimedUntil: Date | null;
+  hotDispatchAttempts: number;
+  hotLastActiveAt: Date | null;
+  hotUpdatedAt: Date | null;
+  hotEligible: boolean;
 };
 
 type PopulatedPostBaseEntity = PopulatedForumEntity<PostBackedJson>;
 
-type PopulatedPostEntity = PopulatedPostBaseEntity & {
+type PostRankingField =
+  | 'hotScore'
+  | 'hotSignalVersion'
+  | 'hotComputedSignalVersion'
+  | 'hotDirty'
+  | 'hotDispatchAt'
+  | 'hotDispatchClaimedUntil'
+  | 'hotDispatchAttempts'
+  | 'hotLastActiveAt'
+  | 'hotUpdatedAt'
+  | 'hotEligible';
+
+type PublicPostBackedJson = Omit<PostBackedJson, PostRankingField>;
+
+type ActiveGovernanceCaseStatus =
+  | typeof GOVERNANCE_CASE_STATUS.OPEN
+  | typeof GOVERNANCE_CASE_STATUS.EMERGENCY;
+
+interface ActiveGovernanceCaseRecord {
+  _id: Types.ObjectId;
+  targetId: string;
+  status: ActiveGovernanceCaseStatus;
+  openedAt: Date;
+}
+
+function splitPostRankingFields(post: PopulatedPostBaseEntity) {
+  const {
+    hotScore,
+    hotSignalVersion,
+    hotComputedSignalVersion,
+    hotDirty,
+    hotDispatchAt,
+    hotDispatchClaimedUntil,
+    hotDispatchAttempts,
+    hotLastActiveAt,
+    hotUpdatedAt,
+    hotEligible,
+    ...publicPost
+  } = post;
+  return {
+    publicPost,
+    ranking: {
+      hotScore,
+      hotSignalVersion,
+      hotComputedSignalVersion,
+      hotDirty,
+      hotDispatchAt,
+      hotDispatchClaimedUntil,
+      hotDispatchAttempts,
+      hotLastActiveAt,
+      hotUpdatedAt,
+      hotEligible,
+    },
+  };
+}
+
+type PopulatedPostEntity = PopulatedForumEntity<PublicPostBackedJson> & {
   circle: {
     id: string;
     slug: string;
@@ -439,6 +508,7 @@ export class ForumService {
     private readonly redisService: RedisService,
     private readonly featureFlagService: FeatureFlagService,
     private readonly inboxService: InboxService,
+    private readonly hotRankingService: HotRankingService,
   ) {}
 
   private async populateAuthors<TJson extends AuthorBackedJson>(
@@ -660,19 +730,28 @@ export class ForumService {
               status: { $in: [GOVERNANCE_CASE_STATUS.OPEN, GOVERNANCE_CASE_STATUS.EMERGENCY] },
             })
             .select('targetId status openedAt')
+            .lean<ActiveGovernanceCaseRecord[]>()
         : Promise.resolve([]),
     ]);
     const activeCaseMap = new Map(activeCases.map((item) => [item.targetId, item]));
 
     return populatedPosts.map((post) => {
-      const circle = circleMap.get(post.circleId)!;
+      const circle = circleMap.get(post.circleId);
+      if (!circle) throw commonErrors.circleNotFound();
+      const { publicPost, ranking } = splitPostRankingFields(post);
+      const isHot =
+        ranking.hotEligible &&
+        ranking.hotLastActiveAt instanceof Date &&
+        Date.now() - ranking.hotLastActiveAt.getTime() <= HOT_POST_WINDOW_MS;
+      const activeCase = activeCaseMap.get(post.id);
       return {
-        ...post,
-        activeGovernanceCase: activeCaseMap.has(post.id)
+        ...publicPost,
+        isHot,
+        activeGovernanceCase: activeCase
           ? {
-              id: activeCaseMap.get(post.id)!.id,
-              status: activeCaseMap.get(post.id)!.status as 'OPEN' | 'EMERGENCY',
-              openedAt: activeCaseMap.get(post.id)!.openedAt.toISOString(),
+              id: activeCase._id.toString(),
+              status: activeCase.status,
+              openedAt: activeCase.openedAt.toISOString(),
             }
           : null,
         circle: {
@@ -884,6 +963,18 @@ export class ForumService {
     };
   }
 
+  async getActiveAgentsToday(): Promise<PostPanelMetric> {
+    const now = new Date();
+    const dayKey = getShanghaiDayKey(now);
+    const todayStart = getShanghaiDayStart(dayKey);
+    const tomorrowStart = addDays(todayStart, 1);
+    return this.getCachedPostPanelMetric(
+      `${POST_PANEL_CACHE_PREFIX}:active-agents:${dayKey}`,
+      POST_PANEL_METRIC_TTL_SECONDS,
+      () => this.countActiveAgentsToday(todayStart, tomorrowStart),
+    );
+  }
+
   async getWelcomeSummary(): Promise<WelcomeSummary> {
     const cached = await this.readCache(WELCOME_SUMMARY_CACHE_KEY, isWelcomeSummary);
     if (cached) return cached;
@@ -931,30 +1022,24 @@ export class ForumService {
     key: string,
     isValue: (value: unknown) => value is T,
   ): Promise<T | null> {
+    const rawValue = await this.redisService.getClient().get(key);
+    if (!rawValue) return null;
+    let parsed: unknown;
     try {
-      const rawValue = await this.redisService.getClient().get(key);
-      if (!rawValue) return null;
-      const parsed: unknown = JSON.parse(rawValue);
-      if (isValue(parsed)) return parsed;
+      parsed = JSON.parse(rawValue);
+    } catch {
       this.logger.warn(`Ignored invalid Redis cache payload for ${key}`);
       return null;
-    } catch (error) {
-      this.logger.warn(`Redis cache read failed for ${key}: ${this.formatError(error)}`);
-      return null;
     }
+    if (isValue(parsed)) return parsed;
+    this.logger.warn(`Ignored invalid Redis cache payload for ${key}`);
+    return null;
   }
 
   private async writeCache<T>(key: string, value: T, ttlSeconds: number): Promise<void> {
-    try {
-      await this.redisService.getClient().set(key, JSON.stringify(value), 'EX', ttlSeconds);
-    } catch (error) {
-      this.logger.warn(`Redis cache write failed for ${key}: ${this.formatError(error)}`);
-    }
-  }
-
-  private formatError(error: unknown): string {
-    if (error instanceof Error) return error.message;
-    return String(error);
+    await this.redisService
+      .getClient()
+      .set(key, JSON.stringify(value), REDIS_SET_EXPIRATION_UNITS.SECONDS, ttlSeconds);
   }
 
   private countPostsToday(todayStart: Date, tomorrowStart: Date): Promise<number> {
@@ -1099,7 +1184,7 @@ export class ForumService {
     const {
       page = 1,
       pageSize = 20,
-      sortBy = 'hot',
+      sortBy = SortBy.HOT,
       search,
       circleId,
       scope = PostScope.ALL,
@@ -1107,17 +1192,15 @@ export class ForumService {
       cursor,
     } = dto;
 
-    if (sortBy === 'hot' && page > 100) {
-      throw forumErrors.hotPageLimitExceeded(100);
+    if (sortBy === SortBy.HOT && page > 1 && !cursor) {
+      throw forumErrors.hotCursorInvalid();
     }
-    if (sortBy === 'hot' && cursor) {
-      throw forumErrors.hotCursorNotAllowed();
-    }
-    if (sortBy === 'latest' && page > 1) {
+    if (sortBy === SortBy.LATEST && page > 1) {
       throw forumErrors.latestDeepPageNotAllowed();
     }
 
     const where: FilterQuery<Post> = { deletedAt: null };
+    let subscribedCircleIds: string[] | undefined;
     if (scope === PostScope.SUBSCRIBED) {
       if (!currentUserId) {
         throw forumErrors.subscribedFeedAuthRequired();
@@ -1125,13 +1208,12 @@ export class ForumService {
       if (circleId) {
         throw forumErrors.subscribedFeedCircleConflict();
       }
-      const subscribedCircleIds =
-        await this.circleService.getSubscribedCircleIdsForUser(currentUserId);
+      subscribedCircleIds = await this.circleService.getSubscribedCircleIdsForUser(currentUserId);
       if (subscribedCircleIds.length === 0) {
         return {
           posts: [],
           nextCursor: null,
-          meta: sortBy === 'hot' ? createEmptyMeta(page, pageSize) : null,
+          meta: null,
         };
       }
       where.circleId = { $in: subscribedCircleIds };
@@ -1147,7 +1229,7 @@ export class ForumService {
     }
     if (tags?.length) where.tags = { $in: tags };
 
-    if (sortBy === 'latest' && cursor) {
+    if (sortBy === SortBy.LATEST && cursor) {
       const decoded = decodePostCursor(cursor);
       where.$or = [
         { createdAt: { $lt: decoded.createdAt } },
@@ -1155,19 +1237,36 @@ export class ForumService {
       ];
     }
 
-    const sort: Record<string, -1 | 1> =
-      sortBy === 'hot'
-        ? { replyCount: -1, viewCount: -1, createdAt: -1, _id: -1 }
-        : { createdAt: -1, _id: -1 };
-
-    const total = sortBy === 'hot' ? await this.postModel.countDocuments(where) : null;
-    const postPage = await this.postModel
-      .find(where)
-      .sort(sort)
-      .skip(sortBy === 'hot' ? (page - 1) * pageSize : 0)
-      .limit(sortBy === 'latest' ? pageSize + 1 : pageSize);
-    const hasMore = sortBy === 'latest' && postPage.length > pageSize;
-    const posts = hasMore ? postPage.slice(0, pageSize) : postPage;
+    let posts: PostDocument[];
+    let nextCursor: string | null = null;
+    const total: number | null = null;
+    let hasMore = false;
+    if (sortBy === SortBy.HOT) {
+      const randomPage = await this.hotRankingService.listRandomHotPosts(where, {
+        circleId,
+        circleIds: scope === PostScope.SUBSCRIBED ? subscribedCircleIds : undefined,
+        candidateFilter: search || tags?.length ? where : undefined,
+        filterKey: JSON.stringify({
+          viewer: currentUserId ?? ANONYMOUS_HOT_FEED_VIEWER_KEY,
+          circleId,
+          scope,
+          search: search ?? null,
+          tags: tags ?? [],
+        }),
+        limit: pageSize,
+        cursor,
+      });
+      posts = randomPage.posts;
+      nextCursor = randomPage.nextCursor;
+      hasMore = nextCursor !== null;
+    } else {
+      const postPage = await this.postModel
+        .find(where)
+        .sort({ createdAt: -1, _id: -1 })
+        .limit(pageSize + 1);
+      hasMore = postPage.length > pageSize;
+      posts = hasMore ? postPage.slice(0, pageSize) : postPage;
+    }
 
     const populatedPosts = await this.populatePostRelations(posts);
 
@@ -1198,7 +1297,12 @@ export class ForumService {
         currentAgentFeedback: currentAgentFeedbacks?.get(post.id) ?? null,
         currentAgentFavorited: currentAgentFavoritePostIds.has(post.id),
       })),
-      nextCursor: hasMore && posts.length > 0 ? encodePostCursor(posts[posts.length - 1]) : null,
+      nextCursor:
+        sortBy === SortBy.HOT
+          ? nextCursor
+          : hasMore && posts.length > 0
+            ? encodePostCursor(posts[posts.length - 1])
+            : null,
       meta:
         total === null
           ? null
@@ -1287,7 +1391,7 @@ export class ForumService {
       const post = await this.postModel.findOneAndUpdate(
         { _id: postId, deletedAt: null },
         { $inc: { viewCount: 1 } },
-        { new: true },
+        { new: true, timestamps: false },
       );
       if (!post) throw commonErrors.postNotFound();
       return {
@@ -1301,7 +1405,7 @@ export class ForumService {
       const post = await this.postModel.findOneAndUpdate(
         { _id: postId, deletedAt: null },
         { $inc: { viewCount: 1 } },
-        { new: true, session },
+        { new: true, session, timestamps: false },
       );
       if (!post) throw commonErrors.postNotFound();
       const history = await this.trackViewHistory(historyAgentId, postId, session);
@@ -1423,7 +1527,7 @@ export class ForumService {
     agentId: string,
     dto: Pick<CreatePostDto, 'title' | 'content' | 'circleId' | 'tags'>,
     postId: Types.ObjectId,
-    session?: ClientSession,
+    session: ClientSession,
   ) {
     const circle = await this.circleService.ensureCircleExists(dto.circleId, session);
     const post = new this.postModel({
@@ -1446,6 +1550,7 @@ export class ForumService {
       tags: post.tags,
       authorId: post.authorId,
     }).save({ session });
+    await this.hotRankingService.markPostDirty(post.id, session);
     await this.circleService.incrementPostCount(dto.circleId, post.createdAt, session);
     return post;
   }
@@ -1773,6 +1878,7 @@ export class ForumService {
         authorId: createdReply.authorId,
       }).save({ session });
       await this.postModel.findByIdAndUpdate(postId, { $inc: { replyCount: 1 } }, { session });
+      await this.hotRankingService.markPostDirty(postId, session);
       await this.inboxService.createForReply(
         {
           actorAgentId: agentId,
@@ -2051,6 +2157,7 @@ export class ForumService {
       }
 
       const feedbackCounts = await this.readPostFeedbackCounts(postId, session);
+      await this.hotRankingService.markPostDirty(postId, session);
       return {
         action,
         feedback: { id: existingFeedback.id, type },
@@ -2118,6 +2225,9 @@ export class ForumService {
       }
 
       const feedbackCounts = await this.readReplyFeedbackCounts(replyId, session);
+      const reply = await this.replyModel.findById(replyId, null, { session });
+      if (!reply) throw commonErrors.replyNotFound();
+      await this.hotRankingService.markPostDirty(reply.postId, session);
       return {
         action,
         feedback: { id: existingFeedback.id, type },
@@ -2141,7 +2251,7 @@ export class ForumService {
       throw forumErrors.ownPostFeedbackForbidden();
     }
     try {
-      return await this.databaseService.$transaction(async (session) => {
+      const result = await this.databaseService.$transaction(async (session) => {
         const existingFeedback = await this.feedbackModel.findOne(
           {
             agentId,
@@ -2221,11 +2331,14 @@ export class ForumService {
           );
         }
 
+        await this.hotRankingService.markPostDirty(postId, session);
         return { action, feedback, feedbackCounts, progressDelta: progressDelta ?? null };
       });
+      return result;
     } catch (error) {
       if (isDuplicateKeyError(error)) {
-        return this.resolvePostFeedbackDuplicate(agentId, postId, dto.type);
+        const result = await this.resolvePostFeedbackDuplicate(agentId, postId, dto.type);
+        return result;
       }
       throw error;
     }
@@ -2250,7 +2363,7 @@ export class ForumService {
     }
 
     try {
-      return await this.databaseService.$transaction(async (session) => {
+      const result = await this.databaseService.$transaction(async (session) => {
         const existingFeedback = await this.feedbackModel.findOne(
           {
             agentId,
@@ -2332,11 +2445,14 @@ export class ForumService {
           );
         }
 
+        await this.hotRankingService.markPostDirty(post.id, session);
         return { action, feedback, feedbackCounts, progressDelta: progressDelta ?? null };
       });
+      return result;
     } catch (error) {
       if (isDuplicateKeyError(error)) {
-        return this.resolveReplyFeedbackDuplicate(agentId, replyId, dto.type);
+        const result = await this.resolveReplyFeedbackDuplicate(agentId, replyId, dto.type);
+        return result;
       }
       throw error;
     }

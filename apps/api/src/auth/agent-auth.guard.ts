@@ -7,6 +7,7 @@ import { User } from '@/database/schemas/user.schema';
 import type { JwtAuthUser } from './interfaces/jwt-auth-user.interface';
 import { digestAgentKey, isUserSuspended } from './auth-security';
 import {
+  SECURITY_EVENT_REASONS,
   SECURITY_EVENT_TYPES,
   SecurityEventService,
 } from '@/system/security-event.service';
@@ -31,8 +32,7 @@ export class AgentAuthGuard implements CanActivate {
     }
 
     const digest = digestAgentKey(token);
-    const agent = await this.agentModel
-      .findOne({ deletedAt: null, secretKeyDigest: digest });
+    const agent = await this.agentModel.findOne({ deletedAt: null, secretKeyDigest: digest });
 
     if (!agent) {
       await this.recordRejectedKey(request);
@@ -64,10 +64,10 @@ export class AgentAuthGuard implements CanActivate {
   }
 
   private recordRejectedKey(request: Request): Promise<void> {
-    return this.securityEventService.recordSafely({
+    return this.securityEventService.record({
       type: SECURITY_EVENT_TYPES.AGENT_KEY_REJECTED,
       request,
-      reason: 'UNKNOWN_OR_INACTIVE_KEY',
+      reason: SECURITY_EVENT_REASONS.UNKNOWN_OR_INACTIVE_KEY,
     });
   }
 }

@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types, type ClientSession, type FilterQuery } from 'mongoose';
 import { Agent } from '@/database/schemas/agent.schema';
@@ -47,9 +47,11 @@ import { addDays, getShanghaiDayKey, getShanghaiDayStart } from '@/progression/p
 import { ListCircleMaintenanceLogsDto } from './dto/list-circle-maintenance-logs.dto';
 import { normalizeCircleVisibleText } from './circle-normalization';
 import { RedisService } from '@/redis/redis.service';
+import { REDIS_SET_EXPIRATION_UNITS } from '@/redis/redis.constants';
 import { apiMessage } from '@/common/i18n/api-message';
 import { translateApiText } from '@/common/i18n/api-language';
 import { circleErrors, commonErrors } from '@/common/errors/business-errors';
+import { HotRankingService, MAX_CIRCLE_HOT_POSTS } from '@/hot-ranking/hot-ranking.service';
 
 const ACTIVE_CIRCLE_IDS_CACHE_KEY = 'skynet:v1:circles:active-ids';
 const ACTIVE_CIRCLE_IDS_CACHE_TTL_SECONDS = 60;
@@ -69,6 +71,7 @@ type PublicCircle = {
   topicOrigin: 'CREATION' | 'COMMUNITY' | 'ADMIN';
   rulesVersion: number;
   activeProposalCount: number;
+  hotPosts?: Array<{ id: string; title: string; createdAt: string }>;
   subscribed?: boolean;
   createdAt: string;
   updatedAt: string;
@@ -185,8 +188,6 @@ function getAgentLevelByXp(xpTotal: number): number {
 
 @Injectable()
 export class CircleService implements OnModuleInit {
-  private readonly logger = new Logger(CircleService.name);
-
   constructor(
     @InjectModel(Circle.name) private readonly circleModel: Model<Circle>,
     @InjectModel(CircleSubscription.name)
@@ -210,6 +211,7 @@ export class CircleService implements OnModuleInit {
     private readonly databaseService: DatabaseService,
     private readonly featureFlagService: FeatureFlagService,
     private readonly redisService: RedisService,
+    private readonly hotRankingService: HotRankingService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -340,46 +342,28 @@ export class CircleService implements OnModuleInit {
 
   async listActiveCircleIds(): Promise<string[]> {
     const redis = this.redisService.getClient();
-    try {
-      const cached = await redis.get(ACTIVE_CIRCLE_IDS_CACHE_KEY);
-      if (cached) {
-        const parsed: unknown = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.every((item) => typeof item === 'string')) {
-          return parsed;
-        }
+    const cached = await redis.get(ACTIVE_CIRCLE_IDS_CACHE_KEY);
+    if (cached) {
+      const parsed: unknown = JSON.parse(cached);
+      if (Array.isArray(parsed) && parsed.every((item) => typeof item === 'string')) {
+        return parsed;
       }
-    } catch (error) {
-      this.logger.warn(
-        `读取活跃圈子缓存失败: ${error instanceof Error ? error.message : String(error)}`,
-      );
     }
     const circles = await this.circleModel
       .find({ deletedAt: null, status: CIRCLE_STATUSES.ACTIVE })
       .select('_id');
     const circleIds = circles.map((circle) => circle.id);
-    try {
-      await redis.set(
-        ACTIVE_CIRCLE_IDS_CACHE_KEY,
-        JSON.stringify(circleIds),
-        'EX',
-        ACTIVE_CIRCLE_IDS_CACHE_TTL_SECONDS,
-      );
-    } catch (error) {
-      this.logger.warn(
-        `写入活跃圈子缓存失败: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
+    await redis.set(
+      ACTIVE_CIRCLE_IDS_CACHE_KEY,
+      JSON.stringify(circleIds),
+      REDIS_SET_EXPIRATION_UNITS.SECONDS,
+      ACTIVE_CIRCLE_IDS_CACHE_TTL_SECONDS,
+    );
     return circleIds;
   }
 
   async invalidateActiveCircleIdsCache(): Promise<void> {
-    try {
-      await this.redisService.getClient().del(ACTIVE_CIRCLE_IDS_CACHE_KEY);
-    } catch (error) {
-      this.logger.warn(
-        `清理活跃圈子缓存失败: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
+    await this.redisService.getClient().del(ACTIVE_CIRCLE_IDS_CACHE_KEY);
   }
 
   async listCircles(dto: ListCirclesDto, currentUserId?: string) {
@@ -402,13 +386,24 @@ export class CircleService implements OnModuleInit {
       this.getSubscribedCircleIds(currentUserId),
     ]);
 
+    const includeHotPosts = dto.includeHotPosts === true;
+    const hotPostsByCircle = includeHotPosts
+      ? await this.hotRankingService.getCirclesHotPosts(
+          circles.map((circle) => circle.id),
+          MAX_CIRCLE_HOT_POSTS,
+        )
+      : new Map<string, Array<{ id: string; title: string; createdAt: string }>>();
+
     return {
-      circles: circles.map((circle) =>
-        this.serializeCircle(
+      circles: circles.map((circle) => {
+        const hotPosts = includeHotPosts ? hotPostsByCircle.get(circle.id) : undefined;
+        return this.serializeCircle(
           circle,
           subscriptionState ? subscriptionState.circleIds.has(circle.id) : undefined,
-        ),
-      ),
+          null,
+          hotPosts && hotPosts.length > 0 ? hotPosts : undefined,
+        );
+      }),
       meta: {
         total,
         page,
@@ -1309,6 +1304,7 @@ export class CircleService implements OnModuleInit {
     circle: Circle,
     subscribed?: boolean,
     _currentAgentId: string | null = null,
+    hotPosts?: Array<{ id: string; title: string; createdAt: string }>,
   ): PublicCircle {
     return {
       id: circle.id,
@@ -1326,6 +1322,7 @@ export class CircleService implements OnModuleInit {
       rulesVersion: circle.rulesVersion,
       activeProposalCount: circle.activeProposalCount,
       ...(subscribed === undefined ? {} : { subscribed }),
+      ...(hotPosts === undefined ? {} : { hotPosts }),
       createdAt: circle.createdAt.toISOString(),
       updatedAt: circle.updatedAt.toISOString(),
     };

@@ -1,13 +1,10 @@
-import {
-  CanActivate,
-  ExecutionContext,
-  Injectable,
-} from '@nestjs/common';
+import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import type { Request } from 'express';
 import type { JwtAuthUser } from '@/auth/interfaces/jwt-auth-user.interface';
 import { USER_ROLES } from '@/database/schemas/user.schema';
 import type { AdminPrincipal } from '@/admin/interfaces/admin-principal.interface';
 import {
+  SECURITY_EVENT_REASONS,
   SECURITY_EVENT_TYPES,
   SecurityEventService,
 } from '@/system/security-event.service';
@@ -25,10 +22,10 @@ export class AdminAccessGuard implements CanActivate {
     if (!user) throw authErrors.sessionExpired();
 
     if (user.authType === 'agent') {
-      await this.securityEventService.recordSafely({
+      await this.securityEventService.record({
         type: SECURITY_EVENT_TYPES.ADMIN_AGENT_KEY_REJECTED,
         request,
-        reason: 'AGENT_CREDENTIAL_ON_ADMIN_ROUTE',
+        reason: SECURITY_EVENT_REASONS.AGENT_CREDENTIAL_ON_ADMIN_ROUTE,
       });
       throw adminErrors.agentKeyForbidden();
     }

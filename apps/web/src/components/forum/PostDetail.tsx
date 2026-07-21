@@ -19,6 +19,7 @@ import { GovernanceCaseStamp } from '@/components/governance/GovernanceCaseStamp
 import { ReplyThread } from './ReplyThread';
 import { ReplyInput } from './ReplyInput';
 import { ErrorState } from '@/components/ui/LoadingState';
+import { AuthRequiredDialog, AuthRequiredState } from '@/components/ui/AuthRequiredDialog';
 import { TEmpty, TSkeleton, Timecode } from '@/components/ui/terminal';
 import { ApiError, forumApi } from '@/lib/api';
 import { forumKeys, watchKeys } from '@/lib/query-keys';
@@ -58,6 +59,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
   const trackedViewPostIdRef = useRef<string | null>(null);
   const postContentRef = useRef<HTMLDivElement | null>(null);
   const [replyQuote, setReplyQuote] = useState<ReplyQuoteDraft | null>(null);
+  const [authPromptOpen, setAuthPromptOpen] = useState(false);
   const { ownerOperationEnabled, canOperateAsAgent } = useOwnerOperation();
   const { agent, isAuthenticated, isLoading: authLoading, user } = useAuth();
   const ownerOperationBlocked = isAuthenticated && !!agent && !ownerOperationEnabled;
@@ -67,7 +69,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
   const postQuery = useQuery({
     queryKey: forumKeys.post(viewerKey, postId),
     queryFn: () => forumApi.getPost(postId),
-    enabled: !authLoading || viewerKey === 'anonymous',
+    enabled: !authLoading && isAuthenticated,
   });
   const repliesQuery = useInfiniteQuery({
     queryKey: forumKeys.replies(viewerKey, postId),
@@ -79,12 +81,12 @@ function PostDetailContent({ postId }: PostDetailProps) {
       }),
     initialPageParam: '',
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
-    enabled: !authLoading,
+    enabled: !authLoading && isAuthenticated,
   });
   const selectedReplyQuery = useQuery({
     queryKey: forumKeys.replySelection(viewerKey, postId, selectedReplyId),
     queryFn: () => forumApi.getReplySelection(postId, selectedReplyId),
-    enabled: !authLoading && selectedReplyId.length > 0,
+    enabled: !authLoading && isAuthenticated && selectedReplyId.length > 0,
   });
   const post = postQuery.data ?? null;
   const replies = repliesQuery.data?.pages.flatMap((page) => page.items) ?? [];
@@ -96,13 +98,22 @@ function PostDetailContent({ postId }: PostDetailProps) {
   }, [postId]);
 
   useEffect(() => {
-    if (trackedViewPostIdRef.current !== postId) {
+    if (isAuthenticated && trackedViewPostIdRef.current !== postId) {
       trackedViewPostIdRef.current = postId;
       forumApi.trackView(postId).catch((error: unknown) => {
         console.error('Track view failed:', error);
       });
     }
-  }, [postId]);
+  }, [isAuthenticated, postId]);
+
+  if (!authLoading && !isAuthenticated) {
+    return (
+      <>
+        <AuthRequiredState onOpen={() => setAuthPromptOpen(true)} />
+        <AuthRequiredDialog open={authPromptOpen} onOpenChange={setAuthPromptOpen} />
+      </>
+    );
+  }
 
   const refreshPostData = async () => {
     await Promise.all([
@@ -344,8 +355,12 @@ function PostDetailContent({ postId }: PostDetailProps) {
 
         <div className="relative flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--t-noise)] px-4 py-2 sm:px-6">
           <span className="ml-auto flex items-center gap-3 font-mono text-[10px] tabular-nums tracking-[0.15em] text-[var(--t-faint)]">
-            <span>{t('feed.statReplies')} {formatNumber(post.replyCount || 0)}</span>
-            <span>{t('feed.statViews')} {formatNumber(post.viewCount || 0)}</span>
+            <span>
+              {t('feed.statReplies')} {formatNumber(post.replyCount || 0)}
+            </span>
+            <span>
+              {t('feed.statViews')} {formatNumber(post.viewCount || 0)}
+            </span>
           </span>
         </div>
 

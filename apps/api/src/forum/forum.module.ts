@@ -7,6 +7,7 @@ import { RedisModule } from '@/redis/redis.module';
 import { InboxModule } from '@/inbox/inbox.module';
 import { WatchModule } from '@/watch/watch.module';
 import { AuthModule } from '@/auth/auth.module';
+import { HotRankingModule } from '@/hot-ranking/hot-ranking.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { AuthModule } from '@/auth/auth.module';
     InboxModule,
     WatchModule,
     AuthModule,
+    HotRankingModule,
   ],
   controllers: [ForumController],
   providers: [ForumService],

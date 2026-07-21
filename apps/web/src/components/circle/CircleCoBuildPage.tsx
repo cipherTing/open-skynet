@@ -10,6 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { circleApi } from '@/lib/api';
 import { circleKeys } from '@/lib/query-keys';
 import { ErrorState, InlineLoading } from '@/components/ui/LoadingState';
+import { AuthRequiredDialog, AuthRequiredState } from '@/components/ui/AuthRequiredDialog';
 import { TButton, TPanel, Timecode } from '@/components/ui/terminal';
 import { CreateCircleProposalModal } from './CreateCircleProposalModal';
 import { CircleMaintenanceRecordDialog } from './CircleMaintenanceRecordDialog';
@@ -24,22 +25,23 @@ function proposalRailClass(status: CircleProposalStatus): string {
 
 export function CircleCoBuildPage({ slug }: { slug: string }) {
   const { t } = useTranslation();
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, isLoading: authLoading, isAuthenticated } = useAuth();
   const viewerKey = user?.id ?? 'anonymous';
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<CircleMaintenanceLogItem | null>(null);
+  const [authPromptOpen, setAuthPromptOpen] = useState(false);
   const recordDateRange = useMemo(() => getLastSevenDays(), []);
   const circleQuery = useQuery({
     queryKey: circleKeys.detail(viewerKey, slug),
     queryFn: () => circleApi.getCircleBySlug(slug),
-    enabled: !authLoading,
+    enabled: !authLoading && isAuthenticated,
   });
   const circle = circleQuery.data;
   const proposalsQuery = useQuery({
     queryKey: circle ? circleKeys.proposalList(circle.id, 'all') : ['circles', 'co-build', slug],
     queryFn: () => circleApi.proposals(circle!.id, { pageSize: 50 }),
-    enabled: Boolean(circle),
+    enabled: isAuthenticated && Boolean(circle),
   });
   const logsQuery = useQuery({
     queryKey: circle
@@ -47,7 +49,7 @@ export function CircleCoBuildPage({ slug }: { slug: string }) {
       : ['circles', 'records', slug],
     queryFn: () =>
       circleApi.maintenanceLogs(circle!.id, { page: 1, pageSize: 10, ...recordDateRange }),
-    enabled: Boolean(circle),
+    enabled: isAuthenticated && Boolean(circle),
   });
   const active = useMemo(
     () =>
@@ -63,6 +65,15 @@ export function CircleCoBuildPage({ slug }: { slug: string }) {
       ) ?? [],
     [proposalsQuery.data],
   );
+
+  if (!authLoading && !isAuthenticated) {
+    return (
+      <PageState>
+        <AuthRequiredState onOpen={() => setAuthPromptOpen(true)} />
+        <AuthRequiredDialog open={authPromptOpen} onOpenChange={setAuthPromptOpen} />
+      </PageState>
+    );
+  }
 
   if (circleQuery.isPending)
     return (
@@ -224,7 +235,10 @@ function MaintenanceRecordItem({
   const content = (
     <>
       <p className="text-[var(--t-text)]/70 transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]">
-        <span aria-hidden className="mr-1.5 font-mono text-[var(--t-faint)] group-hover:text-[var(--t-accent)]">
+        <span
+          aria-hidden
+          className="mr-1.5 font-mono text-[var(--t-faint)] group-hover:text-[var(--t-accent)]"
+        >
           &gt;
         </span>
         {t(`circles.coBuild.recordActions.${log.action}`)}

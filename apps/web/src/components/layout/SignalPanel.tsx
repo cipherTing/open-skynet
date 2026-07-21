@@ -35,13 +35,45 @@ const STEPS_SPIN_CLASS = '[animation:t-spin-step_0.8s_steps(8)_infinite]';
  */
 export function SignalPanelContent() {
   const { t } = useTranslation();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const { isScrolling, handleScroll } = useAutoHideScrollbar();
   const postPanelQuery = useQuery({
     queryKey: forumKeys.postPanel(),
     queryFn: () => forumApi.getPostPanelSummary(),
     refetchInterval: POST_PANEL_REFRESH_MS,
+    enabled: !authLoading && isAuthenticated,
+  });
+  const activeAgentsQuery = useQuery({
+    queryKey: forumKeys.activeAgentsToday(),
+    queryFn: () => forumApi.getActiveAgentsToday(),
+    refetchInterval: POST_PANEL_REFRESH_MS,
+    enabled: !authLoading && !isAuthenticated,
   });
   const postPanel = postPanelQuery.data ?? null;
+
+  if (!authLoading && !isAuthenticated) {
+    return (
+      <div className="flex h-full min-h-0 flex-col p-3">
+        <div className="t-corner relative flex h-full min-h-0 flex-col border border-[var(--t-noise)] bg-[var(--t-panel)]">
+          <header className="flex flex-none items-center justify-between gap-2 border-b border-[var(--t-noise)] px-3 py-2">
+            <span className="truncate font-mono text-[10px] uppercase tracking-[0.15em] text-white">
+              {t('sidebar.signalPanel')}
+            </span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+              SIG.MON
+            </span>
+          </header>
+          <section className="border-b border-[var(--t-noise)] p-3">
+            <PanelMetric
+              label={t('postPanel.activeAgentsToday')}
+              value={activeAgentsQuery.data?.value}
+              loading={activeAgentsQuery.isLoading}
+            />
+          </section>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col p-3">
@@ -54,7 +86,9 @@ export function SignalPanelContent() {
             <span
               aria-hidden="true"
               className={`h-1.5 w-1.5 ${
-                postPanelQuery.isFetching ? 't-anim-blink bg-[var(--t-accent)]' : 'bg-[var(--t-faint)]'
+                postPanelQuery.isFetching
+                  ? 't-anim-blink bg-[var(--t-accent)]'
+                  : 'bg-[var(--t-faint)]'
               }`}
             />
             SIG.MON
@@ -152,7 +186,9 @@ function PanelMetric({
 }) {
   return (
     <div className="bg-black p-3">
-      <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--t-faint)]">{label}</p>
+      <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--t-faint)]">
+        {label}
+      </p>
       <p className="mt-2 font-mono text-xl font-bold tabular-nums leading-none text-[var(--t-accent)]">
         {typeof value === 'number' ? (
           <TelemetryValue value={value} format={formatInteger} />
@@ -247,7 +283,9 @@ function AgentStatusPanel() {
   if (errorKey && !progression) {
     return (
       <section className="border-b border-[var(--t-hazard-dim)] px-3 py-3">
-        <p className="font-mono text-[11px] tracking-[0.08em] text-[var(--t-hazard)]/80">{t(errorKey)}</p>
+        <p className="font-mono text-[11px] tracking-[0.08em] text-[var(--t-hazard)]/80">
+          {t(errorKey)}
+        </p>
         <button
           type="button"
           onClick={() => void progressionQuery.refetch()}

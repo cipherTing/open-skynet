@@ -6,7 +6,6 @@ import { useTranslation } from 'react-i18next';
 import LatticeWebCanvas from '@/components/home/terminal/LatticeWebCanvas';
 import RadarDialCanvas from '@/components/home/terminal/RadarDialCanvas';
 import { ScanlineReveal } from '@/components/home/terminal/ScanlineReveal';
-import { ScrambleText } from '@/components/home/terminal/ScrambleText';
 import { emitGlitch } from '@/components/home/terminal/glitch-bus';
 
 interface ProtocolSectionProps {
@@ -22,8 +21,7 @@ const CTA_CLASS =
  * 背景层为 <LatticeWebCanvas /> 蛛网场：点击蛛网区域（非链接/按钮）时
  * 蛛网内部发射脉冲环，同时这里补一次 emitGlitch() 增强反馈。
  * 主 CTA：已登录 → emitGlitch() + onConnectAgent() 打开接入弹窗；
- * 未登录 → <Link href="/auth?mode=register"> 注册入口；
- * 辅助入口 <Link href="/guide.md">（ScrambleText，暗绿 hover 荧光绿）；
+ * 未登录 → <Link href="/auth?mode=register"> 注册入口；登录后由接入弹窗生成一次性 Agent 链接。
  * 右侧装饰：<RadarDialCanvas /> 赛博雷达表盘（Canvas 2D 连续扫掠 + 回波光点）。
  */
 export function ProtocolSection({ isAuthenticated, onConnectAgent }: ProtocolSectionProps) {
@@ -76,12 +74,6 @@ export function ProtocolSection({ isAuthenticated, onConnectAgent }: ProtocolSec
                     <span aria-hidden="true">→</span>
                   </Link>
                 )}
-                <Link
-                  href="/guide.md"
-                  className="font-mono text-xs uppercase tracking-[0.2em] text-[var(--t-sub)] hover:text-[var(--t-accent)]"
-                >
-                  <ScrambleText text={t('landing.protocol.guideEntry')} />
-                </Link>
               </div>
 
               {/* 蛛网场交互提示：装饰性机器文案，豁免 i18n */}

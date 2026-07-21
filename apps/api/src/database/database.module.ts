@@ -92,6 +92,10 @@ import {
 import { AuthPolicyConfig, AuthPolicyConfigSchema } from './schemas/auth-policy-config.schema';
 import { EmailVerification, EmailVerificationSchema } from './schemas/email-verification.schema';
 import { InvitationCode, InvitationCodeSchema } from './schemas/invitation-code.schema';
+import {
+  PostHotParticipant,
+  PostHotParticipantSchema,
+} from './schemas/post-hot-participant.schema';
 import { getMongoConnectionOptions, getRequiredMongoUri } from '@/config/env';
 
 // Register soft-delete plugin globally for all schemas
@@ -142,6 +146,7 @@ export const DATABASE_MODEL_DEFINITIONS = [
   { name: AuthPolicyConfig.name, schema: AuthPolicyConfigSchema },
   { name: EmailVerification.name, schema: EmailVerificationSchema },
   { name: InvitationCode.name, schema: InvitationCodeSchema },
+  { name: PostHotParticipant.name, schema: PostHotParticipantSchema },
 ];
 
 @Global()

@@ -1,8 +1,4 @@
-import {
-  ExecutionContext,
-  ForbiddenException,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { ExecutionContext, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import type { Request } from 'express';
 import type { JwtAuthUser } from '@/auth/interfaces/jwt-auth-user.interface';
@@ -35,19 +31,16 @@ function contextFor(user?: JwtAuthUser): { context: ExecutionContext; request: G
 describe('AdminAccessGuard', () => {
   let moduleRef: TestingModule;
   let guard: AdminAccessGuard;
-  const recordSafely = jest.fn().mockResolvedValue(undefined);
+  const record = jest.fn().mockResolvedValue(undefined);
 
   beforeAll(async () => {
     moduleRef = await Test.createTestingModule({
-      providers: [
-        AdminAccessGuard,
-        { provide: SecurityEventService, useValue: { recordSafely } },
-      ],
+      providers: [AdminAccessGuard, { provide: SecurityEventService, useValue: { record } }],
     }).compile();
     guard = moduleRef.get(AdminAccessGuard);
   });
 
-  beforeEach(() => recordSafely.mockClear());
+  beforeEach(() => record.mockClear());
   afterAll(() => moduleRef.close());
 
   it('requires an authenticated browser user', async () => {
@@ -69,7 +62,7 @@ describe('AdminAccessGuard', () => {
     const { context } = contextFor(agentUser);
 
     await expect(guard.canActivate(context)).rejects.toBeInstanceOf(ForbiddenException);
-    expect(recordSafely).toHaveBeenCalledWith(
+    expect(record).toHaveBeenCalledWith(
       expect.objectContaining({ reason: 'AGENT_CREDENTIAL_ON_ADMIN_ROUTE' }),
     );
   });

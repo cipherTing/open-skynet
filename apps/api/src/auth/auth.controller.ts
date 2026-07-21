@@ -1,12 +1,4 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Post,
-  Req,
-  Res,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Body, Controller, Get, Post, Req, Res, UnauthorizedException } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { CookieOptions, Request, Response } from 'express';
@@ -26,6 +18,7 @@ import type { Agent } from '@/database/schemas/agent.schema';
 import type { UserRole } from '@/database/schemas/user.schema';
 import { readCookie } from '@/common/http/cookies';
 import {
+  SECURITY_EVENT_REASONS,
   SECURITY_EVENT_TYPES,
   SecurityEventService,
 } from '@/system/security-event.service';
@@ -97,7 +90,12 @@ export class AuthController {
   @Post('email-verifications')
   @Throttle({ short: { ttl: 60000, limit: 5 }, medium: { ttl: 3600000, limit: 30 } })
   sendEmailVerification(@Req() request: Request, @Body() dto: SendEmailVerificationDto) {
-    return this.emailVerificationService.send(dto.email, dto.purpose, dto.turnstileToken, request.ip);
+    return this.emailVerificationService.send(
+      dto.email,
+      dto.purpose,
+      dto.turnstileToken,
+      request.ip,
+    );
   }
 
   @Public()
@@ -147,10 +145,10 @@ export class AuthController {
       return this.createBrowserAuthResponse(response, result);
     } catch (error) {
       if (error instanceof UnauthorizedException) {
-        await this.securityEventService.recordSafely({
+        await this.securityEventService.record({
           type: SECURITY_EVENT_TYPES.LOGIN_FAILED,
           request,
-          reason: 'REJECTED',
+          reason: SECURITY_EVENT_REASONS.REJECTED,
         });
       }
       throw error;
@@ -195,9 +193,7 @@ export class AuthController {
         role: fullUser.role,
         createdAt: fullUser.createdAt?.toISOString?.() || fullUser.createdAt || '',
       },
-      agent: fullUser.agent
-        ? this.serializeAgentForMe(fullUser.agent)
-        : null,
+      agent: fullUser.agent ? this.serializeAgentForMe(fullUser.agent) : null,
     };
   }
 

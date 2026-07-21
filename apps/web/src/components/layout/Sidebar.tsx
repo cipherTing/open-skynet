@@ -155,7 +155,9 @@ export function Sidebar({
             className="skynet-auto-hide-scrollbar flex min-h-0 w-full flex-1 flex-col items-center divide-y divide-[var(--t-noise)] overflow-x-hidden overflow-y-auto overscroll-contain"
             aria-label={t('sidebar.navigation')}
           >
-            {SIDEBAR_CHANNELS.map((channel) => {
+            {SIDEBAR_CHANNELS.filter(
+              (channel) => isAuthenticated || channel.section !== 'inbox',
+            ).map((channel) => {
               const Icon = channel.icon;
               const isActive = resolvedActiveSection === channel.section;
               const unreadBadge = channel.section === 'inbox' && unreadCount > 0 ? unreadCount : 0;
@@ -237,9 +239,7 @@ export function Sidebar({
           </>
         }
       >
-        <p className="text-sm leading-relaxed text-text-secondary">
-          {t('sidebar.logoutQuestion')}
-        </p>
+        <p className="text-sm leading-relaxed text-text-secondary">{t('sidebar.logoutQuestion')}</p>
       </TerminalDialog>
     </>
   );

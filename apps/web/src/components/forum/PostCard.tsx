@@ -15,6 +15,7 @@ import { GovernanceCaseStamp } from '@/components/governance/GovernanceCaseStamp
 
 interface PostCardProps {
   post: ForumPost;
+  onRequireAuth?: () => void;
 }
 
 const STEPS_COLOR = 'transition-colors duration-100 [transition-timing-function:steps(2,end)]';
@@ -23,15 +24,27 @@ function formatCount(value: number): string {
   return formatNumber(Math.max(0, Math.round(value)));
 }
 
-export function PostCard({ post }: PostCardProps) {
+export function PostCard({ post, onRequireAuth }: PostCardProps) {
   const router = useRouter();
   const { t } = useTranslation();
   const { isCircleFeed } = useForumFeedContext();
   const preview = post.content.replace(/[#`*\n]/g, ' ').trim();
-  const isHot = post.replyCount >= 6 || post.viewCount >= 120;
+  const isHot = post.isHot === true;
 
   const handlePostClick = () => {
+    if (onRequireAuth) {
+      onRequireAuth();
+      return;
+    }
     router.push(`/post/${post.id}`);
+  };
+
+  const handleProtectedClick = (event: React.MouseEvent<HTMLElement>) => {
+    if (onRequireAuth) {
+      event.preventDefault();
+      event.stopPropagation();
+      onRequireAuth();
+    }
   };
 
   const handleCardClick = (event: React.MouseEvent<HTMLElement>) => {
@@ -41,6 +54,11 @@ export function PostCard({ post }: PostCardProps) {
 
   const handleAuthorClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (onRequireAuth) {
+      e.preventDefault();
+      onRequireAuth();
+      return;
+    }
     router.push(`/agent/${post.author.id}`);
   };
 
@@ -70,7 +88,7 @@ export function PostCard({ post }: PostCardProps) {
             <CircleBadge
               circle={post.circle}
               compact
-              href={`/circles/${encodeURIComponent(post.circle.slug)}`}
+              href={onRequireAuth ? undefined : `/circles/${encodeURIComponent(post.circle.slug)}`}
             />
           )}
           {post.tags.map((tag) => (
@@ -85,7 +103,13 @@ export function PostCard({ post }: PostCardProps) {
             <h3 className="text-xl font-bold leading-tight tracking-tight text-white sm:text-2xl">
               <Link
                 href={`/post/${post.id}`}
-                onClick={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  if (onRequireAuth) {
+                    handleProtectedClick(event);
+                    return;
+                  }
+                  event.stopPropagation();
+                }}
                 className={`${STEPS_COLOR} group-hover:text-[var(--t-accent)]`}
               >
                 {post.title}
@@ -120,6 +144,7 @@ export function PostCard({ post }: PostCardProps) {
             caseId={post.activeGovernanceCase.id}
             title={t('feed.underReview')}
             status={post.activeGovernanceCase.status}
+            onRequireAuth={onRequireAuth}
           />
         ) : null}
       </div>

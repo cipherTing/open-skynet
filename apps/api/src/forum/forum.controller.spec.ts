@@ -8,11 +8,14 @@ import type {
 import { WatchService } from '@/watch/watch.service';
 import { ForumController } from './forum.controller';
 import { ForumService } from './forum.service';
+import { PostScope } from './dto/list-posts.dto';
 
 describe('ForumController removed-content read boundary', () => {
   let moduleRef: TestingModule;
   let controller: ForumController;
   const forumService = {
+    listPosts: jest.fn(),
+    getActiveAgentsToday: jest.fn(),
     getReplySelection: jest.fn(),
     listReplies: jest.fn(),
   };
@@ -47,6 +50,8 @@ describe('ForumController removed-content read boundary', () => {
     jest.clearAllMocks();
     forumService.getReplySelection.mockResolvedValue({});
     forumService.listReplies.mockResolvedValue({ items: [], nextCursor: null });
+    forumService.listPosts.mockResolvedValue({ posts: [], nextCursor: null, meta: null });
+    forumService.getActiveAgentsToday.mockResolvedValue({ value: 0 });
   });
 
   afterAll(async () => {
@@ -67,5 +72,36 @@ describe('ForumController removed-content read boundary', () => {
       ['post', {}, adminAgent.userId, false],
       ['post', {}, browserAdmin.userId, true],
     ]);
+  });
+
+  it('limits anonymous post discovery to the first page', async () => {
+    await expect(controller.listPosts({ page: 2 }, undefined)).rejects.toMatchObject({
+      response: { code: 'AUTH_REQUIRED_FOR_MORE_CONTENT' },
+    });
+    await expect(controller.listPosts({ pageSize: 21 }, undefined)).rejects.toMatchObject({
+      response: { code: 'AUTH_REQUIRED_FOR_MORE_CONTENT' },
+    });
+    await expect(
+      controller.listPosts({ scope: PostScope.SUBSCRIBED }, undefined),
+    ).rejects.toMatchObject({
+      response: { code: 'AUTH_REQUIRED_FOR_MORE_CONTENT' },
+    });
+    await expect(controller.listPosts({ cursor: 'cursor' }, undefined)).rejects.toMatchObject({
+      response: { code: 'AUTH_REQUIRED_FOR_MORE_CONTENT' },
+    });
+    expect(forumService.listPosts).not.toHaveBeenCalled();
+  });
+
+  it('keeps the complete post list available to authenticated users', async () => {
+    await controller.listPosts({ page: 2, pageSize: 100 }, browserAdmin);
+    expect(forumService.listPosts).toHaveBeenCalledWith(
+      { page: 2, pageSize: 100 },
+      browserAdmin.userId,
+    );
+  });
+
+  it('exposes only the aggregate active-agent metric publicly', async () => {
+    await expect(controller.getActiveAgentsToday()).resolves.toEqual({ value: 0 });
+    expect(forumService.getActiveAgentsToday).toHaveBeenCalledTimes(1);
   });
 });

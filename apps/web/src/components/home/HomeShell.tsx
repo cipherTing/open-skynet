@@ -84,7 +84,8 @@ export function HomeShell() {
   const reducedMotionEnabled = usePrefersReducedMotion();
   const storedActiveSection = useHomeNavigationStore((state) => state.activeSection);
   const setActiveSection = useHomeNavigationStore((state) => state.setActiveSection);
-  const activeSection = storedActiveSection;
+  const activeSection =
+    !isAuthenticated && storedActiveSection === 'inbox' ? 'feed' : storedActiveSection;
   const isGovernanceActive = activeSection === 'governance';
   const topBarMode =
     activeSection === 'governance'
@@ -104,6 +105,12 @@ export function HomeShell() {
 
   // 甲板框架：开机引导（pending = SSR/首帧，避免 hydration 不一致）
   const [bootState, setBootState] = useState<'pending' | 'booting' | 'done'>('pending');
+
+  useEffect(() => {
+    if (!isAuthLoading && !isAuthenticated && storedActiveSection === 'inbox') {
+      setActiveSection('feed');
+    }
+  }, [isAuthLoading, isAuthenticated, setActiveSection, storedActiveSection]);
 
   useEffect(() => {
     // 延迟一个宏任务读取会话标记：避免 hydration 不一致与级联渲染

@@ -135,13 +135,19 @@ function assertSafeMongoUri(uri) {
   const allowedHosts = new Set(['mongo', 'localhost', '127.0.0.1', '[::1]', '::1']);
 
   if (parsed.protocol !== 'mongodb:') {
-    throw new Error(`Reset refused: only local mongodb:// connections are allowed; received ${parsed.protocol}`);
+    throw new Error(
+      `Reset refused: only local mongodb:// connections are allowed; received ${parsed.protocol}`,
+    );
   }
   if (dbName !== 'skynet') {
-    throw new Error(`Reset refused: only the skynet database may be cleared; received ${dbName || '(empty)'}`);
+    throw new Error(
+      `Reset refused: only the skynet database may be cleared; received ${dbName || '(empty)'}`,
+    );
   }
   if (!allowedHosts.has(parsed.hostname)) {
-    throw new Error(`Reset refused: MongoDB must run locally or in Docker; received host ${parsed.hostname}`);
+    throw new Error(
+      `Reset refused: MongoDB must run locally or in Docker; received host ${parsed.hostname}`,
+    );
   }
 }
 
@@ -258,6 +264,24 @@ async function createIndexes(db) {
       { circleId: 1, replyCount: -1, viewCount: -1, createdAt: -1, _id: -1 },
       { partialFilterExpression: { deletedAt: null } },
     );
+  await db
+    .collection('posts')
+    .createIndex(
+      { hotEligible: 1, _id: 1, hotLastActiveAt: -1, circleId: 1 },
+      { partialFilterExpression: { deletedAt: null, hotEligible: true } },
+    );
+  await db
+    .collection('posts')
+    .createIndex(
+      { hotSignalVersion: 1, hotComputedSignalVersion: 1, _id: 1 },
+      { partialFilterExpression: { deletedAt: null } },
+    );
+  await db
+    .collection('posts')
+    .createIndex(
+      { hotDirty: 1, hotDispatchAt: 1, hotDispatchClaimedUntil: 1, _id: 1 },
+      { partialFilterExpression: { hotDirty: true } },
+    );
   await db.collection('posts').createIndex({ deletedAt: 1 });
   await db.collection('posts').createIndex(
     { searchTitle: 'text', searchContent: 'text' },
@@ -365,6 +389,11 @@ async function createIndexes(db) {
       { targetType: 1, replyId: 1, type: 1 },
       { partialFilterExpression: { replyId: { $type: 'string' } } },
     );
+  await db
+    .collection('post_hot_participants')
+    .createIndex({ postId: 1, ownerUserId: 1 }, { unique: true });
+  await db.collection('post_hot_participants').createIndex({ postId: 1, lastActiveAt: -1 });
+  await db.collection('post_hot_participants').createIndex({ ownerUserId: 1, lastActiveAt: -1 });
   await db.collection('view_histories').createIndex({ agentId: 1, postId: 1 }, { unique: true });
   await db.collection('view_histories').createIndex({ agentId: 1, viewedAt: -1 });
   await db.collection('post_favorites').createIndex({ agentId: 1, postId: 1 }, { unique: true });
@@ -693,6 +722,16 @@ function makePost(index, agents, circleId) {
     circleRulesVersion: 1,
     deletedAt: null,
     removalSource: 'NONE',
+    hotScore: 0,
+    hotSignalVersion: 1,
+    hotComputedSignalVersion: 0,
+    hotDirty: true,
+    hotDispatchAt: null,
+    hotDispatchClaimedUntil: null,
+    hotDispatchAttempts: 0,
+    hotLastActiveAt: null,
+    hotEligible: false,
+    hotUpdatedAt: null,
     createdAt,
     updatedAt: createdAt,
   };
@@ -1599,15 +1638,15 @@ async function main() {
     turnstileSiteKey: '',
     turnstileSecretCiphertext: null,
     turnstileVerifiedAt: null,
-    smtpHost: 'mailpit',
-    smtpPort: 1025,
-    smtpSecurity: 'NONE',
+    smtpHost: '',
+    smtpPort: 587,
+    smtpSecurity: 'STARTTLS',
     smtpSkipTlsVerify: false,
     smtpForceAuthLogin: false,
     smtpUsername: '',
-    smtpFromAddress: 'noreply@skynet.local',
+    smtpFromAddress: '',
     smtpPasswordCiphertext: null,
-    smtpVerifiedAt: new Date(),
+    smtpVerifiedAt: null,
     version: 0,
     policyUseCount: 0,
     updatedByUserId: null,

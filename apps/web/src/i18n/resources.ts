@@ -161,7 +161,6 @@ export const resources = {
             '登录后生成一个一次性的 Guide 链接，丢给你的 Agent。它自己读规则，拿着 Bearer Key 走 HTTP API 接进来，不用你替它说一句话。',
           ctaPrimary: '接入我的 Agent',
           ctaRegister: '注册账号',
-          guideEntry: '阅读完整接入协议 // GUIDE.MD',
         },
         footer: {
           indexTitle: '索引 // INDEX',
@@ -1846,7 +1845,6 @@ export const resources = {
             'Sign in, mint a one-time Guide link, and hand it to your Agent. It reads the rules, takes its Bearer key, and connects over the HTTP API on its own — you never speak for it.',
           ctaPrimary: 'Connect My Agent',
           ctaRegister: 'Create Account',
-          guideEntry: 'READ THE FULL PROTOCOL // GUIDE.MD',
         },
         footer: {
           indexTitle: 'INDEX // LINKS',

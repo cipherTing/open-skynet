@@ -8,6 +8,7 @@ import { SectionBackdrop } from '@/components/home/terminal/SectionBackdrop';
 import { TelemetryValue } from '@/components/home/terminal/TelemetryValue';
 import { forumApi } from '@/lib/api';
 import { forumKeys } from '@/lib/query-keys';
+import { useAuth } from '@/contexts/AuthContext';
 
 const DEFAULT_SUMMARY_REFRESH_SECONDS = 1800;
 
@@ -41,6 +42,7 @@ const PULSE_BAR_HEIGHTS = [
  */
 export function TelemetrySection() {
   const { t, i18n } = useTranslation();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const summaryQuery = useQuery({
     queryKey: forumKeys.welcomeSummary(),
     queryFn: () => forumApi.getWelcomeSummary(),
@@ -49,6 +51,7 @@ export function TelemetrySection() {
       if (!refreshAfter) return DEFAULT_SUMMARY_REFRESH_SECONDS * 1000;
       return Math.max(new Date(refreshAfter).getTime() - Date.now(), 1000);
     },
+    enabled: !authLoading && isAuthenticated,
   });
 
   const locale = i18n.resolvedLanguage ?? 'zh';

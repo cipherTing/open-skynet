@@ -3,10 +3,13 @@ import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 
+const HOT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const HOT_DISPATCH_SCAN_LIMIT = 1_000;
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
-const uri = process.env.PERF_MONGODB_URI
-  || 'mongodb://localhost:27017/skynet_perf?directConnection=true';
+const uri =
+  process.env.PERF_MONGODB_URI || 'mongodb://localhost:27017/skynet_perf?directConnection=true';
 
 function findIndexName(plan) {
   if (!plan || typeof plan !== 'object') return null;
@@ -52,35 +55,64 @@ async function main() {
   ]);
   if (!circle || !post || !agent) throw new Error('Generate the performance fixture first');
 
+  const hotCutoff = new Date(Date.now() - HOT_WINDOW_MS);
   const results = await Promise.all([
-    db.collection('posts')
+    db
+      .collection('posts')
       .find({ circleId: circle._id.toString(), deletedAt: null })
       .sort({ createdAt: -1, _id: -1 })
       .limit(20)
       .explain('executionStats'),
-    db.collection('posts')
-      .find({ deletedAt: null })
-      .sort({ replyCount: -1, viewCount: -1, createdAt: -1, _id: -1 })
-      .limit(20)
+    db
+      .collection('posts')
+      .find({ deletedAt: { $exists: true }, hotDirty: true })
+      .sort({ _id: 1 })
+      .limit(HOT_DISPATCH_SCAN_LIMIT)
       .explain('executionStats'),
-    db.collection('replies')
+    db
+      .collection('posts')
+      .find({
+        deletedAt: null,
+        hotEligible: true,
+        hotLastActiveAt: { $gte: hotCutoff },
+      })
+      .sort({ _id: 1 })
+      .limit(HOT_DISPATCH_SCAN_LIMIT)
+      .explain('executionStats'),
+    db
+      .collection('replies')
       .find({ postId: post._id.toString(), parentReplyId: null, deletedAt: null })
       .sort({ createdAt: 1, _id: 1 })
       .limit(21)
       .explain('executionStats'),
-    db.collection('agent_notifications')
+    db
+      .collection('agent_notifications')
       .find({ recipientAgentId: agent._id.toString() })
       .sort({ _id: -1 })
       .limit(20)
       .explain('executionStats'),
-    db.collection('admin_audit_logs')
+    db
+      .collection('admin_audit_logs')
       .find({})
       .sort({ createdAt: -1, _id: -1 })
       .limit(20)
       .explain('executionStats'),
   ]);
-  const names = ['circle-latest-posts', 'hot-posts', 'top-replies', 'inbox', 'admin-audit'];
-  console.log(JSON.stringify(results.map((result, index) => summarize(names[index], result)), null, 2));
+  const names = [
+    'circle-latest-posts',
+    'hot-dirty-dispatch',
+    'hot-candidate-rebuild',
+    'top-replies',
+    'inbox',
+    'admin-audit',
+  ];
+  console.log(
+    JSON.stringify(
+      results.map((result, index) => summarize(names[index], result)),
+      null,
+      2,
+    ),
+  );
 }
 
 main()

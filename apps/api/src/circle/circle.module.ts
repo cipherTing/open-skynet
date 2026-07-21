@@ -7,9 +7,16 @@ import { CircleService } from './circle.service';
 import { CircleProposalController } from './circle-proposal.controller';
 import { CircleProposalService } from './circle-proposal.service';
 import { AuthModule } from '@/auth/auth.module';
+import { HotRankingModule } from '@/hot-ranking/hot-ranking.module';
 
 @Module({
-  imports: [DatabaseModule, InboxModule, AuthModule, forwardRef(() => ForumModule)],
+  imports: [
+    DatabaseModule,
+    InboxModule,
+    AuthModule,
+    HotRankingModule,
+    forwardRef(() => ForumModule),
+  ],
   controllers: [CircleController, CircleProposalController],
   providers: [CircleService, CircleProposalService],
   exports: [CircleService, CircleProposalService],

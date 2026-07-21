@@ -14,7 +14,10 @@ import { GovernanceCase } from '@/database/schemas/governance-case.schema';
 import { ReportTargetState } from '@/database/schemas/report-target-state.schema';
 import { DatabaseService } from '@/database/database.service';
 import { CONTENT_REMOVAL_SOURCES } from '@/database/schemas/content-removal';
-import { GOVERNANCE_HEALTH_LEVEL } from '@/governance/governance.constants';
+import {
+  GOVERNANCE_HEALTH_LEVEL,
+  GOVERNANCE_TARGET_TYPES,
+} from '@/governance/governance.constants';
 import { AGENT_LEVELS } from '@/progression/progression.constants';
 import type { AdminPrincipal } from './interfaces/admin-principal.interface';
 import { AdminAuditService } from './admin-audit.service';
@@ -29,9 +32,9 @@ import type { ListAdminGovernanceDto } from './dto/list-admin-governance.dto';
 import type { ListContentReviewsDto } from './dto/list-content-reviews.dto';
 import type { DecideContentReviewDto } from './dto/decide-content-review.dto';
 import {
+  REPORT_TARGET_TYPES,
   REPORT_TARGET_STATUSES,
   getReportTargetKey,
-  type ReportTargetType,
 } from '@/report/report.constants';
 import {
   CONTENT_REVIEW_STATUSES,
@@ -55,6 +58,7 @@ import { Report } from '@/database/schemas/report.schema';
 import { GovernanceCorrection } from '@/database/schemas/governance-correction.schema';
 import { normalizeCircleVisibleText } from '@/circle/circle-normalization';
 import { translateApiText } from '@/common/i18n/api-language';
+import { HotRankingService } from '@/hot-ranking/hot-ranking.service';
 import {
   adminErrors,
   circleErrors,
@@ -64,6 +68,7 @@ import {
 
 const EMPTY_DAILY_COUNTERS = { posts: 0, replies: 0, childReplies: 0, feedbacks: 0 };
 const ADMIN_CONTENT_TRANSACTION_MAX_ATTEMPTS = 4;
+type AdminContentTargetType = typeof REPORT_TARGET_TYPES.POST | typeof REPORT_TARGET_TYPES.REPLY;
 
 function isReportTargetStateRace(error: unknown): boolean {
   return (
@@ -84,6 +89,10 @@ function escapeRegex(value: string): string {
 
 function ensureObjectId(id: string, errorFactory: () => Error): void {
   if (!Types.ObjectId.isValid(id)) throw errorFactory();
+}
+
+function assertNever(value: never): never {
+  throw new Error(`未支持的业务类型: ${String(value)}`);
 }
 
 function levelForXp(xp: number) {
@@ -131,6 +140,7 @@ export class AdminService {
     private readonly circleProposalService: CircleProposalService,
     private readonly inboxService: InboxService,
     private readonly governanceService: GovernanceService,
+    private readonly hotRankingService: HotRankingService,
   ) {}
 
   async overview() {
@@ -519,7 +529,7 @@ export class AdminService {
           ? null
           : { $exists: true };
     const search = dto.search?.trim();
-    if (dto.type === 'POST') {
+    if (dto.type === REPORT_TARGET_TYPES.POST) {
       const where: FilterQuery<Post> = { deletedAt: removedFilter };
       if (search) where.$text = { $search: buildPostSearchText(search) };
       const [items, total] = await Promise.all([
@@ -597,7 +607,7 @@ export class AdminService {
 
   async setContentRemoved(
     admin: AdminPrincipal,
-    type: 'POST' | 'REPLY',
+    type: AdminContentTargetType,
     id: string,
     removed: boolean,
     reason: string,
@@ -605,7 +615,8 @@ export class AdminService {
     ensureObjectId(id, adminErrors.contentNotFound);
     for (let attempt = 1; attempt <= ADMIN_CONTENT_TRANSACTION_MAX_ATTEMPTS; attempt += 1) {
       try {
-        return await this.setContentRemovedInTransaction(admin, type, id, removed, reason);
+        const result = await this.setContentRemovedInTransaction(admin, type, id, removed, reason);
+        return result;
       } catch (error) {
         if (attempt < ADMIN_CONTENT_TRANSACTION_MAX_ATTEMPTS && isReportTargetStateRace(error)) {
           continue;
@@ -618,7 +629,7 @@ export class AdminService {
 
   private async setContentRemovedInTransaction(
     admin: AdminPrincipal,
-    type: ReportTargetType,
+    type: AdminContentTargetType,
     id: string,
     removed: boolean,
     reason: string,
@@ -630,29 +641,39 @@ export class AdminService {
       ? { deletedAt: new Date(), removalSource: CONTENT_REMOVAL_SOURCES.ADMIN }
       : { deletedAt: null, removalSource: CONTENT_REMOVAL_SOURCES.NONE };
     return this.databaseService.$transaction(async (session) => {
-      const content =
-        type === 'POST'
-          ? await this.postModel.findOne(
-              { _id: id, deletedAt: { $exists: true } },
-              'authorId contentVersion',
-              { session },
-            )
-          : await this.replyModel.findOne(
-              { _id: id, deletedAt: { $exists: true } },
-              'authorId contentVersion',
-              { session },
-            );
-      if (!content) throw adminErrors.contentNotFound();
+      let targetAuthorId: string;
+      let targetContentVersion: number;
+      let postId = id;
+      if (type === REPORT_TARGET_TYPES.POST) {
+        const post = await this.postModel.findOne(
+          { _id: id, deletedAt: { $exists: true } },
+          'authorId contentVersion',
+          { session },
+        );
+        if (!post) throw adminErrors.contentNotFound();
+        targetAuthorId = post.authorId;
+        targetContentVersion = post.contentVersion;
+      } else {
+        const reply = await this.replyModel.findOne(
+          { _id: id, deletedAt: { $exists: true } },
+          'authorId contentVersion postId',
+          { session },
+        );
+        if (!reply) throw adminErrors.contentNotFound();
+        targetAuthorId = reply.authorId;
+        targetContentVersion = reply.contentVersion;
+        postId = reply.postId;
+      }
       await this.syncReportTargetRemoval(
         type,
         id,
-        content.contentVersion,
-        content.authorId,
+        targetContentVersion,
+        targetAuthorId,
         removed,
         session,
       );
       const result =
-        type === 'POST'
+        type === REPORT_TARGET_TYPES.POST
           ? await this.postModel.updateOne(where, update, { session })
           : await this.replyModel.updateOne(where, update, { session });
       if (result.matchedCount === 0) {
@@ -660,6 +681,7 @@ export class AdminService {
           ? adminErrors.contentRemovalConflict()
           : adminErrors.contentRestoreForbidden();
       }
+      await this.hotRankingService.markPostDirty(postId, session);
       await this.auditService.record({
         actorUserId: admin.userId,
         action: removed
@@ -676,7 +698,7 @@ export class AdminService {
   }
 
   private async syncReportTargetRemoval(
-    targetType: ReportTargetType,
+    targetType: AdminContentTargetType,
     targetId: string,
     targetContentVersion: number,
     targetAuthorId: string,
@@ -1028,7 +1050,7 @@ export class AdminService {
     dto: AdminGovernanceDecisionDto,
   ) {
     const reason = dto.reason.trim();
-    return this.databaseService.$transaction(async (session) => {
+    const result = await this.databaseService.$transaction(async (session) => {
       const governanceCase = await this.governanceService.resolveCaseForAdmin(
         caseId,
         dto.decision,
@@ -1036,6 +1058,7 @@ export class AdminService {
         admin.userId,
         session,
       );
+      await this.markHotDirtyForTarget(governanceCase.targetType, governanceCase.targetId, session);
       await this.auditService.record({
         actorUserId: admin.userId,
         action: ADMIN_AUDIT_ACTIONS.GOVERNANCE_CASE_ADJUDICATED,
@@ -1047,16 +1070,25 @@ export class AdminService {
       });
       return {
         id: governanceCase.id,
+        targetType: governanceCase.targetType,
+        targetId: governanceCase.targetId,
         status: governanceCase.status,
         resolutionSource: governanceCase.resolutionSource,
         resolutionReason: governanceCase.resolutionReason,
         resolvedAt: governanceCase.resolvedAt?.toISOString() ?? null,
       };
     });
+    return {
+      id: result.id,
+      status: result.status,
+      resolutionSource: result.resolutionSource,
+      resolutionReason: result.resolutionReason,
+      resolvedAt: result.resolvedAt,
+    };
   }
 
   async correctGovernanceCase(admin: AdminPrincipal, caseId: string, reason: string) {
-    return this.databaseService.$transaction(async (session) => {
+    const result = await this.databaseService.$transaction(async (session) => {
       const correction = await this.governanceService.restoreGovernanceRemovedContentForAdmin(
         caseId,
         reason.trim(),
@@ -1065,6 +1097,7 @@ export class AdminService {
       );
       const governanceCase = await this.governanceCaseModel.findById(caseId, null, { session });
       if (!governanceCase) throw new Error('治理纠正完成后案件记录缺失');
+      await this.markHotDirtyForTarget(governanceCase.targetType, governanceCase.targetId, session);
       await this.inboxService.createForGovernanceCorrection(
         {
           correctionId: correction.id,
@@ -1090,6 +1123,8 @@ export class AdminService {
       return {
         id: correction.id,
         caseId: correction.caseId,
+        targetType: governanceCase.targetType,
+        targetId: governanceCase.targetId,
         action: correction.action,
         publicReason: correction.publicReason,
         previousRound: correction.previousRound,
@@ -1097,18 +1132,53 @@ export class AdminService {
         createdAt: correction.createdAt.toISOString(),
       };
     });
+    return {
+      id: result.id,
+      caseId: result.caseId,
+      action: result.action,
+      publicReason: result.publicReason,
+      previousRound: result.previousRound,
+      nextRound: result.nextRound,
+      createdAt: result.createdAt,
+    };
+  }
+
+  private async markHotDirtyForTarget(
+    targetType: GovernanceCase['targetType'],
+    targetId: string,
+    session: ClientSession,
+  ): Promise<void> {
+    switch (targetType) {
+      case GOVERNANCE_TARGET_TYPES.POST:
+        await this.hotRankingService.markPostDirty(targetId, session);
+        return;
+      case GOVERNANCE_TARGET_TYPES.REPLY: {
+        const reply = await this.replyModel
+          .findOne({ _id: targetId, deletedAt: { $exists: true } }, null, { session })
+          .select('postId')
+          .lean<{ postId: string } | null>();
+        if (!reply) throw adminErrors.contentNotFound();
+        await this.hotRankingService.markPostDirty(reply.postId, session);
+        return;
+      }
+      case GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL:
+      case GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL_COMMENT:
+        return;
+      default:
+        assertNever(targetType);
+    }
   }
 
   private getGovernanceTargetSummary(governanceCase: GovernanceCase) {
     const snapshot = governanceCase.targetSnapshot;
-    if (snapshot.kind === 'POST') {
+    if (snapshot.kind === GOVERNANCE_TARGET_TYPES.POST) {
       return {
         title: snapshot.post.title,
         excerpt: snapshot.post.content.slice(0, 180),
         postId: snapshot.post.id,
       };
     }
-    if (snapshot.kind === 'REPLY') {
+    if (snapshot.kind === GOVERNANCE_TARGET_TYPES.REPLY) {
       return {
         title: snapshot.post.title,
         excerpt: snapshot.reply.content.slice(0, 180),

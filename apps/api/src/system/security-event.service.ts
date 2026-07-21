@@ -1,16 +1,31 @@
-import { createHmac } from 'node:crypto';
+import { createHmac, randomUUID } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, Model } from 'mongoose';
 import type { Request } from 'express';
 import { SecurityEvent } from '@/database/schemas/security-event.schema';
 import { RedisService } from '@/redis/redis.service';
+import {
+  REDIS_SET_CONDITIONS,
+  REDIS_SET_EXPIRATION_UNITS,
+  REDIS_SET_RESULTS,
+} from '@/redis/redis.constants';
 import { getRequiredJwtSecret } from '@/config/env';
+import { apiErrors } from '@/common/i18n/api-message';
 
 const EVENT_BUCKET_MS = 15 * 60 * 1000;
 const EVENT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 const EVENT_SAMPLE_SECONDS = 60;
 const SECURITY_EVENT_WRITE_TIMEOUT_MS = 250;
+const SECURITY_EVENT_SAMPLE_RELEASE_SCRIPT =
+  "if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end";
+
+class SecurityEventWriteTimeoutError extends Error {
+  constructor() {
+    super('Security event write timed out');
+    this.name = 'SecurityEventWriteTimeoutError';
+  }
+}
 
 export const SECURITY_EVENT_TYPES = {
   LOGIN_FAILED: 'LOGIN_FAILED',
@@ -33,28 +48,51 @@ export const SECURITY_EVENT_SEVERITIES = {
 export type SecurityEventSeverity =
   (typeof SECURITY_EVENT_SEVERITIES)[keyof typeof SECURITY_EVENT_SEVERITIES];
 
+export const SECURITY_EVENT_REASONS = {
+  REJECTED: 'REJECTED',
+  MISSING_ORIGIN: 'MISSING_ORIGIN',
+  ORIGIN_MISMATCH: 'ORIGIN_MISMATCH',
+  MISSING_TOKEN: 'MISSING_TOKEN',
+  INVALID_TOKEN: 'INVALID_TOKEN',
+  AGENT_CREDENTIAL_ON_ADMIN_ROUTE: 'AGENT_CREDENTIAL_ON_ADMIN_ROUTE',
+  UNKNOWN_OR_INACTIVE_KEY: 'UNKNOWN_OR_INACTIVE_KEY',
+  THROTTLED: 'THROTTLED',
+} as const;
+
 type SecurityEventInput =
-  | { type: typeof SECURITY_EVENT_TYPES.LOGIN_FAILED; request: Request; reason: 'REJECTED' }
-  | { type: typeof SECURITY_EVENT_TYPES.ADMIN_AUTH_FAILED; request: Request; reason: 'REJECTED' }
+  | {
+      type: typeof SECURITY_EVENT_TYPES.LOGIN_FAILED;
+      request: Request;
+      reason: typeof SECURITY_EVENT_REASONS.REJECTED;
+    }
+  | {
+      type: typeof SECURITY_EVENT_TYPES.ADMIN_AUTH_FAILED;
+      request: Request;
+      reason: typeof SECURITY_EVENT_REASONS.REJECTED;
+    }
   | {
       type: typeof SECURITY_EVENT_TYPES.ADMIN_CSRF_REJECTED;
       request: Request;
-      reason: 'MISSING_ORIGIN' | 'ORIGIN_MISMATCH' | 'MISSING_TOKEN' | 'INVALID_TOKEN';
+      reason:
+        | typeof SECURITY_EVENT_REASONS.MISSING_ORIGIN
+        | typeof SECURITY_EVENT_REASONS.ORIGIN_MISMATCH
+        | typeof SECURITY_EVENT_REASONS.MISSING_TOKEN
+        | typeof SECURITY_EVENT_REASONS.INVALID_TOKEN;
     }
   | {
       type: typeof SECURITY_EVENT_TYPES.ADMIN_AGENT_KEY_REJECTED;
       request: Request;
-      reason: 'AGENT_CREDENTIAL_ON_ADMIN_ROUTE';
+      reason: typeof SECURITY_EVENT_REASONS.AGENT_CREDENTIAL_ON_ADMIN_ROUTE;
     }
   | {
       type: typeof SECURITY_EVENT_TYPES.AGENT_KEY_REJECTED;
       request: Request;
-      reason: 'UNKNOWN_OR_INACTIVE_KEY';
+      reason: typeof SECURITY_EVENT_REASONS.UNKNOWN_OR_INACTIVE_KEY;
     }
   | {
       type: typeof SECURITY_EVENT_TYPES.RATE_LIMITED;
       request: Request;
-      reason: 'THROTTLED';
+      reason: typeof SECURITY_EVENT_REASONS.THROTTLED;
     };
 
 const EVENT_SEVERITY: Record<SecurityEventType, SecurityEventSeverity> = {
@@ -83,31 +121,53 @@ export class SecurityEventService {
     private readonly redisService: RedisService,
   ) {}
 
-  async recordSafely(input: SecurityEventInput): Promise<void> {
+  async record(input: SecurityEventInput): Promise<void> {
     try {
-      const now = new Date();
-      const routePath = input.request.route?.path;
-      const route =
-        typeof routePath === 'string'
-          ? `${input.request.baseUrl || ''}${routePath}`
-          : 'unresolved-route';
-      const fingerprintHmac = createHmac('sha256', getRequiredJwtSecret())
-        .update(`${input.request.ip}|${input.request.get('user-agent') ?? ''}`)
-        .digest('hex');
-      const bucketStart = new Date(Math.floor(now.getTime() / EVENT_BUCKET_MS) * EVENT_BUCKET_MS);
-      const sampleKey = `skynet:security-event:${input.type}:${fingerprintHmac}:${route}`;
-      const accepted = await this.withWriteTimeout(
-        this.redisService.getClient().set(sampleKey, '1', 'EX', EVENT_SAMPLE_SECONDS, 'NX'),
+      await this.recordInternal(input);
+    } catch (error) {
+      this.logger.error(
+        `Security event recording failed (${error instanceof Error ? error.name : 'UnknownError'})`,
       );
-      if (accepted !== 'OK') return;
-      const severity = EVENT_SEVERITY[input.type];
+      throw apiErrors.serviceUnavailable(
+        'SECURITY_EVENT_UNAVAILABLE',
+        'api.errors.serviceUnavailable',
+      );
+    }
+  }
+
+  private async recordInternal(input: SecurityEventInput): Promise<void> {
+    const now = new Date();
+    const routePath = input.request.route?.path;
+    const route =
+      typeof routePath === 'string'
+        ? `${input.request.baseUrl || ''}${routePath}`
+        : 'unresolved-route';
+    const fingerprintHmac = createHmac('sha256', getRequiredJwtSecret())
+      .update(`${input.request.ip}|${input.request.get('user-agent') ?? ''}`)
+      .digest('hex');
+    const bucketStart = new Date(Math.floor(now.getTime() / EVENT_BUCKET_MS) * EVENT_BUCKET_MS);
+    const sampleKey = `skynet:security-event:${input.type}:${fingerprintHmac}:${route}`;
+    const sampleToken = randomUUID();
+    const accepted = await this.withWriteTimeout(
+      this.redisService
+        .getClient()
+        .set(
+          sampleKey,
+          sampleToken,
+          REDIS_SET_EXPIRATION_UNITS.SECONDS,
+          EVENT_SAMPLE_SECONDS,
+          REDIS_SET_CONDITIONS.IF_NOT_EXISTS,
+        ),
+    );
+    if (accepted !== REDIS_SET_RESULTS.STORED) return;
+    const severity = EVENT_SEVERITY[input.type];
+    try {
       await this.withWriteTimeout(
         this.eventModel.findOneAndUpdate(
           { type: input.type, fingerprintHmac, route, bucketStart },
           {
             $setOnInsert: {
               type: input.type,
-              severity,
               fingerprintHmac,
               hashKeyVersion: 'v1',
               route,
@@ -126,9 +186,10 @@ export class SecurityEventService {
         ),
       );
     } catch (error) {
-      this.logger.warn(
-        `Security event recording failed (${error instanceof Error ? error.name : 'UnknownError'})`,
-      );
+      if (!(error instanceof SecurityEventWriteTimeoutError)) {
+        await this.releaseSampleKey(sampleKey, sampleToken);
+      }
+      throw error;
     }
   }
 
@@ -171,7 +232,7 @@ export class SecurityEventService {
         operation,
         new Promise<never>((_, reject) => {
           timeout = setTimeout(
-            () => reject(new Error('Security event write timed out')),
+            () => reject(new SecurityEventWriteTimeoutError()),
             SECURITY_EVENT_WRITE_TIMEOUT_MS,
           );
         }),
@@ -179,5 +240,11 @@ export class SecurityEventService {
     } finally {
       if (timeout) clearTimeout(timeout);
     }
+  }
+
+  private async releaseSampleKey(key: string, token: string): Promise<void> {
+    await this.redisService
+      .getClient()
+      .eval(SECURITY_EVENT_SAMPLE_RELEASE_SCRIPT, 1, key, token);
   }
 }

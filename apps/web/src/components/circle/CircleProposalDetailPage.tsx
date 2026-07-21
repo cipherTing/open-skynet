@@ -21,6 +21,7 @@ import { useToast } from '@/components/ui/SignalToast';
 import { circleApi } from '@/lib/api';
 import { circleKeys } from '@/lib/query-keys';
 import { ErrorState, InlineLoading } from '@/components/ui/LoadingState';
+import { AuthRequiredDialog, AuthRequiredState } from '@/components/ui/AuthRequiredDialog';
 import { TButton, TPanel, Timecode } from '@/components/ui/terminal';
 import { CoBuildMarkdownComposer } from './CoBuildMarkdownComposer';
 import { RuleChangeDiff, TopicChangeDiff } from './CircleChangeDiff';
@@ -49,22 +50,24 @@ export function CircleProposalDetailPage({
 }) {
   const { t } = useTranslation();
   const toast = useToast();
-  const { user, agent } = useAuth();
+  const { user, agent, isLoading: authLoading, isAuthenticated } = useAuth();
   const viewerKey = user?.id ?? 'anonymous';
   const queryClient = useQueryClient();
   const [objectionOpen, setObjectionOpen] = useState(false);
   const [objection, setObjection] = useState('');
   const [comment, setComment] = useState('');
   const [revisionOpen, setRevisionOpen] = useState(false);
+  const [authPromptOpen, setAuthPromptOpen] = useState(false);
   const circleQuery = useQuery({
     queryKey: circleKeys.detail(viewerKey, slug),
     queryFn: () => circleApi.getCircleBySlug(slug),
+    enabled: !authLoading && isAuthenticated,
   });
   const circle = circleQuery.data;
   const proposalQuery = useQuery({
     queryKey: circle ? circleKeys.proposal(circle.id, proposalId) : ['proposal', proposalId],
     queryFn: () => circleApi.proposal(circle!.id, proposalId),
-    enabled: Boolean(circle),
+    enabled: isAuthenticated && Boolean(circle),
   });
   const proposal = proposalQuery.data;
   const commentsQuery = useQuery({
@@ -72,7 +75,7 @@ export function CircleProposalDetailPage({
       ? circleKeys.proposalComments(circle.id, proposalId, 1)
       : ['proposal-comments', proposalId],
     queryFn: () => circleApi.proposalComments(circle!.id, proposalId),
-    enabled: Boolean(circle),
+    enabled: isAuthenticated && Boolean(circle),
   });
   const refresh = async () => {
     if (!circle) return;
@@ -131,6 +134,15 @@ export function CircleProposalDetailPage({
     },
     onError: () => toast.error(t('circles.coBuild.commentFailed')),
   });
+
+  if (!authLoading && !isAuthenticated) {
+    return (
+      <PageState>
+        <AuthRequiredState onOpen={() => setAuthPromptOpen(true)} />
+        <AuthRequiredDialog open={authPromptOpen} onOpenChange={setAuthPromptOpen} />
+      </PageState>
+    );
+  }
 
   if (circleQuery.isPending || proposalQuery.isPending)
     return (
@@ -329,10 +341,7 @@ export function CircleProposalDetailPage({
               </TButton>
             ) : null}
             {canWithdraw ? (
-              <TButton
-                variant="secondary"
-                onClick={() => action.mutate('withdrawProposal')}
-              >
+              <TButton variant="secondary" onClick={() => action.mutate('withdrawProposal')}>
                 {t('circles.coBuild.withdrawProposal')}
               </TButton>
             ) : null}

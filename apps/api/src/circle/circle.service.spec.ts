@@ -1,6 +1,6 @@
 import { getConnectionToken, MongooseModule } from '@nestjs/mongoose';
 import { Test, type TestingModule } from '@nestjs/testing';
-import { Connection } from 'mongoose';
+import { Connection, Types } from 'mongoose';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { Agent, AgentSchema } from '@/database/schemas/agent.schema';
 import {
@@ -32,6 +32,7 @@ import { DatabaseService } from '@/database/database.service';
 import { FeatureFlagService } from '@/system/feature-flag.service';
 import { RedisService } from '@/redis/redis.service';
 import { CircleService } from './circle.service';
+import { HotRankingService } from '@/hot-ranking/hot-ranking.service';
 
 describe('CircleService creation and subscriptions', () => {
   jest.setTimeout(60_000);
@@ -49,6 +50,7 @@ describe('CircleService creation and subscriptions', () => {
     set: jest.fn().mockResolvedValue('OK'),
     del: jest.fn().mockResolvedValue(1),
   };
+  const getCirclesHotPosts = jest.fn();
 
   beforeAll(async () => {
     replicaSet = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
@@ -74,6 +76,7 @@ describe('CircleService creation and subscriptions', () => {
         CircleService,
         { provide: FeatureFlagService, useValue: featureFlagService },
         { provide: RedisService, useValue: { getClient: () => redisClient } },
+        { provide: HotRankingService, useValue: { getCirclesHotPosts } },
       ],
     }).compile();
     connection = moduleRef.get<Connection>(getConnectionToken());
@@ -89,6 +92,8 @@ describe('CircleService creation and subscriptions', () => {
   beforeEach(async () => {
     featureFlagService.assertEnabled.mockResolvedValue(undefined);
     featureFlagService.isEnabled.mockResolvedValue(false);
+    getCirclesHotPosts.mockReset();
+    getCirclesHotPosts.mockResolvedValue(new Map());
     const collections = [
       'agents',
       'agent_governance_profiles',
@@ -154,17 +159,16 @@ describe('CircleService creation and subscriptions', () => {
     const logs = await service.listMaintenanceLogs(created.id, { page: 1, pageSize: 10 });
     const topicLog = logs.items.find((item) => item.action === 'CIRCLE_UPDATED');
     const rulesLog = logs.items.find((item) => item.action === 'RULES_UPDATED');
-    expect(topicLog).toBeDefined();
-    expect(rulesLog).toBeDefined();
+    if (!topicLog || !rulesLog) throw new Error('圈子简介或规则修改记录不存在');
 
-    await expect(service.getMaintenanceLogDetail(created.id, topicLog!.id)).resolves.toMatchObject({
+    await expect(service.getMaintenanceLogDetail(created.id, topicLog.id)).resolves.toMatchObject({
       change: {
         kind: 'TOPIC',
         previousTopic: '由管理员建立的官方圈子',
         nextTopic: '发布平台运行说明、公共变更和社区秩序信息。',
       },
     });
-    await expect(service.getMaintenanceLogDetail(created.id, rulesLog!.id)).resolves.toMatchObject({
+    await expect(service.getMaintenanceLogDetail(created.id, rulesLog.id)).resolves.toMatchObject({
       change: { kind: 'RULES', previousRules: [], nextRules },
     });
   });
@@ -179,19 +183,41 @@ describe('CircleService creation and subscriptions', () => {
     expect(created.kind).toBe('NORMAL');
   });
 
+  it('omits empty hot-post fields and returns populated hot-post fields on request', async () => {
+    const created = await createOfficialCircle();
+    getCirclesHotPosts.mockResolvedValueOnce(new Map([[created.id, []]]));
+
+    const emptyResult = await service.listCircles({ includeHotPosts: true });
+    expect(emptyResult.circles).toHaveLength(1);
+    expect(Object.hasOwn(emptyResult.circles[0] ?? {}, 'hotPosts')).toBe(false);
+
+    const hotPost = {
+      id: new Types.ObjectId().toString(),
+      title: '社区正在讨论的热门主题',
+      createdAt: new Date().toISOString(),
+    };
+    getCirclesHotPosts.mockResolvedValueOnce(new Map([[created.id, [hotPost]]]));
+
+    await expect(service.listCircles({ includeHotPosts: true })).resolves.toMatchObject({
+      circles: [expect.objectContaining({ hotPosts: [hotPost] })],
+    });
+  });
+
   it('rejects no-op administrator updates without advancing versions', async () => {
     const created = await createOfficialCircle();
-    await expect(databaseService.$transaction((session) =>
-      service.updateCircleForAdmin(
-        created.id,
-        {
-          topic: { value: created.topic, expectedVersion: created.topicVersion },
-          rules: { value: [], expectedVersion: created.rulesVersion },
-          reason: '尝试提交没有变化的内容。',
-        },
-        session,
+    await expect(
+      databaseService.$transaction((session) =>
+        service.updateCircleForAdmin(
+          created.id,
+          {
+            topic: { value: created.topic, expectedVersion: created.topicVersion },
+            rules: { value: [], expectedVersion: created.rulesVersion },
+            reason: '尝试提交没有变化的内容。',
+          },
+          session,
+        ),
       ),
-    )).rejects.toMatchObject({
+    ).rejects.toMatchObject({
       response: expect.objectContaining({ code: 'CIRCLE_UNCHANGED' }),
     });
     const unchanged = await connection.model(Circle.name).findById(created.id);
@@ -200,16 +226,18 @@ describe('CircleService creation and subscriptions', () => {
 
   it('rejects a stale administrator scope version', async () => {
     const created = await createOfficialCircle();
-    await expect(databaseService.$transaction((session) =>
-      service.updateCircleForAdmin(
-        created.id,
-        {
-          topic: { value: '新的圈子简介', expectedVersion: 99 },
-          reason: '验证旧版本不能覆盖新内容。',
-        },
-        session,
+    await expect(
+      databaseService.$transaction((session) =>
+        service.updateCircleForAdmin(
+          created.id,
+          {
+            topic: { value: '新的圈子简介', expectedVersion: 99 },
+            reason: '验证旧版本不能覆盖新内容。',
+          },
+          session,
+        ),
       ),
-    )).rejects.toMatchObject({
+    ).rejects.toMatchObject({
       response: expect.objectContaining({ code: 'CIRCLE_TOPIC_VERSION_CONFLICT' }),
     });
   });
@@ -253,8 +281,8 @@ describe('CircleService creation and subscriptions', () => {
 
     const logs = await service.listMaintenanceLogs(created.id, { page: 1, pageSize: 10 });
     const statusLog = logs.items.find((item) => item.action === 'CIRCLE_BANNED');
-    expect(statusLog).toBeDefined();
-    await expect(service.getMaintenanceLogDetail(created.id, statusLog!.id)).resolves.toMatchObject({
+    if (!statusLog) throw new Error('圈子封禁记录不存在');
+    await expect(service.getMaintenanceLogDetail(created.id, statusLog.id)).resolves.toMatchObject({
       change: { kind: 'STATUS', previousStatus: 'ACTIVE', nextStatus: 'BANNED' },
     });
   });

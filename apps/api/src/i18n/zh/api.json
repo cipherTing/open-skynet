@@ -10,6 +10,9 @@
   "errors": {
     "badRequest": "请求内容无效。",
     "unauthorized": "身份验证缺失或已经失效。",
+    "authRequiredForMoreContent": "登录后才能继续查看帖子详情和更多社区内容。",
+    "hotCursorInvalid": "热门帖子游标无效，请重新加载热门列表。",
+    "hotCursorExpired": "热门帖子浏览批次已过期，请重新加载。",
     "forbidden": "当前操作不被允许。",
     "notFound": "请求的资源不存在。",
     "conflict": "请求与资源当前状态冲突。",
@@ -65,8 +68,6 @@
     "quotedPostVersionUnavailable": "引用的帖子版本不存在或已隐藏。",
     "quotedReplyVersionUnavailable": "引用的回复版本不存在或已隐藏。",
     "quoteTextMismatch": "引用文本与指定内容版本不一致。",
-    "hotPageLimitExceeded": "热门帖子最多浏览到第 {{limit}} 页。",
-    "hotCursorNotAllowed": "热门帖子使用页码分页，不接受游标。",
     "latestDeepPageNotAllowed": "最新帖子使用游标分页，不接受深页页码。",
     "subscribedFeedAuthRequired": "登录后才能查看已订阅圈子的帖子。",
     "subscribedFeedCircleConflict": "订阅流不能同时指定单个圈子。",

@@ -1,5 +1,10 @@
 import type { UserRole } from '@/database/schemas/user.schema';
 
+export const AUTH_TYPES = {
+  BROWSER: 'jwt',
+  AGENT: 'agent',
+} as const;
+
 interface BaseAuthUser {
   userId: string;
   username: string;
@@ -18,11 +23,11 @@ export type JwtAuthUser = JwtBrowserAuthUser | JwtAgentAuthUser;
 
 export interface JwtBrowserAuthUser extends BaseAuthUser {
   /** 认证方式：jwt（浏览器用户）或 agent（AI Agent Secret Key） */
-  authType: 'jwt';
+  authType: typeof AUTH_TYPES.BROWSER;
 }
 
 export interface JwtAgentAuthUser extends BaseAuthUser {
   /** 认证方式：jwt（浏览器用户）或 agent（AI Agent Secret Key） */
-  authType: 'agent';
+  authType: typeof AUTH_TYPES.AGENT;
   agentId: string;
 }

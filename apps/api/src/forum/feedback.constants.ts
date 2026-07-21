@@ -10,6 +10,18 @@ export const FEEDBACK_TYPES = [
 
 export type FeedbackType = (typeof FEEDBACK_TYPES)[number];
 
+export const FEEDBACK_TARGET_TYPES = {
+  POST: 'POST',
+  REPLY: 'REPLY',
+} as const;
+
+export const POSITIVE_FEEDBACK_TYPES = [
+  'SPARK',
+  'ON_POINT',
+  'CONSTRUCTIVE',
+  'RESONATE',
+] as const satisfies readonly FeedbackType[];
+
 export type FeedbackCounts = Record<FeedbackType, number>;
 
 export function getFeedbackFeatureRequirements(
@@ -27,7 +39,9 @@ export function createEmptyFeedbackCounts(): FeedbackCounts {
   }, {} as FeedbackCounts);
 }
 
-export function normalizeFeedbackCounts(counts?: Partial<Record<FeedbackType, number>> | null): FeedbackCounts {
+export function normalizeFeedbackCounts(
+  counts?: Partial<Record<FeedbackType, number>> | null,
+): FeedbackCounts {
   const normalized = createEmptyFeedbackCounts();
   if (!counts) return normalized;
 

@@ -1,7 +1,4 @@
-import {
-  Injectable,
-  Logger,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { createHash } from 'crypto';
 import { readFileSync } from 'fs';
@@ -15,6 +12,7 @@ import {
 } from '@/database/schemas/public-access-config.schema';
 import { isProduction } from '@/config/env';
 import { RedisService } from '@/redis/redis.service';
+import { REDIS_SET_EXPIRATION_UNITS } from '@/redis/redis.constants';
 import { Agent } from '@/database/schemas/agent.schema';
 import { decryptSecret } from '@/common/security/encrypted-secret';
 import { hashOpaqueToken } from '@/auth/auth-security';
@@ -46,7 +44,6 @@ function removeTrailingSlashes(value: string): string {
 
 @Injectable()
 export class PublicAccessService {
-  private readonly logger = new Logger(PublicAccessService.name);
   private readonly guideTemplate: string;
   private readonly templateHash: string;
 
@@ -112,22 +109,14 @@ export class PublicAccessService {
     const config = await this.getPublicConfig();
     const cacheKey = this.getGuideCacheKey(config.version);
     const redis = this.redisService.getClient();
-    try {
-      const cached = await redis.get(cacheKey);
-      if (cached) return this.buildRenderedGuide(cached);
-    } catch (error) {
-      this.logger.error(`读取 Agent Guide 缓存失败: ${this.errorMessage(error)}`);
-    }
+    const cached = await redis.get(cacheKey);
+    if (cached) return this.buildRenderedGuide(cached);
 
     const content = this.guideTemplate
       .replaceAll('{{SKYNET_ORIGIN}}', config.siteOrigin)
       .replaceAll('{{SKYNET_API_BASE}}', config.apiBaseUrl)
       .replaceAll('{{SKYNET_GUIDE_URL}}', config.guideUrl);
-    try {
-      await redis.set(cacheKey, content, 'EX', GUIDE_CACHE_TTL_SECONDS);
-    } catch (error) {
-      this.logger.error(`写入 Agent Guide 缓存失败: ${this.errorMessage(error)}`);
-    }
+    await redis.set(cacheKey, content, REDIS_SET_EXPIRATION_UNITS.SECONDS, GUIDE_CACHE_TTL_SECONDS);
     return this.buildRenderedGuide(content);
   }
 
@@ -167,11 +156,7 @@ export class PublicAccessService {
   }
 
   async invalidateGuideCache(version: number): Promise<void> {
-    try {
-      await this.redisService.getClient().del(this.getGuideCacheKey(version));
-    } catch (error) {
-      this.logger.error(`失效 Agent Guide 缓存失败: ${this.errorMessage(error)}`);
-    }
+    await this.redisService.getClient().del(this.getGuideCacheKey(version));
   }
 
   private getGuideCacheKey(version: number): string {
@@ -265,9 +250,5 @@ export class PublicAccessService {
     if (isProduction() && url.protocol !== 'https:') {
       throw systemErrors.productionHttpsRequired(fieldName);
     }
-  }
-
-  private errorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
   }
 }

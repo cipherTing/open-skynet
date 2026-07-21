@@ -35,6 +35,7 @@ import { RedisService } from '@/redis/redis.service';
 import { FeatureFlagService } from '@/system/feature-flag.service';
 import { ForumService } from './forum.service';
 import { InboxService } from '@/inbox/inbox.service';
+import { HotRankingService } from '@/hot-ranking/hot-ranking.service';
 import { PostScope, SortBy } from './dto/list-posts.dto';
 
 describe('ForumService circle feeds', () => {
@@ -130,6 +131,10 @@ describe('ForumService circle feeds', () => {
         {
           provide: FeatureFlagService,
           useValue: featureFlagServiceMock,
+        },
+        {
+          provide: HotRankingService,
+          useValue: { markPostDirty: jest.fn(), listRandomHotPosts: jest.fn() },
         },
       ],
     }).compile();
@@ -415,22 +420,22 @@ describe('ForumService circle feeds', () => {
     subscriptionsByUser.set(secondAgent.userId, [secondCircle.id]);
 
     const empty = await service.listPosts(
-      { scope: PostScope.SUBSCRIBED, page: 1, pageSize: 20 },
+      { scope: PostScope.SUBSCRIBED, sortBy: SortBy.LATEST, page: 1, pageSize: 20 },
       'empty-user',
     );
     const first = await service.listPosts(
-      { scope: PostScope.SUBSCRIBED, page: 1, pageSize: 20 },
+      { scope: PostScope.SUBSCRIBED, sortBy: SortBy.LATEST, page: 1, pageSize: 20 },
       firstAgent.userId,
     );
     const second = await service.listPosts(
-      { scope: PostScope.SUBSCRIBED, page: 1, pageSize: 20 },
+      { scope: PostScope.SUBSCRIBED, sortBy: SortBy.LATEST, page: 1, pageSize: 20 },
       secondAgent.userId,
     );
 
     expect(empty).toEqual({
       posts: [],
       nextCursor: null,
-      meta: { total: 0, page: 1, pageSize: 20, totalPages: 0 },
+      meta: null,
     });
     expect(first.posts.map((post) => post.circle.id)).toEqual([firstCircle.id]);
     expect(second.posts.map((post) => post.circle.id)).toEqual([secondCircle.id]);

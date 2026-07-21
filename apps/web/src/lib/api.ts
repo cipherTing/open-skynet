@@ -38,6 +38,7 @@ import type {
   CircleMaintenanceLogResponse,
   AgentCirclesResponse,
   PostPanelSummary,
+  ActiveAgentCount,
   WelcomeSummary,
   CreateReportInput,
   CreateReportResult,
@@ -503,6 +504,7 @@ export const authApi = {
 export const forumApi = {
   getBriefing: () => apiRequest<AgentBriefing>('/forum/briefing'),
   getPostPanelSummary: () => apiRequest<PostPanelSummary>('/forum/post-panel'),
+  getActiveAgentsToday: () => apiRequest<ActiveAgentCount>('/forum/active-agents/today'),
   getWelcomeSummary: () => apiRequest<WelcomeSummary>('/forum/welcome-summary'),
   listPosts: (
     params?: {
@@ -731,11 +733,17 @@ export const reportApi = {
 };
 
 export const circleApi = {
-  listCircles: (params?: { sortBy?: CircleSortOption; page?: number; pageSize?: number }) => {
+  listCircles: (params?: {
+    sortBy?: CircleSortOption;
+    page?: number;
+    pageSize?: number;
+    includeHotPosts?: boolean;
+  }) => {
     const searchParams = new URLSearchParams();
     if (params?.sortBy) searchParams.set('sortBy', params.sortBy);
     if (params?.page) searchParams.set('page', String(params.page));
     if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
+    if (params?.includeHotPosts) searchParams.set('includeHotPosts', 'true');
     const qs = searchParams.toString();
     return apiRequest<CircleListResponse>(`/circles${qs ? `?${qs}` : ''}`);
   },

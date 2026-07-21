@@ -9,6 +9,7 @@ import {
   Body,
   Param,
   Query,
+  Header,
   forwardRef,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
@@ -23,7 +24,7 @@ import { CreatePostDto } from './dto/create-post.dto';
 import { CreateReplyDto } from './dto/create-reply.dto';
 import { PaginationQueryDto } from './dto/pagination-query.dto';
 import { FeedbackDto } from './dto/feedback.dto';
-import { ListPostsDto } from './dto/list-posts.dto';
+import { ListPostsDto, PostScope } from './dto/list-posts.dto';
 import { assertOwnerOperationAllowed } from '@/auth/owner-operation';
 import { WatchService } from '@/watch/watch.service';
 import { CommunityWriteAccessService } from '@/auth/community-write-access.service';
@@ -32,6 +33,14 @@ import { ReviseReplyDto } from './dto/revise-reply.dto';
 import { SimilarPostsDto } from './dto/similar-posts.dto';
 import { ListChildRepliesDto, ListRepliesDto } from './dto/list-replies.dto';
 import { forumErrors } from '@/common/errors/business-errors';
+
+const ANONYMOUS_POST_LIST_FIRST_PAGE = 1;
+const ANONYMOUS_POST_LIST_MAX_PAGE_SIZE = 20;
+const FORUM_DISCOVERY_THROTTLE = {
+  short: { ttl: 1_000, limit: 3, blockDuration: 15_000 },
+  medium: { ttl: 60_000, limit: 30, blockDuration: 60_000 },
+  long: { ttl: 3_600_000, limit: 300, blockDuration: 300_000 },
+} as const;
 
 @ApiTags('forum')
 @Controller('forum')
@@ -48,10 +57,7 @@ export class ForumController {
     return user?.authType === 'jwt' && user.role === 'ADMIN';
   }
 
-  private async ensureCanReadPrivateAgentData(
-    user: JwtAuthUser,
-    agentId: string,
-  ) {
+  private async ensureCanReadPrivateAgentData(user: JwtAuthUser, agentId: string) {
     if (user.authType === 'agent') {
       if (user.agentId === agentId) return;
       throw forumErrors.privateAgentDataForbidden();
@@ -62,40 +68,55 @@ export class ForumController {
     }
   }
 
+  private assertAnonymousListAccess(dto: ListPostsDto): void {
+    const page = dto.page ?? ANONYMOUS_POST_LIST_FIRST_PAGE;
+    const pageSize = dto.pageSize ?? ANONYMOUS_POST_LIST_MAX_PAGE_SIZE;
+    if (
+      dto.scope === PostScope.SUBSCRIBED ||
+      page > ANONYMOUS_POST_LIST_FIRST_PAGE ||
+      Boolean(dto.cursor) ||
+      pageSize > ANONYMOUS_POST_LIST_MAX_PAGE_SIZE
+    ) {
+      throw forumErrors.authRequiredForMoreContent();
+    }
+  }
+
   @Public()
   @Get('posts')
-  listPosts(
-    @Query() dto: ListPostsDto,
-    @CurrentUser() user?: JwtAuthUser,
-  ) {
+  @Header('Cache-Control', 'private, no-store')
+  @Header('Vary', 'Authorization')
+  @Throttle(FORUM_DISCOVERY_THROTTLE)
+  async listPosts(@Query() dto: ListPostsDto, @CurrentUser() user?: JwtAuthUser) {
+    if (!user) this.assertAnonymousListAccess(dto);
     return this.forumService.listPosts(dto, user?.userId);
   }
 
   @Public()
+  @Get('active-agents/today')
+  @Header('Cache-Control', 'private, no-store')
+  @Throttle(FORUM_DISCOVERY_THROTTLE)
+  getActiveAgentsToday() {
+    return this.forumService.getActiveAgentsToday();
+  }
+
   @Get('post-panel')
   getPostPanelSummary() {
     return this.forumService.getPostPanelSummary();
   }
 
-  @Public()
   @Get('welcome-summary')
   getWelcomeSummary() {
     return this.forumService.getWelcomeSummary();
   }
 
-  @Public()
   @Get('posts/similar')
-  @Throttle({ short: { ttl: 60_000, limit: 30 } })
+  @Throttle(FORUM_DISCOVERY_THROTTLE)
   listSimilarPosts(@Query() dto: SimilarPostsDto) {
     return this.forumService.listSimilarPosts(dto);
   }
 
-  @Public()
   @Get('posts/:id')
-  async getPost(
-    @Param('id') id: string,
-    @CurrentUser() user?: JwtAuthUser,
-  ) {
+  async getPost(@Param('id') id: string, @CurrentUser() user?: JwtAuthUser) {
     const post = await this.forumService.getPost(
       id,
       user?.userId,
@@ -110,25 +131,16 @@ export class ForumController {
     };
   }
 
-  @Public()
   @Get('posts/:postId/revisions')
   listPostRevisions(
     @Param('postId') postId: string,
     @Query(new I18nValidationPipe({ transform: true })) dto: PaginationQueryDto,
   ) {
-    return this.forumService.listPostRevisions(
-      postId,
-      dto.page ?? 1,
-      dto.pageSize ?? 20,
-    );
+    return this.forumService.listPostRevisions(postId, dto.page ?? 1, dto.pageSize ?? 20);
   }
 
-  @Public()
   @Post('posts/:id/view')
-  async trackView(
-    @Param('id') id: string,
-    @CurrentUser() user?: JwtAuthUser,
-  ) {
+  async trackView(@Param('id') id: string, @CurrentUser() user?: JwtAuthUser) {
     let historyAgentId: string | null = null;
     if (user?.userId) {
       const agent = await this.forumService.getAgentByUserId(user.userId);
@@ -140,10 +152,7 @@ export class ForumController {
   }
 
   @Post('posts')
-  async createPost(
-    @CurrentUser() user: JwtAuthUser,
-    @Body() dto: CreatePostDto,
-  ) {
+  async createPost(@CurrentUser() user: JwtAuthUser, @Body() dto: CreatePostDto) {
     const agent = await this.forumService.getAgentByUserId(user.userId);
     assertOwnerOperationAllowed(user, agent);
     await this.communityWriteAccessService.assertAllowed(agent.id);
@@ -162,7 +171,6 @@ export class ForumController {
     return this.forumService.revisePost(agent.id, postId, dto);
   }
 
-  @Public()
   @Get('posts/:postId/replies')
   listReplies(
     @Param('postId') postId: string,
@@ -177,7 +185,6 @@ export class ForumController {
     );
   }
 
-  @Public()
   @Get('posts/:postId/replies/:replyId/selection')
   getReplySelection(
     @Param('postId') postId: string,
@@ -192,7 +199,6 @@ export class ForumController {
     );
   }
 
-  @Public()
   @Get('replies/:replyId/children')
   listChildReplies(
     @Param('replyId') replyId: string,
@@ -219,17 +225,12 @@ export class ForumController {
     return this.forumService.createReply(agent.id, postId, dto);
   }
 
-  @Public()
   @Get('replies/:replyId/revisions')
   listReplyRevisions(
     @Param('replyId') replyId: string,
     @Query(new I18nValidationPipe({ transform: true })) dto: PaginationQueryDto,
   ) {
-    return this.forumService.listReplyRevisions(
-      replyId,
-      dto.page ?? 1,
-      dto.pageSize ?? 20,
-    );
+    return this.forumService.listReplyRevisions(replyId, dto.page ?? 1, dto.pageSize ?? 20);
   }
 
   @Patch('replies/:replyId')
@@ -257,19 +258,13 @@ export class ForumController {
   }
 
   @Put('posts/:postId/favorite')
-  async favoritePost(
-    @CurrentUser() user: JwtAuthUser,
-    @Param('postId') postId: string,
-  ) {
+  async favoritePost(@CurrentUser() user: JwtAuthUser, @Param('postId') postId: string) {
     const agent = await this.forumService.getAgentByUserId(user.userId);
     return this.forumService.favoritePost(agent.id, postId);
   }
 
   @Delete('posts/:postId/favorite')
-  async unfavoritePost(
-    @CurrentUser() user: JwtAuthUser,
-    @Param('postId') postId: string,
-  ) {
+  async unfavoritePost(@CurrentUser() user: JwtAuthUser, @Param('postId') postId: string) {
     const agent = await this.forumService.getAgentByUserId(user.userId);
     return this.forumService.unfavoritePost(agent.id, postId);
   }
@@ -286,23 +281,17 @@ export class ForumController {
     return this.forumService.feedbackOnReply(agent.id, replyId, dto);
   }
 
-  @Public()
   @Get('agents/:agentId')
   async getAgent(@Param('agentId') agentId: string) {
     return this.forumService.getAgentById(agentId);
   }
 
-  @Public()
   @Get('agents/:agentId/posts')
   async listAgentPosts(
     @Param('agentId') agentId: string,
     @Query(new I18nValidationPipe({ transform: true })) dto: PaginationQueryDto,
   ) {
-    return this.forumService.listAgentPosts(
-      agentId,
-      dto.page ?? 1,
-      dto.pageSize ?? 20,
-    );
+    return this.forumService.listAgentPosts(agentId, dto.page ?? 1, dto.pageSize ?? 20);
   }
 
   @Get('agents/:agentId/view-history')
@@ -312,11 +301,7 @@ export class ForumController {
     @Query(new I18nValidationPipe({ transform: true })) dto: PaginationQueryDto,
   ) {
     await this.ensureCanReadPrivateAgentData(user, agentId);
-    return this.forumService.listAgentViewHistory(
-      agentId,
-      dto.page ?? 1,
-      dto.pageSize ?? 20,
-    );
+    return this.forumService.listAgentViewHistory(agentId, dto.page ?? 1, dto.pageSize ?? 20);
   }
 
   @Get('agents/:agentId/interactions')
@@ -326,14 +311,9 @@ export class ForumController {
     @Query(new I18nValidationPipe({ transform: true })) dto: PaginationQueryDto,
   ) {
     await this.ensureCanReadPrivateAgentData(user, agentId);
-    return this.forumService.listAgentInteractions(
-      agentId,
-      dto.page ?? 1,
-      dto.pageSize ?? 20,
-    );
+    return this.forumService.listAgentInteractions(agentId, dto.page ?? 1, dto.pageSize ?? 20);
   }
 
-  @Public()
   @Get('agents/:agentId/circles')
   async listAgentCircles(
     @Param('agentId') agentId: string,
@@ -348,7 +328,6 @@ export class ForumController {
     );
   }
 
-  @Public()
   @Get('agents/:agentId/favorites')
   async listAgentFavorites(
     @Param('agentId') agentId: string,
@@ -364,16 +343,11 @@ export class ForumController {
     );
   }
 
-  @Public()
   @Get('agents/:agentId/replies')
   async listAgentReplies(
     @Param('agentId') agentId: string,
     @Query(new I18nValidationPipe({ transform: true })) dto: PaginationQueryDto,
   ) {
-    return this.forumService.listAgentReplies(
-      agentId,
-      dto.page ?? 1,
-      dto.pageSize ?? 20,
-    );
+    return this.forumService.listAgentReplies(agentId, dto.page ?? 1, dto.pageSize ?? 20);
   }
 }

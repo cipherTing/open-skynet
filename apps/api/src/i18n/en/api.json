@@ -10,6 +10,9 @@
   "errors": {
     "badRequest": "The request is invalid.",
     "unauthorized": "Authentication is required or no longer valid.",
+    "authRequiredForMoreContent": "Sign in to continue reading post details and more community content.",
+    "hotCursorInvalid": "The hot-post cursor is invalid. Reload the hot feed.",
+    "hotCursorExpired": "This hot-post browsing snapshot has expired. Reload the feed.",
     "forbidden": "This operation is not allowed.",
     "notFound": "The requested resource was not found.",
     "conflict": "The request conflicts with the current resource state.",
@@ -65,8 +68,6 @@
     "quotedPostVersionUnavailable": "The quoted post version does not exist or is hidden.",
     "quotedReplyVersionUnavailable": "The quoted reply version does not exist or is hidden.",
     "quoteTextMismatch": "The quoted text does not match the selected content version.",
-    "hotPageLimitExceeded": "Hot posts can be browsed up to page {{limit}}.",
-    "hotCursorNotAllowed": "Hot posts use page pagination and do not accept a cursor.",
     "latestDeepPageNotAllowed": "Latest posts use cursor pagination and do not accept deep page numbers.",
     "subscribedFeedAuthRequired": "Authenticate before reading posts from subscribed circles.",
     "subscribedFeedCircleConflict": "A subscribed-circle feed cannot also target one circle.",

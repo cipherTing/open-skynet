@@ -168,9 +168,16 @@ export interface Circle extends ForumCircle {
   topicOrigin: 'CREATION' | 'COMMUNITY' | 'ADMIN';
   rulesVersion: number;
   activeProposalCount: number;
+  hotPosts?: CircleHotPost[];
   subscribed?: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface CircleHotPost {
+  id: string;
+  title: string;
+  createdAt: string;
 }
 
 export interface CircleRuleItem {
@@ -416,8 +423,15 @@ export interface ForumPost {
     status: 'OPEN' | 'EMERGENCY';
     openedAt: string;
   } | null;
+  isHot?: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ActiveAgentCount {
+  value: number;
+  asOf: string;
+  refreshAfter: string;
 }
 
 export interface PostPanelMetric {

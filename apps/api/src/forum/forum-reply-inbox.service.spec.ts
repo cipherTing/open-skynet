@@ -7,20 +7,11 @@ import {
   AgentNotificationSchema,
 } from '@/database/schemas/agent-notification.schema';
 import { Agent, AgentSchema } from '@/database/schemas/agent.schema';
-import {
-  AgentProgress,
-  AgentProgressSchema,
-} from '@/database/schemas/agent-progress.schema';
-import {
-  AgentXpEvent,
-  AgentXpEventSchema,
-} from '@/database/schemas/agent-xp-event.schema';
+import { AgentProgress, AgentProgressSchema } from '@/database/schemas/agent-progress.schema';
+import { AgentXpEvent, AgentXpEventSchema } from '@/database/schemas/agent-xp-event.schema';
 import { AgentGovernanceProfile } from '@/database/schemas/agent-governance-profile.schema';
 import { Circle, CircleSchema } from '@/database/schemas/circle.schema';
-import {
-  CircleProposal,
-  CircleProposalSchema,
-} from '@/database/schemas/circle-proposal.schema';
+import { CircleProposal, CircleProposalSchema } from '@/database/schemas/circle-proposal.schema';
 import {
   ContentReviewRequest,
   ContentReviewRequestSchema,
@@ -47,6 +38,7 @@ import { RedisService } from '@/redis/redis.service';
 import { FeatureFlagService } from '@/system/feature-flag.service';
 import { InboxService } from '@/inbox/inbox.service';
 import { ForumService } from './forum.service';
+import { HotRankingService } from '@/hot-ranking/hot-ranking.service';
 
 describe('ForumService reply inbox transaction', () => {
   jest.setTimeout(60_000);
@@ -86,6 +78,7 @@ describe('ForumService reply inbox transaction', () => {
         },
         { provide: FeatureFlagService, useValue: { assertEnabled: jest.fn() } },
         { provide: RedisService, useValue: {} },
+        { provide: HotRankingService, useValue: { markPostDirty: jest.fn() } },
         { provide: getModelToken(GovernanceCase.name), useValue: {} },
         { provide: getModelToken(GovernanceCorrection.name), useValue: {} },
         { provide: getModelToken(AgentGovernanceHistory.name), useValue: {} },
@@ -171,10 +164,7 @@ describe('ForumService reply inbox transaction', () => {
     });
     await connection.collection('post_watch_registries').insertOne({
       postId: post.id,
-      watcherAgentIds: Array.from(
-        { length: 101 },
-        () => new Types.ObjectId().toString(),
-      ),
+      watcherAgentIds: Array.from({ length: 101 }, () => new Types.ObjectId().toString()),
       createdAt: new Date(),
       updatedAt: new Date(),
     });

@@ -23,10 +23,12 @@ export function GovernanceCaseStamp({
   caseId,
   title,
   status,
+  onRequireAuth,
 }: {
   caseId: string;
   title?: string;
   status?: string;
+  onRequireAuth?: () => void;
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -45,6 +47,10 @@ export function GovernanceCaseStamp({
           className="flex w-full items-start justify-between gap-3 py-1 text-left text-xs transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[var(--t-panel)]"
           onClick={(event) => {
             event.stopPropagation();
+            if (onRequireAuth) {
+              onRequireAuth();
+              return;
+            }
             setOpen(true);
           }}
         >
@@ -72,6 +78,10 @@ export function GovernanceCaseStamp({
           className="absolute right-4 top-14 z-10"
           onClick={(event) => {
             event.stopPropagation();
+            if (onRequireAuth) {
+              onRequireAuth();
+              return;
+            }
             setOpen(true);
           }}
         >
@@ -92,7 +102,9 @@ export function GovernanceCaseStamp({
             {t('governance.inReview.description')}
           </p>
           {query.isPending ? (
-            <p className="mt-6 font-mono text-sm text-[var(--t-sub)]">{t('governance.inReview.loading')}</p>
+            <p className="mt-6 font-mono text-sm text-[var(--t-sub)]">
+              {t('governance.inReview.loading')}
+            </p>
           ) : query.isError ? (
             <p className="mt-6 font-mono text-sm text-[var(--t-hazard)]/80">
               {t('governance.inReview.loadFailed')}
@@ -139,7 +151,11 @@ export function GovernanceCaseStamp({
                     {t('governance.inReview.deadline')}
                   </dt>
                   <dd className="mt-2">
-                    <Timecode date={query.data.deadlineAt} withDate className="text-[var(--t-accent)]" />
+                    <Timecode
+                      date={query.data.deadlineAt}
+                      withDate
+                      className="text-[var(--t-accent)]"
+                    />
                   </dd>
                 </div>
               </dl>

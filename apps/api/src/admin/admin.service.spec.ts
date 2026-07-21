@@ -36,11 +36,15 @@ import { CircleProposalService } from '@/circle/circle-proposal.service';
 import { CircleService } from '@/circle/circle.service';
 import { ForumService } from '@/forum/forum.service';
 import { GovernanceService } from '@/governance/governance.service';
-import { GOVERNANCE_HEALTH_LEVEL } from '@/governance/governance.constants';
+import {
+  GOVERNANCE_HEALTH_LEVEL,
+  GOVERNANCE_TARGET_TYPES,
+} from '@/governance/governance.constants';
 import { HealthService } from '@/health/health.service';
 import { InboxService } from '@/inbox/inbox.service';
 import { AdminAuditService } from './admin-audit.service';
 import { AdminService } from './admin.service';
+import { HotRankingService } from '@/hot-ranking/hot-ranking.service';
 import type { AdminPrincipal } from './interfaces/admin-principal.interface';
 
 const ADMIN: AdminPrincipal = {
@@ -87,6 +91,9 @@ describe('AdminService moderation paths', () => {
   const governanceService = {
     resolveCaseForAdmin: jest.fn(),
   };
+  const hotRankingService = {
+    markPostDirty: jest.fn().mockResolvedValue(undefined),
+  };
 
   beforeAll(async () => {
     replicaSet = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
@@ -125,6 +132,7 @@ describe('AdminService moderation paths', () => {
         { provide: CircleProposalService, useValue: circleProposalService },
         { provide: InboxService, useValue: inboxService },
         { provide: GovernanceService, useValue: governanceService },
+        { provide: HotRankingService, useValue: hotRankingService },
       ],
     }).compile();
     connection = moduleRef.get<Connection>(getConnectionToken());
@@ -264,6 +272,8 @@ describe('AdminService moderation paths', () => {
     const resolvedAt = new Date();
     governanceService.resolveCaseForAdmin.mockResolvedValue({
       id: caseId,
+      targetType: GOVERNANCE_TARGET_TYPES.POST,
+      targetId: new Types.ObjectId().toString(),
       status: 'RESOLVED_VIOLATION',
       resolutionSource: 'ADMIN',
       resolutionReason: '证据充分，直接裁定违规',
@@ -314,9 +324,11 @@ describe('AdminService moderation paths', () => {
       violationCount: 0,
     });
 
-    await expect(service.suspendAgent(ADMIN, agent.id, {
-      reason: '该 Agent 持续破坏社区正常交流。',
-    })).resolves.toMatchObject({
+    await expect(
+      service.suspendAgent(ADMIN, agent.id, {
+        reason: '该 Agent 持续破坏社区正常交流。',
+      }),
+    ).resolves.toMatchObject({
       suspended: true,
       healthLevel: GOVERNANCE_HEALTH_LEVEL.BANNED,
     });
@@ -340,8 +352,9 @@ describe('AdminService moderation paths', () => {
       activeAdminBanRecordId: banHistory?.id,
     });
 
-    bannedProfile!.adminBanRestoreHealthLevel = GOVERNANCE_HEALTH_LEVEL.PENALIZED;
-    await bannedProfile!.save();
+    if (!bannedProfile) throw new Error('管理员封禁后的治理档案不存在');
+    bannedProfile.adminBanRestoreHealthLevel = GOVERNANCE_HEALTH_LEVEL.PENALIZED;
+    await bannedProfile.save();
     await expect(
       service.unsuspendAgent(ADMIN, agent.id, '复核后解除管理员封禁。'),
     ).resolves.toMatchObject({
@@ -385,9 +398,7 @@ describe('AdminService moderation paths', () => {
     };
     circleService.getCircleForAdmin.mockResolvedValue(before);
     circleProposalService.moderateActiveScopeForAdmin.mockImplementation(
-      async (_circleId: string, scope: string) => (
-        scope === 'TOPIC' ? moderatedProposal : null
-      ),
+      async (_circleId: string, scope: string) => (scope === 'TOPIC' ? moderatedProposal : null),
     );
     circleService.updateCircleForAdmin.mockResolvedValue(updated);
     circleService.serializeCircleForAdmin.mockReturnValue(updated);

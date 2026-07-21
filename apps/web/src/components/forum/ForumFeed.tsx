@@ -11,6 +11,7 @@ import { ForumFeedContextProvider } from './ForumFeedContext';
 import { FORUM_FEED_PAGE_SIZE, feedBandItemClass } from './forum-feed-constants';
 import { ErrorState } from '@/components/ui/LoadingState';
 import { TEmpty, TSkeleton } from '@/components/ui/terminal';
+import { AuthRequiredDialog, AuthRequiredState } from '@/components/ui/AuthRequiredDialog';
 import { forumApi } from '@/lib/api';
 import { forumKeys } from '@/lib/query-keys';
 import { useOwnerOperation } from '@/contexts/OwnerOperationContext';
@@ -68,6 +69,8 @@ export function ForumFeed({
   const searchRevision = useHomeNavigationStore((state) => state.postSearchRevision);
   const search = circle ? '' : submittedSearch;
   const [refreshingFeed, setRefreshingFeed] = useState(false);
+  const [authPromptOpen, setAuthPromptOpen] = useState(false);
+  const authPromptedFeedKeyRef = useRef<string | null>(null);
   const feedScope = useForumFeedStore((state) => state.globalFeedScope);
   const setFeedScope = useForumFeedStore((state) => state.setGlobalFeedScope);
   const { ownerOperationEnabled, canOperateAsAgent } = useOwnerOperation();
@@ -106,8 +109,8 @@ export function ForumFeed({
     queryFn: ({ pageParam, signal }) =>
       forumApi.listPosts(
         {
-          page: sortMode === 'hot' ? Number(pageParam || '1') : 1,
-          cursor: sortMode === 'latest' ? pageParam || undefined : undefined,
+          page: pageParam ? undefined : 1,
+          cursor: pageParam || undefined,
           pageSize: FORUM_FEED_PAGE_SIZE,
           sortBy: sortMode,
           search: search || undefined,
@@ -118,11 +121,10 @@ export function ForumFeed({
         signal,
       ),
     initialPageParam: '',
-    enabled: !authLoading,
+    enabled: !authLoading && (!circle || isAuthenticated),
     getNextPageParam: (lastPage: ForumPostListResponse) => {
-      if (sortMode === 'latest') return lastPage.nextCursor ?? undefined;
-      if (!lastPage.meta || lastPage.meta.page >= lastPage.meta.totalPages) return undefined;
-      return String(lastPage.meta.page + 1);
+      if (!isAuthenticated) return undefined;
+      return lastPage.nextCursor ?? undefined;
     },
   });
   const posts = postsQuery.data?.pages.flatMap((page) => page.posts) ?? [];
@@ -147,10 +149,22 @@ export function ForumFeed({
       ? 'forum.emptySubscribedPosts'
       : emptyMessageKey;
 
+  const openAuthPrompt = useCallback(() => {
+    if (isAuthenticated) return;
+    setAuthPromptOpen(true);
+    if (authPromptedFeedKeyRef.current !== feedKey) {
+      authPromptedFeedKeyRef.current = feedKey;
+      toast.info(t('feed.moreRequiresLogin'));
+    }
+  }, [feedKey, isAuthenticated, t, toast]);
+
   const { ref: loaderRef, inView } = useInView({
     root: scrollRoot,
     rootMargin: '320px 0px',
     threshold: 0,
+    onChange: (visible) => {
+      if (visible && !isAuthenticated && posts.length > 0) openAuthPrompt();
+    },
   });
 
   const bindScrollRoot = useCallback((node: HTMLDivElement | null) => {
@@ -162,10 +176,10 @@ export function ForumFeed({
   }, []);
 
   useEffect(() => {
-    if (inView && hasMore && !isFetchingNextPage && posts.length > 0) {
+    if (isAuthenticated && inView && hasMore && !isFetchingNextPage && posts.length > 0) {
       void fetchNextPage();
     }
-  }, [fetchNextPage, hasMore, inView, isFetchingNextPage, posts.length]);
+  }, [fetchNextPage, hasMore, inView, isAuthenticated, isFetchingNextPage, posts.length]);
 
   useEffect(() => {
     currentFeedKeyRef.current = feedKey;
@@ -300,6 +314,15 @@ export function ForumFeed({
   const hasInitialError = Boolean(errorKey && !loading && posts.length === 0);
   const isEmpty = !loading && posts.length === 0 && !errorKey;
 
+  if (!authLoading && circle && !isAuthenticated) {
+    return (
+      <>
+        <AuthRequiredState onOpen={openAuthPrompt} />
+        <AuthRequiredDialog open={authPromptOpen} onOpenChange={setAuthPromptOpen} />
+      </>
+    );
+  }
+
   return (
     <ForumFeedContextProvider isCircleFeed={Boolean(circle)}>
       <div className="feed-overlay-shell">
@@ -396,7 +419,13 @@ export function ForumFeed({
               {t(receiveErrorTitleKey)}: {t(errorKey)}
             </span>
             <button
-              onClick={() => void (hasMore ? fetchNextPage() : refetch())}
+              onClick={() => {
+                if (!isAuthenticated) {
+                  openAuthPrompt();
+                  return;
+                }
+                void (hasMore ? fetchNextPage() : refetch());
+              }}
               className="ml-3 text-accent hover:text-accent-dim"
             >
               {t('app.retry')}
@@ -444,7 +473,11 @@ export function ForumFeed({
               </div>
               <div className="border-t border-[var(--t-noise)]">
                 {posts.map((post) => (
-                  <PostCard key={post.id} post={post} />
+                  <PostCard
+                    key={post.id}
+                    post={post}
+                    onRequireAuth={!isAuthenticated ? openAuthPrompt : undefined}
+                  />
                 ))}
               </div>
             </>
@@ -452,11 +485,12 @@ export function ForumFeed({
 
           {!showingRefreshLoading && loading && <FeedLoadingState label={t(loadingLabelKey)} />}
 
-          {hasMore && !showingRefreshLoading && !loading && !errorKey && (
-            <div ref={loaderRef} className="h-8" />
-          )}
+          {(hasMore || (!isAuthenticated && posts.length > 0)) &&
+            !showingRefreshLoading &&
+            !loading &&
+            !errorKey && <div ref={loaderRef} className="h-8" />}
 
-          {!showingRefreshLoading && !hasMore && posts.length > 0 && (
+          {!showingRefreshLoading && !hasMore && posts.length > 0 && isAuthenticated && (
             <div className="py-8 text-center font-mono text-[11px] tracking-deck-normal text-text-tertiary">
               <div className="flex items-center justify-center gap-3">
                 <div className="h-px w-8 bg-[var(--t-noise)]" aria-hidden />
@@ -464,6 +498,16 @@ export function ForumFeed({
                 <div className="h-px w-8 bg-[var(--t-noise)]" aria-hidden />
               </div>
             </div>
+          )}
+
+          {!showingRefreshLoading && !hasMore && posts.length > 0 && !isAuthenticated && (
+            <button
+              type="button"
+              onClick={openAuthPrompt}
+              className="flex w-full items-center justify-center py-8 text-center font-mono text-[11px] tracking-deck-normal text-[var(--t-accent)] transition-colors hover:text-white"
+            >
+              {t('feed.moreRequiresLogin')}
+            </button>
           )}
 
           {!showingRefreshLoading && isEmpty && (
@@ -480,6 +524,7 @@ export function ForumFeed({
             initialCircle={circle}
           />
         )}
+        <AuthRequiredDialog open={authPromptOpen} onOpenChange={setAuthPromptOpen} />
       </div>
     </ForumFeedContextProvider>
   );

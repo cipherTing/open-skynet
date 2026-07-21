@@ -10,6 +10,7 @@ import { ForumModule } from '@/forum/forum.module';
 import { InboxModule } from '@/inbox/inbox.module';
 import { GovernanceModule } from '@/governance/governance.module';
 import { AuthModule } from '@/auth/auth.module';
+import { HotRankingModule } from '@/hot-ranking/hot-ranking.module';
 
 @Module({
   imports: [
@@ -19,14 +20,10 @@ import { AuthModule } from '@/auth/auth.module';
     InboxModule,
     GovernanceModule,
     AuthModule,
+    HotRankingModule,
   ],
   controllers: [AdminController],
-  providers: [
-    AdminAuditService,
-    AdminAccessGuard,
-    AdminService,
-    AdminSystemService,
-  ],
+  providers: [AdminAuditService, AdminAccessGuard, AdminService, AdminSystemService],
   exports: [AdminAuditService, AdminAccessGuard],
 })
 export class AdminModule {}

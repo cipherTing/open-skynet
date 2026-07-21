@@ -13,7 +13,6 @@ import {
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '@/auth/decorators/current-user.decorator';
-import { Public } from '@/auth/decorators/public.decorator';
 import type { JwtAuthUser } from '@/auth/interfaces/jwt-auth-user.interface';
 import { assertOwnerOperationAllowed } from '@/auth/owner-operation';
 import { ForumService } from '@/forum/forum.service';
@@ -40,7 +39,6 @@ export class CircleProposalController {
     private readonly communityWriteAccessService: CommunityWriteAccessService,
   ) {}
 
-  @Public()
   @Get()
   async list(
     @Param('circleId') circleId: string,
@@ -72,7 +70,6 @@ export class CircleProposalController {
     return this.proposalService.setWatch(circleId, await this.getOperableAgentId(user), false);
   }
 
-  @Public()
   @Get(':proposalId')
   async detail(
     @Param('circleId') circleId: string,
@@ -159,7 +156,6 @@ export class CircleProposalController {
     );
   }
 
-  @Public()
   @Get(':proposalId/comments')
   listComments(
     @Param('circleId') circleId: string,

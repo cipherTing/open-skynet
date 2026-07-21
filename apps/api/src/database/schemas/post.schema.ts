@@ -47,9 +47,9 @@ export class Post {
     enum: POST_TAG_VALUES,
     validate: {
       validator: (tags: PostTag[]) =>
-        tags.length >= MIN_POST_TAGS
-        && tags.length <= MAX_POST_TAGS
-        && new Set(tags).size === tags.length,
+        tags.length >= MIN_POST_TAGS &&
+        tags.length <= MAX_POST_TAGS &&
+        new Set(tags).size === tags.length,
       message: `帖子标签必须选择 ${MIN_POST_TAGS}-${MAX_POST_TAGS} 个且不能重复`,
     },
   })
@@ -88,6 +88,40 @@ export class Post {
   @Prop({ type: Date, default: null })
   deletedAt!: Date | null;
 
+  /**
+   * 热度字段由 HotRankingModule 异步维护。它们只用于候选池维护，
+   * 不直接作为公开排序依据。
+   */
+  @Prop({ type: Number, required: true, default: 0, min: 0 })
+  hotScore!: number;
+
+  @Prop({ type: Number, required: true, default: 0, min: 0 })
+  hotSignalVersion!: number;
+
+  @Prop({ type: Number, required: true, default: 0, min: 0 })
+  hotComputedSignalVersion!: number;
+
+  @Prop({ type: Boolean, required: true, default: false })
+  hotDirty!: boolean;
+
+  @Prop({ type: Date, default: null })
+  hotDispatchAt!: Date | null;
+
+  @Prop({ type: Date, default: null })
+  hotDispatchClaimedUntil!: Date | null;
+
+  @Prop({ type: Number, required: true, default: 0, min: 0 })
+  hotDispatchAttempts!: number;
+
+  @Prop({ type: Date, default: null })
+  hotLastActiveAt!: Date | null;
+
+  @Prop({ type: Boolean, required: true, default: false })
+  hotEligible!: boolean;
+
+  @Prop({ type: Date, default: null })
+  hotUpdatedAt!: Date | null;
+
   @Prop({
     type: String,
     enum: Object.values(CONTENT_REMOVAL_SOURCES),
@@ -110,10 +144,28 @@ PostSchema.index(
   { replyCount: -1, viewCount: -1, createdAt: -1, _id: -1 },
   { partialFilterExpression: { deletedAt: null } },
 );
+PostSchema.index(
+  { hotEligible: 1, _id: 1, hotLastActiveAt: -1, circleId: 1 },
+  { partialFilterExpression: { deletedAt: null, hotEligible: true } },
+);
+PostSchema.index(
+  { hotSignalVersion: 1, hotComputedSignalVersion: 1, _id: 1 },
+  { partialFilterExpression: { deletedAt: null } },
+);
+PostSchema.index(
+  { hotDirty: 1, hotDispatchAt: 1, hotDispatchClaimedUntil: 1, _id: 1 },
+  { partialFilterExpression: { hotDirty: true } },
+);
 PostSchema.index({ createdAt: -1, _id: -1 }, { partialFilterExpression: { deletedAt: null } });
 PostSchema.index({ authorId: 1, createdAt: -1 }, { partialFilterExpression: { deletedAt: null } });
-PostSchema.index({ circleId: 1, createdAt: -1, _id: -1 }, { partialFilterExpression: { deletedAt: null } });
-PostSchema.index({ tags: 1, createdAt: -1, _id: -1 }, { partialFilterExpression: { deletedAt: null } });
+PostSchema.index(
+  { circleId: 1, createdAt: -1, _id: -1 },
+  { partialFilterExpression: { deletedAt: null } },
+);
+PostSchema.index(
+  { tags: 1, createdAt: -1, _id: -1 },
+  { partialFilterExpression: { deletedAt: null } },
+);
 PostSchema.index(
   { circleId: 1, tags: 1, createdAt: -1, _id: -1 },
   { partialFilterExpression: { deletedAt: null } },

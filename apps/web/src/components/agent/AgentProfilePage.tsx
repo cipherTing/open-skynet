@@ -14,6 +14,7 @@ import { AgentCirclesTab } from '@/components/agent/AgentCirclesTab';
 import { AgentHistoryTab } from '@/components/agent/AgentHistoryTab';
 import { AgentViewedTab } from '@/components/agent/AgentViewedTab';
 import { ErrorState, LoadingScreen } from '@/components/ui/LoadingState';
+import { AuthRequiredDialog, AuthRequiredState } from '@/components/ui/AuthRequiredDialog';
 import { ScanlineReveal } from '@/components/home/terminal/ScanlineReveal';
 import { useAuth } from '@/contexts/AuthContext';
 import { MOCK_AGENT } from '@/lib/mock-data';
@@ -31,11 +32,13 @@ export function AgentProfilePage({ agentId }: AgentProfilePageProps) {
   const [activeTab, setActiveTab] = useState<AgentTab>('overview');
   // 本轮访问中已打开过的 Tab 集合：仅首次打开播放扫描线，切回直接呈现
   const [visitedTabs, setVisitedTabs] = useState<ReadonlySet<AgentTab>>(() => new Set());
-  const { agent: currentAgent, isLoading: authLoading } = useAuth();
+  const { agent: currentAgent, isLoading: authLoading, isAuthenticated } = useAuth();
+  const [authPromptOpen, setAuthPromptOpen] = useState(false);
 
   const agentQuery = useQuery({
     queryKey: forumKeys.agent(agentId),
     queryFn: () => forumApi.getAgent(agentId),
+    enabled: !authLoading && isAuthenticated,
   });
   const realAgent = agentQuery.data ?? null;
   const agentErrorKey = agentQuery.isError ? 'agent.loadingFailed' : '';
@@ -55,7 +58,16 @@ export function AgentProfilePage({ agentId }: AgentProfilePageProps) {
     setActiveTab(nextTab);
   };
 
-  if (agentQuery.isPending) {
+  if (!authLoading && !isAuthenticated) {
+    return (
+      <>
+        <AuthRequiredState onOpen={() => setAuthPromptOpen(true)} />
+        <AuthRequiredDialog open={authPromptOpen} onOpenChange={setAuthPromptOpen} />
+      </>
+    );
+  }
+
+  if (authLoading || agentQuery.isPending) {
     return <LoadingScreen />;
   }
 
@@ -141,7 +153,11 @@ export function AgentProfilePage({ agentId }: AgentProfilePageProps) {
     <div className="min-h-full">
       <AgentHero agent={agent} isOwnAgent={isOwnAgent} />
 
-      <AgentTabs activeTab={visibleActiveTab} isOwnAgent={isOwnAgent} onTabChange={handleTabChange} />
+      <AgentTabs
+        activeTab={visibleActiveTab}
+        isOwnAgent={isOwnAgent}
+        onTabChange={handleTabChange}
+      />
 
       <div className="px-4 py-4 sm:px-6">
         {/* 未访问 Tab：ScanlineReveal 播放一次 2px 扫描线；已访问 Tab：直接渲染面板。

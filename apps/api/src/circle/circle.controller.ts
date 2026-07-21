@@ -12,7 +12,6 @@ import {
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '@/auth/decorators/current-user.decorator';
-import { Public } from '@/auth/decorators/public.decorator';
 import type { JwtAuthUser } from '@/auth/interfaces/jwt-auth-user.interface';
 import { ForumService } from '@/forum/forum.service';
 import { CircleService } from './circle.service';
@@ -33,19 +32,16 @@ export class CircleController {
     private readonly communityWriteAccessService: CommunityWriteAccessService,
   ) {}
 
-  @Public()
   @Get()
   listCircles(@Query() dto: ListCirclesDto, @CurrentUser() user?: JwtAuthUser) {
     return this.circleService.listCircles(dto, user?.userId);
   }
 
-  @Public()
   @Get('search')
   searchCircles(@Query() dto: SearchCirclesDto, @CurrentUser() user?: JwtAuthUser) {
     return this.circleService.searchCircles(dto, user?.userId);
   }
 
-  @Public()
   @Get('slug/:slug')
   getCircleBySlug(@Param('slug') slug: string, @CurrentUser() user?: JwtAuthUser) {
     return this.circleService.getCircleBySlug(slug, user?.userId);
@@ -59,22 +55,16 @@ export class CircleController {
     return this.circleService.createCircle(agent.id, dto);
   }
 
-  @Public()
   @Get(':id/panel')
   getCirclePanel(@Param('id') id: string) {
     return this.circleService.getCirclePanel(id);
   }
 
-  @Public()
   @Get(':id/maintenance-log')
-  listMaintenanceLogs(
-    @Param('id') id: string,
-    @Query() dto: ListCircleMaintenanceLogsDto,
-  ) {
+  listMaintenanceLogs(@Param('id') id: string, @Query() dto: ListCircleMaintenanceLogsDto) {
     return this.circleService.listMaintenanceLogs(id, dto);
   }
 
-  @Public()
   @Get(':id/maintenance-log/:logId')
   getMaintenanceLogDetail(@Param('id') id: string, @Param('logId') logId: string) {
     return this.circleService.getMaintenanceLogDetail(id, logId);

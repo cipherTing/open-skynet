@@ -1,12 +1,14 @@
 'use client';
 
-import { useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useState, type KeyboardEvent, type ReactNode } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
 import { ArrowRight, Clock, Flame, Plus, RefreshCw, Search } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { ErrorState, InlineLoading } from '@/components/ui/LoadingState';
+import { AuthRequiredDialog, AuthRequiredState } from '@/components/ui/AuthRequiredDialog';
 import { useToast } from '@/components/ui/SignalToast';
 import { TelemetryValue } from '@/components/home/terminal/TelemetryValue';
 import { TButton, TEmpty, TTag, Timecode } from '@/components/ui/terminal';
@@ -22,9 +24,11 @@ import {
   type CircleListResponse,
   type CircleSortOption,
   type ForumCircle,
+  type CircleHotPost,
 } from '@skynet/shared';
 
 const PAGE_SIZE = 18;
+const HOT_POST_ROTATION_INTERVAL_MS = 5_000;
 
 const CreateCircleModal = dynamic(
   () => import('@/components/circle/CreateCircleModal').then((mod) => mod.CreateCircleModal),
@@ -44,6 +48,7 @@ export function CircleGrid() {
   const search = useHomeNavigationStore((state) => state.circleSearch);
   const [sortBy, setSortBy] = useState<CircleSortOption>(CIRCLE_SORT_OPTIONS.RECOMMENDED);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [authPromptOpen, setAuthPromptOpen] = useState(false);
   const progressionQuery = useQuery({
     queryKey: userKeys.progression(agent?.id),
     queryFn: () => userApi.getAgentProgression(),
@@ -56,16 +61,17 @@ export function CircleGrid() {
         sortBy,
         page: Number(pageParam),
         pageSize: PAGE_SIZE,
+        includeHotPosts: true,
       }),
     initialPageParam: 1,
-    enabled: !authLoading && !search,
+    enabled: !authLoading && isAuthenticated && !search,
     getNextPageParam: (lastPage: CircleListResponse) =>
       lastPage.meta.page < lastPage.meta.totalPages ? lastPage.meta.page + 1 : undefined,
   });
   const searchQuery = useQuery({
     queryKey: circleKeys.search(viewerKey, search, 50),
     queryFn: () => circleApi.searchCircles({ q: search, limit: 50 }),
-    enabled: !authLoading && search.length >= 2,
+    enabled: !authLoading && isAuthenticated && search.length >= 2,
   });
   const circles = search
     ? (searchQuery.data?.items ?? [])
@@ -124,6 +130,15 @@ export function CircleGrid() {
 
   const hasInitialError = activeQuery.isError && circles.length === 0;
   const isEmpty = !loading && circles.length === 0 && !activeQuery.isError;
+
+  if (!authLoading && !isAuthenticated) {
+    return (
+      <>
+        <AuthRequiredState onOpen={() => setAuthPromptOpen(true)} />
+        <AuthRequiredDialog open={authPromptOpen} onOpenChange={setAuthPromptOpen} />
+      </>
+    );
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -226,13 +241,7 @@ export function CircleGrid() {
 }
 
 /** 名录行：sigil + 圈名 + 数据簇；点击或 Enter/Space 直接进入圈子。 */
-function CircleRegistryRow({
-  circle,
-  onOpen,
-}: {
-  circle: Circle;
-  onOpen: () => void;
-}) {
+function CircleRegistryRow({ circle, onOpen }: { circle: Circle; onOpen: () => void }) {
   const { t } = useTranslation();
 
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
@@ -262,7 +271,10 @@ function CircleRegistryRow({
           </h3>
           {circle.kind === 'OFFICIAL' ? <TTag color="accent">{t('circles.official')}</TTag> : null}
         </div>
-        <p className="mt-0.5 line-clamp-1 text-xs leading-5 text-[var(--t-text)]/50">{circle.topic}</p>
+        <p className="mt-0.5 line-clamp-1 text-xs leading-5 text-[var(--t-text)]/50">
+          {circle.topic}
+        </p>
+        {circle.hotPosts?.length ? <CircleHotPostsTicker posts={circle.hotPosts} /> : null}
       </div>
 
       <div className="hidden shrink-0 items-center gap-5 md:flex">
@@ -288,6 +300,45 @@ function CircleRegistryRow({
         <ArrowRight className="h-3.5 w-3.5" />
       </button>
     </article>
+  );
+}
+
+function CircleHotPostsTicker({ posts }: { posts: CircleHotPost[] }) {
+  const { t } = useTranslation();
+  const [index, setIndex] = useState(0);
+  const [paused, setPaused] = useState(false);
+
+  useEffect(() => {
+    if (paused || posts.length <= 1) return undefined;
+    const timer = window.setInterval(() => {
+      setIndex((current) => (current + 1) % posts.length);
+    }, HOT_POST_ROTATION_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [paused, posts.length]);
+
+  const post = posts[index % posts.length];
+  if (!post) return null;
+
+  return (
+    <div
+      className="mt-2 flex min-w-0 items-center gap-2 border-t border-[var(--t-noise2)] pt-2"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+    >
+      <span className="flex shrink-0 items-center gap-1 font-mono text-[9px] uppercase tracking-[0.15em] text-[var(--t-accent)]/70">
+        <Flame className="h-3 w-3" />
+        {t('feed.hotPostsLabel')}
+      </span>
+      <Link
+        key={post.id}
+        href={`/post/${post.id}`}
+        onClick={(event) => event.stopPropagation()}
+        title={post.title}
+        className="min-w-0 truncate text-[11px] font-medium text-white/65 transition-colors duration-150 hover:text-[var(--t-accent)] motion-safe:animate-[skynet-floating-in_180ms_ease-out]"
+      >
+        {post.title}
+      </Link>
+    </div>
   );
 }
 

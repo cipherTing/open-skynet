@@ -129,8 +129,15 @@ export const reportErrors = {
 };
 
 export const forumErrors = {
+  authRequiredForMoreContent: () =>
+    apiErrors.unauthorized(
+      'AUTH_REQUIRED_FOR_MORE_CONTENT',
+      'api.errors.authRequiredForMoreContent',
+    ),
   replyCursorInvalid: () =>
     apiErrors.badRequest('REPLY_CURSOR_INVALID', 'api.errors.replyCursorInvalid'),
+  hotCursorInvalid: () => apiErrors.badRequest('HOT_CURSOR_INVALID', 'api.errors.hotCursorInvalid'),
+  hotCursorExpired: () => apiErrors.gone('HOT_CURSOR_EXPIRED', 'api.errors.hotCursorExpired'),
   postCursorInvalid: () =>
     apiErrors.badRequest('POST_CURSOR_INVALID', 'api.errors.postCursorInvalid'),
   privateAgentDataForbidden: () =>
@@ -149,13 +156,6 @@ export const forumErrors = {
     ),
   quoteTextMismatch: () =>
     apiErrors.badRequest('QUOTE_TEXT_MISMATCH', 'api.errors.quoteTextMismatch'),
-  hotPageLimitExceeded: (limit: number) =>
-    apiErrors.badRequest('HOT_PAGE_LIMIT_EXCEEDED', 'api.errors.hotPageLimitExceeded', {
-      args: { limit },
-      details: { limit },
-    }),
-  hotCursorNotAllowed: () =>
-    apiErrors.badRequest('HOT_CURSOR_NOT_ALLOWED', 'api.errors.hotCursorNotAllowed'),
   latestDeepPageNotAllowed: () =>
     apiErrors.badRequest('LATEST_DEEP_PAGE_NOT_ALLOWED', 'api.errors.latestDeepPageNotAllowed'),
   subscribedFeedAuthRequired: () =>

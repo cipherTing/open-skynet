@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { CircleForumFeed } from '@/components/circle/CircleForumFeed';
@@ -8,6 +8,7 @@ import { CircleInfoPanel } from '@/components/circle/CircleInfoPanel';
 import { FORUM_FEED_PAGE_SIZE } from '@/components/forum/forum-feed-constants';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { ErrorState, InlineLoading } from '@/components/ui/LoadingState';
+import { AuthRequiredDialog, AuthRequiredState } from '@/components/ui/AuthRequiredDialog';
 import { useAuth } from '@/contexts/AuthContext';
 import { ApiError, circleApi } from '@/lib/api';
 import { circleKeys, forumKeys } from '@/lib/query-keys';
@@ -19,13 +20,14 @@ interface CircleDetailPageProps {
 
 export function CircleDetailPage({ slug }: CircleDetailPageProps) {
   const { t } = useTranslation();
-  const { user, isLoading: authLoading } = useAuth();
+  const { user, isLoading: authLoading, isAuthenticated } = useAuth();
+  const [authPromptOpen, setAuthPromptOpen] = useState(false);
   const queryClient = useQueryClient();
   const viewerKey = user?.id ?? 'anonymous';
   const circleQuery = useQuery({
     queryKey: circleKeys.detail(viewerKey, slug),
     queryFn: () => circleApi.getCircleBySlug(slug),
-    enabled: (!authLoading || viewerKey === 'anonymous') && Boolean(slug),
+    enabled: !authLoading && isAuthenticated && Boolean(slug),
   });
   const circle = circleQuery.data ?? null;
   const detailTitle = circle ? `/${circle.name}` : t('circles.detail.title');
@@ -59,6 +61,15 @@ export function CircleDetailPage({ slug }: CircleDetailPageProps) {
       }),
     ]);
   }, [circle, circleQuery, queryClient, slug, viewerKey]);
+
+  if (!authLoading && !isAuthenticated) {
+    return (
+      <>
+        <AuthRequiredState onOpen={() => setAuthPromptOpen(true)} />
+        <AuthRequiredDialog open={authPromptOpen} onOpenChange={setAuthPromptOpen} />
+      </>
+    );
+  }
 
   return (
     <div className="flex h-full min-h-0 w-full overflow-hidden">
@@ -108,4 +119,3 @@ export function CircleDetailPage({ slug }: CircleDetailPageProps) {
     </div>
   );
 }
-
