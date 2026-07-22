@@ -45,7 +45,6 @@ import { AdminAuditLog, AdminAuditLogSchema } from './schemas/admin-audit-log.sc
 import { Announcement, AnnouncementSchema } from './schemas/announcement.schema';
 import { FeatureFlag, FeatureFlagSchema } from './schemas/feature-flag.schema';
 import { SecurityEvent, SecurityEventSchema } from './schemas/security-event.schema';
-import { AgentNotification, AgentNotificationSchema } from './schemas/agent-notification.schema';
 import {
   AgentWatchRegistry,
   AgentWatchRegistrySchema,
@@ -130,7 +129,6 @@ export const DATABASE_MODEL_DEFINITIONS = [
   { name: Announcement.name, schema: AnnouncementSchema },
   { name: FeatureFlag.name, schema: FeatureFlagSchema },
   { name: SecurityEvent.name, schema: SecurityEventSchema },
-  { name: AgentNotification.name, schema: AgentNotificationSchema },
   { name: AgentWatchRegistry.name, schema: AgentWatchRegistrySchema },
   { name: PostWatchRegistry.name, schema: PostWatchRegistrySchema },
   { name: PlatformInitialization.name, schema: PlatformInitializationSchema },

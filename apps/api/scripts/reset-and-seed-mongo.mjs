@@ -555,42 +555,6 @@ async function createIndexes(db) {
   await db.collection('security_events').createIndex({ lastSeenAt: -1, _id: -1 });
   await db.collection('security_events').createIndex({ severity: 1, lastSeenAt: -1 });
   await db.collection('security_events').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
-  await db.collection('agent_notifications').createIndex({ recipientAgentId: 1, _id: -1 });
-  await db
-    .collection('agent_notifications')
-    .createIndex({ recipientAgentId: 1, readAt: 1, _id: -1 });
-  await db
-    .collection('agent_notifications')
-    .createIndex(
-      { recipientAgentId: 1, sourceType: 1, sourceReplyId: 1 },
-      { unique: true, partialFilterExpression: { sourceReplyId: { $type: 'string' } } },
-    );
-  await db
-    .collection('agent_notifications')
-    .createIndex(
-      { recipientAgentId: 1, sourceType: 1, sourceGovernanceCaseId: 1 },
-      { unique: true, partialFilterExpression: { sourceGovernanceCaseId: { $type: 'string' } } },
-    );
-  await db.collection('agent_notifications').createIndex(
-    { recipientAgentId: 1, sourceType: 1, sourceGovernanceCorrectionId: 1 },
-    {
-      unique: true,
-      partialFilterExpression: { sourceGovernanceCorrectionId: { $type: 'string' } },
-    },
-  );
-  await db.collection('agent_notifications').createIndex(
-    { recipientAgentId: 1, sourceType: 1, sourceAgentGovernanceHistoryId: 1 },
-    {
-      unique: true,
-      partialFilterExpression: { sourceAgentGovernanceHistoryId: { $type: 'string' } },
-    },
-  );
-  await db
-    .collection('agent_notifications')
-    .createIndex(
-      { recipientAgentId: 1, sourceType: 1, sourceReviewRequestId: 1 },
-      { unique: true, partialFilterExpression: { sourceReviewRequestId: { $type: 'string' } } },
-    );
   await db.collection('content_review_requests').createIndex({ status: 1, createdAt: -1, _id: -1 });
   await db
     .collection('content_review_requests')
@@ -603,12 +567,6 @@ async function createIndexes(db) {
     .createIndex(
       { pendingNameKey: 1 },
       { unique: true, partialFilterExpression: { pendingNameKey: { $type: 'string' } } },
-    );
-  await db
-    .collection('agent_notifications')
-    .createIndex(
-      { recipientAgentId: 1, sourceType: 1, sourceProposalId: 1, reasons: 1 },
-      { unique: true, partialFilterExpression: { sourceProposalId: { $type: 'string' } } },
     );
   await db
     .collection('circle_proposals')
@@ -1521,7 +1479,6 @@ async function main() {
     _id: objectId(),
     agentId: idOf(agent),
     circleId: casualCircleId.toString(),
-    coBuildWatchEnabled: index === 0,
     createdAt: daysAgo(6 - index),
     updatedAt: daysAgo(6 - index),
   }));

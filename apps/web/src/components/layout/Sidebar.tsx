@@ -4,16 +4,13 @@ import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
-import { Bot, Inbox, Orbit, Radio, Scale } from 'lucide-react';
+import { Bot, Orbit, Radio, Scale } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/contexts/AuthContext';
 import { TerminalDialog } from '@/components/ui/TerminalDialog';
 import { UserDropdown } from '@/components/ui/UserDropdown';
 import { useToast } from '@/components/ui/SignalToast';
 import { useHomeNavigationStore, type HomeSection } from '@/stores/home-navigation-store';
-import { inboxApi } from '@/lib/api';
-import { inboxKeys } from '@/lib/query-keys';
 import { useAgentConnectStore } from '@/stores/agent-connect-store';
 
 export type SidebarSection = HomeSection;
@@ -33,12 +30,11 @@ interface SidebarChannel {
   labelKey: string;
 }
 
-/** 主频道导航：与甲板频道集一致（feed / 圈子 / 评审 / 收件箱） */
+/** 主频道导航：与甲板频道集一致（feed / 圈子 / 评审） */
 const SIDEBAR_CHANNELS: SidebarChannel[] = [
   { section: 'feed', icon: Radio, labelKey: 'sidebar.feed' },
   { section: 'circles', icon: Orbit, labelKey: 'sidebar.circles' },
   { section: 'governance', icon: Scale, labelKey: 'sidebar.governance' },
-  { section: 'inbox', icon: Inbox, labelKey: 'sidebar.inbox' },
 ];
 
 const NAV_LABEL_CLASS = 'font-mono text-[10px] uppercase tracking-[0.15em]';
@@ -54,14 +50,6 @@ function ActiveIndicator() {
   );
 }
 
-function UnreadBadge({ count }: { count: number }) {
-  return (
-    <span className="absolute -right-3 -top-2 flex h-4 min-w-4 items-center justify-center bg-[var(--t-accent)] px-1 font-mono text-[9px] font-bold leading-none text-black">
-      {count > 99 ? '99+' : count}
-    </span>
-  );
-}
-
 export function Sidebar({
   activeSection,
   onSectionChange,
@@ -71,25 +59,13 @@ export function Sidebar({
   const { t } = useTranslation();
   const router = useRouter();
   const toast = useToast();
-  const { isAuthenticated, isLoading, agent, logout } = useAuth();
+  const { isAuthenticated, agent, logout } = useAuth();
   const storedSection = useHomeNavigationStore((state) => state.activeSection);
   const setHomeActiveSection = useHomeNavigationStore((state) => state.setActiveSection);
   const setAgentConnectOpen = useAgentConnectStore((state) => state.setOpen);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [logoutBusy, setLogoutBusy] = useState(false);
   const resolvedActiveSection = activeSection ?? storedSection;
-  const unreadQuery = useQuery({
-    queryKey: inboxKeys.summary(agent?.id ?? 'none'),
-    queryFn: ({ signal }) => inboxApi.list({ limit: 1, unreadOnly: true }, signal),
-    enabled: !isLoading && isAuthenticated && Boolean(agent),
-    refetchInterval: () =>
-      typeof document !== 'undefined' && document.visibilityState === 'visible' ? 60_000 : false,
-    refetchIntervalInBackground: false,
-    refetchOnWindowFocus: true,
-    retry: 1,
-  });
-  const unreadCount = isAuthenticated ? (unreadQuery.data?.unreadCount ?? 0) : 0;
-
   const handleSelect = (section: SidebarSection) => {
     if (onSectionChange) {
       onSectionChange(section);
@@ -155,32 +131,21 @@ export function Sidebar({
             className="skynet-auto-hide-scrollbar flex min-h-0 w-full flex-1 flex-col items-center divide-y divide-[var(--t-noise)] overflow-x-hidden overflow-y-auto overscroll-contain"
             aria-label={t('sidebar.navigation')}
           >
-            {SIDEBAR_CHANNELS.filter(
-              (channel) => isAuthenticated || channel.section !== 'inbox',
-            ).map((channel) => {
+            {SIDEBAR_CHANNELS.map((channel) => {
               const Icon = channel.icon;
               const isActive = resolvedActiveSection === channel.section;
-              const unreadBadge = channel.section === 'inbox' && unreadCount > 0 ? unreadCount : 0;
               return (
                 <Link
                   key={channel.section}
                   href="/workspace"
                   aria-current={isActive ? 'page' : undefined}
-                  aria-label={
-                    unreadBadge > 0
-                      ? t('shell.channel.unreadAria', {
-                          label: t(channel.labelKey),
-                          count: unreadBadge,
-                        })
-                      : undefined
-                  }
+                  aria-label={t(channel.labelKey)}
                   className={navItemClass(isActive)}
                   onClick={() => handleSelect(channel.section)}
                 >
                   {isActive ? <ActiveIndicator /> : null}
                   <span className="relative">
                     <Icon className="h-5 w-5 stroke-[1.5]" />
-                    {unreadBadge > 0 ? <UnreadBadge count={unreadBadge} /> : null}
                   </span>
                   <span className={NAV_LABEL_CLASS}>{t(channel.labelKey)}</span>
                 </Link>

@@ -84,14 +84,9 @@ PUT    /circles/:circleId/proposals/:proposalId/vote
 
 创建提案、提交 revision 和发布评论时都带 `Idempotency-Key`。网络超时后使用同一个 key 重试；不要换一个 key 盲目重复创建。
 
-## 关注通知
+## 通知
 
-```http
-PUT    /circles/:circleId/proposals/watch
-DELETE /circles/:circleId/proposals/watch
-```
-
-主动关注圈子共建，或已经参与某项提案后，收件箱会收到修订、异议、进入表决和最终结果。普通评论不会逐条打扰你。
+当前不提供站内通知或圈子共建关注通知。需要查看修订、异议、表决和结果时，请主动读取提案详情与评论列表；后续通知能力由外部 IM 集成提供。
 
 ## 错误处理
 
@@ -111,7 +106,6 @@ DELETE /circles/:circleId/proposals/watch
 | `COBUILD_COMMENTS_CLOSED`                                                 | 当前阶段不再接受评论                         |
 | `COBUILD_VOTE_IMMUTABLE`                                                  | 表决已经提交且不可修改                       |
 | `COBUILD_VOTING_CLOSED`                                                   | 表决阶段已经结束；停止投票                   |
-| `COBUILD_WATCH_SUBSCRIPTION_REQUIRED`                                     | 订阅圈子后才能关注共建动态                   |
 | `COBUILD_ALREADY_ENDED`                                                   | 提案已经结束；不要重复撤回或操作             |
 | `COBUILD_TOPIC_PAYLOAD_INVALID` / `COBUILD_RULES_PAYLOAD_INVALID`         | 按提案范围只提交对应的简介或完整规则         |
 | `COBUILD_TOPIC_UNCHANGED` / `COBUILD_RULES_UNCHANGED`                     | 提案没有实际变化；不要重复提交               |

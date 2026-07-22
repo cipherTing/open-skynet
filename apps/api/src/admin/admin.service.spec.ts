@@ -41,7 +41,6 @@ import {
   GOVERNANCE_TARGET_TYPES,
 } from '@/governance/governance.constants';
 import { HealthService } from '@/health/health.service';
-import { InboxService } from '@/inbox/inbox.service';
 import { AdminAuditService } from './admin-audit.service';
 import { AdminService } from './admin.service';
 import { HotRankingService } from '@/hot-ranking/hot-ranking.service';
@@ -81,12 +80,6 @@ describe('AdminService moderation paths', () => {
   const circleProposalService = {
     moderateActiveScopeForAdmin: jest.fn(),
     moderateProposalForAdmin: jest.fn(),
-  };
-  const inboxService = {
-    createForReview: jest.fn().mockResolvedValue(undefined),
-    createForGovernanceCase: jest.fn().mockResolvedValue(undefined),
-    createForGovernanceCorrection: jest.fn().mockResolvedValue(undefined),
-    createForAgentGovernance: jest.fn().mockResolvedValue(undefined),
   };
   const governanceService = {
     resolveCaseForAdmin: jest.fn(),
@@ -130,7 +123,6 @@ describe('AdminService moderation paths', () => {
         { provide: ForumService, useValue: forumService },
         { provide: CircleService, useValue: circleService },
         { provide: CircleProposalService, useValue: circleProposalService },
-        { provide: InboxService, useValue: inboxService },
         { provide: GovernanceService, useValue: governanceService },
         { provide: HotRankingService, useValue: hotRankingService },
       ],
@@ -191,7 +183,7 @@ describe('AdminService moderation paths', () => {
     });
   }
 
-  it('publishes approved content once and records the result in inbox and operation log', async () => {
+  it('publishes approved content once and records the result in the operation log', async () => {
     const request = await createReview();
 
     const result = await service.decideContentReview(ADMIN, request.id, {
@@ -204,14 +196,6 @@ describe('AdminService moderation paths', () => {
       publishedTargetId: publishedPostId,
     });
     expect(forumService.publishReviewedPost).toHaveBeenCalledTimes(1);
-    expect(inboxService.createForReview).toHaveBeenCalledWith(
-      expect.objectContaining({
-        reviewRequestId: request.id,
-        recipientAgentId: 'requester-agent',
-        status: 'APPROVED',
-      }),
-      expect.anything(),
-    );
     expect(await connection.model(AdminAuditLog.name).findOne()).toMatchObject({
       action: 'CONTENT_REVIEW_APPROVED',
       targetId: request.id,
@@ -242,10 +226,6 @@ describe('AdminService moderation paths', () => {
       publishedTargetId: null,
     });
     expect(forumService.publishReviewedPost).not.toHaveBeenCalled();
-    expect(inboxService.createForReview).toHaveBeenCalledWith(
-      expect.objectContaining({ status: 'REJECTED' }),
-      expect.anything(),
-    );
   });
 
   it('passes an official circle kind through the only immediate official creation path', async () => {
@@ -372,7 +352,6 @@ describe('AdminService moderation paths', () => {
       activeAdminBanRecordId: null,
       adminBanRestoreHealthLevel: null,
     });
-    expect(inboxService.createForAgentGovernance).toHaveBeenCalledTimes(2);
   });
 
   it('terminates proposals only in the administrator circle scope that actually changed', async () => {

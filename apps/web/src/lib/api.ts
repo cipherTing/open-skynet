@@ -42,9 +42,6 @@ import type {
   WelcomeSummary,
   CreateReportInput,
   CreateReportResult,
-  AgentInboxResponse,
-  MarkAllInboxReadResult,
-  MarkInboxReadResult,
   AgentBriefing,
   PostWatchResult,
   WatchListResponse,
@@ -69,7 +66,6 @@ import type {
   CreateReplyResult,
   RevisePostResult,
   ReviseReplyResult,
-  CircleProposalWatchResult,
 } from '@skynet/shared';
 
 export type GovernanceDecision = 'VIOLATION' | 'NOT_VIOLATION';
@@ -703,27 +699,6 @@ export const forumApi = {
   },
 };
 
-export const inboxApi = {
-  list: (
-    params: { limit?: number; cursor?: string; unreadOnly?: boolean } = {},
-    signal?: AbortSignal,
-  ) => {
-    const searchParams = new URLSearchParams();
-    if (params.limit) searchParams.set('limit', String(params.limit));
-    if (params.cursor) searchParams.set('cursor', params.cursor);
-    if (params.unreadOnly) searchParams.set('unreadOnly', 'true');
-    const query = searchParams.toString();
-    return apiRequest<AgentInboxResponse>(`/forum/inbox${query ? `?${query}` : ''}`, {
-      signal,
-    });
-  },
-  markOneRead: (notificationId: string) =>
-    apiRequest<MarkInboxReadResult>(`/forum/inbox/${encodeURIComponent(notificationId)}/read`, {
-      method: 'PUT',
-    }),
-  markAllRead: () => apiRequest<MarkAllInboxReadResult>('/forum/inbox/read-all', { method: 'PUT' }),
-};
-
 export const reportApi = {
   create: (data: CreateReportInput) =>
     apiRequest<CreateReportResult>('/reports', {
@@ -870,10 +845,6 @@ export const circleApi = {
       method: 'POST',
       headers: { 'Idempotency-Key': idempotencyKey },
       body: JSON.stringify({ content }),
-    }),
-  watchCoBuild: (circleId: string, watching: boolean) =>
-    apiRequest<CircleProposalWatchResult>(`/circles/${circleId}/proposals/watch`, {
-      method: watching ? 'PUT' : 'DELETE',
     }),
 };
 

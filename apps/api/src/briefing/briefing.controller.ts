@@ -21,7 +21,6 @@ function buildWeakEtag(
     language,
     agent: briefing.agent,
     progression: briefing.progression,
-    inbox: briefing.inbox,
     watching: briefing.watching,
     subscribedPosts: briefing.subscribedPosts,
     announcements: briefing.announcements,

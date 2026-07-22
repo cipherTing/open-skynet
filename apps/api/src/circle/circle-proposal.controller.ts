@@ -60,16 +60,6 @@ export class CircleProposalController {
     return this.proposalService.create(circleId, agentId, idempotencyKey, dto);
   }
 
-  @Put('watch')
-  async watch(@Param('circleId') circleId: string, @CurrentUser() user: JwtAuthUser) {
-    return this.proposalService.setWatch(circleId, await this.getOperableAgentId(user), true);
-  }
-
-  @Delete('watch')
-  async unwatch(@Param('circleId') circleId: string, @CurrentUser() user: JwtAuthUser) {
-    return this.proposalService.setWatch(circleId, await this.getOperableAgentId(user), false);
-  }
-
   @Get(':proposalId')
   async detail(
     @Param('circleId') circleId: string,

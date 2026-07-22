@@ -51,7 +51,6 @@ import {
 } from '@/governance/governance.constants';
 import { FEATURE_FLAG_KEYS } from '@/database/schemas/feature-flag.schema';
 import { FeatureFlagService } from '@/system/feature-flag.service';
-import { InboxService } from '@/inbox/inbox.service';
 import {
   CONTENT_REVIEW_STATUSES,
   CONTENT_REVIEW_TYPES,
@@ -60,16 +59,15 @@ import {
 } from '@/database/schemas/content-review-request.schema';
 import { GovernanceCase } from '@/database/schemas/governance-case.schema';
 import { GOVERNANCE_CASE_STATUS, GOVERNANCE_TARGET_TYPES } from '@/governance/governance.constants';
-import { extractMentionAgentIds, MAX_MENTION_RECIPIENTS } from './mention-parser';
+import {
+  extractBoundedMentionAgentIds,
+  extractMentionAgentIds,
+  MAX_MENTION_RECIPIENTS,
+} from './mention-parser';
 import { POST_TAG_VALUES, type PostTag } from './post-tag.constants';
 import { apiMessage } from '@/common/i18n/api-message';
 import { translateApiText } from '@/common/i18n/api-language';
-import {
-  authErrors,
-  commonErrors,
-  forumErrors,
-  inboxErrors,
-} from '@/common/errors/business-errors';
+import { authErrors, commonErrors, forumErrors } from '@/common/errors/business-errors';
 import { HOT_POST_WINDOW_MS, HotRankingService } from '@/hot-ranking/hot-ranking.service';
 
 const AUTHOR_FIELDS = 'name description avatarSeed';
@@ -507,7 +505,6 @@ export class ForumService {
     private readonly progressionService: ProgressionService,
     private readonly redisService: RedisService,
     private readonly featureFlagService: FeatureFlagService,
-    private readonly inboxService: InboxService,
     private readonly hotRankingService: HotRankingService,
   ) {}
 
@@ -1588,7 +1585,9 @@ export class ForumService {
       }
     }
     const mentionedAgentIds = [
-      ...new Set(replies.flatMap((reply) => extractMentionAgentIds(reply.toJSON().content))),
+      ...new Set(
+        replies.flatMap((reply) => extractBoundedMentionAgentIds(reply.toJSON().content)),
+      ),
     ];
     const mentionedAgents = mentionedAgentIds.length
       ? await this.agentModel.find({ _id: { $in: mentionedAgentIds } }).select('name avatarSeed')
@@ -1600,7 +1599,7 @@ export class ForumService {
       ]),
     );
     const resolveMentions = (content: string) =>
-      extractMentionAgentIds(content).flatMap((agentId) => {
+      extractBoundedMentionAgentIds(content).flatMap((agentId) => {
         const agent = mentionedAgentMap.get(agentId);
         return agent ? [agent] : [];
       });
@@ -1817,7 +1816,7 @@ export class ForumService {
     const replyId = new Types.ObjectId();
     const mentionedAgentIds = extractMentionAgentIds(dto.content);
     if (mentionedAgentIds.length > MAX_MENTION_RECIPIENTS) {
-      throw inboxErrors.mentionLimitExceeded(MAX_MENTION_RECIPIENTS);
+      throw forumErrors.mentionLimitExceeded(MAX_MENTION_RECIPIENTS);
     }
     const isChildReply = Boolean(dto.parentReplyId);
     const { reply, progressDelta } = await this.databaseService.$transaction(async (session) => {
@@ -1828,7 +1827,14 @@ export class ForumService {
         throw commonErrors.postNotFound();
       }
       const circle = await this.circleService.ensureCircleExists(post.circleId, session);
-      let parentReplyAuthorId: string | null = null;
+      if (mentionedAgentIds.length > 0) {
+        const mentionedAgents = await this.agentModel
+          .find({ _id: { $in: mentionedAgentIds }, deletedAt: null }, '_id', { session })
+          .lean();
+        if (mentionedAgents.length !== mentionedAgentIds.length) {
+          throw forumErrors.mentionedAgentUnavailable();
+        }
+      }
       if (dto.parentReplyId) {
         const parentReply = await this.replyModel.findOne(
           { _id: dto.parentReplyId, deletedAt: null },
@@ -1844,7 +1850,6 @@ export class ForumService {
         if (parentReply.parentReplyId !== null) {
           throw forumErrors.nestedReplyNotAllowed();
         }
-        parentReplyAuthorId = parentReply.authorId;
       }
       const quote = dto.quote ? await this.resolveReplyQuote(dto.quote, post, session) : null;
       const actionDelta = await this.progressionService.applySuccessfulAction(
@@ -1879,17 +1884,6 @@ export class ForumService {
       }).save({ session });
       await this.postModel.findByIdAndUpdate(postId, { $inc: { replyCount: 1 } }, { session });
       await this.hotRankingService.markPostDirty(postId, session);
-      await this.inboxService.createForReply(
-        {
-          actorAgentId: agentId,
-          postAuthorId: post.authorId,
-          parentReplyAuthorId,
-          postId,
-          replyId: createdReply.id,
-          mentionedAgentIds,
-        },
-        session,
-      );
       return { reply: createdReply, progressDelta: actionDelta };
     });
 

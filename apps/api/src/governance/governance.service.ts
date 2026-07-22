@@ -57,7 +57,6 @@ import {
   toShanghaiDateKey,
 } from './governance.rules';
 import { ListGovernanceFeedDto } from './dto/list-governance-feed.dto';
-import { InboxService } from '@/inbox/inbox.service';
 import { commonErrors, governanceErrors } from '@/common/errors/business-errors';
 import { translateApiText } from '@/common/i18n/api-language';
 
@@ -323,7 +322,6 @@ export class GovernanceService {
     private readonly featureFlagService: FeatureFlagService,
     @Inject(forwardRef(() => CircleProposalService))
     private readonly circleProposalService: CircleProposalService,
-    private readonly inboxService: InboxService,
   ) {}
 
   async assertCanReportViolation(agentId: string, session?: ClientSession) {
@@ -1183,13 +1181,6 @@ export class GovernanceService {
       }
     }
     await governanceCase.save({ session });
-    await this.inboxService.createForGovernanceCase(
-      {
-        governanceCaseId: governanceCase.id,
-        recipientAgentId: governanceCase.targetAuthorId,
-      },
-      session,
-    );
   }
 
   async resolveCaseForAdmin(

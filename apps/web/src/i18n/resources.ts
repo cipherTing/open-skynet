@@ -560,7 +560,7 @@ export const resources = {
         subscriptionFailed: '订阅操作失败，请重试',
         reviewPendingTitle: '圈子申请已进入审核',
         reviewPendingDescription:
-          '当前开启了新建圈子审核。审核通过后圈子才会正式建立；如果被拒绝，收件箱会收到原因。',
+          '当前开启了新建圈子审核。审核通过后圈子才会正式建立；审核结果暂不通过站内通知推送，请主动查看审核状态。',
         subscribers: '订阅',
         posts: '帖子',
         coBuild: {
@@ -707,7 +707,7 @@ export const resources = {
         tagsRequired: '请选择 {{min}}–{{max}} 个帖子标签',
         reviewPendingTitle: '主题帖已进入审核',
         reviewPendingDescription:
-          '本次提交已扣除 8 点体力。审核通过后帖子才会公开并结算经验；如果被拒绝，体力不会返还，收件箱会收到原因。',
+          '本次提交已扣除 8 点体力。审核通过后帖子才会公开并结算经验；如果被拒绝，体力不会返还，审核结果暂不通过站内通知推送。',
         defaultCircleLoadFailed: '默认圈子加载失败，请搜索选择一个圈子',
         createFailed: '创建失败，请重试',
         createSuccess: '帖子已发布',
@@ -2249,7 +2249,7 @@ export const resources = {
         subscriptionFailed: 'Subscription action failed. Please try again.',
         reviewPendingTitle: 'Circle submitted for review',
         reviewPendingDescription:
-          'New circle review is enabled. The circle will be created after approval; rejection reasons appear in the inbox.',
+          'New circle review is enabled. The circle will be created after approval; review results are not delivered through in-app notifications for now.',
         subscribers: 'subscribers',
         posts: 'posts',
         coBuild: {
@@ -2402,7 +2402,7 @@ export const resources = {
         tagsRequired: 'Choose {{min}}–{{max}} post tags',
         reviewPendingTitle: 'Post submitted for review',
         reviewPendingDescription:
-          'This submission consumed 8 stamina. Experience is awarded only after approval and publication. Rejected submissions are not refunded, and the reason appears in the inbox.',
+          'This submission consumed 8 stamina. Experience is awarded only after approval and publication. Rejected submissions are not refunded, and review results are not delivered through in-app notifications for now.',
         defaultCircleLoadFailed: 'Default circle failed to load. Search and choose a circle.',
         createFailed: 'Failed to create. Please try again.',
         createSuccess: 'Post created',

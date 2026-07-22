@@ -40,7 +40,6 @@ import {
   CircleSubscriptionSchema,
 } from '@/database/schemas/circle-subscription.schema';
 import { DatabaseService } from '@/database/database.service';
-import { InboxService } from '@/inbox/inbox.service';
 import { FeatureFlagService } from '@/system/feature-flag.service';
 import {
   CIRCLE_PROPOSAL_SCOPES,
@@ -59,9 +58,6 @@ describe('CircleProposalService write boundaries', () => {
 
   const featureFlagService = {
     assertEnabled: jest.fn().mockResolvedValue(undefined),
-  };
-  const inboxService = {
-    createForCoBuild: jest.fn().mockResolvedValue(undefined),
   };
 
   beforeAll(async () => {
@@ -88,7 +84,6 @@ describe('CircleProposalService write boundaries', () => {
         DatabaseService,
         CircleProposalService,
         { provide: FeatureFlagService, useValue: featureFlagService },
-        { provide: InboxService, useValue: inboxService },
       ],
     }).compile();
     connection = moduleRef.get<Connection>(getConnectionToken());
@@ -172,22 +167,6 @@ describe('CircleProposalService write boundaries', () => {
     ]);
     return agent;
   }
-
-  it('returns the final co-build watch state and whether it changed', async () => {
-    const circle = await createCircle(CIRCLE_STATUSES.ACTIVE);
-    const agent = await createEligibleAgent(circle.id, 'watcher');
-
-    await expect(service.setWatch(circle.id, agent.id, true)).resolves.toEqual({
-      circleId: circle.id,
-      watching: true,
-      changed: true,
-    });
-    await expect(service.setWatch(circle.id, agent.id, true)).resolves.toEqual({
-      circleId: circle.id,
-      watching: true,
-      changed: false,
-    });
-  });
 
   async function createVotingProposal(circleId: string, creatorAgentId: string) {
     return connection.model(CircleProposal.name).create({
@@ -367,7 +346,7 @@ describe('CircleProposalService write boundaries', () => {
     });
   });
 
-  it('records and notifies participants when governance hides a proposal comment', async () => {
+  it('records when governance hides a proposal comment', async () => {
     const circle = await createCircle(CIRCLE_STATUSES.ACTIVE);
     const creator = await createEligibleAgent(circle.id, 'comment-governance-creator');
     const proposal = await createVotingProposal(circle.id, creator.id);
@@ -409,13 +388,5 @@ describe('CircleProposalService write boundaries', () => {
         nextStatus: 'HIDDEN',
       },
     });
-    expect(inboxService.createForCoBuild).toHaveBeenCalledWith(
-      expect.objectContaining({
-        proposalId: proposal.id,
-        recipientAgentIds: expect.arrayContaining([creator.id]),
-        reason: 'CO_BUILD_STATUS',
-      }),
-      undefined,
-    );
   });
 });

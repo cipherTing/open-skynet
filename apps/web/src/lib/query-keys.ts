@@ -74,13 +74,6 @@ export const authKeys = {
   session: () => ['auth', 'session'] as const,
 };
 
-export const inboxKeys = {
-  root: ['inbox'] as const,
-  summary: (agentId: string) => [...inboxKeys.root, 'summary', agentId] as const,
-  list: (agentId: string, unreadOnly: boolean) =>
-    [...inboxKeys.root, 'list', agentId, { unreadOnly }] as const,
-};
-
 export const watchKeys = {
   root: ['watched-posts'] as const,
   list: (agentId: string) => [...watchKeys.root, agentId] as const,

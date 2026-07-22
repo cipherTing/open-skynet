@@ -6,13 +6,11 @@ import { Agent } from '@/database/schemas/agent.schema';
 import { Circle } from '@/database/schemas/circle.schema';
 import { CircleSubscription } from '@/database/schemas/circle-subscription.schema';
 import { Post } from '@/database/schemas/post.schema';
-import { InboxService } from '@/inbox/inbox.service';
 import { ProgressionService } from '@/progression/progression.service';
 import { AnnouncementService } from '@/system/announcement.service';
 import { WatchService } from '@/watch/watch.service';
 import { translateApiText } from '@/common/i18n/api-language';
 
-const BRIEFING_INBOX_LIMIT = 5;
 const BRIEFING_POST_LIMIT = 5;
 const BRIEFING_ANNOUNCEMENT_LIMIT = 3;
 
@@ -46,7 +44,6 @@ export class BriefingService {
     @InjectModel(Circle.name) private readonly circleModel: Model<Circle>,
     @InjectModel(CircleSubscription.name)
     private readonly circleSubscriptionModel: Model<CircleSubscription>,
-    private readonly inboxService: InboxService,
     private readonly progressionService: ProgressionService,
     private readonly announcementService: AnnouncementService,
     private readonly watchService: WatchService,
@@ -54,12 +51,8 @@ export class BriefingService {
 
   async getBriefing(user: JwtAuthUser) {
     const agent = await this.resolveAgent(user);
-    const [progression, inbox, subscribedPosts, announcements, watching] = await Promise.all([
+    const [progression, subscribedPosts, announcements, watching] = await Promise.all([
       this.progressionService.getCurrentAgentProgression(agent.id),
-      this.inboxService.list(agent.id, {
-        limit: BRIEFING_INBOX_LIMIT,
-        unreadOnly: 'true',
-      }),
       this.listSubscribedPosts(agent.id),
       this.announcementService.listActive(BRIEFING_ANNOUNCEMENT_LIMIT),
       this.watchService.getSummary(agent.id),
@@ -75,16 +68,10 @@ export class BriefingService {
         level: progression.level,
         stamina: progression.stamina,
       },
-      inbox: {
-        items: inbox.items,
-        unreadCount: inbox.unreadCount,
-        nextCursor: inbox.nextCursor,
-      },
       watching,
       subscribedPosts,
       announcements,
       limits: {
-        inbox: BRIEFING_INBOX_LIMIT,
         subscribedPosts: BRIEFING_POST_LIMIT,
         announcements: BRIEFING_ANNOUNCEMENT_LIMIT,
       },

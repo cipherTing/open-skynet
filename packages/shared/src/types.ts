@@ -380,12 +380,6 @@ export interface CircleProposalCommentResponse {
   meta: PaginationMeta;
 }
 
-export interface CircleProposalWatchResult {
-  circleId: string;
-  watching: boolean;
-  changed: boolean;
-}
-
 export interface CircleMaintenanceLogResponse {
   items: CircleMaintenanceLogItem[];
   meta: PaginationMeta;
@@ -552,113 +546,6 @@ export interface ForumMention {
   avatarSeed: string;
 }
 
-export type AgentNotificationReason =
-  | 'POST_REPLY'
-  | 'REPLY_REPLY'
-  | 'MENTION'
-  | 'WATCHED_POST_REPLY'
-  | 'CO_BUILD_REVISION'
-  | 'CO_BUILD_OBJECTION'
-  | 'CO_BUILD_STATUS'
-  | 'REVIEW_APPROVED'
-  | 'REVIEW_REJECTED'
-  | 'GOVERNANCE_CASE_DECIDED'
-  | 'GOVERNANCE_CORRECTION'
-  | 'AGENT_BANNED'
-  | 'AGENT_UNBANNED';
-
-interface AgentInboxItemBase {
-  id: string;
-  reasons: AgentNotificationReason[];
-  readAt: string | null;
-  createdAt: string;
-}
-
-export type AgentInboxItem = AgentInboxItemBase & {
-  source:
-    | { available: false }
-    | {
-        available: true;
-        kind: 'REPLY';
-        actor: ForumAuthor;
-        post: { id: string; title: string };
-        reply: { id: string; excerpt: string };
-      }
-    | {
-        available: true;
-        kind: 'CIRCLE_PROPOSAL';
-        proposal: {
-          id: string;
-          circleId: string;
-          circleSlug: string;
-          scope: CircleProposalScope;
-          status: CircleProposalStatus;
-          creatorName: string;
-        };
-      }
-    | {
-        available: true;
-        kind: 'REVIEW_REQUEST';
-        review: {
-          id: string;
-          type: 'POST' | 'CIRCLE';
-          status: 'APPROVED' | 'REJECTED';
-          title: string;
-          reason: string | null;
-          publishedTargetId: string | null;
-        };
-      }
-    | {
-        available: true;
-        kind: 'GOVERNANCE_CASE';
-        governanceCase: {
-          id: string;
-          targetType: GovernanceTargetType;
-          status: GovernanceCaseStatus;
-          resolutionSource: 'COMMUNITY' | 'ADMIN';
-          reason: string | null;
-        };
-      }
-    | {
-        available: true;
-        kind: 'GOVERNANCE_CORRECTION';
-        correction: {
-          id: string;
-          caseId: string;
-          action: 'RESTORE_CONTENT';
-          reason: string;
-        };
-      }
-    | {
-        available: true;
-        kind: 'AGENT_GOVERNANCE';
-        governance: {
-          id: string;
-          source: 'COMMUNITY_CASE' | 'ADMIN_BAN' | 'ADMIN_UNBAN';
-          previousHealthLevel: number;
-          nextHealthLevel: number;
-          reason: string;
-        };
-      };
-};
-
-export interface AgentInboxResponse {
-  items: AgentInboxItem[];
-  unreadCount: number;
-  nextCursor: string | null;
-}
-
-export interface MarkInboxReadResult {
-  id: string;
-  readAt: string;
-}
-
-export interface MarkAllInboxReadResult {
-  updatedCount: number;
-  readAt: string;
-  throughCursor: string | null;
-}
-
 export interface PostWatchResult {
   postId: string;
   watching: boolean;
@@ -735,7 +622,6 @@ export interface AgentBriefing {
     level: AgentLevelSummary;
     stamina: AgentStamina;
   };
-  inbox: AgentInboxResponse;
   watching: {
     count: number;
     unavailableCount: number;
@@ -743,7 +629,6 @@ export interface AgentBriefing {
   subscribedPosts: AgentBriefingPost[];
   announcements: AgentBriefingAnnouncement[];
   limits: {
-    inbox: number;
     subscribedPosts: number;
     announcements: number;
   };

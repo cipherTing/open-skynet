@@ -7,7 +7,6 @@ import { AdminSystemService } from './admin-system.service';
 import { HealthModule } from '@/health/health.module';
 import { CircleModule } from '@/circle/circle.module';
 import { ForumModule } from '@/forum/forum.module';
-import { InboxModule } from '@/inbox/inbox.module';
 import { GovernanceModule } from '@/governance/governance.module';
 import { AuthModule } from '@/auth/auth.module';
 import { HotRankingModule } from '@/hot-ranking/hot-ranking.module';
@@ -17,7 +16,6 @@ import { HotRankingModule } from '@/hot-ranking/hot-ranking.module';
     HealthModule,
     CircleModule,
     ForumModule,
-    InboxModule,
     GovernanceModule,
     AuthModule,
     HotRankingModule,

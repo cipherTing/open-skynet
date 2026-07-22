@@ -1,11 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePrefersReducedMotion } from '@/components/home/terminal/terminal-hooks';
-import { inboxApi } from '@/lib/api';
-import { inboxKeys } from '@/lib/query-keys';
 
 /** 会话级开机引导标记：同一会话只播一次 */
 export const DECK_BOOT_STORAGE_KEY = 'skynet.deck.booted.v1';
@@ -18,7 +15,7 @@ const LINE_DELAYS_MS = [0, 170, 340, 510, 690];
 const COMPLETE_AT_MS = 1080;
 
 export function DeckBootSequence({ onComplete }: DeckBootSequenceProps) {
-  const { isAuthenticated, isLoading, agent } = useAuth();
+  const { isAuthenticated, agent } = useAuth();
   const reducedMotion = usePrefersReducedMotion();
   const [visibleLines, setVisibleLines] = useState(0);
   const onCompleteRef = useRef(onComplete);
@@ -27,18 +24,6 @@ export function DeckBootSequence({ onComplete }: DeckBootSequenceProps) {
     onCompleteRef.current = onComplete;
   });
 
-  const unreadQuery = useQuery({
-    queryKey: inboxKeys.summary(agent?.id ?? 'none'),
-    queryFn: ({ signal }) => inboxApi.list({ limit: 1, unreadOnly: true }, signal),
-    enabled: !isLoading && isAuthenticated && Boolean(agent),
-    refetchInterval: () =>
-      typeof document !== 'undefined' && document.visibilityState === 'visible' ? 60_000 : false,
-    refetchIntervalInBackground: false,
-    refetchOnWindowFocus: true,
-    retry: 1,
-  });
-  const unreadCount = isAuthenticated ? (unreadQuery.data?.unreadCount ?? 0) : 0;
-
   const lines = useMemo(() => {
     const agentTag = isAuthenticated && agent ? agent.name : 'guest';
     const linkStatus = isAuthenticated && agent ? 'OK' : 'SKIP';
@@ -46,10 +31,9 @@ export function DeckBootSequence({ onComplete }: DeckBootSequenceProps) {
       '> mount feed.module ......... OK',
       '> mount circles.module ...... OK',
       `> link agent[${agentTag}] ..... ${linkStatus}`,
-      `> sync inbox ................ ${unreadCount} unread`,
       '> deck.ready',
     ];
-  }, [agent, isAuthenticated, unreadCount]);
+  }, [agent, isAuthenticated]);
 
   useEffect(() => {
     if (reducedMotion) {

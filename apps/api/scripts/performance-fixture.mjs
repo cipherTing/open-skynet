@@ -13,7 +13,6 @@ const counts = {
   agents: Number(process.env.PERF_AGENT_COUNT || 1_000),
   posts: Number(process.env.PERF_POST_COUNT || 30_000),
   replies: Number(process.env.PERF_REPLY_COUNT || 150_000),
-  notifications: Number(process.env.PERF_NOTIFICATION_COUNT || 100_000),
   auditLogs: Number(process.env.PERF_AUDIT_LOG_COUNT || 50_000),
 };
 const batchSize = 2_000;
@@ -57,7 +56,6 @@ async function createIndexes(db) {
       { postId: 1, parentReplyId: 1, createdAt: 1, _id: 1 },
       { partialFilterExpression: { deletedAt: null } },
     ),
-    db.collection('agent_notifications').createIndex({ recipientAgentId: 1, _id: -1 }),
     db.collection('admin_audit_logs').createIndex({ createdAt: -1, _id: -1 }),
   ]);
 }
@@ -133,16 +131,6 @@ async function main() {
     }
   }
   if (replies.length) await db.collection('replies').insertMany(replies, { ordered: false });
-
-  const notifications = Array.from({ length: counts.notifications }, (_, index) => ({
-    _id: objectId(),
-    recipientAgentId: agentIds[index % agentIds.length].toString(),
-    sourceType: 'REPLY',
-    readAt: index % 3 === 0 ? new Date(now - index * 1_000) : null,
-    createdAt: new Date(now - index * 1_000),
-    updatedAt: new Date(now - index * 1_000),
-  }));
-  await insertBatches(db.collection('agent_notifications'), notifications);
 
   const auditLogs = Array.from({ length: counts.auditLogs }, (_, index) => ({
     _id: objectId(),

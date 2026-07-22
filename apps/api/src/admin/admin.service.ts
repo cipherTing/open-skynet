@@ -43,7 +43,6 @@ import {
 } from '@/database/schemas/content-review-request.schema';
 import { ForumService } from '@/forum/forum.service';
 import { CircleService } from '@/circle/circle.service';
-import { InboxService } from '@/inbox/inbox.service';
 import { CircleProposalService } from '@/circle/circle-proposal.service';
 import { CircleProposal } from '@/database/schemas/circle-proposal.schema';
 import type { CreateAdminCircleDto, UpdateAdminCircleDto } from './dto/admin-circle.dto';
@@ -138,7 +137,6 @@ export class AdminService {
     private readonly forumService: ForumService,
     private readonly circleService: CircleService,
     private readonly circleProposalService: CircleProposalService,
-    private readonly inboxService: InboxService,
     private readonly governanceService: GovernanceService,
     private readonly hotRankingService: HotRankingService,
   ) {}
@@ -350,10 +348,6 @@ export class AdminService {
       profile.adminBanRestoreHealthLevel = previousHealthLevel;
       profile.lastPenaltyAt = now;
       await profile.save({ session });
-      await this.inboxService.createForAgentGovernance(
-        { historyId: history.id, recipientAgentId: agentId, reason: 'AGENT_BANNED' },
-        session,
-      );
       await this.auditService.record({
         actorUserId: admin.userId,
         action: ADMIN_AUDIT_ACTIONS.AGENT_SUSPENDED,
@@ -406,10 +400,6 @@ export class AdminService {
       profile.activeAdminBanRecordId = null;
       profile.adminBanRestoreHealthLevel = null;
       await profile.save({ session });
-      await this.inboxService.createForAgentGovernance(
-        { historyId: history.id, recipientAgentId: agentId, reason: 'AGENT_UNBANNED' },
-        session,
-      );
       await this.auditService.record({
         actorUserId: admin.userId,
         action: ADMIN_AUDIT_ACTIONS.AGENT_UNSUSPENDED,
@@ -1098,13 +1088,6 @@ export class AdminService {
       const governanceCase = await this.governanceCaseModel.findById(caseId, null, { session });
       if (!governanceCase) throw new Error('治理纠正完成后案件记录缺失');
       await this.markHotDirtyForTarget(governanceCase.targetType, governanceCase.targetId, session);
-      await this.inboxService.createForGovernanceCorrection(
-        {
-          correctionId: correction.id,
-          recipientAgentId: governanceCase.targetAuthorId,
-        },
-        session,
-      );
       await this.auditService.record({
         actorUserId: admin.userId,
         action: ADMIN_AUDIT_ACTIONS.GOVERNANCE_CASE_CORRECTED,
@@ -1338,14 +1321,6 @@ export class AdminService {
       request.activeKey = null;
       request.pendingNameKey = null;
       await request.save({ session });
-      await this.inboxService.createForReview(
-        {
-          reviewRequestId: request.id,
-          recipientAgentId: request.requesterAgentId,
-          status,
-        },
-        session,
-      );
       await this.auditService.record({
         actorUserId: admin.userId,
         action:

@@ -48,12 +48,11 @@ async function main() {
   await mongoose.connect(uri, { autoIndex: false });
   const db = mongoose.connection.db;
   if (!db) throw new Error('MongoDB is not connected');
-  const [circle, post, agent] = await Promise.all([
+  const [circle, post] = await Promise.all([
     db.collection('circles').findOne({}),
     db.collection('posts').findOne({}),
-    db.collection('agents').findOne({}),
   ]);
-  if (!circle || !post || !agent) throw new Error('Generate the performance fixture first');
+  if (!circle || !post) throw new Error('Generate the performance fixture first');
 
   const hotCutoff = new Date(Date.now() - HOT_WINDOW_MS);
   const results = await Promise.all([
@@ -86,12 +85,6 @@ async function main() {
       .limit(21)
       .explain('executionStats'),
     db
-      .collection('agent_notifications')
-      .find({ recipientAgentId: agent._id.toString() })
-      .sort({ _id: -1 })
-      .limit(20)
-      .explain('executionStats'),
-    db
       .collection('admin_audit_logs')
       .find({})
       .sort({ createdAt: -1, _id: -1 })
@@ -103,7 +96,6 @@ async function main() {
     'hot-dirty-dispatch',
     'hot-candidate-rebuild',
     'top-replies',
-    'inbox',
     'admin-audit',
   ];
   console.log(

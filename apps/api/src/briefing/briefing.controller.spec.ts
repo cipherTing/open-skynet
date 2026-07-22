@@ -33,11 +33,10 @@ function makeBriefing(agentId: string) {
         settledAt: '2026-07-12T00:00:00.000Z',
       },
     },
-    inbox: { items: [], unreadCount: 0, nextCursor: null },
     watching: { count: 0, unavailableCount: 0 },
     subscribedPosts: [],
     announcements: [],
-    limits: { inbox: 5, subscribedPosts: 5, announcements: 3 },
+    limits: { subscribedPosts: 5, announcements: 3 },
   };
 }
 

@@ -25,9 +25,6 @@ export class CircleSubscription {
   @Prop({ type: String, required: true })
   circleId!: string;
 
-  @Prop({ type: Boolean, required: true, default: false })
-  coBuildWatchEnabled!: boolean;
-
   createdAt!: Date;
   updatedAt!: Date;
 }

@@ -12,8 +12,6 @@ export const commonErrors = {
   postNotFound: () => apiErrors.notFound('POST_NOT_FOUND', 'api.errors.postNotFound'),
   replyNotFound: () => apiErrors.notFound('REPLY_NOT_FOUND', 'api.errors.replyNotFound'),
   circleNotFound: () => apiErrors.notFound('CIRCLE_NOT_FOUND', 'api.errors.circleNotFound'),
-  notificationNotFound: () =>
-    apiErrors.notFound('NOTIFICATION_NOT_FOUND', 'api.errors.notificationNotFound'),
 };
 
 export const authErrors = {
@@ -75,16 +73,6 @@ export const userErrors = {
     apiErrors.conflict('AGENT_KEY_VERSION_CONFLICT', 'api.errors.agentKeyVersionConflict'),
   agentKeyNotCreated: () =>
     apiErrors.conflict('AGENT_KEY_NOT_CREATED', 'api.errors.agentKeyNotCreated'),
-};
-
-export const inboxErrors = {
-  mentionLimitExceeded: (limit: number) =>
-    apiErrors.badRequest('MENTION_LIMIT_EXCEEDED', 'api.errors.mentionLimitExceeded', {
-      args: { limit },
-      details: { limit },
-    }),
-  mentionedAgentUnavailable: () =>
-    apiErrors.badRequest('MENTIONED_AGENT_UNAVAILABLE', 'api.errors.mentionedAgentUnavailable'),
 };
 
 export const watchErrors = {
@@ -178,6 +166,13 @@ export const forumErrors = {
     apiErrors.badRequest('PARENT_REPLY_POST_MISMATCH', 'api.errors.parentReplyPostMismatch'),
   nestedReplyNotAllowed: () =>
     apiErrors.badRequest('NESTED_REPLY_NOT_ALLOWED', 'api.errors.nestedReplyNotAllowed'),
+  mentionLimitExceeded: (limit: number) =>
+    apiErrors.badRequest('MENTION_LIMIT_EXCEEDED', 'api.errors.mentionLimitExceeded', {
+      args: { limit },
+      details: { limit },
+    }),
+  mentionedAgentUnavailable: () =>
+    apiErrors.badRequest('MENTIONED_AGENT_UNAVAILABLE', 'api.errors.mentionedAgentUnavailable'),
   revisionHideReasonRequired: () =>
     apiErrors.badRequest('REVISION_HIDE_REASON_REQUIRED', 'api.errors.revisionHideReasonRequired'),
   revisionHideReasonUnexpected: () =>
@@ -301,11 +296,6 @@ export const circleProposalErrors = {
     ),
   subscriptionRequired: () =>
     apiErrors.forbidden('CIRCLE_SUBSCRIPTION_REQUIRED', 'api.errors.circleSubscriptionRequired'),
-  watchSubscriptionRequired: () =>
-    apiErrors.conflict(
-      'COBUILD_WATCH_SUBSCRIPTION_REQUIRED',
-      'api.errors.cobuildWatchSubscriptionRequired',
-    ),
   alreadyEnded: () => apiErrors.conflict('COBUILD_ALREADY_ENDED', 'api.errors.cobuildAlreadyEnded'),
   topicPayloadInvalid: () =>
     apiErrors.badRequest('COBUILD_TOPIC_PAYLOAD_INVALID', 'api.errors.cobuildTopicPayloadInvalid'),

@@ -28,7 +28,6 @@ import { FEATURE_FLAG_KEYS } from '@/database/schemas/feature-flag.schema';
 import { GOVERNANCE_HEALTH_LEVEL } from '@/governance/governance.constants';
 import { AGENT_LEVELS } from '@/progression/progression.constants';
 import { FeatureFlagService } from '@/system/feature-flag.service';
-import { InboxService } from '@/inbox/inbox.service';
 import {
   CIRCLE_MAINTENANCE_ACTIONS,
   CIRCLE_MAINTENANCE_ACTOR_TYPES,
@@ -152,7 +151,6 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
     private readonly governanceProfileModel: Model<AgentGovernanceProfile>,
     private readonly databaseService: DatabaseService,
     private readonly featureFlagService: FeatureFlagService,
-    private readonly inboxService: InboxService,
   ) {}
 
   onModuleInit(): void {
@@ -460,11 +458,6 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
       );
       if (updated.modifiedCount !== 1) throw circleProposalErrors.versionConflict();
     });
-    await this.notifyProposalParticipants(
-      await this.getProposal(circleId, proposalId),
-      'CO_BUILD_REVISION',
-      actorAgentId,
-    );
     return this.detail(circleId, proposalId, actorAgentId);
   }
 
@@ -523,13 +516,6 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
         { upsert: true, new: true, session },
       );
     });
-    if (dto.stance === CIRCLE_PROPOSAL_STANCES.OBJECTION) {
-      await this.notifyProposalParticipants(
-        await this.getProposal(circleId, proposalId),
-        'CO_BUILD_OBJECTION',
-        actorAgentId,
-      );
-    }
     return this.detail(circleId, proposalId, actorAgentId);
   }
 
@@ -782,18 +768,6 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
     return this.detail(circleId, proposalId, actorAgentId);
   }
 
-  async setWatch(circleId: string, actorAgentId: string, enabled: boolean) {
-    if (enabled) await this.getActiveCircle(circleId);
-    const subscription = await this.subscriptionModel.findOne({ circleId, agentId: actorAgentId });
-    if (!subscription) throw circleProposalErrors.watchSubscriptionRequired();
-    const changed = subscription.coBuildWatchEnabled !== enabled;
-    if (changed) {
-      subscription.coBuildWatchEnabled = enabled;
-      await subscription.save();
-    }
-    return { circleId, watching: subscription.coBuildWatchEnabled, changed };
-  }
-
   async moderateProposalForAdmin(
     circleId: string,
     proposalId: string,
@@ -906,12 +880,6 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
               proposal.votingDeadlineAt = votingDeadlineAt;
               proposal.version += 1;
               await proposal.save({ session });
-              await this.notifyProposalParticipants(
-                proposal,
-                'CO_BUILD_STATUS',
-                undefined,
-                session,
-              );
             }
           } else {
             await this.acceptProposal(proposal, transactionNow, session);
@@ -1020,7 +988,6 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
       ],
       { session },
     );
-    await this.notifyProposalParticipants(proposal, 'CO_BUILD_STATUS', undefined, session);
   }
 
   private async closeProposal(
@@ -1040,7 +1007,6 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
       { $inc: { activeProposalCount: -1 } },
       { session },
     );
-    await this.notifyProposalParticipants(proposal, 'CO_BUILD_STATUS', undefined, session);
   }
 
   async moderateProposalFromGovernance(
@@ -1087,7 +1053,6 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
       ],
       { session },
     );
-    await this.notifyProposalParticipants(proposal, 'CO_BUILD_STATUS', undefined, session);
     return true;
   }
 
@@ -1130,37 +1095,7 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
       ],
       { session },
     );
-    await this.notifyProposalParticipants(proposal, 'CO_BUILD_STATUS', undefined, session);
     return true;
-  }
-
-  private async notifyProposalParticipants(
-    proposal: CircleProposal,
-    reason: 'CO_BUILD_REVISION' | 'CO_BUILD_OBJECTION' | 'CO_BUILD_STATUS',
-    actorAgentId?: string,
-    session?: ClientSession,
-  ): Promise<void> {
-    const [watchers, stances] = await Promise.all([
-      this.subscriptionModel.find(
-        { circleId: proposal.circleId, coBuildWatchEnabled: true },
-        'agentId',
-        { session },
-      ),
-      this.stanceModel.find({ proposalId: proposal.id }, 'agentId', { session }),
-    ]);
-    await this.inboxService.createForCoBuild(
-      {
-        proposalId: proposal.id,
-        recipientAgentIds: [
-          proposal.creatorAgentId,
-          ...watchers.map((watcher) => watcher.agentId),
-          ...stances.map((stance) => stance.agentId),
-        ],
-        reason,
-        actorAgentId,
-      },
-      session,
-    );
   }
 
   private normalizePayload(

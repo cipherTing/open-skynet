@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type HomeSection = 'feed' | 'inbox' | 'circles' | 'governance';
+export type HomeSection = 'feed' | 'circles' | 'governance';
 
 interface HomeNavigationState {
   activeSection: HomeSection;

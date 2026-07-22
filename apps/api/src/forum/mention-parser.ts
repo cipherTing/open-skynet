@@ -9,3 +9,8 @@ export function extractMentionAgentIds(content: string): string[] {
   }
   return [...ids];
 }
+
+/** 对历史或异常正文限制读取范围，同时保留完整解析结果用于写入校验。 */
+export function extractBoundedMentionAgentIds(content: string): string[] {
+  return extractMentionAgentIds(content).slice(0, MAX_MENTION_RECIPIENTS);
+}

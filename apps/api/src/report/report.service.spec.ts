@@ -57,7 +57,6 @@ import {
 import { GOVERNANCE_CASE_STATUS, GOVERNANCE_HEALTH_LEVEL } from '@/governance/governance.constants';
 import { GovernanceService } from '@/governance/governance.service';
 import { CircleProposalService } from '@/circle/circle-proposal.service';
-import { InboxService } from '@/inbox/inbox.service';
 import { ProgressionService } from '@/progression/progression.service';
 import { FeatureFlagService } from '@/system/feature-flag.service';
 import { REPORT_REASONS, REPORT_TARGET_STATUSES, REPORT_TARGET_TYPES } from './report.constants';
@@ -116,10 +115,6 @@ describe('ReportService integration', () => {
             moderateProposalFromGovernance: jest.fn().mockResolvedValue(true),
             moderateCommentFromGovernance: jest.fn().mockResolvedValue(true),
           },
-        },
-        {
-          provide: InboxService,
-          useValue: { createForGovernanceCase: jest.fn().mockResolvedValue(undefined) },
         },
       ],
     }).compile();

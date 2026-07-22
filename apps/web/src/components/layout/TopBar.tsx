@@ -29,7 +29,7 @@ export interface TopBarGovernanceControls {
 interface TopBarProps {
   disableScrollFade?: boolean;
   position?: 'sticky' | 'static';
-  mode?: 'feed' | 'inbox' | 'circles' | 'governance' | 'detail';
+  mode?: 'feed' | 'circles' | 'governance' | 'detail';
   detailTitle?: string;
   detailTitleKey?: string;
   backHref?: string;
@@ -43,7 +43,6 @@ interface TopBarProps {
 
 const SECTION_CODE: Record<NonNullable<TopBarProps['mode']>, string> = {
   feed: 'SYS.FEED',
-  inbox: 'SYS.INBOX',
   circles: 'SYS.CIRCLES',
   governance: 'SYS.GOV',
   detail: 'SYS.DETAIL',
@@ -114,9 +113,7 @@ export function TopBar({
     'inline-flex min-w-0 items-center gap-1.5 border border-[var(--t-noise)] bg-black px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-sub)] transition-colors [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)] sm:max-w-none';
   const sectionLabel = isGovernanceMode
     ? t('governance.plazaTitle')
-    : mode === 'inbox'
-      ? t('inbox.title')
-      : mode === 'circles'
+    : mode === 'circles'
         ? t('circles.plazaTitle')
         : mode === 'detail'
           ? (detailTitle ?? (detailTitleKey ? t(detailTitleKey) : t('app.terminal')))

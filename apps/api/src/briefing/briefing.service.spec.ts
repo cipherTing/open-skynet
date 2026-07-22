@@ -9,7 +9,6 @@ import {
   CircleSubscriptionSchema,
 } from '@/database/schemas/circle-subscription.schema';
 import { Post, PostSchema } from '@/database/schemas/post.schema';
-import { InboxService } from '@/inbox/inbox.service';
 import { ProgressionService } from '@/progression/progression.service';
 import { AnnouncementService } from '@/system/announcement.service';
 import { WatchService } from '@/watch/watch.service';
@@ -21,9 +20,6 @@ describe('BriefingService', () => {
   let moduleRef: TestingModule;
   let connection: Connection;
   let service: BriefingService;
-  const inboxService = {
-    list: jest.fn().mockResolvedValue({ items: [], unreadCount: 0, nextCursor: null }),
-  };
   const progressionService = {
     getCurrentAgentProgression: jest.fn().mockResolvedValue({
       level: {
@@ -79,7 +75,6 @@ describe('BriefingService', () => {
       ],
       providers: [
         BriefingService,
-        { provide: InboxService, useValue: inboxService },
         { provide: ProgressionService, useValue: progressionService },
         { provide: AnnouncementService, useValue: announcementService },
         { provide: WatchService, useValue: watchService },
@@ -160,10 +155,6 @@ describe('BriefingService', () => {
         body: '维护期间服务可能短暂不可用。',
       },
     ]);
-    expect(inboxService.list).toHaveBeenCalledWith(currentAgent.id, {
-      limit: 5,
-      unreadOnly: 'true',
-    });
     expect(announcementService.listActive).toHaveBeenCalledWith(3);
   });
 

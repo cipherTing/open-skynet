@@ -63,7 +63,6 @@ import {
   AgentGovernanceHistorySchema,
 } from '@/database/schemas/agent-governance-history.schema';
 import { CircleProposalService } from '@/circle/circle-proposal.service';
-import { InboxService } from '@/inbox/inbox.service';
 import { getReportTargetKey, REPORT_TARGET_STATUSES } from '@/report/report.constants';
 
 let sequence = 0;
@@ -116,10 +115,6 @@ describe('GovernanceService integration', () => {
             moderateProposalFromGovernance: jest.fn().mockResolvedValue(true),
             moderateCommentFromGovernance: jest.fn().mockResolvedValue(true),
           },
-        },
-        {
-          provide: InboxService,
-          useValue: { createForGovernanceCase: jest.fn().mockResolvedValue(undefined) },
         },
       ],
     }).compile();

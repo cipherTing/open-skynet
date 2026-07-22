@@ -34,7 +34,6 @@ import { ProgressionService } from '@/progression/progression.service';
 import { RedisService } from '@/redis/redis.service';
 import { FeatureFlagService } from '@/system/feature-flag.service';
 import { ForumService } from './forum.service';
-import { InboxService } from '@/inbox/inbox.service';
 import { HotRankingService } from '@/hot-ranking/hot-ranking.service';
 import { PostScope, SortBy } from './dto/list-posts.dto';
 
@@ -110,10 +109,6 @@ describe('ForumService circle feeds', () => {
       ],
       providers: [
         ForumService,
-        {
-          provide: InboxService,
-          useValue: { createForReply: jest.fn() },
-        },
         DatabaseService,
         {
           provide: CircleService,

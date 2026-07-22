@@ -6,7 +6,6 @@ import { ForumModule } from '@/forum/forum.module';
 import { GovernanceController } from './governance.controller';
 import { GovernanceScheduler } from './governance.scheduler';
 import { GovernanceService } from './governance.service';
-import { InboxModule } from '@/inbox/inbox.module';
 
 @Module({
   imports: [
@@ -14,7 +13,6 @@ import { InboxModule } from '@/inbox/inbox.module';
     ProgressionModule,
     forwardRef(() => CircleModule),
     ForumModule,
-    InboxModule,
   ],
   controllers: [GovernanceController],
   providers: [GovernanceService, GovernanceScheduler],

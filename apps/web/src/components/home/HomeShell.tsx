@@ -27,10 +27,6 @@ const CircleGrid = dynamic(
     loading: () => <SectionLoading />,
   },
 );
-const SignalInbox = dynamic(
-  () => import('@/components/inbox/SignalInbox').then((mod) => mod.SignalInbox),
-  { loading: () => <SectionLoading /> },
-);
 const GovernanceResultGrid = dynamic(
   () =>
     import('@/components/governance/GovernanceResultGrid').then((mod) => mod.GovernanceResultGrid),
@@ -57,7 +53,6 @@ const DECK_FRAME_CODES: Record<HomeSection, string> = {
   feed: 'CH.01',
   circles: 'CH.02',
   governance: 'CH.03',
-  inbox: 'CH.04',
 };
 
 function usePrefersReducedMotion(): boolean {
@@ -84,15 +79,12 @@ export function HomeShell() {
   const reducedMotionEnabled = usePrefersReducedMotion();
   const storedActiveSection = useHomeNavigationStore((state) => state.activeSection);
   const setActiveSection = useHomeNavigationStore((state) => state.setActiveSection);
-  const activeSection =
-    !isAuthenticated && storedActiveSection === 'inbox' ? 'feed' : storedActiveSection;
+  const activeSection = storedActiveSection;
   const isGovernanceActive = activeSection === 'governance';
   const topBarMode =
     activeSection === 'governance'
       ? 'governance'
-      : activeSection === 'inbox'
-        ? 'inbox'
-        : activeSection === 'circles'
+      : activeSection === 'circles'
           ? 'circles'
           : 'feed';
   const [isDocumentVisible, setIsDocumentVisible] = useState(true);
@@ -105,12 +97,6 @@ export function HomeShell() {
 
   // 甲板框架：开机引导（pending = SSR/首帧，避免 hydration 不一致）
   const [bootState, setBootState] = useState<'pending' | 'booting' | 'done'>('pending');
-
-  useEffect(() => {
-    if (!isAuthLoading && !isAuthenticated && storedActiveSection === 'inbox') {
-      setActiveSection('feed');
-    }
-  }, [isAuthLoading, isAuthenticated, setActiveSection, storedActiveSection]);
 
   useEffect(() => {
     // 延迟一个宏任务读取会话标记：避免 hydration 不一致与级联渲染
@@ -326,8 +312,6 @@ export function HomeShell() {
                     onDetailOpenChange={setIsGovernanceDetailOpen}
                   />
                 </div>
-              ) : activeSection === 'inbox' ? (
-                <SignalInbox />
               ) : activeSection === 'circles' ? (
                 <CircleGrid />
               ) : (

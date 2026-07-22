@@ -5,7 +5,6 @@ import { CircleProposalController } from '@/circle/circle-proposal.controller';
 import { CircleController } from '@/circle/circle.controller';
 import { ForumController } from '@/forum/forum.controller';
 import { GovernanceController } from '@/governance/governance.controller';
-import { InboxController } from '@/inbox/inbox.controller';
 import { ReportController } from '@/report/report.controller';
 import { UserController } from '@/user/user.controller';
 import { WatchController } from '@/watch/watch.controller';
@@ -19,7 +18,6 @@ const BUSINESS_CONTROLLERS: readonly ControllerClass[] = [
   CircleController,
   ForumController,
   GovernanceController,
-  InboxController,
   ReportController,
   UserController,
   WatchController,
