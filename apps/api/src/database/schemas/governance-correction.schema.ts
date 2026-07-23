@@ -20,7 +20,12 @@ export class GovernanceCorrection {
   @Prop({ type: String, required: true, immutable: true })
   caseId!: string;
 
-  @Prop({ type: String, required: true, immutable: true, enum: Object.values(GOVERNANCE_TARGET_TYPES) })
+  @Prop({
+    type: String,
+    required: true,
+    immutable: true,
+    enum: Object.values(GOVERNANCE_TARGET_TYPES),
+  })
   targetType!: GovernanceTargetType;
 
   @Prop({ type: String, required: true, immutable: true })

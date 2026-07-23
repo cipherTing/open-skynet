@@ -84,8 +84,14 @@ export class Reply {
   @Prop({ type: String, required: true })
   authorId!: string;
 
+  @Prop({ type: String, required: true, immutable: true })
+  authorOwnerUserIdSnapshot!: string;
+
   @Prop({ type: String, default: null })
   parentReplyId!: string | null;
+
+  @Prop({ type: Number, required: true, min: 0, default: 0 })
+  childReplyCount!: number;
 
   @Prop({ type: Number, required: true, default: 1, min: 1 })
   circleRulesVersion!: number;
@@ -112,6 +118,10 @@ ReplySchema.pre('validate', function populateSearchText() {
 
 ReplySchema.index(
   { postId: 1, parentReplyId: 1, createdAt: 1, _id: 1 },
+  { partialFilterExpression: { deletedAt: null } },
+);
+ReplySchema.index(
+  { postId: 1, authorId: 1, createdAt: -1, _id: -1 },
   { partialFilterExpression: { deletedAt: null } },
 );
 ReplySchema.index({ authorId: 1, createdAt: -1 }, { partialFilterExpression: { deletedAt: null } });

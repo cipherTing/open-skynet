@@ -96,9 +96,11 @@ export type GovernanceTargetSnapshot =
   | GovernanceCircleProposalCommentSnapshot;
 
 function hasAtLeastThreeUniqueNonEmptyValues(value: string[]): boolean {
-  return value.length >= 3
-    && value.every((agentId) => agentId.trim().length > 0)
-    && new Set(value).size === value.length;
+  return (
+    value.length >= 3 &&
+    value.every((agentId) => agentId.trim().length > 0) &&
+    new Set(value).size === value.length
+  );
 }
 
 @Schema({
@@ -161,7 +163,12 @@ export class GovernanceCase {
   @Prop({ type: Object, required: true })
   targetSnapshot!: GovernanceTargetSnapshot;
 
-  @Prop({ type: String, required: true, enum: Object.values(GOVERNANCE_CASE_STATUS), default: GOVERNANCE_CASE_STATUS.OPEN })
+  @Prop({
+    type: String,
+    required: true,
+    enum: Object.values(GOVERNANCE_CASE_STATUS),
+    default: GOVERNANCE_CASE_STATUS.OPEN,
+  })
   status!: GovernanceCaseStatus;
 
   @Prop({ type: String, enum: Object.values(GOVERNANCE_CASE_STATUS), default: null })
@@ -209,6 +216,51 @@ export class GovernanceCase {
   @Prop({ type: Date, default: null })
   lastDispatchedAt!: Date | null;
 
+  @Prop({ type: Date, default: null })
+  nextTransitionAt!: Date | null;
+
+  @Prop({ type: Number, required: true, min: 1, default: 1 })
+  deadlineVersion!: number;
+
+  @Prop({ type: Number, required: true, min: 0, default: 0 })
+  deadlinePublishedVersion!: number;
+
+  @Prop({ type: Date, default: null })
+  deadlineScheduleDispatchAt!: Date | null;
+
+  @Prop({ type: Number, min: 1, default: null, select: false })
+  deadlineScheduleClaimVersion!: number | null;
+
+  @Prop({ type: String, default: null, select: false })
+  deadlineScheduleClaimToken!: string | null;
+
+  @Prop({ type: Date, default: null, select: false })
+  deadlineScheduleClaimExpiresAt!: Date | null;
+
+  @Prop({ type: String, default: null, select: false })
+  deadlineScheduleDeliveryToken!: string | null;
+
+  @Prop({ type: Date, default: null })
+  deadlineCompensationDispatchAt!: Date | null;
+
+  @Prop({ type: String, default: null, select: false })
+  deadlineCompensationClaimToken!: string | null;
+
+  @Prop({ type: Date, default: null, select: false })
+  deadlineCompensationClaimExpiresAt!: Date | null;
+
+  @Prop({ type: String, default: null, select: false })
+  deadlineCompensationDeliveryToken!: string | null;
+
+  @Prop({ type: Number, min: 1, default: null, select: false })
+  deadlineClaimVersion!: number | null;
+
+  @Prop({ type: String, default: null, select: false })
+  deadlineClaimToken!: string | null;
+
+  @Prop({ type: Date, default: null, select: false })
+  deadlineClaimExpiresAt!: Date | null;
+
   @Prop({ type: String, required: true })
   activeKey!: string;
 
@@ -223,7 +275,16 @@ GovernanceCaseSchema.index(
   { unique: true, partialFilterExpression: { activeKey: { $type: 'string' } } },
 );
 GovernanceCaseSchema.index({ targetType: 1, targetId: 1, targetContentVersion: 1, round: -1 });
-GovernanceCaseSchema.index({ status: 1, normalDeadlineAt: 1, emergencyDeadlineAt: 1, openedAt: 1 });
+GovernanceCaseSchema.index({
+  status: 1,
+  emergencyDeadlineAt: 1,
+  normalDeadlineAt: 1,
+  openedAt: 1,
+  _id: 1,
+});
 GovernanceCaseSchema.index({ targetAuthorId: 1, status: 1 });
 GovernanceCaseSchema.index({ status: 1, resolvedAt: -1, _id: -1 });
 GovernanceCaseSchema.index({ resolvedAt: -1, _id: -1 });
+GovernanceCaseSchema.index({ status: 1, nextTransitionAt: 1, _id: 1 });
+GovernanceCaseSchema.index({ status: 1, deadlineScheduleDispatchAt: 1, _id: 1 });
+GovernanceCaseSchema.index({ status: 1, deadlineCompensationDispatchAt: 1, _id: 1 });

@@ -31,11 +31,17 @@ export class Feedback {
   @Prop({ type: String, required: true })
   agentId!: string;
 
+  @Prop({ type: String, required: true, immutable: true })
+  agentOwnerUserIdSnapshot!: string;
+
   @Prop({ type: String, default: null })
   postId!: string | null;
 
   @Prop({ type: String, default: null })
   replyId!: string | null;
+
+  @Prop({ type: String, required: true })
+  contextPostId!: string;
 
   createdAt!: Date;
   updatedAt!: Date;
@@ -66,5 +72,12 @@ FeedbackSchema.index(
   { agentId: 1, replyId: 1, targetType: 1 },
   { unique: true, partialFilterExpression: { replyId: { $type: 'string' } } },
 );
-FeedbackSchema.index({ targetType: 1, postId: 1, type: 1 }, { partialFilterExpression: { postId: { $type: 'string' } } });
-FeedbackSchema.index({ targetType: 1, replyId: 1, type: 1 }, { partialFilterExpression: { replyId: { $type: 'string' } } });
+FeedbackSchema.index(
+  { targetType: 1, postId: 1, type: 1 },
+  { partialFilterExpression: { postId: { $type: 'string' } } },
+);
+FeedbackSchema.index(
+  { targetType: 1, replyId: 1, type: 1, _id: 1 },
+  { partialFilterExpression: { replyId: { $type: 'string' } } },
+);
+FeedbackSchema.index({ contextPostId: 1, agentId: 1, type: 1, _id: 1 });

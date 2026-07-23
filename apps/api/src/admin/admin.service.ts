@@ -58,6 +58,7 @@ import { GovernanceCorrection } from '@/database/schemas/governance-correction.s
 import { normalizeCircleVisibleText } from '@/circle/circle-normalization';
 import { translateApiText } from '@/common/i18n/api-language';
 import { HotRankingService } from '@/hot-ranking/hot-ranking.service';
+import { ReplyCounterService } from '@/forum/reply-counter.service';
 import {
   adminErrors,
   circleErrors,
@@ -88,10 +89,6 @@ function escapeRegex(value: string): string {
 
 function ensureObjectId(id: string, errorFactory: () => Error): void {
   if (!Types.ObjectId.isValid(id)) throw errorFactory();
-}
-
-function assertNever(value: never): never {
-  throw new Error(`未支持的业务类型: ${String(value)}`);
 }
 
 function levelForXp(xp: number) {
@@ -139,6 +136,7 @@ export class AdminService {
     private readonly circleProposalService: CircleProposalService,
     private readonly governanceService: GovernanceService,
     private readonly hotRankingService: HotRankingService,
+    private readonly replyCounterService: ReplyCounterService,
   ) {}
 
   async overview() {
@@ -634,6 +632,7 @@ export class AdminService {
       let targetAuthorId: string;
       let targetContentVersion: number;
       let postId = id;
+      let parentReplyId: string | null = null;
       if (type === REPORT_TARGET_TYPES.POST) {
         const post = await this.postModel.findOne(
           { _id: id, deletedAt: { $exists: true } },
@@ -646,13 +645,14 @@ export class AdminService {
       } else {
         const reply = await this.replyModel.findOne(
           { _id: id, deletedAt: { $exists: true } },
-          'authorId contentVersion postId',
+          'authorId contentVersion postId parentReplyId',
           { session },
         );
         if (!reply) throw adminErrors.contentNotFound();
         targetAuthorId = reply.authorId;
         targetContentVersion = reply.contentVersion;
         postId = reply.postId;
+        parentReplyId = reply.parentReplyId;
       }
       await this.syncReportTargetRemoval(
         type,
@@ -671,7 +671,16 @@ export class AdminService {
           ? adminErrors.contentRemovalConflict()
           : adminErrors.contentRestoreForbidden();
       }
-      await this.hotRankingService.markPostDirty(postId, session);
+      if (type === REPORT_TARGET_TYPES.POST) {
+        await this.hotRankingService.recordPostVisibilityChanged(postId, session);
+      } else {
+        await this.replyCounterService.applyReplyVisibilityDelta(
+          { parentReplyId },
+          removed ? -1 : 1,
+          session,
+        );
+        await this.hotRankingService.recordReplyVisibilityChanged(id, session);
+      }
       await this.auditService.record({
         actorUserId: admin.userId,
         action: removed
@@ -757,7 +766,6 @@ export class AdminService {
       });
       return this.circleService.serializeCircleForAdmin(circle);
     });
-    await this.circleService.invalidateActiveCircleIdsCache();
     return result;
   }
 
@@ -906,7 +914,6 @@ export class AdminService {
       });
       return this.circleService.serializeCircleForAdmin(circle);
     });
-    await this.circleService.invalidateActiveCircleIdsCache();
     return result;
   }
 
@@ -1048,7 +1055,6 @@ export class AdminService {
         admin.userId,
         session,
       );
-      await this.markHotDirtyForTarget(governanceCase.targetType, governanceCase.targetId, session);
       await this.auditService.record({
         actorUserId: admin.userId,
         action: ADMIN_AUDIT_ACTIONS.GOVERNANCE_CASE_ADJUDICATED,
@@ -1087,7 +1093,6 @@ export class AdminService {
       );
       const governanceCase = await this.governanceCaseModel.findById(caseId, null, { session });
       if (!governanceCase) throw new Error('治理纠正完成后案件记录缺失');
-      await this.markHotDirtyForTarget(governanceCase.targetType, governanceCase.targetId, session);
       await this.auditService.record({
         actorUserId: admin.userId,
         action: ADMIN_AUDIT_ACTIONS.GOVERNANCE_CASE_CORRECTED,
@@ -1124,32 +1129,6 @@ export class AdminService {
       nextRound: result.nextRound,
       createdAt: result.createdAt,
     };
-  }
-
-  private async markHotDirtyForTarget(
-    targetType: GovernanceCase['targetType'],
-    targetId: string,
-    session: ClientSession,
-  ): Promise<void> {
-    switch (targetType) {
-      case GOVERNANCE_TARGET_TYPES.POST:
-        await this.hotRankingService.markPostDirty(targetId, session);
-        return;
-      case GOVERNANCE_TARGET_TYPES.REPLY: {
-        const reply = await this.replyModel
-          .findOne({ _id: targetId, deletedAt: { $exists: true } }, null, { session })
-          .select('postId')
-          .lean<{ postId: string } | null>();
-        if (!reply) throw adminErrors.contentNotFound();
-        await this.hotRankingService.markPostDirty(reply.postId, session);
-        return;
-      }
-      case GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL:
-      case GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL_COMMENT:
-        return;
-      default:
-        assertNever(targetType);
-    }
   }
 
   private getGovernanceTargetSummary(governanceCase: GovernanceCase) {
@@ -1346,7 +1325,6 @@ export class AdminService {
       result.type === CONTENT_REVIEW_TYPES.CIRCLE &&
       result.status === CONTENT_REVIEW_STATUSES.APPROVED
     ) {
-      await this.circleService.invalidateActiveCircleIdsCache();
     }
     return result;
   }

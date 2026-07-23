@@ -1,11 +1,4 @@
-import {
-  ConflictException,
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-  OnModuleDestroy,
-  OnModuleInit,
-} from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types, type ClientSession } from 'mongoose';
 import { Agent } from '@/database/schemas/agent.schema';
@@ -58,7 +51,6 @@ import { isApiMessage } from '@/common/i18n/api-message';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
-const ADVANCE_INTERVAL_MS = 60 * 1000;
 const IDEMPOTENCY_KEY_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const ACTIVE_STATUSES: CircleProposalStatus[] = [
@@ -66,6 +58,20 @@ const ACTIVE_STATUSES: CircleProposalStatus[] = [
   CIRCLE_PROPOSAL_STATUSES.VOTING,
 ];
 const PUBLIC_AGENT_FIELDS = 'name avatarSeed userId deletedAt';
+const FORMAL_PARTICIPANT_LEVEL = 4;
+const CIRCLE_PROPOSAL_COLLECTIONS = {
+  AGENTS: 'agents',
+  AGENT_PROGRESS: 'agent_progresses',
+  AGENT_GOVERNANCE_PROFILES: 'agent_governance_profiles',
+} as const;
+
+function getMinimumXpForLevel(level: number): number {
+  const configuration = AGENT_LEVELS.find((item) => item.level === level);
+  if (!configuration) throw new Error(`Agent 等级配置不存在: ${level}`);
+  return configuration.minXp;
+}
+
+const FORMAL_PARTICIPANT_MIN_XP = getMinimumXpForLevel(FORMAL_PARTICIPANT_LEVEL);
 
 interface Participant {
   agentId: string;
@@ -81,8 +87,21 @@ interface ProposalPayload {
   rulesSnapshot: CircleRuleItem[] | null;
 }
 
+interface EligibleMemberSummary {
+  eligibleMemberCount: number;
+  actorIncluded: boolean;
+}
+
 function addHours(date: Date, hours: number): Date {
   return new Date(date.getTime() + hours * HOUR_MS);
+}
+
+function earlierDate(left: Date, right: Date): Date {
+  return left.getTime() <= right.getTime() ? left : right;
+}
+
+function getCompensationDispatchAt(nextTransitionAt: Date, now: Date): Date {
+  return nextTransitionAt.getTime() <= now.getTime() ? now : nextTransitionAt;
 }
 
 function normalizeMarkdown(value: string): string {
@@ -126,9 +145,7 @@ function isDuplicateKeyError(error: unknown): boolean {
 }
 
 @Injectable()
-export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
-  private advanceTimer: NodeJS.Timeout | null = null;
-
+export class CircleProposalService {
   constructor(
     @InjectModel(Circle.name) private readonly circleModel: Model<Circle>,
     @InjectModel(CircleSubscription.name)
@@ -153,21 +170,7 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
     private readonly featureFlagService: FeatureFlagService,
   ) {}
 
-  onModuleInit(): void {
-    this.advanceTimer = setInterval(() => {
-      void this.advanceDueProposals().catch((error: unknown) => {
-        console.error('圈子共建提案自动结算失败', error);
-      });
-    }, ADVANCE_INTERVAL_MS);
-    this.advanceTimer.unref();
-  }
-
-  onModuleDestroy(): void {
-    if (this.advanceTimer) clearInterval(this.advanceTimer);
-  }
-
   async list(circleId: string, dto: ListCircleProposalsDto, viewerAgentId?: string) {
-    await this.advanceDueProposals(circleId);
     const circle = await this.getCircle(circleId);
     const page = dto.page ?? 1;
     const pageSize = dto.pageSize ?? 20;
@@ -189,28 +192,46 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
   }
 
   async detail(circleId: string, proposalId: string, viewerAgentId?: string) {
-    await this.advanceDueProposals(circleId);
     const proposal = await this.getProposal(circleId, proposalId);
-    const [revisions, activeStances, votes, eligibility, viewerOwnerUserId] = await Promise.all([
-      this.revisionModel.find({ proposalId }).sort({ revisionNumber: 1 }),
-      this.stanceModel
-        .find({
-          proposalId,
-          revisionNumber: proposal.currentRevisionNumber,
-          withdrawnAt: null,
-        })
-        .sort({ createdAt: 1 }),
-      this.voteModel.find({ proposalId }).sort({ createdAt: 1 }),
-      viewerAgentId ? this.getEligibility(circleId, viewerAgentId) : Promise.resolve(null),
-      viewerAgentId ? this.resolveOwnerUserId(viewerAgentId) : Promise.resolve(null),
-    ]);
     const terminal = !ACTIVE_STATUSES.includes(proposal.status);
-    const currentStance = viewerAgentId
-      ? (activeStances.find((stance) => stance.ownerUserIdSnapshot === viewerOwnerUserId) ?? null)
-      : null;
-    const currentVote = viewerAgentId
-      ? (votes.find((vote) => vote.ownerUserIdSnapshot === viewerOwnerUserId) ?? null)
-      : null;
+    const viewerOwnerUserId = viewerAgentId ? await this.resolveOwnerUserId(viewerAgentId) : null;
+    const activeStanceFilter = {
+      proposalId,
+      revisionNumber: proposal.currentRevisionNumber,
+      withdrawnAt: null,
+    };
+    const [
+      revisions,
+      supportCount,
+      objectionCount,
+      currentStance,
+      currentVote,
+      terminalVotes,
+      eligibility,
+    ] = await Promise.all([
+      this.revisionModel.find({ proposalId }).sort({ revisionNumber: 1 }),
+      this.stanceModel.countDocuments({
+        ...activeStanceFilter,
+        stance: CIRCLE_PROPOSAL_STANCES.SUPPORT,
+      }),
+      this.stanceModel.countDocuments({
+        ...activeStanceFilter,
+        stance: CIRCLE_PROPOSAL_STANCES.OBJECTION,
+      }),
+      viewerOwnerUserId
+        ? this.stanceModel.findOne({
+            ...activeStanceFilter,
+            ownerUserIdSnapshot: viewerOwnerUserId,
+          })
+        : Promise.resolve(null),
+      viewerOwnerUserId
+        ? this.voteModel.findOne({ proposalId, ownerUserIdSnapshot: viewerOwnerUserId })
+        : Promise.resolve(null),
+      terminal
+        ? this.voteModel.find({ proposalId }).sort({ createdAt: 1, _id: 1 })
+        : Promise.resolve([]),
+      viewerAgentId ? this.getEligibility(circleId, viewerAgentId) : Promise.resolve(null),
+    ]);
     return {
       ...this.serializeSummary(proposal),
       base: {
@@ -227,23 +248,19 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
         createdAt: revision.createdAt.toISOString(),
       })),
       stance: {
-        supportCount: activeStances.filter(
-          (item) => item.stance === CIRCLE_PROPOSAL_STANCES.SUPPORT,
-        ).length,
-        objectionCount: activeStances.filter(
-          (item) => item.stance === CIRCLE_PROPOSAL_STANCES.OBJECTION,
-        ).length,
+        supportCount,
+        objectionCount,
         current: currentStance
           ? { stance: currentStance.stance, reason: currentStance.reason }
           : null,
       },
       voting: {
-        participantCount: votes.length,
+        participantCount: proposal.approveCount + proposal.rejectCount,
         approveCount: terminal ? proposal.approveCount : null,
         rejectCount: terminal ? proposal.rejectCount : null,
         currentChoice: currentVote?.choice ?? null,
         voters: terminal
-          ? votes.map((vote) => ({
+          ? terminalVotes.map((vote) => ({
               agent: {
                 id: vote.agentId,
                 name: vote.agentNameSnapshot,
@@ -282,15 +299,25 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
           throw circleProposalErrors.circleVersionConflict();
         }
         const payload = this.normalizePayload(circle, dto.scope, dto);
-        const eligibleMembers = await this.getEligibleMembers(circle.id, session);
-        if (eligibleMembers.length < 3) {
+        const eligibleMembers = await this.getEligibleMemberSummary(
+          circle.id,
+          actor.ownerUserId,
+          session,
+        );
+        if (eligibleMembers.eligibleMemberCount < 3) {
           throw circleProposalErrors.eligibleMembersInsufficient(3);
         }
-        if (!eligibleMembers.some((member) => member.ownerUserId === actor.ownerUserId)) {
+        if (!eligibleMembers.actorIncluded) {
           throw circleProposalErrors.notEligible();
         }
         const now = new Date();
-        const quorum = Math.min(20, Math.max(3, Math.ceil(eligibleMembers.length * 0.1)));
+        const quorum = Math.min(
+          20,
+          Math.max(3, Math.ceil(eligibleMembers.eligibleMemberCount * 0.1)),
+        );
+        const discussionDeadlineAt = addHours(now, CIRCLE_PROPOSAL_DISCUSSION_HOURS);
+        const expiresAt = new Date(now.getTime() + CIRCLE_PROPOSAL_MAX_LIFETIME_DAYS * DAY_MS);
+        const nextTransitionAt = earlierDate(discussionDeadlineAt, expiresAt);
         const proposal = new this.proposalModel({
           circleId: circle.id,
           scope: dto.scope,
@@ -306,13 +333,18 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
               ? circle.rules.map((rule) => ({ ...rule }))
               : null,
           currentRevisionNumber: 1,
-          eligibleMemberCountSnapshot: eligibleMembers.length,
+          eligibleMemberCountSnapshot: eligibleMembers.eligibleMemberCount,
           quorumSnapshot: quorum,
           version: 1,
           participationVersion: 0,
-          discussionDeadlineAt: addHours(now, CIRCLE_PROPOSAL_DISCUSSION_HOURS),
+          discussionDeadlineAt,
           votingDeadlineAt: null,
-          expiresAt: new Date(now.getTime() + CIRCLE_PROPOSAL_MAX_LIFETIME_DAYS * DAY_MS),
+          expiresAt,
+          nextTransitionAt,
+          deadlineVersion: 1,
+          deadlinePublishedVersion: 0,
+          deadlineScheduleDispatchAt: now,
+          deadlineCompensationDispatchAt: getCompensationDispatchAt(nextTransitionAt, now),
           resolvedAt: null,
           approveCount: 0,
           rejectCount: 0,
@@ -410,6 +442,8 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
       }
       const payload = this.normalizePayload(circle, proposal.scope, dto);
       const nextRevisionNumber = proposal.currentRevisionNumber + 1;
+      const discussionDeadlineAt = addHours(now, CIRCLE_PROPOSAL_DISCUSSION_HOURS);
+      const nextTransitionAt = earlierDate(discussionDeadlineAt, proposal.expiresAt);
       await this.revisionModel.create(
         [
           {
@@ -441,22 +475,38 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
         ],
         { session },
       );
+      const writeNow = new Date();
       const updated = await this.proposalModel.updateOne(
         {
           _id: proposal.id,
           version: dto.expectedVersion,
           status: CIRCLE_PROPOSAL_STATUSES.DISCUSSION,
+          discussionDeadlineAt: { $gt: writeNow },
+          expiresAt: { $gt: writeNow },
         },
         {
           $set: {
             currentRevisionNumber: nextRevisionNumber,
-            discussionDeadlineAt: addHours(now, CIRCLE_PROPOSAL_DISCUSSION_HOURS),
+            discussionDeadlineAt,
+            nextTransitionAt,
+            deadlineScheduleDispatchAt: writeNow,
+            deadlineScheduleClaimVersion: null,
+            deadlineScheduleClaimToken: null,
+            deadlineScheduleClaimExpiresAt: null,
+            deadlineScheduleDeliveryToken: null,
+            deadlineClaimVersion: null,
+            deadlineClaimToken: null,
+            deadlineClaimExpiresAt: null,
+            deadlineCompensationDispatchAt: getCompensationDispatchAt(nextTransitionAt, writeNow),
+            deadlineCompensationClaimToken: null,
+            deadlineCompensationClaimExpiresAt: null,
+            deadlineCompensationDeliveryToken: null,
           },
-          $inc: { version: 1 },
+          $inc: { version: 1, deadlineVersion: 1 },
         },
         { session },
       );
-      if (updated.modifiedCount !== 1) throw circleProposalErrors.versionConflict();
+      if (updated.modifiedCount !== 1) throw circleProposalErrors.discussionClosed();
     });
     return this.detail(circleId, proposalId, actorAgentId);
   }
@@ -467,7 +517,6 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
     actorAgentId: string,
     dto: SetCircleProposalStanceDto,
   ) {
-    await this.advanceDueProposals(circleId);
     const reason = dto.reason ? normalizeMarkdown(dto.reason) : null;
     if (dto.stance === CIRCLE_PROPOSAL_STANCES.OBJECTION && !reason) {
       throw circleProposalErrors.objectionReasonRequired();
@@ -525,7 +574,6 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
     actorAgentId: string,
     dto: ExpectedCircleProposalVersionDto,
   ) {
-    await this.advanceDueProposals(circleId);
     await this.databaseService.$transaction(async (session) => {
       const circle = await this.getActiveCircle(circleId, session);
       const actor = await this.getParticipant(circle.id, actorAgentId, true, session);
@@ -568,7 +616,6 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
     dto: CreateCircleProposalCommentDto,
   ) {
     const idempotencyKey = assertIdempotencyKey(idempotencyKeyHeader);
-    await this.advanceDueProposals(circleId);
     const actor = await this.getParticipant(circleId, actorAgentId, false);
     const existing = await this.commentModel.findOne({
       authorOwnerUserIdSnapshot: actor.ownerUserId,
@@ -663,7 +710,6 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
     actorAgentId: string,
     dto: CastCircleProposalVoteDto,
   ) {
-    await this.advanceDueProposals(circleId);
     const actor = await this.getParticipant(circleId, actorAgentId, true);
     const existingVote = await this.voteModel.findOne({
       proposalId,
@@ -763,7 +809,51 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
       ) {
         throw circleProposalErrors.authorWithdrawalRequired();
       }
-      await this.closeProposal(proposal, CIRCLE_PROPOSAL_STATUSES.WITHDRAWN, new Date(), session);
+      const now = new Date();
+      if (proposal.discussionDeadlineAt <= now || proposal.expiresAt <= now) {
+        throw circleProposalErrors.discussionClosed();
+      }
+      const terminalDeadlineVersion = proposal.deadlineVersion + 1;
+      const closed = await this.proposalModel.updateOne(
+        {
+          _id: proposal.id,
+          version: dto.expectedVersion,
+          status: CIRCLE_PROPOSAL_STATUSES.DISCUSSION,
+          discussionDeadlineAt: { $gt: now },
+          expiresAt: { $gt: now },
+        },
+        {
+          $set: {
+            status: CIRCLE_PROPOSAL_STATUSES.WITHDRAWN,
+            resolvedAt: now,
+            activeKey: null,
+            activeGovernanceCaseId: null,
+            nextTransitionAt: null,
+            deadlineVersion: terminalDeadlineVersion,
+            deadlinePublishedVersion: terminalDeadlineVersion,
+            deadlineScheduleDispatchAt: null,
+            deadlineScheduleClaimVersion: null,
+            deadlineScheduleClaimToken: null,
+            deadlineScheduleClaimExpiresAt: null,
+            deadlineScheduleDeliveryToken: null,
+            deadlineClaimVersion: null,
+            deadlineClaimToken: null,
+            deadlineClaimExpiresAt: null,
+            deadlineCompensationDispatchAt: null,
+            deadlineCompensationClaimToken: null,
+            deadlineCompensationClaimExpiresAt: null,
+            deadlineCompensationDeliveryToken: null,
+          },
+          $inc: { version: 1 },
+        },
+        { session },
+      );
+      if (closed.modifiedCount !== 1) throw circleProposalErrors.discussionClosed();
+      await this.circleModel.updateOne(
+        { _id: proposal.circleId, activeProposalCount: { $gt: 0 } },
+        { $inc: { activeProposalCount: -1 } },
+        { session },
+      );
     });
     return this.detail(circleId, proposalId, actorAgentId);
   }
@@ -779,9 +869,13 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
       throw circleProposalErrors.alreadyEnded();
     }
     this.assertNotUnderGovernance(proposal);
-    proposal.moderationReason = reason;
-    await this.closeProposal(proposal, CIRCLE_PROPOSAL_STATUSES.MODERATED, new Date(), session);
-    return proposal;
+    return this.closeProposalForAdmin(
+      proposal,
+      CIRCLE_PROPOSAL_STATUSES.MODERATED,
+      reason,
+      new Date(),
+      session,
+    );
   }
 
   async moderateActiveScopeForAdmin(
@@ -797,117 +891,224 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
     );
     if (!proposal) return null;
     this.assertNotUnderGovernance(proposal);
-    proposal.moderationReason = reason;
-    await this.closeProposal(proposal, CIRCLE_PROPOSAL_STATUSES.MODERATED, new Date(), session);
-    return proposal;
+    return this.closeProposalForAdmin(
+      proposal,
+      CIRCLE_PROPOSAL_STATUSES.MODERATED,
+      reason,
+      new Date(),
+      session,
+    );
   }
 
-  async advanceDueProposals(circleId?: string): Promise<void> {
+  async holdForGovernance(
+    proposalId: string,
+    governanceCaseId: string,
+    session: ClientSession,
+  ): Promise<boolean> {
     const now = new Date();
-    const due = await this.proposalModel
-      .find({
-        ...(circleId ? { circleId } : {}),
+    const proposal = await this.proposalModel.findOne(
+      {
+        _id: proposalId,
         status: { $in: ACTIVE_STATUSES },
         activeGovernanceCaseId: null,
+        expiresAt: { $gt: now },
         $or: [
-          { expiresAt: { $lte: now } },
-          { status: CIRCLE_PROPOSAL_STATUSES.DISCUSSION, discussionDeadlineAt: { $lte: now } },
-          { status: CIRCLE_PROPOSAL_STATUSES.VOTING, votingDeadlineAt: { $lte: now } },
+          {
+            status: CIRCLE_PROPOSAL_STATUSES.DISCUSSION,
+            discussionDeadlineAt: { $gt: now },
+          },
+          {
+            status: CIRCLE_PROPOSAL_STATUSES.VOTING,
+            votingDeadlineAt: { $gt: now },
+          },
         ],
-      })
-      .select('_id');
-    for (const item of due) {
-      await this.databaseService.$transaction(async (session) => {
-        const proposal = await this.proposalModel.findById(item.id, null, { session });
-        if (
-          !proposal ||
-          !ACTIVE_STATUSES.includes(proposal.status) ||
-          proposal.activeGovernanceCaseId !== null
-        )
-          return;
-        const circle = await this.getCircle(proposal.circleId, session);
-        if (circle.status !== CIRCLE_STATUSES.ACTIVE) return;
-        const transactionNow = new Date();
-        if (
-          proposal.expiresAt <= transactionNow &&
-          proposal.status === CIRCLE_PROPOSAL_STATUSES.DISCUSSION
-        ) {
-          await this.closeProposal(
-            proposal,
-            CIRCLE_PROPOSAL_STATUSES.EXPIRED,
-            transactionNow,
-            session,
-          );
-          return;
-        }
-        if (
-          proposal.status === CIRCLE_PROPOSAL_STATUSES.DISCUSSION &&
-          proposal.discussionDeadlineAt <= transactionNow
-        ) {
-          const stances = await this.stanceModel.find(
-            {
-              proposalId: proposal.id,
-              revisionNumber: proposal.currentRevisionNumber,
-              withdrawnAt: null,
-            },
-            null,
-            { session },
-          );
-          const supportCount = stances.filter(
-            (item) => item.stance === CIRCLE_PROPOSAL_STANCES.SUPPORT,
-          ).length;
-          const objectionCount = stances.filter(
-            (item) => item.stance === CIRCLE_PROPOSAL_STANCES.OBJECTION,
-          ).length;
-          if (supportCount < proposal.quorumSnapshot) {
-            await this.closeProposal(
-              proposal,
-              CIRCLE_PROPOSAL_STATUSES.EXPIRED,
-              transactionNow,
-              session,
-            );
-          } else if (objectionCount > 0) {
-            const votingDeadlineAt = addHours(transactionNow, CIRCLE_PROPOSAL_VOTING_HOURS);
-            if (votingDeadlineAt > proposal.expiresAt) {
-              await this.closeProposal(
-                proposal,
-                CIRCLE_PROPOSAL_STATUSES.EXPIRED,
-                transactionNow,
-                session,
-              );
-            } else {
-              proposal.status = CIRCLE_PROPOSAL_STATUSES.VOTING;
-              proposal.votingDeadlineAt = votingDeadlineAt;
-              proposal.version += 1;
-              await proposal.save({ session });
-            }
-          } else {
-            await this.acceptProposal(proposal, transactionNow, session);
-          }
-          return;
-        }
-        if (
-          proposal.status === CIRCLE_PROPOSAL_STATUSES.VOTING &&
-          proposal.votingDeadlineAt &&
-          proposal.votingDeadlineAt <= transactionNow
-        ) {
-          const participantCount = proposal.approveCount + proposal.rejectCount;
-          if (
-            participantCount >= proposal.quorumSnapshot &&
-            proposal.approveCount * 3 >= participantCount * 2
-          ) {
-            await this.acceptProposal(proposal, transactionNow, session);
-          } else {
-            await this.closeProposal(
-              proposal,
-              CIRCLE_PROPOSAL_STATUSES.REJECTED,
-              transactionNow,
-              session,
-            );
-          }
-        }
-      });
+      },
+      null,
+      { session },
+    );
+    if (!proposal) return false;
+    const holdDeadlineVersion = proposal.deadlineVersion + 1;
+    const held = await this.proposalModel.updateOne(
+      {
+        _id: proposal.id,
+        status: proposal.status,
+        activeGovernanceCaseId: null,
+        deadlineVersion: proposal.deadlineVersion,
+        expiresAt: { $gt: now },
+        ...(proposal.status === CIRCLE_PROPOSAL_STATUSES.DISCUSSION
+          ? { discussionDeadlineAt: { $gt: now } }
+          : { votingDeadlineAt: { $gt: now } }),
+      },
+      {
+        $set: {
+          activeGovernanceCaseId: governanceCaseId,
+          nextTransitionAt: null,
+          deadlineVersion: holdDeadlineVersion,
+          deadlinePublishedVersion: holdDeadlineVersion,
+          deadlineScheduleDispatchAt: null,
+          deadlineScheduleClaimVersion: null,
+          deadlineScheduleClaimToken: null,
+          deadlineScheduleClaimExpiresAt: null,
+          deadlineScheduleDeliveryToken: null,
+          deadlineClaimVersion: null,
+          deadlineClaimToken: null,
+          deadlineClaimExpiresAt: null,
+          deadlineCompensationDispatchAt: null,
+          deadlineCompensationClaimToken: null,
+          deadlineCompensationClaimExpiresAt: null,
+          deadlineCompensationDeliveryToken: null,
+        },
+      },
+      { session },
+    );
+    return held.modifiedCount === 1;
+  }
+
+  async releaseGovernanceHold(
+    proposalId: string,
+    governanceCaseId: string,
+    session: ClientSession,
+  ): Promise<boolean> {
+    const proposal = await this.proposalModel.findOne(
+      {
+        _id: proposalId,
+        status: { $in: ACTIVE_STATUSES },
+        activeGovernanceCaseId: governanceCaseId,
+      },
+      null,
+      { session },
+    );
+    if (!proposal) return false;
+    const phaseDeadlineAt =
+      proposal.status === CIRCLE_PROPOSAL_STATUSES.DISCUSSION
+        ? proposal.discussionDeadlineAt
+        : proposal.votingDeadlineAt;
+    if (!phaseDeadlineAt) {
+      throw new Error(`表决中的共建提案缺少表决截止时间: ${proposal.id}`);
     }
+    const now = new Date();
+    const nextTransitionAt = earlierDate(phaseDeadlineAt, proposal.expiresAt);
+    const released = await this.proposalModel.updateOne(
+      {
+        _id: proposal.id,
+        status: proposal.status,
+        activeGovernanceCaseId: governanceCaseId,
+        deadlineVersion: proposal.deadlineVersion,
+      },
+      {
+        $set: {
+          activeGovernanceCaseId: null,
+          nextTransitionAt,
+          deadlineScheduleDispatchAt: now,
+          deadlineScheduleClaimVersion: null,
+          deadlineScheduleClaimToken: null,
+          deadlineScheduleClaimExpiresAt: null,
+          deadlineScheduleDeliveryToken: null,
+          deadlineClaimVersion: null,
+          deadlineClaimToken: null,
+          deadlineClaimExpiresAt: null,
+          deadlineCompensationDispatchAt: getCompensationDispatchAt(nextTransitionAt, now),
+          deadlineCompensationClaimToken: null,
+          deadlineCompensationClaimExpiresAt: null,
+          deadlineCompensationDeliveryToken: null,
+        },
+        $inc: { deadlineVersion: 1 },
+      },
+      { session },
+    );
+    return released.modifiedCount === 1;
+  }
+
+  async advanceClaimedDeadline(
+    proposalId: string,
+    deadlineVersion: number,
+    claimToken: string,
+    now: Date,
+    session: ClientSession,
+  ): Promise<boolean> {
+    const proposal = await this.proposalModel
+      .findOne(
+        {
+          _id: proposalId,
+          status: { $in: ACTIVE_STATUSES },
+          activeGovernanceCaseId: null,
+          deadlineVersion,
+          deadlineClaimVersion: deadlineVersion,
+          deadlineClaimToken: claimToken,
+          nextTransitionAt: { $lte: now },
+        },
+        null,
+        { session },
+      )
+      .select('+deadlineClaimVersion +deadlineClaimToken +deadlineClaimExpiresAt');
+    if (!proposal) return false;
+
+    const circle = await this.getCircle(proposal.circleId, session);
+    if (circle.status !== CIRCLE_STATUSES.ACTIVE) {
+      throw new Error(`活跃共建提案所属圈子不是活跃状态: ${proposal.id}`);
+    }
+    if (proposal.expiresAt <= now) {
+      await this.closeProposal(proposal, CIRCLE_PROPOSAL_STATUSES.EXPIRED, now, session);
+      return true;
+    }
+    if (proposal.status === CIRCLE_PROPOSAL_STATUSES.DISCUSSION) {
+      if (proposal.discussionDeadlineAt > now) {
+        throw new Error(`共建提案 ${proposal.id} 的讨论截止状态与调度时间不一致`);
+      }
+      const stanceFilter = {
+        proposalId: proposal.id,
+        revisionNumber: proposal.currentRevisionNumber,
+        withdrawnAt: null,
+      };
+      const supportStances = await this.stanceModel
+        .find({ ...stanceFilter, stance: CIRCLE_PROPOSAL_STANCES.SUPPORT }, { _id: 1 }, { session })
+        .sort({ _id: 1 })
+        .limit(proposal.quorumSnapshot)
+        .lean();
+      if (supportStances.length < proposal.quorumSnapshot) {
+        await this.closeProposal(proposal, CIRCLE_PROPOSAL_STATUSES.EXPIRED, now, session);
+        return true;
+      }
+      const objectionStance = await this.stanceModel
+        .findOne(
+          { ...stanceFilter, stance: CIRCLE_PROPOSAL_STANCES.OBJECTION },
+          { _id: 1 },
+          { session },
+        )
+        .lean();
+      if (!objectionStance) {
+        await this.acceptProposal(proposal, now, session);
+        return true;
+      }
+      const votingDeadlineAt = addHours(now, CIRCLE_PROPOSAL_VOTING_HOURS);
+      if (votingDeadlineAt > proposal.expiresAt) {
+        await this.closeProposal(proposal, CIRCLE_PROPOSAL_STATUSES.EXPIRED, now, session);
+        return true;
+      }
+      proposal.status = CIRCLE_PROPOSAL_STATUSES.VOTING;
+      proposal.votingDeadlineAt = votingDeadlineAt;
+      proposal.version += 1;
+      this.scheduleNextTransition(proposal, votingDeadlineAt, now);
+      await proposal.save({ session });
+      return true;
+    }
+
+    if (!proposal.votingDeadlineAt) {
+      throw new Error(`表决中的共建提案缺少表决截止时间: ${proposal.id}`);
+    }
+    if (proposal.votingDeadlineAt > now) {
+      throw new Error(`共建提案 ${proposal.id} 的表决截止状态与调度时间不一致`);
+    }
+    const participantCount = proposal.approveCount + proposal.rejectCount;
+    if (
+      participantCount >= proposal.quorumSnapshot &&
+      proposal.approveCount * 3 >= participantCount * 2
+    ) {
+      await this.acceptProposal(proposal, now, session);
+      return true;
+    }
+    await this.closeProposal(proposal, CIRCLE_PROPOSAL_STATUSES.REJECTED, now, session);
+    return true;
   }
 
   private async acceptProposal(
@@ -965,6 +1166,7 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
     proposal.resolvedAt = resolvedAt;
     proposal.activeKey = null;
     proposal.version += 1;
+    this.clearTransitionSchedule(proposal);
     await proposal.save({ session });
     await this.maintenanceLogModel.create(
       [
@@ -1001,12 +1203,85 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
     proposal.activeKey = null;
     proposal.activeGovernanceCaseId = null;
     proposal.version += 1;
+    this.clearTransitionSchedule(proposal);
     await proposal.save({ session });
     await this.circleModel.updateOne(
       { _id: proposal.circleId, activeProposalCount: { $gt: 0 } },
       { $inc: { activeProposalCount: -1 } },
       { session },
     );
+  }
+
+  private async closeProposalForAdmin(
+    proposal: CircleProposalDocument,
+    status: CircleProposalStatus,
+    reason: string,
+    resolvedAt: Date,
+    session: ClientSession,
+  ): Promise<CircleProposalDocument> {
+    const phaseDeadlineFilter =
+      proposal.status === CIRCLE_PROPOSAL_STATUSES.DISCUSSION
+        ? { discussionDeadlineAt: { $gt: resolvedAt } }
+        : { votingDeadlineAt: { $gt: resolvedAt } };
+    const terminalDeadlineVersion = proposal.deadlineVersion + 1;
+    const closed = await this.proposalModel.updateOne(
+      {
+        _id: proposal.id,
+        status: proposal.status,
+        activeGovernanceCaseId: null,
+        version: proposal.version,
+        expiresAt: { $gt: resolvedAt },
+        ...phaseDeadlineFilter,
+      },
+      {
+        $set: {
+          status,
+          resolvedAt,
+          activeKey: null,
+          activeGovernanceCaseId: null,
+          moderationReason: reason,
+          nextTransitionAt: null,
+          deadlineVersion: terminalDeadlineVersion,
+          deadlinePublishedVersion: terminalDeadlineVersion,
+          deadlineScheduleDispatchAt: null,
+          deadlineScheduleClaimVersion: null,
+          deadlineScheduleClaimToken: null,
+          deadlineScheduleClaimExpiresAt: null,
+          deadlineScheduleDeliveryToken: null,
+          deadlineClaimVersion: null,
+          deadlineClaimToken: null,
+          deadlineClaimExpiresAt: null,
+          deadlineCompensationDispatchAt: null,
+          deadlineCompensationClaimToken: null,
+          deadlineCompensationClaimExpiresAt: null,
+          deadlineCompensationDeliveryToken: null,
+        },
+        $inc: { version: 1 },
+      },
+      { session },
+    );
+    if (closed.modifiedCount !== 1) {
+      const current = await this.proposalModel
+        .findById(proposal.id)
+        .select('+activeGovernanceCaseId')
+        .session(session);
+      if (current?.activeGovernanceCaseId) throw circleProposalErrors.governanceActive();
+      throw circleProposalErrors.alreadyEnded();
+    }
+
+    proposal.status = status;
+    proposal.resolvedAt = resolvedAt;
+    proposal.activeKey = null;
+    proposal.activeGovernanceCaseId = null;
+    proposal.moderationReason = reason;
+    proposal.version += 1;
+    this.clearTransitionSchedule(proposal);
+    await this.circleModel.updateOne(
+      { _id: proposal.circleId, activeProposalCount: { $gt: 0 } },
+      { $inc: { activeProposalCount: -1 } },
+      { session },
+    );
+    return proposal;
   }
 
   async moderateProposalFromGovernance(
@@ -1031,6 +1306,7 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
     proposal.activeGovernanceCaseId = null;
     proposal.moderationReason = publicReason;
     proposal.version += 1;
+    this.clearTransitionSchedule(proposal);
     await proposal.save({ session });
     await this.circleModel.updateOne(
       { _id: proposal.circleId, activeProposalCount: { $gt: 0 } },
@@ -1096,6 +1372,50 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
       { session },
     );
     return true;
+  }
+
+  private scheduleNextTransition(
+    proposal: CircleProposalDocument,
+    deadlineAt: Date,
+    scheduleDispatchAt: Date,
+  ): void {
+    const nextTransitionAt = earlierDate(deadlineAt, proposal.expiresAt);
+    proposal.nextTransitionAt = nextTransitionAt;
+    proposal.deadlineVersion += 1;
+    proposal.deadlineScheduleDispatchAt = scheduleDispatchAt;
+    proposal.deadlineScheduleClaimVersion = null;
+    proposal.deadlineScheduleClaimToken = null;
+    proposal.deadlineScheduleClaimExpiresAt = null;
+    proposal.deadlineScheduleDeliveryToken = null;
+    proposal.deadlineClaimVersion = null;
+    proposal.deadlineClaimToken = null;
+    proposal.deadlineClaimExpiresAt = null;
+    proposal.deadlineCompensationDispatchAt = getCompensationDispatchAt(
+      nextTransitionAt,
+      scheduleDispatchAt,
+    );
+    proposal.deadlineCompensationClaimToken = null;
+    proposal.deadlineCompensationClaimExpiresAt = null;
+    proposal.deadlineCompensationDeliveryToken = null;
+  }
+
+  private clearTransitionSchedule(proposal: CircleProposalDocument): void {
+    const terminalDeadlineVersion = proposal.deadlineVersion + 1;
+    proposal.nextTransitionAt = null;
+    proposal.deadlineVersion = terminalDeadlineVersion;
+    proposal.deadlinePublishedVersion = terminalDeadlineVersion;
+    proposal.deadlineScheduleDispatchAt = null;
+    proposal.deadlineScheduleClaimVersion = null;
+    proposal.deadlineScheduleClaimToken = null;
+    proposal.deadlineScheduleClaimExpiresAt = null;
+    proposal.deadlineScheduleDeliveryToken = null;
+    proposal.deadlineClaimVersion = null;
+    proposal.deadlineClaimToken = null;
+    proposal.deadlineClaimExpiresAt = null;
+    proposal.deadlineCompensationDispatchAt = null;
+    proposal.deadlineCompensationClaimToken = null;
+    proposal.deadlineCompensationClaimExpiresAt = null;
+    proposal.deadlineCompensationDeliveryToken = null;
   }
 
   private normalizePayload(
@@ -1190,10 +1510,8 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
       { session },
     );
     if (!agent) throw commonErrors.agentNotFound();
-    const [progress, profile] = await Promise.all([
-      this.progressModel.findOne({ agentId }, null, { session }),
-      this.governanceProfileModel.findOne({ agentId }, null, { session }),
-    ]);
+    const progress = await this.progressModel.findOne({ agentId }, null, { session });
+    const profile = await this.governanceProfileModel.findOne({ agentId }, null, { session });
     const level = this.getLevel(progress?.xpTotal ?? 0);
     const healthLevel = profile?.healthLevel ?? GOVERNANCE_HEALTH_LEVEL.GOOD;
     if (formal && (level < 4 || healthLevel < GOVERNANCE_HEALTH_LEVEL.WARNING)) {
@@ -1240,31 +1558,91 @@ export class CircleProposalService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async getEligibleMembers(
+  private async getEligibleMemberSummary(
     circleId: string,
+    actorOwnerUserId: string,
     session?: ClientSession,
-  ): Promise<Participant[]> {
-    const subscriptions = await this.subscriptionModel.find({ circleId }, null, { session });
-    const participants: Participant[] = [];
-    const seenOwners = new Set<string>();
-    for (const subscription of subscriptions) {
-      try {
-        const participant = await this.getParticipant(
-          circleId,
-          subscription.agentId,
-          true,
-          session,
-        );
-        if (!seenOwners.has(participant.ownerUserId)) {
-          seenOwners.add(participant.ownerUserId);
-          participants.push(participant);
-        }
-      } catch (error) {
-        if (!(error instanceof ForbiddenException || error instanceof NotFoundException))
-          throw error;
-      }
-    }
-    return participants;
+  ): Promise<EligibleMemberSummary> {
+    const aggregation = this.subscriptionModel.aggregate<EligibleMemberSummary>([
+      { $match: { circleId } },
+      { $group: { _id: '$agentId' } },
+      {
+        $set: {
+          agentObjectId: {
+            $convert: {
+              input: '$_id',
+              to: 'objectId',
+              onError: null,
+              onNull: null,
+            },
+          },
+        },
+      },
+      { $match: { agentObjectId: { $ne: null } } },
+      {
+        $lookup: {
+          from: CIRCLE_PROPOSAL_COLLECTIONS.AGENTS,
+          localField: 'agentObjectId',
+          foreignField: '_id',
+          as: 'agent',
+        },
+      },
+      { $unwind: '$agent' },
+      { $match: { 'agent.deletedAt': null } },
+      {
+        $lookup: {
+          from: CIRCLE_PROPOSAL_COLLECTIONS.AGENT_PROGRESS,
+          localField: '_id',
+          foreignField: 'agentId',
+          as: 'progress',
+        },
+      },
+      {
+        $lookup: {
+          from: CIRCLE_PROPOSAL_COLLECTIONS.AGENT_GOVERNANCE_PROFILES,
+          localField: '_id',
+          foreignField: 'agentId',
+          as: 'governanceProfile',
+        },
+      },
+      {
+        $set: {
+          xpTotal: { $ifNull: [{ $arrayElemAt: ['$progress.xpTotal', 0] }, 0] },
+          healthLevel: {
+            $ifNull: [
+              { $arrayElemAt: ['$governanceProfile.healthLevel', 0] },
+              GOVERNANCE_HEALTH_LEVEL.GOOD,
+            ],
+          },
+        },
+      },
+      {
+        $match: {
+          xpTotal: { $gte: FORMAL_PARTICIPANT_MIN_XP },
+          healthLevel: { $gte: GOVERNANCE_HEALTH_LEVEL.WARNING },
+        },
+      },
+      { $group: { _id: '$agent.userId' } },
+      {
+        $group: {
+          _id: null,
+          eligibleMemberCount: { $sum: 1 },
+          actorIncludedValue: {
+            $max: { $cond: [{ $eq: ['$_id', actorOwnerUserId] }, 1, 0] },
+          },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          eligibleMemberCount: 1,
+          actorIncluded: { $eq: ['$actorIncludedValue', 1] },
+        },
+      },
+    ]);
+    if (session) aggregation.session(session);
+    const [summary] = await aggregation.exec();
+    return summary ?? { eligibleMemberCount: 0, actorIncluded: false };
   }
 
   private getLevel(xpTotal: number): number {

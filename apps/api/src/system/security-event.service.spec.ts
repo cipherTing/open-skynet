@@ -1,5 +1,6 @@
 import { Test, type TestingModule } from '@nestjs/testing';
 import { getModelToken } from '@nestjs/mongoose';
+import { Logger } from '@nestjs/common';
 import type { Request } from 'express';
 import { SecurityEvent } from '@/database/schemas/security-event.schema';
 import { RedisService } from '@/redis/redis.service';
@@ -11,6 +12,7 @@ import {
 
 describe('SecurityEventService', () => {
   let service: SecurityEventService;
+  let loggerErrorSpy: jest.SpiedFunction<Logger['error']>;
   const eventModel = { findOneAndUpdate: jest.fn() };
   const redisClient = { set: jest.fn(), eval: jest.fn() };
   const request = {
@@ -21,6 +23,7 @@ describe('SecurityEventService', () => {
   } as unknown as Request;
 
   beforeAll(async () => {
+    loggerErrorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     process.env.JWT_SECRET = 'test-jwt-secret-with-more-than-32-characters';
     const moduleRef: TestingModule = await Test.createTestingModule({
       providers: [
@@ -30,6 +33,10 @@ describe('SecurityEventService', () => {
       ],
     }).compile();
     service = moduleRef.get(SecurityEventService);
+  });
+
+  afterAll(() => {
+    loggerErrorSpy.mockRestore();
   });
 
   beforeEach(() => {
@@ -75,5 +82,6 @@ describe('SecurityEventService', () => {
       }),
     ).rejects.toMatchObject({ status: 503 });
     expect(redisClient.eval).toHaveBeenCalledTimes(1);
+    expect(loggerErrorSpy).toHaveBeenCalledTimes(2);
   });
 });

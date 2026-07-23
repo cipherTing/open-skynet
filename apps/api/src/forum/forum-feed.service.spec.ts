@@ -23,6 +23,11 @@ import { PostRevision, PostRevisionSchema } from '@/database/schemas/post-revisi
 import { ReplyRevision, ReplyRevisionSchema } from '@/database/schemas/reply-revision.schema';
 import { ViewHistory, ViewHistorySchema } from '@/database/schemas/view-history.schema';
 import {
+  POST_VIEW_COUNTER_SHARD_COUNT,
+  PostViewCounterShard,
+  PostViewCounterShardSchema,
+} from '@/database/schemas/post-view-counter-shard.schema';
+import {
   ContentReviewRequest,
   ContentReviewRequestSchema,
 } from '@/database/schemas/content-review-request.schema';
@@ -36,6 +41,12 @@ import { FeatureFlagService } from '@/system/feature-flag.service';
 import { ForumService } from './forum.service';
 import { HotRankingService } from '@/hot-ranking/hot-ranking.service';
 import { PostScope, SortBy } from './dto/list-posts.dto';
+import { PostVisibilityService } from '@/post-visibility/post-visibility.service';
+import { ReplyCounterService } from '@/forum/reply-counter.service';
+import { PostViewCounterService } from '@/forum/post-view-counter.service';
+import { ForumStatisticsService } from '@/forum/forum-statistics.service';
+import { ForumAgentInteractionService } from '@/forum/forum-agent-interaction.service';
+import { FEEDBACK_TARGET_TYPES } from '@/forum/feedback.constants';
 
 describe('ForumService circle feeds', () => {
   jest.setTimeout(60_000);
@@ -43,6 +54,8 @@ describe('ForumService circle feeds', () => {
   let moduleRef: TestingModule;
   let connection: Connection;
   let service: ForumService;
+  let agentInteractionService: ForumAgentInteractionService;
+  let databaseService: DatabaseService;
   const subscriptionsByUser = new Map<string, string[]>();
   const featureFlagServiceMock = {
     assertEnabled: jest.fn().mockResolvedValue(undefined),
@@ -64,8 +77,11 @@ describe('ForumService circle feeds', () => {
       getSubscribedCircleIdsForUser: jest.fn(
         async (userId: string) => subscriptionsByUser.get(userId) ?? [],
       ),
-      listActiveCircleIds: jest.fn(async () => {
-        const circles = await connection.model(Circle.name).find({ status: 'ACTIVE' });
+      filterActiveCircleIds: jest.fn(async (circleIds: string[]) => {
+        const circles = await connection.model(Circle.name).find({
+          _id: { $in: circleIds },
+          status: 'ACTIVE',
+        });
         return circles.map((circle) => circle.id);
       }),
       getCircleSummaries: jest.fn(async (circleIds: string[]) => {
@@ -104,11 +120,16 @@ describe('ForumService circle feeds', () => {
           { name: Feedback.name, schema: FeedbackSchema },
           { name: PostFavorite.name, schema: PostFavoriteSchema },
           { name: ViewHistory.name, schema: ViewHistorySchema },
+          { name: PostViewCounterShard.name, schema: PostViewCounterShardSchema },
           { name: InteractionHistory.name, schema: InteractionHistorySchema },
         ]),
       ],
       providers: [
         ForumService,
+        ForumStatisticsService,
+        ForumAgentInteractionService,
+        ReplyCounterService,
+        PostViewCounterService,
         DatabaseService,
         {
           provide: CircleService,
@@ -129,12 +150,24 @@ describe('ForumService circle feeds', () => {
         },
         {
           provide: HotRankingService,
-          useValue: { markPostDirty: jest.fn(), listRandomHotPosts: jest.fn() },
+          useValue: {
+            initializePost: jest.fn(),
+            recordReplyCreated: jest.fn(),
+            recordFeedbackContribution: jest.fn(),
+            listRandomHotPosts: jest.fn(),
+            getHotPostIds: jest.fn().mockResolvedValue(new Set()),
+          },
+        },
+        {
+          provide: PostVisibilityService,
+          useValue: { recordPostCreated: jest.fn().mockResolvedValue(undefined) },
         },
       ],
     }).compile();
     connection = moduleRef.get<Connection>(getConnectionToken());
     service = moduleRef.get(ForumService);
+    agentInteractionService = moduleRef.get(ForumAgentInteractionService);
+    databaseService = moduleRef.get(DatabaseService);
     await connection.model(Post.name).init();
   });
 
@@ -157,6 +190,7 @@ describe('ForumService circle feeds', () => {
       connection.model(Feedback.name).deleteMany({}),
       connection.model(PostFavorite.name).deleteMany({}),
       connection.model(ViewHistory.name).deleteMany({}),
+      connection.model(PostViewCounterShard.name).deleteMany({}),
       connection.collection('reports').deleteMany({}),
       connection.collection('interaction_histories').deleteMany({}),
       connection.collection('circle_subscriptions').deleteMany({}),
@@ -295,7 +329,9 @@ describe('ForumService circle feeds', () => {
     await expect(service.recordPostView(secondPost.id, viewer.id)).rejects.toThrow(
       'history unavailable',
     );
-    expect((await connection.model(Post.name).findById(secondPost.id))?.viewCount).toBe(0);
+    expect(
+      await connection.model(PostViewCounterShard.name).countDocuments({ postId: secondPost.id }),
+    ).toBe(0);
     createHistory.mockRestore();
 
     await expect(service.recordPostView(secondPost.id, null)).resolves.toEqual({
@@ -303,6 +339,38 @@ describe('ForumService circle feeds', () => {
       viewCount: 1,
       viewHistory: null,
     });
+  });
+
+  it('keeps concurrent view increments exact while limiting one post to fixed counter shards', async () => {
+    const circle = await createCircle('view-counter-shards');
+    const author = await createAgent('view-counter-author');
+    const post = await createPost(circle.id, author.id, 1);
+    await connection.model(Post.name).updateOne({ _id: post.id }, { $set: { viewCount: 7 } });
+
+    const concurrentViews = 64;
+    await Promise.all(
+      Array.from({ length: concurrentViews }, () => service.recordPostView(post.id, null)),
+    );
+
+    const shards = await connection
+      .model(PostViewCounterShard.name)
+      .find({ postId: post.id })
+      .lean<Array<{ shard: number; count: number }>>();
+    expect(shards.length).toBeGreaterThan(0);
+    expect(shards.length).toBeLessThanOrEqual(POST_VIEW_COUNTER_SHARD_COUNT);
+    expect(
+      shards.every((shard) => shard.shard >= 0 && shard.shard < POST_VIEW_COUNTER_SHARD_COUNT),
+    ).toBe(true);
+    expect(shards.reduce((total, shard) => total + shard.count, 0)).toBe(concurrentViews);
+    expect((await connection.model(Post.name).findById(post.id))?.viewCount).toBe(7);
+
+    const page = await service.listPosts({
+      pageSize: 20,
+      sortBy: SortBy.LATEST,
+      circleId: circle.id,
+    });
+    expect(page.posts).toHaveLength(1);
+    expect(page.posts[0].viewCount).toBe(7 + concurrentViews);
   });
 
   it('rejects anonymous and conflicting subscribed-feed requests', async () => {
@@ -313,6 +381,39 @@ describe('ForumService circle feeds', () => {
     await expect(
       service.listPosts({ scope: PostScope.SUBSCRIBED, circleId: circle.id }, 'viewer-user'),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('rejects feedback when the target is removed after the initial read', async () => {
+    const circle = await createCircle('feedback-removal-race');
+    const [author, actor] = await Promise.all([
+      createAgent('feedback-removal-author'),
+      createAgent('feedback-removal-actor'),
+    ]);
+    const post = await createPost(circle.id, author.id, 1);
+    await connection.model(Feedback.name).create({
+      type: 'SPARK',
+      targetType: 'POST',
+      agentId: actor.id,
+      agentOwnerUserIdSnapshot: actor.userId,
+      postId: post.id,
+      replyId: null,
+      contextPostId: post.id,
+    });
+    const runTransaction = databaseService.$transaction.bind(databaseService);
+    const transaction = jest
+      .spyOn(databaseService, '$transaction')
+      .mockImplementationOnce(async (callback) => {
+        await connection
+          .model(Post.name)
+          .updateOne({ _id: post.id }, { $set: { deletedAt: new Date() } });
+        return runTransaction(callback);
+      });
+
+    await expect(
+      service.feedbackOnPost(actor.id, post.id, { type: 'SPARK' }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(await connection.model(Feedback.name).countDocuments({ postId: post.id })).toBe(1);
+    transaction.mockRestore();
   });
 
   it('creates only a pending review request when post review is enabled', async () => {
@@ -562,7 +663,9 @@ describe('ForumService circle feeds', () => {
         quote: null,
         postId: post.id,
         authorId: author.id,
+        authorOwnerUserIdSnapshot: author.userId,
         parentReplyId: null,
+        childReplyCount: 5,
         circleRulesVersion: 1,
         createdAt,
       });
@@ -575,6 +678,7 @@ describe('ForumService circle feeds', () => {
           quote: null,
           postId: post.id,
           authorId: author.id,
+          authorOwnerUserIdSnapshot: author.userId,
           parentReplyId: top.id,
           circleRulesVersion: 1,
           createdAt: new Date(createdAt.getTime() + (childIndex + 1) * 1000),
@@ -616,7 +720,9 @@ describe('ForumService circle feeds', () => {
           content: `root-${index}`,
           postId: post.id,
           authorId: author.id,
+          authorOwnerUserIdSnapshot: author.userId,
           parentReplyId: null,
+          childReplyCount: index === 3 ? 40 : 0,
           circleRulesVersion: 1,
           createdAt: new Date(Date.UTC(2026, 6, 1, 2, index)),
         }),
@@ -628,6 +734,7 @@ describe('ForumService circle feeds', () => {
           content: `selected-child-${index}`,
           postId: post.id,
           authorId: author.id,
+          authorOwnerUserIdSnapshot: author.userId,
           parentReplyId: roots[3].id,
           circleRulesVersion: 1,
           createdAt: new Date(Date.UTC(2026, 6, 1, 3, index)),
@@ -668,6 +775,7 @@ describe('ForumService circle feeds', () => {
       content: 'removed selected reply',
       postId: post.id,
       authorId: author.id,
+      authorOwnerUserIdSnapshot: author.userId,
       parentReplyId: null,
       circleRulesVersion: 1,
       deletedAt: new Date(),
@@ -703,5 +811,50 @@ describe('ForumService circle feeds', () => {
 
     const panel = await service.getPostPanelSummary();
     expect(panel.activeAgentsToday.value).toBe(2);
+  });
+
+  it('coalesces concurrent active-agent cache misses into one computation', async () => {
+    const actor = await createAgent('active-agent-single-flight');
+    await connection.collection('posts').insertOne({
+      authorId: actor.id,
+      createdAt: new Date(),
+      deletedAt: null,
+    });
+
+    const [first, second] = await Promise.all([
+      service.getActiveAgentsToday(),
+      service.getActiveAgentsToday(),
+    ]);
+
+    expect(first.value).toBe(1);
+    expect(second).toEqual(first);
+    expect(redisClient.set).toHaveBeenCalledTimes(1);
+  });
+
+  it('records immutable interaction snapshots through the interaction domain service', async () => {
+    const actor = await createAgent('interaction-snapshot-actor');
+    const target = await createAgent('interaction-snapshot-target');
+    const circle = await createCircle('interaction-snapshot-circle');
+    const post = await createPost(circle.id, target.id, 1);
+
+    await agentInteractionService.recordFeedback({
+      agentId: actor.id,
+      feedbackType: 'SPARK',
+      targetType: FEEDBACK_TARGET_TYPES.POST,
+      postId: post.id,
+      postTitle: '# Snapshot\n' + 'x'.repeat(180),
+      targetAuthorId: target.id,
+    });
+
+    await connection.model(Agent.name).updateOne({ _id: actor.id }, { name: 'renamed-actor' });
+    const page = await agentInteractionService.list(actor.id, 1, 20);
+    expect(page.interactions).toHaveLength(1);
+    expect(page.interactions[0]).toMatchObject({
+      agent: { id: actor.id, name: actor.name },
+      targetAuthor: { id: target.id, name: target.name },
+      post: { id: post.id, available: true },
+      targetAvailable: true,
+    });
+    expect(page.interactions[0]?.post.title.length).toBeLessThanOrEqual(123);
   });
 });

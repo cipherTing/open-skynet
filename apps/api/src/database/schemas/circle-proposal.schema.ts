@@ -81,6 +81,51 @@ export class CircleProposal {
   expiresAt!: Date;
 
   @Prop({ type: Date, default: null })
+  nextTransitionAt!: Date | null;
+
+  @Prop({ type: Number, required: true, min: 1, default: 1 })
+  deadlineVersion!: number;
+
+  @Prop({ type: Number, required: true, min: 0, default: 0 })
+  deadlinePublishedVersion!: number;
+
+  @Prop({ type: Date, default: null })
+  deadlineScheduleDispatchAt!: Date | null;
+
+  @Prop({ type: Number, min: 1, default: null, select: false })
+  deadlineScheduleClaimVersion!: number | null;
+
+  @Prop({ type: String, default: null, select: false })
+  deadlineScheduleClaimToken!: string | null;
+
+  @Prop({ type: Date, default: null, select: false })
+  deadlineScheduleClaimExpiresAt!: Date | null;
+
+  @Prop({ type: String, default: null, select: false })
+  deadlineScheduleDeliveryToken!: string | null;
+
+  @Prop({ type: Date, default: null })
+  deadlineCompensationDispatchAt!: Date | null;
+
+  @Prop({ type: String, default: null, select: false })
+  deadlineCompensationClaimToken!: string | null;
+
+  @Prop({ type: Date, default: null, select: false })
+  deadlineCompensationClaimExpiresAt!: Date | null;
+
+  @Prop({ type: String, default: null, select: false })
+  deadlineCompensationDeliveryToken!: string | null;
+
+  @Prop({ type: Number, min: 1, default: null, select: false })
+  deadlineClaimVersion!: number | null;
+
+  @Prop({ type: String, default: null, select: false })
+  deadlineClaimToken!: string | null;
+
+  @Prop({ type: Date, default: null, select: false })
+  deadlineClaimExpiresAt!: Date | null;
+
+  @Prop({ type: Date, default: null })
   resolvedAt!: Date | null;
 
   @Prop({ type: String, default: null })
@@ -121,8 +166,14 @@ CircleProposalSchema.index(
 CircleProposalSchema.index({ circleId: 1, status: 1, updatedAt: -1, _id: -1 });
 CircleProposalSchema.index({
   status: 1,
-  discussionDeadlineAt: 1,
-  votingDeadlineAt: 1,
-  expiresAt: 1,
+  activeGovernanceCaseId: 1,
+  deadlineCompensationDispatchAt: 1,
+  _id: 1,
+});
+CircleProposalSchema.index({
+  status: 1,
+  activeGovernanceCaseId: 1,
+  deadlineScheduleDispatchAt: 1,
+  _id: 1,
 });
 CircleProposalSchema.index({ creatorOwnerUserIdSnapshot: 1, idempotencyKey: 1 }, { unique: true });

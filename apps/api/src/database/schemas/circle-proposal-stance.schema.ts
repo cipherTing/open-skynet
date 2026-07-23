@@ -22,9 +22,19 @@ export class CircleProposalStanceRecord {
 }
 
 export const CircleProposalStanceSchema = SchemaFactory.createForClass(CircleProposalStanceRecord);
-CircleProposalStanceSchema.index({ proposalId: 1, revisionNumber: 1, agentId: 1 }, { unique: true });
+CircleProposalStanceSchema.index(
+  { proposalId: 1, revisionNumber: 1, agentId: 1 },
+  { unique: true },
+);
 CircleProposalStanceSchema.index(
   { proposalId: 1, revisionNumber: 1, ownerUserIdSnapshot: 1 },
   { unique: true },
 );
+CircleProposalStanceSchema.index({
+  proposalId: 1,
+  revisionNumber: 1,
+  withdrawnAt: 1,
+  stance: 1,
+  _id: 1,
+});
 CircleProposalStanceSchema.index({ createdAt: -1 });

@@ -1,9 +1,12 @@
 import { Test, type TestingModule } from '@nestjs/testing';
 import { getConnectionToken, MongooseModule } from '@nestjs/mongoose';
-import { Connection, Types } from 'mongoose';
+import { Connection, Types, type ClientSession } from 'mongoose';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { DatabaseService } from '@/database/database.service';
 import { GovernanceService } from './governance.service';
+import { ReplyCounterService } from '@/forum/reply-counter.service';
+import { HotRankingService } from '@/hot-ranking/hot-ranking.service';
+import { GovernanceDeadlineService } from './governance-deadline.service';
 import { ProgressionService } from '@/progression/progression.service';
 import { Agent, AgentSchema } from '@/database/schemas/agent.schema';
 import { Post, PostSchema } from '@/database/schemas/post.schema';
@@ -74,6 +77,7 @@ describe('GovernanceService integration', () => {
   let moduleRef: TestingModule;
   let connection: Connection;
   let service: GovernanceService;
+  let deadlineService: GovernanceDeadlineService;
 
   beforeAll(async () => {
     replicaSet = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
@@ -106,12 +110,48 @@ describe('GovernanceService integration', () => {
       ],
       providers: [
         GovernanceService,
+        {
+          provide: ReplyCounterService,
+          useValue: { applyReplyVisibilityDelta: jest.fn().mockResolvedValue(undefined) },
+        },
+        GovernanceDeadlineService,
+        {
+          provide: HotRankingService,
+          useValue: {
+            recordPostVisibilityChanged: jest.fn().mockResolvedValue(undefined),
+            recordReplyVisibilityChanged: jest.fn().mockResolvedValue(undefined),
+          },
+        },
         ProgressionService,
         DatabaseService,
         FeatureFlagService,
         {
           provide: CircleProposalService,
           useValue: {
+            holdForGovernance: jest.fn(
+              async (proposalId: string, governanceCaseId: string, session: ClientSession) => {
+                const result = await connection
+                  .model(CircleProposal.name)
+                  .updateOne(
+                    { _id: proposalId, activeGovernanceCaseId: null },
+                    { $set: { activeGovernanceCaseId: governanceCaseId } },
+                    { session },
+                  );
+                return result.modifiedCount === 1;
+              },
+            ),
+            releaseGovernanceHold: jest.fn(
+              async (proposalId: string, governanceCaseId: string, session: ClientSession) => {
+                const result = await connection
+                  .model(CircleProposal.name)
+                  .updateOne(
+                    { _id: proposalId, activeGovernanceCaseId: governanceCaseId },
+                    { $set: { activeGovernanceCaseId: null } },
+                    { session },
+                  );
+                return result.modifiedCount === 1;
+              },
+            ),
             moderateProposalFromGovernance: jest.fn().mockResolvedValue(true),
             moderateCommentFromGovernance: jest.fn().mockResolvedValue(true),
           },
@@ -121,6 +161,7 @@ describe('GovernanceService integration', () => {
 
     connection = moduleRef.get<Connection>(getConnectionToken());
     service = moduleRef.get(GovernanceService);
+    deadlineService = moduleRef.get(GovernanceDeadlineService);
     await connection.model(CircleRuleRevision.name).insertMany([
       {
         circleId: TEST_CIRCLE_ID,
@@ -201,6 +242,18 @@ describe('GovernanceService integration', () => {
     return agent;
   }
 
+  async function processCaseDeadline(caseId: string): Promise<boolean> {
+    const governanceCase = await connection.model(GovernanceCase.name).findById(caseId);
+    if (!governanceCase) throw new Error('测试案件不存在');
+    return deadlineService.processCase(caseId, governanceCase.deadlineVersion);
+  }
+
+  async function openGovernanceCase(
+    params: Omit<Parameters<GovernanceService['openCaseFromReports']>[0], 'session'>,
+  ) {
+    return connection.transaction((session) => service.openCaseFromReports({ ...params, session }));
+  }
+
   async function createReporterAgents(prefix: string) {
     return Promise.all(
       Array.from({ length: 3 }, (_, index) => createAgent(`${prefix}-${index}`, 5000)),
@@ -245,7 +298,7 @@ describe('GovernanceService integration', () => {
       authorId: author.id,
     });
     const reporters = await createReporterAgents(`reporter-${post.id}`);
-    const governanceCase = await service.openCaseFromReports({
+    const governanceCase = await openGovernanceCase({
       targetType: GOVERNANCE_TARGET_TYPES.POST,
       targetId: post.id,
       targetContentVersion: 1,
@@ -276,6 +329,7 @@ describe('GovernanceService integration', () => {
     const author = await createAgent('proposal-author');
     const reporters = await createReporterAgents('proposal-reporters');
     const circleId = new Types.ObjectId().toString();
+    const discussionDeadlineAt = new Date(Date.now() + 60_000);
     const proposal = await connection.model(CircleProposal.name).create({
       circleId,
       scope: 'TOPIC',
@@ -292,9 +346,24 @@ describe('GovernanceService integration', () => {
       quorumSnapshot: 3,
       version: 1,
       participationVersion: 0,
-      discussionDeadlineAt: new Date(Date.now() + 60_000),
+      discussionDeadlineAt,
       votingDeadlineAt: null,
       expiresAt: new Date(Date.now() + 120_000),
+      nextTransitionAt: discussionDeadlineAt,
+      deadlineVersion: 1,
+      deadlinePublishedVersion: 1,
+      deadlineScheduleDispatchAt: new Date(),
+      deadlineScheduleClaimVersion: null,
+      deadlineScheduleClaimToken: null,
+      deadlineScheduleClaimExpiresAt: null,
+      deadlineScheduleDeliveryToken: null,
+      deadlineCompensationDispatchAt: null,
+      deadlineCompensationClaimToken: null,
+      deadlineCompensationClaimExpiresAt: null,
+      deadlineCompensationDeliveryToken: null,
+      deadlineClaimVersion: null,
+      deadlineClaimToken: null,
+      deadlineClaimExpiresAt: null,
       resolvedAt: null,
       moderationReason: null,
       approveCount: 0,
@@ -314,7 +383,7 @@ describe('GovernanceService integration', () => {
       rulesSnapshot: null,
       idempotencyKey: crypto.randomUUID(),
     });
-    const governanceCase = await service.openCaseFromReports({
+    const governanceCase = await openGovernanceCase({
       targetType: GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL,
       targetId: proposal.id,
       targetContentVersion: 1,
@@ -357,7 +426,7 @@ describe('GovernanceService integration', () => {
 
   it('locks an active proposal while it is reviewed and releases it after a not-violation result', async () => {
     const { proposal, governanceCase } = await createProposalGovernanceCase();
-    expect(await connection.model(CircleProposal.name).findById(proposal.id)).toMatchObject({
+    expect(await connection.model(CircleProposal.name).findById(proposal.id).lean()).toMatchObject({
       activeGovernanceCaseId: governanceCase.id,
       status: 'DISCUSSION',
     });
@@ -377,9 +446,39 @@ describe('GovernanceService integration', () => {
       await session.endSession();
     }
 
-    expect(await connection.model(CircleProposal.name).findById(proposal.id)).toMatchObject({
+    expect(await connection.model(CircleProposal.name).findById(proposal.id).lean()).toMatchObject({
       activeGovernanceCaseId: null,
       status: 'DISCUSSION',
+    });
+  });
+
+  it('rejects an administrator decision after the persisted transition deadline', async () => {
+    const { governanceCase } = await createViolationCase();
+    await connection.model(GovernanceCase.name).findByIdAndUpdate(governanceCase.id, {
+      nextTransitionAt: new Date(Date.now() - 1_000),
+    });
+    const session = await connection.startSession();
+    try {
+      await expect(
+        session.withTransaction(() =>
+          service.resolveCaseForAdmin(
+            governanceCase.id,
+            'VIOLATION',
+            '截止后不应再接受管理员裁定。',
+            'admin-user-id',
+            session,
+          ),
+        ),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({ code: GOVERNANCE_ERROR_CODES.CASE_NOT_FOUND }),
+      });
+    } finally {
+      await session.endSession();
+    }
+    const unchanged = await connection.model(GovernanceCase.name).findById(governanceCase.id);
+    expect(unchanged).toMatchObject({
+      status: GOVERNANCE_CASE_STATUS.OPEN,
+      resolvedAt: null,
     });
   });
 
@@ -398,6 +497,7 @@ describe('GovernanceService integration', () => {
       parentReplyId: null,
       content: 'parent reply content',
       authorId: parentAuthor.id,
+      authorOwnerUserIdSnapshot: parentAuthor.userId,
       feedbackCounts: {},
       circleRulesVersion: 2,
       contentVersion: 1,
@@ -408,6 +508,7 @@ describe('GovernanceService integration', () => {
       parentReplyId: parentReply.id,
       content: 'child reply content',
       authorId: replyAuthor.id,
+      authorOwnerUserIdSnapshot: replyAuthor.userId,
       feedbackCounts: {},
       circleRulesVersion: 3,
       contentVersion: 1,
@@ -430,7 +531,7 @@ describe('GovernanceService integration', () => {
       },
     ]);
     const reporters = await createReporterAgents(`reply-reporter-${reply.id}`);
-    const governanceCase = await service.openCaseFromReports({
+    const governanceCase = await openGovernanceCase({
       targetType: GOVERNANCE_TARGET_TYPES.REPLY,
       targetId: reply.id,
       targetContentVersion: 1,
@@ -591,7 +692,7 @@ describe('GovernanceService integration', () => {
     const reporters = await createReporterAgents('private-reporters');
     const reporterAgentIds = reporters.map((reporter) => reporter.id);
     const reporterOwnerUserIds = reporters.map((reporter) => reporter.userId);
-    const created = await service.openCaseFromReports({
+    const created = await openGovernanceCase({
       targetType: GOVERNANCE_TARGET_TYPES.POST,
       targetId: post.id,
       targetContentVersion: 1,
@@ -635,7 +736,7 @@ describe('GovernanceService integration', () => {
     });
 
     await expect(
-      service.openCaseFromReports({
+      openGovernanceCase({
         targetType: GOVERNANCE_TARGET_TYPES.POST,
         targetId: post.id,
         targetContentVersion: 1,
@@ -647,7 +748,7 @@ describe('GovernanceService integration', () => {
       }),
     ).rejects.toThrow('at least three unique Agents and owners');
     await expect(
-      service.openCaseFromReports({
+      openGovernanceCase({
         targetType: GOVERNANCE_TARGET_TYPES.POST,
         targetId: post.id,
         targetContentVersion: 1,
@@ -670,7 +771,7 @@ describe('GovernanceService integration', () => {
     });
 
     await expect(
-      service.openCaseFromReports({
+      openGovernanceCase({
         targetType: GOVERNANCE_TARGET_TYPES.POST,
         targetId: post.id,
         targetContentVersion: 1,
@@ -698,7 +799,7 @@ describe('GovernanceService integration', () => {
         { $set: { deletedAt: new Date() } },
       );
 
-    const governanceCase = await service.openCaseFromReports({
+    const governanceCase = await openGovernanceCase({
       targetType: GOVERNANCE_TARGET_TYPES.POST,
       targetId: post.id,
       targetContentVersion: 1,
@@ -869,6 +970,28 @@ describe('GovernanceService integration', () => {
     ).rejects.toMatchObject({ code: 11000 });
   });
 
+  it('skips a case when the owner has a vote record without an assignment record', async () => {
+    const firstCase = await createViolationCase();
+    const judge = await createAgent('vote-history-only-judge', 5000);
+    await connection.model(GovernanceVote.name).create({
+      caseId: firstCase.governanceCase.id,
+      voterAgentId: judge.id,
+      voterOwnerUserIdSnapshot: judge.userId,
+      targetType: firstCase.governanceCase.targetType,
+      targetId: firstCase.governanceCase.targetId,
+      choice: GOVERNANCE_DECISIONS.NOT_VIOLATION,
+      weight: 1,
+      voterLevel: 4,
+      voterHealthLevel: GOVERNANCE_HEALTH_LEVEL.GOOD,
+    });
+    const secondCase = await createViolationCase();
+
+    const dispatched = await service.dispatchNextCase(judge.id);
+
+    expect(dispatched.case.id).toBe(secondCase.governanceCase.id);
+    expect(dispatched.case.id).not.toBe(firstCase.governanceCase.id);
+  });
+
   it('persists assignment closure before rejecting a decision for a closed case', async () => {
     const { governanceCase } = await createViolationCase();
     const judge = await createAgent('closed-case-judge', 5000);
@@ -924,6 +1047,24 @@ describe('GovernanceService integration', () => {
     expect(vote?.voterHealthLevel).toBe(GOVERNANCE_HEALTH_LEVEL.GOOD);
   });
 
+  it('rejects a decision after the persisted transition deadline without scanning other cases', async () => {
+    await createViolationCase();
+    const judge = await createAgent('expired-decision-judge', 5000);
+    const dispatched = await service.dispatchNextCase(judge.id);
+    await connection.model(GovernanceCase.name).findByIdAndUpdate(dispatched.case.id, {
+      nextTransitionAt: new Date(Date.now() - 1_000),
+    });
+
+    await expect(
+      service.submitDecision(judge.id, dispatched.case.id, GOVERNANCE_DECISIONS.NOT_VIOLATION),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: GOVERNANCE_ERROR_CODES.CASE_NOT_FOUND }),
+    });
+    expect(
+      await connection.model(GovernanceVote.name).countDocuments({ caseId: dispatched.case.id }),
+    ).toBe(0);
+  });
+
   it('does not auto-abstain or consume quota for an active assignment without explicit decision', async () => {
     await createViolationCase();
     const judge = await createAgent('judge', 5000);
@@ -944,6 +1085,73 @@ describe('GovernanceService integration', () => {
 
     const quota = await connection.model(GovernanceDailyQuota.name).findOne({ agentId: judge.id });
     expect(quota?.quotaUsed).toBe(0);
+  });
+
+  it('keeps current-assignment reads free of deadline transitions', async () => {
+    const { governanceCase } = await createViolationCase();
+    const judge = await createAgent('read-only-current-judge', 5000);
+    const dispatched = await service.dispatchNextCase(judge.id);
+    const dueAt = new Date(Date.now() - 1_000);
+    await connection.model(GovernanceCase.name).findByIdAndUpdate(governanceCase.id, {
+      firstReviewAt: dueAt,
+      nextTransitionAt: dueAt,
+    });
+    await Promise.all([
+      connection.model(AgentGovernanceProfile.name).deleteOne({ agentId: judge.id }),
+      connection.model(GovernanceDailyQuota.name).deleteOne({ agentId: judge.id }),
+    ]);
+
+    const current = await service.getCurrentAssignment(judge.id);
+    const [unchanged, assignment, profileCount, quotaCount] = await Promise.all([
+      connection.model(GovernanceCase.name).findById(governanceCase.id),
+      connection.model(GovernanceAssignment.name).findOne({
+        caseId: dispatched.case.id,
+        agentId: judge.id,
+      }),
+      connection.model(AgentGovernanceProfile.name).countDocuments({ agentId: judge.id }),
+      connection.model(GovernanceDailyQuota.name).countDocuments({ agentId: judge.id }),
+    ]);
+
+    expect(current?.case.id).toBe(dispatched.case.id);
+    expect(current?.quota).toMatchObject({ quotaUsed: 0 });
+    expect(unchanged).toMatchObject({
+      status: GOVERNANCE_CASE_STATUS.OPEN,
+      firstReviewedAt: null,
+      deadlineVersion: 1,
+    });
+    expect(assignment?.status).toBe(GOVERNANCE_ASSIGNMENT_STATUS.ACTIVE);
+    expect(profileCount).toBe(0);
+    expect(quotaCount).toBe(0);
+  });
+
+  it('does not close an assignment when a current-assignment read sees a terminal case', async () => {
+    const { governanceCase } = await createViolationCase();
+    const judge = await createAgent('read-only-closed-judge', 5000);
+    const dispatched = await service.dispatchNextCase(judge.id);
+    await connection.model(GovernanceCase.name).findByIdAndUpdate(governanceCase.id, {
+      status: GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION,
+      resolution: GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION,
+      resolvedAt: new Date(),
+    });
+
+    await expect(service.getCurrentAssignment(judge.id)).resolves.toBeNull();
+    const assignment = await connection.model(GovernanceAssignment.name).findOne({
+      caseId: dispatched.case.id,
+      agentId: judge.id,
+    });
+    expect(assignment?.status).toBe(GOVERNANCE_ASSIGNMENT_STATUS.ACTIVE);
+  });
+
+  it('does not dispatch a case whose persisted transition deadline has arrived', async () => {
+    const { governanceCase } = await createViolationCase();
+    await connection.model(GovernanceCase.name).findByIdAndUpdate(governanceCase.id, {
+      nextTransitionAt: new Date(Date.now() - 1_000),
+    });
+    const judge = await createAgent('expired-dispatch-judge', 5000);
+
+    await expect(service.dispatchNextCase(judge.id)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: GOVERNANCE_ERROR_CODES.NO_AVAILABLE_CASE }),
+    });
   });
 
   it('allows another dispatch after submitting a decision', async () => {
@@ -984,8 +1192,9 @@ describe('GovernanceService integration', () => {
 
     await connection.model(GovernanceCase.name).findByIdAndUpdate(governanceCase.id, {
       firstReviewAt: new Date(Date.now() - 1000),
+      nextTransitionAt: new Date(Date.now() - 1000),
     });
-    await service.advanceDeadlines();
+    await processCaseDeadline(governanceCase.id);
 
     const [resolved, reportState] = await Promise.all([
       connection.model(GovernanceCase.name).findById(governanceCase.id),
@@ -1027,10 +1236,11 @@ describe('GovernanceService integration', () => {
         violationTally: 6,
         notViolationTally: 0,
         firstReviewAt: new Date(Date.now() - 1000),
+        nextTransitionAt: new Date(Date.now() - 1000),
       }),
     ]);
 
-    await service.advanceDeadlines();
+    await processCaseDeadline(governanceCase.id);
 
     const [resolved, currentPost, profile] = await Promise.all([
       connection.model(GovernanceCase.name).findById(governanceCase.id),
@@ -1054,9 +1264,13 @@ describe('GovernanceService integration', () => {
       violationTally: 6,
       notViolationTally: 0,
       firstReviewAt: new Date(Date.now() - 1000),
+      nextTransitionAt: new Date(Date.now() - 1000),
     });
 
-    await Promise.all([service.advanceDeadlines(), service.advanceDeadlines()]);
+    await Promise.all([
+      processCaseDeadline(governanceCase.id),
+      processCaseDeadline(governanceCase.id),
+    ]);
 
     const [resolvedCase, profile, penaltyCount] = await Promise.all([
       connection.model(GovernanceCase.name).findById(governanceCase.id),
@@ -1073,6 +1287,59 @@ describe('GovernanceService integration', () => {
     expect(penaltyCount).toBe(1);
   });
 
+  it('reclaims an expired execution lease but leaves an active lease untouched', async () => {
+    const expired = await createViolationCase();
+    const active = await createViolationCase();
+    const dueAt = new Date(Date.now() - 1_000);
+    await Promise.all([
+      connection.model(GovernanceCase.name).findByIdAndUpdate(expired.governanceCase.id, {
+        violationTally: 6,
+        firstReviewAt: dueAt,
+        nextTransitionAt: dueAt,
+        deadlineClaimVersion: 1,
+        deadlineClaimToken: 'expired-claim',
+        deadlineClaimExpiresAt: dueAt,
+      }),
+      connection.model(GovernanceCase.name).findByIdAndUpdate(active.governanceCase.id, {
+        violationTally: 6,
+        firstReviewAt: dueAt,
+        nextTransitionAt: dueAt,
+        deadlineClaimVersion: 1,
+        deadlineClaimToken: 'active-claim',
+        deadlineClaimExpiresAt: new Date(Date.now() + 60_000),
+      }),
+    ]);
+
+    await expect(processCaseDeadline(expired.governanceCase.id)).resolves.toBe(true);
+    await expect(processCaseDeadline(active.governanceCase.id)).resolves.toBe(false);
+    const [resolved, unchanged] = await Promise.all([
+      connection.model(GovernanceCase.name).findById(expired.governanceCase.id),
+      connection.model(GovernanceCase.name).findById(active.governanceCase.id),
+    ]);
+    expect(resolved?.status).toBe(GOVERNANCE_CASE_STATUS.RESOLVED_VIOLATION);
+    expect(unchanged?.status).toBe(GOVERNANCE_CASE_STATUS.OPEN);
+  });
+
+  it('releases a failed compensation delivery so the next bounded sweep can retry it', async () => {
+    const { governanceCase } = await createViolationCase();
+    const deliveryToken = 'failed-compensation-delivery';
+    await connection.model(GovernanceCase.name).findByIdAndUpdate(governanceCase.id, {
+      deadlineCompensationDeliveryToken: deliveryToken,
+      deadlineCompensationDispatchAt: new Date(),
+    });
+
+    const releaseStartedAt = Date.now();
+    await deadlineService.releaseFailedDelivery(governanceCase.id, 1, deliveryToken);
+    const released = await connection
+      .model(GovernanceCase.name)
+      .findById(governanceCase.id)
+      .select('+deadlineCompensationDeliveryToken +deadlineCompensationClaimToken')
+      .exec();
+    expect(released?.deadlineCompensationDeliveryToken).toBeNull();
+    expect(released?.deadlineCompensationClaimToken).toBeNull();
+    expect(released?.deadlineCompensationDispatchAt?.getTime()).toBeGreaterThan(releaseStartedAt);
+  });
+
   it('keeps an administrator ban active while applying a new community penalty to the restore level', async () => {
     const { author, governanceCase } = await createViolationCase();
     const activeBanRecordId = new Types.ObjectId().toString();
@@ -1087,9 +1354,10 @@ describe('GovernanceService integration', () => {
       violationTally: 6,
       notViolationTally: 0,
       firstReviewAt: new Date(Date.now() - 1000),
+      nextTransitionAt: new Date(Date.now() - 1000),
     });
 
-    await service.advanceDeadlines();
+    await processCaseDeadline(governanceCase.id);
 
     const [profile, history] = await Promise.all([
       connection.model(AgentGovernanceProfile.name).findOne({ agentId: author.id }),
@@ -1158,7 +1426,10 @@ describe('GovernanceService integration', () => {
       status: GOVERNANCE_CASE_STATUS.RESOLVED_VIOLATION,
       resolutionSource: 'ADMIN',
       resolutionReason: '管理员确认该内容违反当前规则。',
+      nextTransitionAt: null,
+      deadlineScheduleDispatchAt: null,
     });
+    expect(storedCase?.deadlinePublishedVersion).toBe(storedCase?.deadlineVersion);
     expect(restoredPost?.deletedAt).toBeNull();
     expect(oldState?.status).toBe(REPORT_TARGET_STATUSES.RESOLVED_VIOLATION);
     expect(nextState).toMatchObject({
@@ -1184,16 +1455,21 @@ describe('GovernanceService integration', () => {
     await connection.model(GovernanceCase.name).findByIdAndUpdate(governanceCase.id, {
       firstReviewAt: new Date(Date.now() - 1000),
       normalDeadlineAt: new Date(Date.now() + 60_000),
+      nextTransitionAt: new Date(Date.now() - 1000),
     });
-    await service.advanceDeadlines();
+    await processCaseDeadline(governanceCase.id);
     let updated = await connection.model(GovernanceCase.name).findById(governanceCase.id);
-    expect(updated?.status).toBe(GOVERNANCE_CASE_STATUS.OPEN);
+    expect(updated).toMatchObject({
+      status: GOVERNANCE_CASE_STATUS.OPEN,
+      deadlineCompensationDispatchAt: updated?.nextTransitionAt,
+    });
 
     await connection.model(GovernanceCase.name).findByIdAndUpdate(governanceCase.id, {
       firstReviewAt: new Date(Date.now() - 1000),
       normalDeadlineAt: new Date(Date.now() - 1000),
+      nextTransitionAt: new Date(Date.now() - 1000),
     });
-    await service.advanceDeadlines();
+    await processCaseDeadline(governanceCase.id);
     updated = await connection.model(GovernanceCase.name).findById(governanceCase.id);
     expect(updated?.status).toBe(GOVERNANCE_CASE_STATUS.EMERGENCY);
   });
@@ -1207,15 +1483,22 @@ describe('GovernanceService integration', () => {
       firstReviewAt: new Date(Date.now() - 56 * 60 * 60 * 1000),
       normalDeadlineAt: new Date(Date.now() - 8 * 60 * 60 * 1000),
       emergencyDeadlineAt: new Date(Date.now() - 1000),
+      nextTransitionAt: new Date(Date.now() - 1000),
     });
 
-    await service.advanceDeadlines();
+    await processCaseDeadline(governanceCase.id);
     const [finalized, reportState] = await Promise.all([
       connection.model(GovernanceCase.name).findById(governanceCase.id),
       connection.model(ReportTargetState.name).findOne({ caseId: governanceCase.id }),
     ]);
     expect(finalized?.status).toBe(GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION);
     expect(reportState?.status).toBe(REPORT_TARGET_STATUSES.RESOLVED_NOT_VIOLATION);
+    expect(finalized).toMatchObject({
+      nextTransitionAt: null,
+      deadlineScheduleDispatchAt: null,
+      deadlineCompensationDispatchAt: null,
+      deadlinePublishedVersion: finalized?.deadlineVersion,
+    });
   });
 
   it('dispatches emergency cases before normal cases and excludes target author', async () => {
@@ -1337,6 +1620,7 @@ describe('GovernanceService integration', () => {
       firstReviewAt: new Date(Date.now() - 1000),
       normalDeadlineAt: new Date(Date.now() - 1000),
       emergencyDeadlineAt: new Date(Date.now() - 1000),
+      nextTransitionAt: new Date(Date.now() - 1000),
     });
 
     await service.getRandomResultBatch({ limit: 10 });

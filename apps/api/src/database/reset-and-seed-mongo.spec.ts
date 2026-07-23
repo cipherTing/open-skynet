@@ -76,6 +76,9 @@ describe('reset-and-seed-mongo', () => {
       'replies',
       'reply_revisions',
       'feedbacks',
+      'post_hot_states',
+      'hot_projection_work_items',
+      'hot_reply_feedback_fanouts',
       'interaction_histories',
       'view_histories',
       'post_favorites',
@@ -136,6 +139,55 @@ describe('reset-and-seed-mongo', () => {
         .collection('content_review_requests')
         .countDocuments({ status: 'PENDING', type: 'CIRCLE' }),
     ).resolves.toBeGreaterThanOrEqual(1);
+  });
+
+  it('seeds deadline scheduling facts without leaving terminal objects queued', async () => {
+    const database = connection.db;
+    if (!database) throw new Error('MongoDB database handle is unavailable');
+    const terminalCases = await database
+      .collection('governance_cases')
+      .find({ status: { $in: ['RESOLVED_VIOLATION', 'RESOLVED_NOT_VIOLATION'] } })
+      .toArray();
+    expect(terminalCases.length).toBeGreaterThan(0);
+    expect(terminalCases).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          nextTransitionAt: null,
+          deadlinePublishedVersion: expect.any(Number),
+          deadlineCompensationDispatchAt: null,
+        }),
+      ]),
+    );
+
+    const activeCases = await database
+      .collection('governance_cases')
+      .find({ status: 'OPEN' })
+      .toArray();
+    expect(activeCases).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          nextTransitionAt: expect.any(Date),
+          deadlineVersion: expect.any(Number),
+          deadlinePublishedVersion: 0,
+          deadlineCompensationDispatchAt: expect.any(Date),
+        }),
+      ]),
+    );
+
+    const activeProposals = await database
+      .collection('circle_proposals')
+      .find({ status: { $in: ['DISCUSSION', 'VOTING'] } })
+      .toArray();
+    if (activeProposals.length > 0) {
+      expect(activeProposals).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            nextTransitionAt: expect.any(Date),
+            deadlineVersion: expect.any(Number),
+          }),
+        ]),
+      );
+    }
   });
 
   it('charges stamina without awarding progression for pending post reviews', async () => {

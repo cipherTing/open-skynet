@@ -36,10 +36,12 @@ import {
 import { GovernanceDailyQuota } from '@/database/schemas/governance-daily-quota.schema';
 import { GovernanceVote } from '@/database/schemas/governance-vote.schema';
 import {
+  ACTIVE_GOVERNANCE_CASE_STATUSES,
   GOVERNANCE_ASSIGNMENT_STATUS,
   GOVERNANCE_CASE_STATUS,
   GOVERNANCE_DECISIONS,
   GOVERNANCE_HEALTH_LEVEL,
+  GOVERNANCE_TIMEZONE,
   GOVERNANCE_TARGET_TYPES,
   type GovernanceCaseStatus,
   type GovernanceDecision,
@@ -52,13 +54,17 @@ import {
   canAgentParticipateInGovernance,
   getGovernancePenaltyXpForHealthLevel,
   getGovernanceQuotaTotal,
-  finalizeGovernanceCaseAtFinalDeadline,
-  shouldResolveGovernanceCase,
   toShanghaiDateKey,
 } from './governance.rules';
+import {
+  calculateGovernanceDeadlineTransition,
+  GOVERNANCE_DEADLINE_TRANSITION_KINDS,
+} from './governance-deadline.rules';
 import { ListGovernanceFeedDto } from './dto/list-governance-feed.dto';
 import { commonErrors, governanceErrors } from '@/common/errors/business-errors';
 import { translateApiText } from '@/common/i18n/api-language';
+import { HotRankingService } from '@/hot-ranking/hot-ranking.service';
+import { ReplyCounterService } from '@/forum/reply-counter.service';
 
 interface OpenCaseFromReportsParams {
   targetType: GovernanceTargetType;
@@ -66,7 +72,7 @@ interface OpenCaseFromReportsParams {
   targetContentVersion: number;
   round: number;
   reporters: Array<{ agentId: string; ownerUserId: string }>;
-  session?: ClientSession;
+  session: ClientSession;
 }
 
 export type GovernancePublicResultCode = 'violation' | 'not_violation';
@@ -74,6 +80,39 @@ export type GovernancePublicResultCode = 'violation' | 'not_violation';
 export interface GovernanceVoteTally {
   violation: number;
   notViolation: number;
+}
+
+interface GovernanceQuotaSnapshot {
+  dateKey: string;
+  quotaTotal: number;
+  quotaUsed: number;
+}
+
+interface GovernanceDispatchCandidateReference {
+  _id: Types.ObjectId;
+}
+
+interface GovernanceDailyVoteSummaryRow {
+  _id: string;
+  voterCount: number;
+  violationVoterCount: number;
+  violationVotes: number;
+  notViolationVoterCount: number;
+  notViolationVotes: number;
+  firstOccurredAt: Date;
+  lastOccurredAt: Date;
+}
+
+const GOVERNANCE_DISPATCH_SORT = {
+  status: 1,
+  emergencyDeadlineAt: 1,
+  normalDeadlineAt: 1,
+  openedAt: 1,
+  _id: 1,
+} as const;
+
+function getCompensationDispatchAt(nextTransitionAt: Date, now: Date): Date {
+  return nextTransitionAt.getTime() <= now.getTime() ? now : nextTransitionAt;
 }
 
 export type GovernanceTargetSummary =
@@ -322,6 +361,8 @@ export class GovernanceService {
     private readonly featureFlagService: FeatureFlagService,
     @Inject(forwardRef(() => CircleProposalService))
     private readonly circleProposalService: CircleProposalService,
+    private readonly hotRankingService: HotRankingService,
+    private readonly replyCounterService: ReplyCounterService,
   ) {}
 
   async assertCanReportViolation(agentId: string, session?: ClientSession) {
@@ -382,6 +423,9 @@ export class GovernanceService {
     }
 
     const now = new Date();
+    const firstReviewAt = addHours(now, 8);
+    const normalDeadlineAt = addHours(now, 48);
+    const emergencyDeadlineAt = addHours(now, 56);
     const activeKey = getReportTargetKey(
       params.targetType,
       params.targetId,
@@ -403,22 +447,23 @@ export class GovernanceService {
       triggerScore: reporterAgentIds.length,
       triggerThreshold: 3,
       openedAt: now,
-      firstReviewAt: addHours(now, 8),
-      normalDeadlineAt: addHours(now, 48),
-      emergencyDeadlineAt: addHours(now, 56),
+      firstReviewAt,
+      normalDeadlineAt,
+      emergencyDeadlineAt,
+      nextTransitionAt: firstReviewAt,
+      deadlineVersion: 1,
+      deadlinePublishedVersion: 0,
+      deadlineScheduleDispatchAt: now,
+      deadlineCompensationDispatchAt: getCompensationDispatchAt(firstReviewAt, now),
       activeKey,
     });
     if (params.targetType === GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL) {
-      const locked = await this.proposalModel.updateOne(
-        {
-          _id: params.targetId,
-          status: { $in: ['DISCUSSION', 'VOTING'] },
-          activeGovernanceCaseId: null,
-        },
-        { $set: { activeGovernanceCaseId: governanceCase.id } },
-        { session: params.session },
+      const locked = await this.circleProposalService.holdForGovernance(
+        params.targetId,
+        governanceCase.id,
+        params.session,
       );
-      if (locked.modifiedCount !== 1) {
+      if (!locked) {
         throw governanceErrors.proposalUnavailable();
       }
     }
@@ -562,52 +607,39 @@ export class GovernanceService {
   }
 
   async getCurrentAssignment(agentId: string) {
-    return this.databaseService.$transaction(async (session) => {
-      const ownerUserId = await this.getActiveAgentOwnerUserId(agentId, session);
-      await this.advanceDeadlines(session);
-      const assignment = await this.assignmentModel.findOne(
-        { agentId, status: GOVERNANCE_ASSIGNMENT_STATUS.ACTIVE },
-        null,
-        { session },
-      );
-      if (!assignment) return null;
-      if (assignment.agentOwnerUserIdSnapshot !== ownerUserId) {
-        throw new Error('Governance assignment owner snapshot does not match current Agent owner');
-      }
-      const governanceCase = await this.caseModel
-        .findOne(
-          {
-            _id: assignment.caseId,
-            status: { $in: [GOVERNANCE_CASE_STATUS.OPEN, GOVERNANCE_CASE_STATUS.EMERGENCY] },
-          },
-          null,
-          { session },
-        )
-        .select('+reporterAgentIds +reporterOwnerUserIds +targetAuthorOwnerUserId');
-      if (!governanceCase) {
-        assignment.status = GOVERNANCE_ASSIGNMENT_STATUS.CASE_CLOSED;
-        assignment.statusReason = 'case-closed';
-        assignment.decidedAt = new Date();
-        await assignment.save({ session });
-        return null;
-      }
-      if (this.isAgentOrOwnerExcluded(governanceCase, agentId, ownerUserId)) {
-        assignment.status = GOVERNANCE_ASSIGNMENT_STATUS.CASE_CLOSED;
-        assignment.statusReason = 'reporter-ineligible';
-        assignment.decidedAt = new Date();
-        await assignment.save({ session });
-        return null;
-      }
-      const level = assignment.agentLevelSnapshot;
-      const profile = await this.getOrCreateGovernanceProfile(agentId, session);
-      const quota = await this.getOrCreateDailyQuota(agentId, level, profile.healthLevel, session);
-      return this.serializeAssignedCase(governanceCase, assignment, quota);
+    const ownerUserId = await this.getActiveAgentOwnerUserId(agentId);
+    const assignment = await this.assignmentModel.findOne({
+      agentId,
+      status: GOVERNANCE_ASSIGNMENT_STATUS.ACTIVE,
     });
+    if (!assignment) return null;
+    if (assignment.agentOwnerUserIdSnapshot !== ownerUserId) {
+      throw new Error('Governance assignment owner snapshot does not match current Agent owner');
+    }
+    const governanceCase = await this.caseModel
+      .findOne({
+        _id: assignment.caseId,
+        status: { $in: ACTIVE_GOVERNANCE_CASE_STATUSES },
+      })
+      .select('+reporterAgentIds +reporterOwnerUserIds +targetAuthorOwnerUserId');
+    if (!governanceCase) return null;
+    if (this.isAgentOrOwnerExcluded(governanceCase, agentId, ownerUserId)) return null;
+
+    const level = assignment.agentLevelSnapshot;
+    const dateKey = toShanghaiDateKey();
+    const quota = await this.quotaModel.findOne({ agentId, dateKey });
+    const quotaSnapshot: GovernanceQuotaSnapshot = quota ?? {
+      dateKey,
+      quotaTotal: getGovernanceQuotaTotal(level),
+      quotaUsed: 0,
+    };
+    return this.serializeAssignedCase(governanceCase, assignment, quotaSnapshot);
   }
 
   async dispatchNextCase(agentId: string) {
     await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.GOVERNANCE_PARTICIPATION);
     return this.databaseService.$transaction(async (session) => {
+      const now = new Date();
       const ownerUserId = await this.getActiveAgentOwnerUserId(agentId, session);
       const existing = await this.assignmentModel.findOne(
         {
@@ -632,35 +664,56 @@ export class GovernanceService {
         throw governanceErrors.quotaExhausted();
       }
 
-      await this.advanceDeadlines(session);
-      const assignedCaseIds = await this.assignmentModel
-        .find({ agentOwnerUserIdSnapshot: ownerUserId }, null, { session })
-        .distinct('caseId');
-      const votedCaseIds = await this.voteModel
-        .find({ voterOwnerUserIdSnapshot: ownerUserId }, null, { session })
-        .distinct('caseId');
-      const participatedCaseIds = [...new Set([...assignedCaseIds, ...votedCaseIds])];
-      const participatedObjectIds = participatedCaseIds
-        .filter((caseId) => Types.ObjectId.isValid(caseId))
-        .map((caseId) => new Types.ObjectId(caseId));
-
-      const candidate = await this.caseModel
-        .findOne(
+      const candidateFilter = {
+        status: { $in: ACTIVE_GOVERNANCE_CASE_STATUSES },
+        nextTransitionAt: { $gt: now },
+        targetAuthorId: { $ne: agentId },
+        targetAuthorOwnerUserId: { $ne: ownerUserId },
+        reporterAgentIds: { $ne: agentId },
+        reporterOwnerUserIds: { $ne: ownerUserId },
+      };
+      const [candidateReference] = await this.caseModel
+        .aggregate<GovernanceDispatchCandidateReference>([
+          { $match: candidateFilter },
+          { $sort: GOVERNANCE_DISPATCH_SORT },
+          { $set: { dispatchCaseId: { $toString: '$_id' } } },
           {
-            status: { $in: [GOVERNANCE_CASE_STATUS.EMERGENCY, GOVERNANCE_CASE_STATUS.OPEN] },
-            targetAuthorId: { $ne: agentId },
-            targetAuthorOwnerUserId: { $ne: ownerUserId },
-            reporterAgentIds: { $ne: agentId },
-            reporterOwnerUserIds: { $ne: ownerUserId },
-            _id: { $nin: participatedObjectIds },
+            $lookup: {
+              from: this.assignmentModel.collection.name,
+              localField: 'dispatchCaseId',
+              foreignField: 'caseId',
+              pipeline: [
+                { $match: { agentOwnerUserIdSnapshot: ownerUserId } },
+                { $limit: 1 },
+                { $project: { _id: 1 } },
+              ],
+              as: 'previousAssignments',
+            },
           },
-          null,
+          { $match: { 'previousAssignments.0': { $exists: false } } },
           {
-            session,
-            sort: { status: 1, emergencyDeadlineAt: 1, normalDeadlineAt: 1, openedAt: 1 },
+            $lookup: {
+              from: this.voteModel.collection.name,
+              localField: 'dispatchCaseId',
+              foreignField: 'caseId',
+              pipeline: [
+                { $match: { voterOwnerUserIdSnapshot: ownerUserId } },
+                { $limit: 1 },
+                { $project: { _id: 1 } },
+              ],
+              as: 'previousVotes',
+            },
           },
-        )
-        .select('+reporterAgentIds +reporterOwnerUserIds +targetAuthorOwnerUserId');
+          { $match: { 'previousVotes.0': { $exists: false } } },
+          { $limit: 1 },
+          { $project: { _id: 1 } },
+        ])
+        .session(session);
+      const candidate = candidateReference
+        ? await this.caseModel
+            .findOne({ ...candidateFilter, _id: candidateReference._id }, null, { session })
+            .select('+reporterAgentIds +reporterOwnerUserIds +targetAuthorOwnerUserId')
+        : null;
       if (!candidate) {
         throw governanceErrors.noAvailableCase();
       }
@@ -668,7 +721,6 @@ export class GovernanceService {
         throw new Error('Agent or owner exclusion invariant failed during governance dispatch');
       }
 
-      const now = new Date();
       try {
         const [assignment] = await this.assignmentModel.create(
           [
@@ -700,8 +752,8 @@ export class GovernanceService {
   async submitDecision(agentId: string, caseId: string, decision: GovernanceDecision) {
     await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.GOVERNANCE_PARTICIPATION);
     const result = await this.databaseService.$transaction(async (session) => {
+      const now = new Date();
       const ownerUserId = await this.getActiveAgentOwnerUserId(agentId, session);
-      await this.advanceDeadlines(session);
       const assignment = await this.assignmentModel.findOne(
         { caseId, agentId, status: GOVERNANCE_ASSIGNMENT_STATUS.ACTIVE },
         null,
@@ -717,7 +769,8 @@ export class GovernanceService {
         .findOne(
           {
             _id: caseId,
-            status: { $in: [GOVERNANCE_CASE_STATUS.OPEN, GOVERNANCE_CASE_STATUS.EMERGENCY] },
+            status: { $in: ACTIVE_GOVERNANCE_CASE_STATUSES },
+            nextTransitionAt: { $gt: now },
           },
           null,
           { session },
@@ -748,7 +801,6 @@ export class GovernanceService {
         throw governanceErrors.quotaExhausted();
       }
 
-      const now = new Date();
       const weight = calculateGovernanceWeight(level);
       try {
         await this.voteModel.create(
@@ -835,12 +887,12 @@ export class GovernanceService {
     session?: ClientSession,
   ): Promise<GovernanceTargetSnapshot | null> {
     if (targetType === GOVERNANCE_TARGET_TYPES.POST) {
-      const [post, revision] = await Promise.all([
-        this.postModel.findById(targetId, null, { session }),
-        this.postRevisionModel.findOne({ postId: targetId, version: targetContentVersion }, null, {
-          session,
-        }),
-      ]);
+      const post = await this.postModel.findById(targetId, null, { session });
+      const revision = await this.postRevisionModel.findOne(
+        { postId: targetId, version: targetContentVersion },
+        null,
+        { session },
+      );
       if (!post || !revision) return null;
       const circleRules = await this.getCircleRulesSnapshot(
         post.circleId,
@@ -901,25 +953,31 @@ export class GovernanceService {
         },
       };
     }
-    const [reply, replyRevision] = await Promise.all([
-      this.replyModel.findById(targetId, null, { session }),
-      this.replyRevisionModel.findOne({ replyId: targetId, version: targetContentVersion }, null, {
-        session,
-      }),
-    ]);
+    const reply = await this.replyModel.findById(targetId, null, { session });
+    const replyRevision = await this.replyRevisionModel.findOne(
+      { replyId: targetId, version: targetContentVersion },
+      null,
+      { session },
+    );
     if (!reply || !replyRevision) return null;
     const post = await this.postModel.findById(reply.postId, null, { session });
     if (!post) return null;
     const parentReply = reply.parentReplyId
       ? await this.replyModel.findById(reply.parentReplyId, null, { session })
       : null;
-    const [postCircleRules, replyCircleRules, parentReplyCircleRules] = await Promise.all([
-      this.getCircleRulesSnapshot(post.circleId, post.circleRulesVersion, session),
-      this.getCircleRulesSnapshot(post.circleId, reply.circleRulesVersion, session),
-      parentReply
-        ? this.getCircleRulesSnapshot(post.circleId, parentReply.circleRulesVersion, session)
-        : Promise.resolve(null),
-    ]);
+    const postCircleRules = await this.getCircleRulesSnapshot(
+      post.circleId,
+      post.circleRulesVersion,
+      session,
+    );
+    const replyCircleRules = await this.getCircleRulesSnapshot(
+      post.circleId,
+      reply.circleRulesVersion,
+      session,
+    );
+    const parentReplyCircleRules = parentReply
+      ? await this.getCircleRulesSnapshot(post.circleId, parentReply.circleRulesVersion, session)
+      : null;
     if (parentReply && parentReplyCircleRules === null) {
       throw new Error('Missing parent reply circle rule revision');
     }
@@ -1034,102 +1092,58 @@ export class GovernanceService {
     }
   }
 
-  async advanceDeadlines(session?: ClientSession) {
-    const now = new Date();
-    const candidateIds = await this.listDeadlineCandidateIds(now, session);
-    if (session) {
-      for (const caseId of candidateIds) {
-        await this.advanceSingleCase(caseId, now, session);
-      }
-      return;
-    }
-    for (const caseId of candidateIds) {
-      await this.databaseService.$transaction((transactionSession) =>
-        this.advanceSingleCase(caseId, now, transactionSession),
-      );
-    }
-  }
-
-  private async listDeadlineCandidateIds(now: Date, session?: ClientSession): Promise<string[]> {
-    const candidates = await this.caseModel
-      .find(
+  async advanceClaimedDeadline(
+    caseId: string,
+    deadlineVersion: number,
+    claimToken: string,
+    now: Date,
+    session: ClientSession,
+  ): Promise<boolean> {
+    const governanceCase = await this.caseModel
+      .findOne(
         {
-          $or: [
-            {
-              status: GOVERNANCE_CASE_STATUS.OPEN,
-              firstReviewAt: { $lte: now },
-              firstReviewedAt: null,
-            },
-            {
-              status: GOVERNANCE_CASE_STATUS.OPEN,
-              firstReviewedAt: { $ne: null },
-              normalDeadlineAt: { $lte: now },
-            },
-            {
-              status: GOVERNANCE_CASE_STATUS.EMERGENCY,
-              emergencyDeadlineAt: { $lte: now },
-            },
-          ],
+          _id: caseId,
+          status: { $in: ACTIVE_GOVERNANCE_CASE_STATUSES },
+          deadlineVersion,
+          deadlineClaimVersion: deadlineVersion,
+          deadlineClaimToken: claimToken,
+          nextTransitionAt: { $lte: now },
         },
         null,
         { session },
       )
-      .select('_id')
-      .sort({ openedAt: 1, _id: 1 });
-    return candidates.map((governanceCase) => governanceCase.id);
-  }
+      .select('+deadlineClaimVersion +deadlineClaimToken +deadlineClaimExpiresAt');
+    if (!governanceCase) return false;
 
-  private async advanceSingleCase(
-    caseId: string,
-    now: Date,
-    session?: ClientSession,
-  ): Promise<void> {
-    const governanceCase = await this.caseModel.findById(caseId, null, { session });
-    if (!governanceCase) return;
-    if (governanceCase.status === GOVERNANCE_CASE_STATUS.OPEN) {
-      if (!governanceCase.firstReviewedAt && governanceCase.firstReviewAt <= now) {
-        const result = shouldResolveGovernanceCase(
-          governanceCase.violationTally,
-          governanceCase.notViolationTally,
-        );
+    const transition = calculateGovernanceDeadlineTransition(governanceCase, now);
+    if (transition.kind === GOVERNANCE_DEADLINE_TRANSITION_KINDS.NOT_DUE) {
+      throw new Error(`治理案件 ${governanceCase.id} 的截止状态与调度时间不一致`);
+    }
+    if (transition.kind === GOVERNANCE_DEADLINE_TRANSITION_KINDS.RESOLVE) {
+      if (!governanceCase.firstReviewedAt) {
         governanceCase.firstReviewedAt = now;
-        if (result.resolved && result.resolution) {
-          await this.resolveCase(governanceCase, result.resolution, now, session);
-          return;
-        }
-        if (governanceCase.normalDeadlineAt <= now) {
-          governanceCase.status = GOVERNANCE_CASE_STATUS.EMERGENCY;
-        }
-        await governanceCase.save({ session });
-        return;
       }
-      if (governanceCase.firstReviewedAt && governanceCase.normalDeadlineAt <= now) {
-        governanceCase.status = GOVERNANCE_CASE_STATUS.EMERGENCY;
-        await governanceCase.save({ session });
-      }
-      return;
+      await this.resolveCase(governanceCase, transition.resolution, now, session);
+      return true;
     }
-    if (
-      governanceCase.status === GOVERNANCE_CASE_STATUS.EMERGENCY &&
-      governanceCase.emergencyDeadlineAt <= now
-    ) {
-      const resolution = finalizeGovernanceCaseAtFinalDeadline(
-        governanceCase.violationTally,
-        governanceCase.notViolationTally,
-      );
-      await this.resolveCase(governanceCase, resolution, now, session);
-    }
+
+    governanceCase.status = transition.status;
+    governanceCase.firstReviewedAt = transition.firstReviewedAt;
+    this.scheduleNextDeadline(governanceCase, transition.nextTransitionAt, now);
+    await governanceCase.save({ session });
+    return true;
   }
 
   private async resolveCase(
     governanceCase: GovernanceCaseDocument,
     resolution: GovernanceCaseStatus,
     resolvedAt: Date,
-    session?: ClientSession,
+    session: ClientSession,
   ) {
     governanceCase.status = resolution;
     governanceCase.resolution = resolution;
     governanceCase.resolvedAt = resolvedAt;
+    this.completeDeadlineSchedule(governanceCase);
     const reportStateStatus =
       resolution === GOVERNANCE_CASE_STATUS.RESOLVED_VIOLATION
         ? REPORT_TARGET_STATUSES.RESOLVED_VIOLATION
@@ -1165,22 +1179,60 @@ export class GovernanceService {
     if (resolution === GOVERNANCE_CASE_STATUS.RESOLVED_VIOLATION) {
       await this.applyViolationResolution(governanceCase, session);
     } else if (governanceCase.targetType === GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL) {
-      const released = await this.proposalModel.updateOne(
-        {
-          _id: governanceCase.targetId,
-          activeGovernanceCaseId: governanceCase.id,
-          status: { $in: ['DISCUSSION', 'VOTING'] },
-        },
-        { $set: { activeGovernanceCaseId: null } },
-        { session },
+      const released = await this.circleProposalService.releaseGovernanceHold(
+        governanceCase.targetId,
+        governanceCase.id,
+        session,
       );
-      if (released.modifiedCount !== 1) {
+      if (!released) {
         throw new Error(
           `Cannot release governance hold for circle proposal ${governanceCase.targetId}`,
         );
       }
     }
     await governanceCase.save({ session });
+  }
+
+  private scheduleNextDeadline(
+    governanceCase: GovernanceCaseDocument,
+    nextTransitionAt: Date,
+    scheduleDispatchAt: Date,
+  ): void {
+    governanceCase.deadlineVersion += 1;
+    governanceCase.nextTransitionAt = nextTransitionAt;
+    governanceCase.deadlineScheduleDispatchAt = scheduleDispatchAt;
+    governanceCase.deadlineScheduleClaimVersion = null;
+    governanceCase.deadlineScheduleClaimToken = null;
+    governanceCase.deadlineScheduleClaimExpiresAt = null;
+    governanceCase.deadlineScheduleDeliveryToken = null;
+    governanceCase.deadlineClaimVersion = null;
+    governanceCase.deadlineClaimToken = null;
+    governanceCase.deadlineClaimExpiresAt = null;
+    governanceCase.deadlineCompensationDispatchAt = getCompensationDispatchAt(
+      nextTransitionAt,
+      scheduleDispatchAt,
+    );
+    governanceCase.deadlineCompensationClaimToken = null;
+    governanceCase.deadlineCompensationClaimExpiresAt = null;
+    governanceCase.deadlineCompensationDeliveryToken = null;
+  }
+
+  private completeDeadlineSchedule(governanceCase: GovernanceCaseDocument): void {
+    governanceCase.deadlineVersion += 1;
+    governanceCase.deadlinePublishedVersion = governanceCase.deadlineVersion;
+    governanceCase.nextTransitionAt = null;
+    governanceCase.deadlineScheduleDispatchAt = null;
+    governanceCase.deadlineScheduleClaimVersion = null;
+    governanceCase.deadlineScheduleClaimToken = null;
+    governanceCase.deadlineScheduleClaimExpiresAt = null;
+    governanceCase.deadlineScheduleDeliveryToken = null;
+    governanceCase.deadlineClaimVersion = null;
+    governanceCase.deadlineClaimToken = null;
+    governanceCase.deadlineClaimExpiresAt = null;
+    governanceCase.deadlineCompensationDispatchAt = null;
+    governanceCase.deadlineCompensationClaimToken = null;
+    governanceCase.deadlineCompensationClaimExpiresAt = null;
+    governanceCase.deadlineCompensationDeliveryToken = null;
   }
 
   async resolveCaseForAdmin(
@@ -1191,10 +1243,12 @@ export class GovernanceService {
     session: ClientSession,
   ): Promise<GovernanceCaseDocument> {
     if (!Types.ObjectId.isValid(caseId)) throw governanceErrors.caseNotFound();
+    const now = new Date();
     const governanceCase = await this.caseModel.findOne(
       {
         _id: caseId,
-        status: { $in: [GOVERNANCE_CASE_STATUS.OPEN, GOVERNANCE_CASE_STATUS.EMERGENCY] },
+        status: { $in: ACTIVE_GOVERNANCE_CASE_STATUSES },
+        nextTransitionAt: { $gt: now },
       },
       null,
       { session },
@@ -1208,7 +1262,7 @@ export class GovernanceService {
       decision === 'VIOLATION'
         ? GOVERNANCE_CASE_STATUS.RESOLVED_VIOLATION
         : GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION,
-      new Date(),
+      now,
       session,
     );
     return governanceCase;
@@ -1257,12 +1311,23 @@ export class GovernanceService {
     const contentUpdate = {
       $set: { deletedAt: null, removalSource: CONTENT_REMOVAL_SOURCES.NONE },
     };
+    const targetReply =
+      governanceCase.targetType === GOVERNANCE_TARGET_TYPES.REPLY
+        ? await this.replyModel.findOne(contentWhere, 'parentReplyId', { session })
+        : null;
     const restored =
       governanceCase.targetType === GOVERNANCE_TARGET_TYPES.POST
         ? await this.postModel.updateOne(contentWhere, contentUpdate, { session })
         : await this.replyModel.updateOne(contentWhere, contentUpdate, { session });
     if (restored.modifiedCount !== 1) {
       throw governanceErrors.targetNotGovernanceRemoved();
+    }
+    if (governanceCase.targetType === GOVERNANCE_TARGET_TYPES.POST) {
+      await this.hotRankingService.recordPostVisibilityChanged(governanceCase.targetId, session);
+    } else {
+      if (!targetReply) throw governanceErrors.targetNotGovernanceRemoved();
+      await this.replyCounterService.applyReplyVisibilityDelta(targetReply, 1, session);
+      await this.hotRankingService.recordReplyVisibilityChanged(governanceCase.targetId, session);
     }
 
     const nextRound = governanceCase.round + 1;
@@ -1301,7 +1366,7 @@ export class GovernanceService {
     return correction;
   }
 
-  private async applyViolationResolution(governanceCase: GovernanceCase, session?: ClientSession) {
+  private async applyViolationResolution(governanceCase: GovernanceCase, session: ClientSession) {
     const now = new Date();
     if (governanceCase.targetType === GOVERNANCE_TARGET_TYPES.POST) {
       await this.postModel.updateOne(
@@ -1313,8 +1378,19 @@ export class GovernanceService {
         { deletedAt: now, removalSource: CONTENT_REMOVAL_SOURCES.GOVERNANCE },
         { session },
       );
+      await this.hotRankingService.recordPostVisibilityChanged(governanceCase.targetId, session);
     } else if (governanceCase.targetType === GOVERNANCE_TARGET_TYPES.REPLY) {
-      await this.replyModel.updateOne(
+      const reply = await this.replyModel.findOne(
+        {
+          _id: governanceCase.targetId,
+          contentVersion: governanceCase.targetContentVersion,
+          deletedAt: null,
+        },
+        'parentReplyId',
+        { session },
+      );
+      if (!reply) return;
+      const removed = await this.replyModel.updateOne(
         {
           _id: governanceCase.targetId,
           contentVersion: governanceCase.targetContentVersion,
@@ -1323,6 +1399,10 @@ export class GovernanceService {
         { deletedAt: now, removalSource: CONTENT_REMOVAL_SOURCES.GOVERNANCE },
         { session },
       );
+      if (removed.modifiedCount === 1) {
+        await this.replyCounterService.applyReplyVisibilityDelta(reply, -1, session);
+      }
+      await this.hotRankingService.recordReplyVisibilityChanged(governanceCase.targetId, session);
     } else if (governanceCase.targetType === GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL) {
       if (governanceCase.targetSnapshot.kind !== GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL) {
         throw new Error('Governance proposal case snapshot type mismatch');
@@ -1451,11 +1531,51 @@ export class GovernanceService {
     const durationMinutes = resolvedAt
       ? Math.max(0, Math.round((resolvedAt.getTime() - governanceCase.openedAt.getTime()) / 60000))
       : 0;
-    const voteRows = await this.voteModel
-      .find({ caseId: governanceCase.id })
-      .select('choice weight createdAt')
-      .sort({ createdAt: 1, _id: 1 })
-      .lean<Array<Pick<GovernanceVote, 'choice' | 'weight' | 'createdAt'>>>();
+    const voteGroups = await this.voteModel.aggregate<GovernanceDailyVoteSummaryRow>([
+      {
+        $match: {
+          caseId: governanceCase.id,
+          choice: {
+            $in: [GOVERNANCE_DECISIONS.VIOLATION, GOVERNANCE_DECISIONS.NOT_VIOLATION],
+          },
+        },
+      },
+      {
+        $group: {
+          _id: {
+            $dateToString: {
+              date: '$createdAt',
+              format: '%Y-%m-%d',
+              timezone: GOVERNANCE_TIMEZONE,
+            },
+          },
+          voterCount: { $sum: 1 },
+          violationVoterCount: {
+            $sum: {
+              $cond: [{ $eq: ['$choice', GOVERNANCE_DECISIONS.VIOLATION] }, 1, 0],
+            },
+          },
+          violationVotes: {
+            $sum: {
+              $cond: [{ $eq: ['$choice', GOVERNANCE_DECISIONS.VIOLATION] }, '$weight', 0],
+            },
+          },
+          notViolationVoterCount: {
+            $sum: {
+              $cond: [{ $eq: ['$choice', GOVERNANCE_DECISIONS.NOT_VIOLATION] }, 1, 0],
+            },
+          },
+          notViolationVotes: {
+            $sum: {
+              $cond: [{ $eq: ['$choice', GOVERNANCE_DECISIONS.NOT_VIOLATION] }, '$weight', 0],
+            },
+          },
+          firstOccurredAt: { $min: '$createdAt' },
+          lastOccurredAt: { $max: '$createdAt' },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]);
 
     const events: GovernanceTimelineEvent[] = [
       {
@@ -1465,52 +1585,19 @@ export class GovernanceService {
       },
     ];
 
-    const voteGroups = new Map<
-      string,
-      {
-        voterCount: number;
-        violation: { voterCount: number; votes: number };
-        notViolation: { voterCount: number; votes: number };
-        firstOccurredAt: Date;
-        lastOccurredAt: Date;
-      }
-    >();
-
-    for (const vote of voteRows) {
-      const createdAt = vote.createdAt;
-      const dateKey = toShanghaiDateKey(createdAt);
-      const group = voteGroups.get(dateKey) ?? {
-        voterCount: 0,
-        violation: { voterCount: 0, votes: 0 },
-        notViolation: { voterCount: 0, votes: 0 },
-        firstOccurredAt: createdAt,
-        lastOccurredAt: createdAt,
-      };
-      if (vote.choice === GOVERNANCE_DECISIONS.VIOLATION) {
-        group.voterCount += 1;
-        group.violation.voterCount += 1;
-        group.violation.votes += vote.weight;
-      } else if (vote.choice === GOVERNANCE_DECISIONS.NOT_VIOLATION) {
-        group.voterCount += 1;
-        group.notViolation.voterCount += 1;
-        group.notViolation.votes += vote.weight;
-      } else {
-        continue;
-      }
-      if (createdAt < group.firstOccurredAt) group.firstOccurredAt = createdAt;
-      if (createdAt > group.lastOccurredAt) group.lastOccurredAt = createdAt;
-      voteGroups.set(dateKey, group);
-    }
-
-    for (const [date, group] of [...voteGroups.entries()].sort(([left], [right]) =>
-      left.localeCompare(right),
-    )) {
+    for (const group of voteGroups) {
       events.push({
         type: 'VOTES_CAST',
-        date,
+        date: group._id,
         voterCount: group.voterCount,
-        violation: group.violation,
-        notViolation: group.notViolation,
+        violation: {
+          voterCount: group.violationVoterCount,
+          votes: group.violationVotes,
+        },
+        notViolation: {
+          voterCount: group.notViolationVoterCount,
+          votes: group.notViolationVotes,
+        },
         firstOccurredAt: group.firstOccurredAt.toISOString(),
         lastOccurredAt: group.lastOccurredAt.toISOString(),
       });
@@ -1749,7 +1836,7 @@ export class GovernanceService {
   private serializeAssignedCase(
     governanceCase: GovernanceCase,
     assignment: GovernanceAssignment,
-    quota: GovernanceDailyQuota,
+    quota: GovernanceQuotaSnapshot,
   ) {
     return {
       case: this.serializeOpenCase(governanceCase),
@@ -1801,7 +1888,7 @@ export class GovernanceService {
     };
   }
 
-  private serializeQuota(quota: GovernanceDailyQuota) {
+  private serializeQuota(quota: GovernanceQuotaSnapshot) {
     return {
       dateKey: quota.dateKey,
       quotaTotal: quota.quotaTotal,

@@ -43,6 +43,7 @@ import {
 import { HealthService } from '@/health/health.service';
 import { AdminAuditService } from './admin-audit.service';
 import { AdminService } from './admin.service';
+import { ReplyCounterService } from '@/forum/reply-counter.service';
 import { HotRankingService } from '@/hot-ranking/hot-ranking.service';
 import type { AdminPrincipal } from './interfaces/admin-principal.interface';
 
@@ -85,7 +86,8 @@ describe('AdminService moderation paths', () => {
     resolveCaseForAdmin: jest.fn(),
   };
   const hotRankingService = {
-    markPostDirty: jest.fn().mockResolvedValue(undefined),
+    recordPostVisibilityChanged: jest.fn().mockResolvedValue(undefined),
+    recordReplyVisibilityChanged: jest.fn().mockResolvedValue(undefined),
   };
 
   beforeAll(async () => {
@@ -103,6 +105,10 @@ describe('AdminService moderation paths', () => {
       ],
       providers: [
         AdminService,
+        {
+          provide: ReplyCounterService,
+          useValue: { applyReplyVisibilityDelta: jest.fn().mockResolvedValue(undefined) },
+        },
         AdminAuditService,
         DatabaseService,
         { provide: getModelToken(User.name), useValue: {} },

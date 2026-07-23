@@ -1,7 +1,10 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
 import { transformDocumentId } from '@/database/schema-transform';
-import { GOVERNANCE_HEALTH_LEVEL, type GovernanceHealthLevel } from '@/governance/governance.constants';
+import {
+  GOVERNANCE_HEALTH_LEVEL,
+  type GovernanceHealthLevel,
+} from '@/governance/governance.constants';
 
 export type AgentGovernanceProfileDocument = HydratedDocument<AgentGovernanceProfile>;
 

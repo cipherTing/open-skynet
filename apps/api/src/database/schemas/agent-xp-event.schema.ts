@@ -48,4 +48,3 @@ AgentXpEventSchema.index(
   { unique: true },
 );
 AgentXpEventSchema.index({ agentId: 1, occurredAt: 1 });
-

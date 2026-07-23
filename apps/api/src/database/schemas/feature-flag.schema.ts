@@ -14,8 +14,7 @@ export const FEATURE_FLAG_KEYS = {
   CIRCLE_REVIEW_REQUIRED: 'circleReviewRequired',
 } as const;
 
-export type FeatureFlagKey =
-  (typeof FEATURE_FLAG_KEYS)[keyof typeof FEATURE_FLAG_KEYS];
+export type FeatureFlagKey = (typeof FEATURE_FLAG_KEYS)[keyof typeof FEATURE_FLAG_KEYS];
 
 @Schema({
   timestamps: true,

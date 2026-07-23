@@ -82,45 +82,17 @@ export class Post {
   @Prop({ type: String, required: true })
   circleId!: string;
 
+  @Prop({ type: Boolean, required: true, default: true })
+  circleVisible!: boolean;
+
+  @Prop({ type: Number, required: true, min: 1, default: 1, validate: Number.isInteger })
+  circleVisibilityVersion!: number;
+
   @Prop({ type: Number, required: true, default: 1, min: 1 })
   circleRulesVersion!: number;
 
   @Prop({ type: Date, default: null })
   deletedAt!: Date | null;
-
-  /**
-   * 热度字段由 HotRankingModule 异步维护。它们只用于候选池维护，
-   * 不直接作为公开排序依据。
-   */
-  @Prop({ type: Number, required: true, default: 0, min: 0 })
-  hotScore!: number;
-
-  @Prop({ type: Number, required: true, default: 0, min: 0 })
-  hotSignalVersion!: number;
-
-  @Prop({ type: Number, required: true, default: 0, min: 0 })
-  hotComputedSignalVersion!: number;
-
-  @Prop({ type: Boolean, required: true, default: false })
-  hotDirty!: boolean;
-
-  @Prop({ type: Date, default: null })
-  hotDispatchAt!: Date | null;
-
-  @Prop({ type: Date, default: null })
-  hotDispatchClaimedUntil!: Date | null;
-
-  @Prop({ type: Number, required: true, default: 0, min: 0 })
-  hotDispatchAttempts!: number;
-
-  @Prop({ type: Date, default: null })
-  hotLastActiveAt!: Date | null;
-
-  @Prop({ type: Boolean, required: true, default: false })
-  hotEligible!: boolean;
-
-  @Prop({ type: Date, default: null })
-  hotUpdatedAt!: Date | null;
 
   @Prop({
     type: String,
@@ -141,42 +113,26 @@ PostSchema.pre('validate', function populateSearchText() {
 });
 
 PostSchema.index(
-  { replyCount: -1, viewCount: -1, createdAt: -1, _id: -1 },
+  { circleVisible: 1, createdAt: -1, _id: -1 },
   { partialFilterExpression: { deletedAt: null } },
 );
-PostSchema.index(
-  { hotEligible: 1, _id: 1, hotLastActiveAt: -1, circleId: 1 },
-  { partialFilterExpression: { deletedAt: null, hotEligible: true } },
-);
-PostSchema.index(
-  { hotSignalVersion: 1, hotComputedSignalVersion: 1, _id: 1 },
-  { partialFilterExpression: { deletedAt: null } },
-);
-PostSchema.index(
-  { hotDirty: 1, hotDispatchAt: 1, hotDispatchClaimedUntil: 1, _id: 1 },
-  { partialFilterExpression: { hotDirty: true } },
-);
-PostSchema.index({ createdAt: -1, _id: -1 }, { partialFilterExpression: { deletedAt: null } });
 PostSchema.index({ authorId: 1, createdAt: -1 }, { partialFilterExpression: { deletedAt: null } });
 PostSchema.index(
-  { circleId: 1, createdAt: -1, _id: -1 },
+  { circleId: 1, circleVisible: 1, createdAt: -1, _id: -1 },
   { partialFilterExpression: { deletedAt: null } },
 );
 PostSchema.index(
-  { tags: 1, createdAt: -1, _id: -1 },
+  { circleVisible: 1, tags: 1, createdAt: -1, _id: -1 },
   { partialFilterExpression: { deletedAt: null } },
 );
 PostSchema.index(
-  { circleId: 1, tags: 1, createdAt: -1, _id: -1 },
+  { circleId: 1, circleVisible: 1, tags: 1, createdAt: -1, _id: -1 },
   { partialFilterExpression: { deletedAt: null } },
 );
-PostSchema.index(
-  { circleId: 1, replyCount: -1, viewCount: -1, createdAt: -1, _id: -1 },
-  { partialFilterExpression: { deletedAt: null } },
-);
+PostSchema.index({ circleId: 1, circleVisibilityVersion: 1, _id: 1 });
 PostSchema.index({ deletedAt: 1 });
 PostSchema.index(
-  { searchTitle: 'text', searchContent: 'text' },
+  { circleVisible: 1, searchTitle: 'text', searchContent: 'text' },
   {
     name: 'post_search_text',
     weights: { searchTitle: 5, searchContent: 1 },

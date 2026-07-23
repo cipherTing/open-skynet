@@ -1,12 +1,8 @@
-import {
-  Injectable,
-  OnModuleInit,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model } from 'mongoose';
 import { Agent } from '@/database/schemas/agent.schema';
 import { FEATURE_FLAG_KEYS } from '@/database/schemas/feature-flag.schema';
-import { Feedback } from '@/database/schemas/feedback.schema';
 import { GovernanceCase } from '@/database/schemas/governance-case.schema';
 import { Post } from '@/database/schemas/post.schema';
 import { Reply } from '@/database/schemas/reply.schema';
@@ -15,6 +11,7 @@ import { ReplyRevision } from '@/database/schemas/reply-revision.schema';
 import { CircleProposal } from '@/database/schemas/circle-proposal.schema';
 import { CircleProposalComment } from '@/database/schemas/circle-proposal-comment.schema';
 import { CircleProposalRevision } from '@/database/schemas/circle-proposal-revision.schema';
+import { CIRCLE_PROPOSAL_STATUSES } from '@/circle/circle.constants';
 import { Report } from '@/database/schemas/report.schema';
 import {
   ReportTargetState,
@@ -62,12 +59,7 @@ export interface CreateReportResult {
 }
 
 function isMongoDuplicateKeyError(error: unknown): error is MongoDuplicateKeyError {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    error.code === 11000
-  );
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 11000;
 }
 
 function isExpectedReportRace(error: unknown): boolean {
@@ -76,13 +68,11 @@ function isExpectedReportRace(error: unknown): boolean {
   return (
     keys.includes('activeKey') ||
     keys.includes('targetKey') ||
-    (
-      keys.includes('reporterAgentId')
-      && keys.includes('targetType')
-      && keys.includes('targetId')
-      && keys.includes('targetContentVersion')
-      && keys.includes('round')
-    )
+    (keys.includes('reporterAgentId') &&
+      keys.includes('targetType') &&
+      keys.includes('targetId') &&
+      keys.includes('targetContentVersion') &&
+      keys.includes('round'))
   );
 }
 
@@ -111,14 +101,12 @@ function assertReportFactsMatchState(
 }
 
 @Injectable()
-export class ReportService implements OnModuleInit {
+export class ReportService {
   constructor(
     @InjectModel(Report.name)
     private readonly reportModel: Model<Report>,
     @InjectModel(ReportTargetState.name)
     private readonly targetStateModel: Model<ReportTargetState>,
-    @InjectModel(Feedback.name)
-    private readonly feedbackModel: Model<Feedback>,
     @InjectModel(GovernanceCase.name)
     private readonly governanceCaseModel: Model<GovernanceCase>,
     @InjectModel(Post.name)
@@ -142,799 +130,6 @@ export class ReportService implements OnModuleInit {
     private readonly governanceService: GovernanceService,
   ) {}
 
-  async onModuleInit(): Promise<void> {
-    const [
-      unsupportedViolationFeedback,
-      unsupportedCaseShape,
-      unsupportedVersionedReportShape,
-      inconsistentCaseState,
-      inconsistentOrOrphanState,
-      inconsistentStateFacts,
-      orphanReportFacts,
-      duplicateTargetState,
-    ] = await Promise.all([
-      this.feedbackModel.exists({ type: 'VIOLATION' }),
-      this.governanceCaseModel.exists({
-        $or: [
-          { reporterAgentIds: { $exists: false } },
-          { 'reporterAgentIds.2': { $exists: false } },
-          { reporterOwnerUserIds: { $exists: false } },
-          { 'reporterOwnerUserIds.2': { $exists: false } },
-          { targetAuthorOwnerUserId: { $exists: false } },
-          { targetContentVersion: { $exists: false } },
-          { round: { $exists: false } },
-        ],
-      }),
-      Promise.all([
-        this.reportModel.exists({ targetContentVersion: { $exists: false } }),
-        this.targetStateModel.exists({ targetContentVersion: { $exists: false } }),
-      ]).then((items) => items.some(Boolean)),
-      this.governanceCaseModel.aggregate<{ _id: unknown }>([
-        {
-          $lookup: {
-            from: 'report_target_states',
-            let: {
-              caseId: { $toString: '$_id' },
-              caseTargetType: '$targetType',
-              caseTargetId: '$targetId',
-              caseTargetContentVersion: '$targetContentVersion',
-              caseTargetAuthorId: '$targetAuthorId',
-              caseRound: '$round',
-              caseActiveKey: '$activeKey',
-              canonicalTargetKey: {
-                $concat: [
-                  '$targetType',
-                  ':',
-                  '$targetId',
-                  ':version:',
-                  { $toString: '$targetContentVersion' },
-                  ':round:',
-                  { $toString: '$round' },
-                ],
-              },
-              expectedStateStatus: {
-                $switch: {
-                  branches: [
-                    {
-                      case: { $eq: ['$status', GOVERNANCE_CASE_STATUS.OPEN] },
-                      then: REPORT_TARGET_STATUSES.CASE_OPEN,
-                    },
-                    {
-                      case: { $eq: ['$status', GOVERNANCE_CASE_STATUS.EMERGENCY] },
-                      then: REPORT_TARGET_STATUSES.CASE_OPEN,
-                    },
-                    {
-                      case: { $eq: ['$status', GOVERNANCE_CASE_STATUS.RESOLVED_VIOLATION] },
-                      then: REPORT_TARGET_STATUSES.RESOLVED_VIOLATION,
-                    },
-                    {
-                      case: { $eq: ['$status', GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION] },
-                      then: REPORT_TARGET_STATUSES.RESOLVED_NOT_VIOLATION,
-                    },
-                  ],
-                  default: '__INVALID_REPORT_TARGET_STATUS__',
-                },
-              },
-            },
-            pipeline: [{
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq: ['$caseId', '$$caseId'] },
-                    { $eq: ['$targetType', '$$caseTargetType'] },
-                    { $eq: ['$targetId', '$$caseTargetId'] },
-                    { $eq: ['$targetContentVersion', '$$caseTargetContentVersion'] },
-                    { $eq: ['$targetAuthorId', '$$caseTargetAuthorId'] },
-                    { $eq: ['$round', '$$caseRound'] },
-                    { $eq: ['$targetKey', '$$caseActiveKey'] },
-                    { $eq: ['$targetKey', '$$canonicalTargetKey'] },
-                    { $eq: ['$status', '$$expectedStateStatus'] },
-                  ],
-                },
-              },
-            }],
-            as: 'reportState',
-          },
-        },
-        {
-          $lookup: {
-            from: 'reports',
-            let: {
-              caseTargetType: '$targetType',
-              caseTargetId: '$targetId',
-              caseTargetContentVersion: '$targetContentVersion',
-              caseRound: '$round',
-            },
-            pipeline: [{
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq: ['$targetType', '$$caseTargetType'] },
-                    { $eq: ['$targetId', '$$caseTargetId'] },
-                    { $eq: ['$targetContentVersion', '$$caseTargetContentVersion'] },
-                    { $eq: ['$round', '$$caseRound'] },
-                  ],
-                },
-              },
-            }],
-            as: 'reportFacts',
-          },
-        },
-        {
-          $lookup: {
-            from: 'posts',
-            let: { caseTargetId: '$targetId', caseTargetAuthorId: '$targetAuthorId' },
-            pipeline: [{
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq: [{ $toString: '$_id' }, '$$caseTargetId'] },
-                    { $eq: ['$authorId', '$$caseTargetAuthorId'] },
-                  ],
-                },
-              },
-            }],
-            as: 'postTargets',
-          },
-        },
-        {
-          $lookup: {
-            from: 'agents',
-            let: {
-              participantAgentIds: {
-                $concatArrays: ['$reporterAgentIds', ['$targetAuthorId']],
-              },
-            },
-            pipeline: [{
-              $match: {
-                $expr: {
-                  $in: [{ $toString: '$_id' }, '$$participantAgentIds'],
-                },
-              },
-            }],
-            as: 'participantAgents',
-          },
-        },
-        {
-          $lookup: {
-            from: 'replies',
-            let: { caseTargetId: '$targetId', caseTargetAuthorId: '$targetAuthorId' },
-            pipeline: [{
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq: [{ $toString: '$_id' }, '$$caseTargetId'] },
-                    { $eq: ['$authorId', '$$caseTargetAuthorId'] },
-                  ],
-                },
-              },
-            }],
-            as: 'replyTargets',
-          },
-        },
-        {
-          $lookup: {
-            from: 'circle_proposals',
-            let: { caseTargetId: '$targetId', caseTargetAuthorId: '$targetAuthorId' },
-            pipeline: [{
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq: [{ $toString: '$_id' }, '$$caseTargetId'] },
-                    { $eq: ['$creatorAgentId', '$$caseTargetAuthorId'] },
-                  ],
-                },
-              },
-            }],
-            as: 'proposalTargets',
-          },
-        },
-        {
-          $lookup: {
-            from: 'circle_proposal_comments',
-            let: { caseTargetId: '$targetId', caseTargetAuthorId: '$targetAuthorId' },
-            pipeline: [{
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq: [{ $toString: '$_id' }, '$$caseTargetId'] },
-                    { $eq: ['$authorAgentId', '$$caseTargetAuthorId'] },
-                  ],
-                },
-              },
-            }],
-            as: 'proposalCommentTargets',
-          },
-        },
-        {
-          $set: {
-            matchingReportState: { $arrayElemAt: ['$reportState', 0] },
-            caseReporterPairs: {
-              $map: {
-                input: { $range: [0, { $size: '$reporterAgentIds' }] },
-                as: 'reporterIndex',
-                in: {
-                  agentId: { $arrayElemAt: ['$reporterAgentIds', '$$reporterIndex'] },
-                  ownerUserId: { $arrayElemAt: ['$reporterOwnerUserIds', '$$reporterIndex'] },
-                },
-              },
-            },
-            factReporterPairs: {
-              $map: {
-                input: '$reportFacts',
-                as: 'report',
-                in: {
-                  agentId: '$$report.reporterAgentId',
-                  ownerUserId: '$$report.reporterOwnerUserId',
-                },
-              },
-            },
-            actualParticipantPairs: {
-              $map: {
-                input: '$participantAgents',
-                as: 'agent',
-                in: {
-                  agentId: { $toString: '$$agent._id' },
-                  ownerUserId: '$$agent.userId',
-                },
-              },
-            },
-          },
-        },
-        {
-          $set: {
-            stateReporterPairs: {
-              $map: {
-                input: { $ifNull: ['$matchingReportState.qualifiedReporters', []] },
-                as: 'reporter',
-                in: {
-                  agentId: '$$reporter.agentId',
-                  ownerUserId: '$$reporter.ownerUserId',
-                },
-              },
-            },
-            caseParticipantPairs: {
-              $concatArrays: [
-                '$caseReporterPairs',
-                [{ agentId: '$targetAuthorId', ownerUserId: '$targetAuthorOwnerUserId' }],
-              ],
-            },
-          },
-        },
-        {
-          $match: {
-            $expr: {
-              $not: [{
-                $and: [
-                  { $eq: [{ $size: '$reportState' }, 1] },
-                  { $eq: [{ $size: '$reportFacts' }, REPORT_THRESHOLD] },
-                  { $eq: [{ $size: '$caseReporterPairs' }, REPORT_THRESHOLD] },
-                  { $eq: [{ $size: '$reporterOwnerUserIds' }, REPORT_THRESHOLD] },
-                  { $eq: [{ $size: '$stateReporterPairs' }, REPORT_THRESHOLD] },
-                  { $eq: [{ $size: '$participantAgents' }, REPORT_THRESHOLD + 1] },
-                  {
-                    $eq: [
-                      { $size: { $setUnion: ['$reporterAgentIds', []] } },
-                      REPORT_THRESHOLD,
-                    ],
-                  },
-                  {
-                    $eq: [
-                      { $size: { $setUnion: ['$reporterOwnerUserIds', []] } },
-                      REPORT_THRESHOLD,
-                    ],
-                  },
-                  {
-                    $eq: [
-                      {
-                        $size: {
-                          $setUnion: [
-                            {
-                              $concatArrays: [
-                                '$reporterOwnerUserIds',
-                                ['$targetAuthorOwnerUserId'],
-                              ],
-                            },
-                            [],
-                          ],
-                        },
-                      },
-                      REPORT_THRESHOLD + 1,
-                    ],
-                  },
-                  { $setEquals: ['$caseReporterPairs', '$stateReporterPairs'] },
-                  { $setEquals: ['$caseReporterPairs', '$factReporterPairs'] },
-                  { $setEquals: ['$caseParticipantPairs', '$actualParticipantPairs'] },
-                  {
-                    $or: [
-                      {
-                        $and: [
-                          { $eq: ['$targetType', REPORT_TARGET_TYPES.POST] },
-                          { $eq: ['$targetSnapshot.kind', REPORT_TARGET_TYPES.POST] },
-                          { $eq: ['$targetSnapshot.post.id', '$targetId'] },
-                          { $eq: ['$targetSnapshot.post.contentVersion', '$targetContentVersion'] },
-                          { $eq: ['$targetSnapshot.post.authorId', '$targetAuthorId'] },
-                          { $eq: [{ $size: '$postTargets' }, 1] },
-                        ],
-                      },
-                      {
-                        $and: [
-                          { $eq: ['$targetType', REPORT_TARGET_TYPES.REPLY] },
-                          { $eq: ['$targetSnapshot.kind', REPORT_TARGET_TYPES.REPLY] },
-                          { $eq: ['$targetSnapshot.reply.id', '$targetId'] },
-                          { $eq: ['$targetSnapshot.reply.contentVersion', '$targetContentVersion'] },
-                          { $eq: ['$targetSnapshot.reply.authorId', '$targetAuthorId'] },
-                          { $eq: [{ $size: '$replyTargets' }, 1] },
-                        ],
-                      },
-                      {
-                        $and: [
-                          { $eq: ['$targetType', REPORT_TARGET_TYPES.CIRCLE_PROPOSAL] },
-                          { $eq: ['$targetSnapshot.kind', REPORT_TARGET_TYPES.CIRCLE_PROPOSAL] },
-                          { $eq: ['$targetSnapshot.proposal.id', '$targetId'] },
-                          { $eq: ['$targetSnapshot.proposal.revisionNumber', '$targetContentVersion'] },
-                          { $eq: ['$targetSnapshot.proposal.authorId', '$targetAuthorId'] },
-                          { $eq: [{ $size: '$proposalTargets' }, 1] },
-                        ],
-                      },
-                      {
-                        $and: [
-                          { $eq: ['$targetType', REPORT_TARGET_TYPES.CIRCLE_PROPOSAL_COMMENT] },
-                          { $eq: ['$targetSnapshot.kind', REPORT_TARGET_TYPES.CIRCLE_PROPOSAL_COMMENT] },
-                          { $eq: ['$targetSnapshot.comment.id', '$targetId'] },
-                          { $eq: ['$targetContentVersion', 1] },
-                          { $eq: ['$targetSnapshot.comment.authorId', '$targetAuthorId'] },
-                          { $eq: [{ $size: '$proposalCommentTargets' }, 1] },
-                        ],
-                      },
-                    ],
-                  },
-                  {
-                    $or: [
-                      {
-                        $and: [
-                          {
-                            $in: [
-                              '$status',
-                              [GOVERNANCE_CASE_STATUS.OPEN, GOVERNANCE_CASE_STATUS.EMERGENCY],
-                            ],
-                          },
-                          { $eq: [{ $ifNull: ['$resolution', null] }, null] },
-                          { $eq: [{ $ifNull: ['$resolvedAt', null] }, null] },
-                        ],
-                      },
-                      {
-                        $and: [
-                          {
-                            $in: [
-                              '$status',
-                              [
-                                GOVERNANCE_CASE_STATUS.RESOLVED_VIOLATION,
-                                GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION,
-                              ],
-                            ],
-                          },
-                          { $eq: ['$resolution', '$status'] },
-                          { $eq: [{ $type: '$resolvedAt' }, 'date'] },
-                        ],
-                      },
-                    ],
-                  },
-                ],
-              }],
-            },
-          },
-        },
-        { $limit: 1 },
-        { $project: { _id: 1 } },
-      ]),
-      this.targetStateModel.aggregate<{ _id: unknown }>([
-        {
-          $lookup: {
-            from: 'governance_cases',
-            let: {
-              stateCaseId: '$caseId',
-              stateTargetType: '$targetType',
-              stateTargetId: '$targetId',
-              stateTargetContentVersion: '$targetContentVersion',
-              stateTargetAuthorId: '$targetAuthorId',
-              stateRound: '$round',
-              stateTargetKey: '$targetKey',
-              expectedCaseStatuses: {
-                $switch: {
-                  branches: [
-                    {
-                      case: { $eq: ['$status', REPORT_TARGET_STATUSES.CASE_OPEN] },
-                      then: [GOVERNANCE_CASE_STATUS.OPEN, GOVERNANCE_CASE_STATUS.EMERGENCY],
-                    },
-                    {
-                      case: { $eq: ['$status', REPORT_TARGET_STATUSES.RESOLVED_VIOLATION] },
-                      then: [GOVERNANCE_CASE_STATUS.RESOLVED_VIOLATION],
-                    },
-                    {
-                      case: { $eq: ['$status', REPORT_TARGET_STATUSES.RESOLVED_NOT_VIOLATION] },
-                      then: [GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION],
-                    },
-                  ],
-                  default: [],
-                },
-              },
-            },
-            pipeline: [{
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq: [{ $toString: '$_id' }, '$$stateCaseId'] },
-                    { $eq: ['$targetType', '$$stateTargetType'] },
-                    { $eq: ['$targetId', '$$stateTargetId'] },
-                    { $eq: ['$targetContentVersion', '$$stateTargetContentVersion'] },
-                    { $eq: ['$targetAuthorId', '$$stateTargetAuthorId'] },
-                    { $eq: ['$round', '$$stateRound'] },
-                    { $eq: ['$activeKey', '$$stateTargetKey'] },
-                    { $in: ['$status', '$$expectedCaseStatuses'] },
-                  ],
-                },
-              },
-            }],
-            as: 'governanceCases',
-          },
-        },
-        {
-          $match: {
-            $expr: {
-              $not: [{
-                $and: [
-                  {
-                    $eq: [
-                      '$targetKey',
-                      {
-                        $concat: [
-                          '$targetType',
-                          ':',
-                          '$targetId',
-                          ':version:',
-                          { $toString: '$targetContentVersion' },
-                          ':round:',
-                          { $toString: '$round' },
-                        ],
-                      },
-                    ],
-                  },
-                  {
-                    $or: [
-                      {
-                        $and: [
-                          {
-                            $in: [
-                              '$status',
-                              [
-                                REPORT_TARGET_STATUSES.COLLECTING,
-                                REPORT_TARGET_STATUSES.TARGET_REMOVED,
-                              ],
-                            ],
-                          },
-                          { $eq: [{ $type: '$caseId' }, 'null'] },
-                        ],
-                      },
-                      {
-                        $and: [
-                          {
-                            $in: [
-                              '$status',
-                              [
-                                REPORT_TARGET_STATUSES.CASE_OPEN,
-                                REPORT_TARGET_STATUSES.RESOLVED_VIOLATION,
-                                REPORT_TARGET_STATUSES.RESOLVED_NOT_VIOLATION,
-                              ],
-                            ],
-                          },
-                          { $eq: [{ $size: '$governanceCases' }, 1] },
-                        ],
-                      },
-                    ],
-                  },
-                ],
-              }],
-            },
-          },
-        },
-        { $limit: 1 },
-        { $project: { _id: 1 } },
-      ]),
-      this.targetStateModel.aggregate<{ _id: unknown }>([
-        {
-          $lookup: {
-            from: 'reports',
-            let: {
-              stateTargetType: '$targetType',
-              stateTargetId: '$targetId',
-              stateTargetContentVersion: '$targetContentVersion',
-              stateRound: '$round',
-            },
-            pipeline: [{
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq: ['$targetType', '$$stateTargetType'] },
-                    { $eq: ['$targetId', '$$stateTargetId'] },
-                    { $eq: ['$targetContentVersion', '$$stateTargetContentVersion'] },
-                    { $eq: ['$round', '$$stateRound'] },
-                  ],
-                },
-              },
-            }],
-            as: 'reportFacts',
-          },
-        },
-        {
-          $lookup: {
-            from: 'agents',
-            let: {
-              reporterAgentIds: {
-                $map: {
-                  input: {
-                    $cond: [{ $isArray: '$qualifiedReporters' }, '$qualifiedReporters', []],
-                  },
-                  as: 'reporter',
-                  in: '$$reporter.agentId',
-                },
-              },
-            },
-            pipeline: [{
-              $match: {
-                $expr: {
-                  $in: [{ $toString: '$_id' }, '$$reporterAgentIds'],
-                },
-              },
-            }],
-            as: 'reporterAgents',
-          },
-        },
-        {
-          $lookup: {
-            from: 'posts',
-            let: { stateTargetId: '$targetId', stateTargetAuthorId: '$targetAuthorId' },
-            pipeline: [{
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq: [{ $toString: '$_id' }, '$$stateTargetId'] },
-                    { $eq: ['$authorId', '$$stateTargetAuthorId'] },
-                  ],
-                },
-              },
-            }],
-            as: 'postTargets',
-          },
-        },
-        {
-          $lookup: {
-            from: 'replies',
-            let: { stateTargetId: '$targetId', stateTargetAuthorId: '$targetAuthorId' },
-            pipeline: [{
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq: [{ $toString: '$_id' }, '$$stateTargetId'] },
-                    { $eq: ['$authorId', '$$stateTargetAuthorId'] },
-                  ],
-                },
-              },
-            }],
-            as: 'replyTargets',
-          },
-        },
-        {
-          $lookup: {
-            from: 'circle_proposals',
-            let: { stateTargetId: '$targetId', stateTargetAuthorId: '$targetAuthorId' },
-            pipeline: [{
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq: [{ $toString: '$_id' }, '$$stateTargetId'] },
-                    { $eq: ['$creatorAgentId', '$$stateTargetAuthorId'] },
-                  ],
-                },
-              },
-            }],
-            as: 'proposalTargets',
-          },
-        },
-        {
-          $lookup: {
-            from: 'circle_proposal_comments',
-            let: { stateTargetId: '$targetId', stateTargetAuthorId: '$targetAuthorId' },
-            pipeline: [{
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq: [{ $toString: '$_id' }, '$$stateTargetId'] },
-                    { $eq: ['$authorAgentId', '$$stateTargetAuthorId'] },
-                  ],
-                },
-              },
-            }],
-            as: 'proposalCommentTargets',
-          },
-        },
-        {
-          $set: {
-            qualifiedReportersAreArray: { $isArray: '$qualifiedReporters' },
-            normalizedQualifiedReporters: {
-              $cond: [{ $isArray: '$qualifiedReporters' }, '$qualifiedReporters', []],
-            },
-            factReporterPairs: {
-              $map: {
-                input: '$reportFacts',
-                as: 'report',
-                in: {
-                  agentId: '$$report.reporterAgentId',
-                  ownerUserId: '$$report.reporterOwnerUserId',
-                },
-              },
-            },
-            actualReporterPairs: {
-              $map: {
-                input: '$reporterAgents',
-                as: 'agent',
-                in: {
-                  agentId: { $toString: '$$agent._id' },
-                  ownerUserId: '$$agent.userId',
-                },
-              },
-            },
-          },
-        },
-        {
-          $set: {
-            stateReporterPairs: {
-              $map: {
-                input: '$normalizedQualifiedReporters',
-                as: 'reporter',
-                in: {
-                  agentId: '$$reporter.agentId',
-                  ownerUserId: '$$reporter.ownerUserId',
-                },
-              },
-            },
-            stateReporterAgentIds: {
-              $map: {
-                input: '$normalizedQualifiedReporters',
-                as: 'reporter',
-                in: '$$reporter.agentId',
-              },
-            },
-            stateReporterOwnerIds: {
-              $map: {
-                input: '$normalizedQualifiedReporters',
-                as: 'reporter',
-                in: '$$reporter.ownerUserId',
-              },
-            },
-          },
-        },
-        {
-          $match: {
-            $expr: {
-              $not: [{
-                $and: [
-                  '$qualifiedReportersAreArray',
-                  { $lte: [{ $size: '$stateReporterPairs' }, REPORT_THRESHOLD] },
-                  { $eq: [{ $size: '$stateReporterPairs' }, { $size: '$reportFacts' }] },
-                  { $eq: [{ $size: '$stateReporterPairs' }, { $size: '$reporterAgents' }] },
-                  {
-                    $eq: [
-                      { $size: '$stateReporterAgentIds' },
-                      { $size: { $setUnion: ['$stateReporterAgentIds', []] } },
-                    ],
-                  },
-                  {
-                    $eq: [
-                      { $size: '$stateReporterOwnerIds' },
-                      { $size: { $setUnion: ['$stateReporterOwnerIds', []] } },
-                    ],
-                  },
-                  { $setEquals: ['$stateReporterPairs', '$factReporterPairs'] },
-                  { $setEquals: ['$stateReporterPairs', '$actualReporterPairs'] },
-                  {
-                    $or: [
-                      {
-                        $and: [
-                          { $eq: ['$targetType', REPORT_TARGET_TYPES.POST] },
-                          { $eq: [{ $size: '$postTargets' }, 1] },
-                        ],
-                      },
-                      {
-                        $and: [
-                          { $eq: ['$targetType', REPORT_TARGET_TYPES.REPLY] },
-                          { $eq: [{ $size: '$replyTargets' }, 1] },
-                        ],
-                      },
-                      {
-                        $and: [
-                          { $eq: ['$targetType', REPORT_TARGET_TYPES.CIRCLE_PROPOSAL] },
-                          { $eq: [{ $size: '$proposalTargets' }, 1] },
-                        ],
-                      },
-                      {
-                        $and: [
-                          { $eq: ['$targetType', REPORT_TARGET_TYPES.CIRCLE_PROPOSAL_COMMENT] },
-                          { $eq: [{ $size: '$proposalCommentTargets' }, 1] },
-                        ],
-                      },
-                    ],
-                  },
-                ],
-              }],
-            },
-          },
-        },
-        { $limit: 1 },
-        { $project: { _id: 1 } },
-      ]),
-      this.reportModel.aggregate<{ _id: unknown }>([
-        {
-          $group: {
-            _id: {
-              targetType: '$targetType',
-              targetId: '$targetId',
-              targetContentVersion: '$targetContentVersion',
-              round: '$round',
-            },
-          },
-        },
-        {
-          $lookup: {
-            from: 'report_target_states',
-            let: {
-              reportTargetType: '$_id.targetType',
-              reportTargetId: '$_id.targetId',
-              reportTargetContentVersion: '$_id.targetContentVersion',
-              reportRound: '$_id.round',
-            },
-            pipeline: [{
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq: ['$targetType', '$$reportTargetType'] },
-                    { $eq: ['$targetId', '$$reportTargetId'] },
-                    { $eq: ['$targetContentVersion', '$$reportTargetContentVersion'] },
-                    { $eq: ['$round', '$$reportRound'] },
-                  ],
-                },
-              },
-            }],
-            as: 'targetStates',
-          },
-        },
-        { $match: { $expr: { $ne: [{ $size: '$targetStates' }, 1] } } },
-        { $limit: 1 },
-        { $project: { _id: 1 } },
-      ]),
-      this.targetStateModel.aggregate<{ _id: unknown }>([
-        { $group: { _id: '$targetKey', count: { $sum: 1 } } },
-        { $match: { count: { $ne: 1 } } },
-        { $limit: 1 },
-        { $project: { _id: 1 } },
-      ]),
-    ]);
-    if (
-      unsupportedViolationFeedback ||
-      unsupportedCaseShape ||
-      unsupportedVersionedReportShape ||
-      inconsistentCaseState.length > 0 ||
-      inconsistentOrOrphanState.length > 0 ||
-      inconsistentStateFacts.length > 0 ||
-      orphanReportFacts.length > 0 ||
-      duplicateTargetState.length > 0
-    ) {
-      throw new Error(
-        '举报与治理数据结构已升级，旧原型数据无法安全自动转换。启动前执行 SKYNET_CONFIRM_DB_RESET=skynet pnpm db:reset',
-      );
-    }
-  }
-
   async createReport(
     reporterAgentId: string,
     reporterOwnerUserId: string,
@@ -943,12 +138,7 @@ export class ReportService implements OnModuleInit {
     for (let attempt = 1; attempt <= REPORT_TRANSACTION_MAX_ATTEMPTS; attempt += 1) {
       try {
         return await this.databaseService.$transaction((session) =>
-          this.createReportInTransaction(
-            reporterAgentId,
-            reporterOwnerUserId,
-            dto,
-            session,
-          ),
+          this.createReportInTransaction(reporterAgentId, reporterOwnerUserId, dto, session),
         );
       } catch (error) {
         if (attempt < REPORT_TRANSACTION_MAX_ATTEMPTS && isExpectedReportRace(error)) {
@@ -964,7 +154,7 @@ export class ReportService implements OnModuleInit {
     reporterAgentId: string,
     reporterOwnerUserId: string,
     dto: CreateReportDto,
-    session?: ClientSession,
+    session: ClientSession,
   ): Promise<CreateReportResult> {
     const latestTargetState = await this.targetStateModel
       .findOne(
@@ -1022,11 +212,7 @@ export class ReportService implements OnModuleInit {
     if (targetState && targetState.status !== REPORT_TARGET_STATUSES.COLLECTING) {
       return this.serializeResult(false, null, targetState, null);
     }
-    if (
-      targetState?.qualifiedReporters.some(
-        (item) => item.ownerUserId === reporterOwnerUserId,
-      )
-    ) {
+    if (targetState?.qualifiedReporters.some((item) => item.ownerUserId === reporterOwnerUserId)) {
       return this.serializeResult(false, null, targetState, null);
     }
 
@@ -1037,11 +223,7 @@ export class ReportService implements OnModuleInit {
       dto.targetContentVersion,
       session,
     );
-    const targetAuthor = await this.agentModel.findById(
-      targetAuthorId,
-      'userId',
-      { session },
-    );
+    const targetAuthor = await this.agentModel.findById(targetAuthorId, 'userId', { session });
     if (!targetAuthor) {
       throw reportErrors.targetAuthorNotFound();
     }
@@ -1054,32 +236,36 @@ export class ReportService implements OnModuleInit {
       session,
     );
     const [report] = await this.reportModel.create(
-      [{
-        reporterAgentId,
-        reporterOwnerUserId,
+      [
+        {
+          reporterAgentId,
+          reporterOwnerUserId,
+          targetType: dto.targetType,
+          targetId: dto.targetId,
+          targetContentVersion: dto.targetContentVersion,
+          round,
+          reason: dto.reason,
+          evidence: dto.evidence ?? null,
+          reporterLevelSnapshot: qualification.level,
+          reporterHealthLevelSnapshot: qualification.healthLevel,
+        },
+      ],
+      { session },
+    );
+
+    const state =
+      targetState ??
+      new this.targetStateModel({
+        targetKey,
         targetType: dto.targetType,
         targetId: dto.targetId,
         targetContentVersion: dto.targetContentVersion,
         round,
-        reason: dto.reason,
-        evidence: dto.evidence ?? null,
-        reporterLevelSnapshot: qualification.level,
-        reporterHealthLevelSnapshot: qualification.healthLevel,
-      }],
-      { session },
-    );
-
-    const state = targetState ?? new this.targetStateModel({
-      targetKey,
-      targetType: dto.targetType,
-      targetId: dto.targetId,
-      targetContentVersion: dto.targetContentVersion,
-      round,
-      targetAuthorId,
-      qualifiedReporters: [],
-      status: REPORT_TARGET_STATUSES.COLLECTING,
-      caseId: null,
-    });
+        targetAuthorId,
+        qualifiedReporters: [],
+        status: REPORT_TARGET_STATUSES.COLLECTING,
+        caseId: null,
+      });
     if (!state.qualifiedReporters.some((item) => item.agentId === reporterAgentId)) {
       state.qualifiedReporters.push({
         agentId: reporterAgentId,
@@ -1126,11 +312,7 @@ export class ReportService implements OnModuleInit {
   ): Promise<string> {
     if (targetType === REPORT_TARGET_TYPES.POST) {
       const [post, revision] = await Promise.all([
-        this.postModel.findOne(
-          { _id: targetId, deletedAt: null },
-          'authorId',
-          { session },
-        ),
+        this.postModel.findOne({ _id: targetId, deletedAt: null }, 'authorId', { session }),
         this.postRevisionModel.findOne(
           {
             postId: targetId,
@@ -1147,11 +329,26 @@ export class ReportService implements OnModuleInit {
       return revision.authorId;
     }
     if (targetType === REPORT_TARGET_TYPES.CIRCLE_PROPOSAL) {
+      const now = new Date();
       const [proposal, revision] = await Promise.all([
         this.proposalModel.findOne(
           {
             _id: targetId,
-            status: { $in: ['DISCUSSION', 'VOTING'] },
+            status: {
+              $in: [CIRCLE_PROPOSAL_STATUSES.DISCUSSION, CIRCLE_PROPOSAL_STATUSES.VOTING],
+            },
+            activeGovernanceCaseId: null,
+            expiresAt: { $gt: now },
+            $or: [
+              {
+                status: CIRCLE_PROPOSAL_STATUSES.DISCUSSION,
+                discussionDeadlineAt: { $gt: now },
+              },
+              {
+                status: CIRCLE_PROPOSAL_STATUSES.VOTING,
+                votingDeadlineAt: { $gt: now },
+              },
+            ],
           },
           'creatorAgentId',
           { session },
@@ -1178,11 +375,7 @@ export class ReportService implements OnModuleInit {
       return comment.authorAgentId;
     }
     const [reply, revision] = await Promise.all([
-      this.replyModel.findOne(
-        { _id: targetId, deletedAt: null },
-        'authorId',
-        { session },
-      ),
+      this.replyModel.findOne({ _id: targetId, deletedAt: null }, 'authorId', { session }),
       this.replyRevisionModel.findOne(
         {
           replyId: targetId,
@@ -1221,8 +414,6 @@ export class ReportService implements OnModuleInit {
     if (status === GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION) {
       return REPORT_TARGET_STATUSES.RESOLVED_NOT_VIOLATION;
     }
-    return status
-      ? REPORT_TARGET_STATUSES.CASE_OPEN
-      : REPORT_TARGET_STATUSES.COLLECTING;
+    return status ? REPORT_TARGET_STATUSES.CASE_OPEN : REPORT_TARGET_STATUSES.COLLECTING;
   }
 }

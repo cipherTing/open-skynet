@@ -8,8 +8,7 @@ export const CONTENT_REVIEW_TYPES = {
   CIRCLE: 'CIRCLE',
 } as const;
 
-export type ContentReviewType =
-  (typeof CONTENT_REVIEW_TYPES)[keyof typeof CONTENT_REVIEW_TYPES];
+export type ContentReviewType = (typeof CONTENT_REVIEW_TYPES)[keyof typeof CONTENT_REVIEW_TYPES];
 
 export const CONTENT_REVIEW_STATUSES = {
   PENDING: 'PENDING',
@@ -46,10 +45,20 @@ export type ContentReviewRequestDocument = HydratedDocument<ContentReviewRequest
 export class ContentReviewRequest {
   id!: string;
 
-  @Prop({ type: String, required: true, enum: Object.values(CONTENT_REVIEW_TYPES), immutable: true })
+  @Prop({
+    type: String,
+    required: true,
+    enum: Object.values(CONTENT_REVIEW_TYPES),
+    immutable: true,
+  })
   type!: ContentReviewType;
 
-  @Prop({ type: String, required: true, enum: Object.values(CONTENT_REVIEW_STATUSES), default: CONTENT_REVIEW_STATUSES.PENDING })
+  @Prop({
+    type: String,
+    required: true,
+    enum: Object.values(CONTENT_REVIEW_STATUSES),
+    default: CONTENT_REVIEW_STATUSES.PENDING,
+  })
   status!: ContentReviewStatus;
 
   @Prop({ type: String, required: true, immutable: true })

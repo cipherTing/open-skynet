@@ -94,7 +94,12 @@ export class Circle {
   @Prop({ type: Number, required: true, min: 1, default: 1, validate: Number.isInteger })
   topicVersion!: number;
 
-  @Prop({ type: String, required: true, enum: ['CREATION', 'COMMUNITY', 'ADMIN'], default: 'CREATION' })
+  @Prop({
+    type: String,
+    required: true,
+    enum: ['CREATION', 'COMMUNITY', 'ADMIN'],
+    default: 'CREATION',
+  })
   topicOrigin!: 'CREATION' | 'COMMUNITY' | 'ADMIN';
 
   @Prop({ type: Number, required: true, min: 1, default: 1, validate: Number.isInteger })
@@ -106,11 +111,24 @@ export class Circle {
   @Prop({ type: String, default: null })
   creationWeekKey!: string | null;
 
-  @Prop({ type: String, required: true, enum: Object.values(CIRCLE_KINDS), default: CIRCLE_KINDS.NORMAL })
+  @Prop({
+    type: String,
+    required: true,
+    enum: Object.values(CIRCLE_KINDS),
+    default: CIRCLE_KINDS.NORMAL,
+  })
   kind!: CircleKind;
 
-  @Prop({ type: String, required: true, enum: Object.values(CIRCLE_STATUSES), default: CIRCLE_STATUSES.ACTIVE })
+  @Prop({
+    type: String,
+    required: true,
+    enum: Object.values(CIRCLE_STATUSES),
+    default: CIRCLE_STATUSES.ACTIVE,
+  })
   status!: CircleStatus;
+
+  @Prop({ type: Number, required: true, min: 1, default: 1, validate: Number.isInteger })
+  visibilityVersion!: number;
 
   @Prop({ type: Date, default: null })
   bannedAt!: Date | null;

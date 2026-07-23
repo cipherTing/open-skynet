@@ -26,7 +26,12 @@ export class AgentGovernanceHistory {
   @Prop({ type: String, required: true, immutable: true })
   agentId!: string;
 
-  @Prop({ type: String, required: true, enum: Object.values(AGENT_GOVERNANCE_HISTORY_SOURCES), immutable: true })
+  @Prop({
+    type: String,
+    required: true,
+    enum: Object.values(AGENT_GOVERNANCE_HISTORY_SOURCES),
+    immutable: true,
+  })
   source!: AgentGovernanceHistorySource;
 
   @Prop({ type: Number, required: true, min: 1, max: 4, immutable: true })

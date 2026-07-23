@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types, type ClientSession, type FilterQuery } from 'mongoose';
 import { Agent } from '@/database/schemas/agent.schema';
@@ -46,15 +46,12 @@ import { GOVERNANCE_CASE_STATUS, GOVERNANCE_TARGET_TYPES } from '@/governance/go
 import { addDays, getShanghaiDayKey, getShanghaiDayStart } from '@/progression/progression.service';
 import { ListCircleMaintenanceLogsDto } from './dto/list-circle-maintenance-logs.dto';
 import { normalizeCircleVisibleText } from './circle-normalization';
-import { RedisService } from '@/redis/redis.service';
-import { REDIS_SET_EXPIRATION_UNITS } from '@/redis/redis.constants';
 import { apiMessage } from '@/common/i18n/api-message';
 import { translateApiText } from '@/common/i18n/api-language';
 import { circleErrors, commonErrors } from '@/common/errors/business-errors';
-import { HotRankingService, MAX_CIRCLE_HOT_POSTS } from '@/hot-ranking/hot-ranking.service';
-
-const ACTIVE_CIRCLE_IDS_CACHE_KEY = 'skynet:v1:circles:active-ids';
-const ACTIVE_CIRCLE_IDS_CACHE_TTL_SECONDS = 60;
+import { HotRankingService } from '@/hot-ranking/hot-ranking.service';
+import { MAX_CIRCLE_HOT_POSTS } from '@/hot-ranking/hot-ranking.constants';
+import { PostVisibilityService } from '@/post-visibility/post-visibility.service';
 
 type PublicCircle = {
   id: string;
@@ -131,16 +128,6 @@ function metadataNumber(metadata: CircleMaintenanceLog['metadata'], key: string)
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
-function rulesEqual(
-  left: Array<{ id: string; text: string }>,
-  right: Array<{ id: string; text: string }>,
-): boolean {
-  return (
-    left.length === right.length &&
-    left.every((value, index) => value.id === right[index]?.id && value.text === right[index]?.text)
-  );
-}
-
 function toSlugBase(name: string): string {
   const ascii = normalizeCircleName(name)
     .replace(/[^a-z0-9]+/g, '-')
@@ -187,7 +174,7 @@ function getAgentLevelByXp(xpTotal: number): number {
 }
 
 @Injectable()
-export class CircleService implements OnModuleInit {
+export class CircleService {
   constructor(
     @InjectModel(Circle.name) private readonly circleModel: Model<Circle>,
     @InjectModel(CircleSubscription.name)
@@ -210,73 +197,26 @@ export class CircleService implements OnModuleInit {
     private readonly agentGovernanceProfileModel: Model<AgentGovernanceProfile>,
     private readonly databaseService: DatabaseService,
     private readonly featureFlagService: FeatureFlagService,
-    private readonly redisService: RedisService,
     private readonly hotRankingService: HotRankingService,
+    private readonly postVisibilityService: PostVisibilityService,
   ) {}
-
-  async onModuleInit(): Promise<void> {
-    await this.ensureRuleHistoryIntegrity();
-  }
-
-  private async ensureRuleHistoryIntegrity(): Promise<void> {
-    const circles = await this.circleModel
-      .find({ deletedAt: null })
-      .select('rules rulesVersion')
-      .sort({ _id: 1 });
-    if (circles.length === 0) return;
-    const revisions = await this.circleRuleRevisionModel
-      .find({ circleId: { $in: circles.map((circle) => circle.id) } })
-      .select('circleId version rules')
-      .sort({ circleId: 1, version: 1 });
-    const revisionsByCircle = new Map<string, CircleRuleRevision[]>();
-    for (const revision of revisions) {
-      const existing = revisionsByCircle.get(revision.circleId) ?? [];
-      existing.push(revision);
-      revisionsByCircle.set(revision.circleId, existing);
-    }
-    for (const circle of circles) {
-      this.assertContiguousRuleVersions(
-        circle.id,
-        circle.rulesVersion,
-        circle.rules,
-        revisionsByCircle.get(circle.id) ?? [],
-      );
-    }
-  }
-
-  private assertContiguousRuleVersions(
-    circleId: string,
-    currentVersion: number,
-    currentRules: Array<{ id: string; text: string }>,
-    revisions: Array<Pick<CircleRuleRevision, 'version' | 'rules'>>,
-  ): void {
-    const complete =
-      revisions.length === currentVersion &&
-      revisions.every((revision, index) => revision.version === index + 1) &&
-      rulesEqual(revisions.at(-1)?.rules ?? [], currentRules);
-    if (!complete) {
-      throw new Error(
-        `Circle ${circleId} has incomplete rule history; run scripts/db-reset.sh before starting this version`,
-      );
-    }
-  }
 
   async getCircleBySlug(slug: string, currentUserId?: string): Promise<PublicCircle> {
     const normalizedSlug = slug.trim().toLocaleLowerCase('und');
     if (!normalizedSlug) {
       throw commonErrors.circleNotFound();
     }
-    const [circle, subscriptionState] = await Promise.all([
-      this.circleModel.findOne({
-        slug: normalizedSlug,
-        deletedAt: null,
-        status: CIRCLE_STATUSES.ACTIVE,
-      }),
-      this.getSubscribedCircleIds(currentUserId),
-    ]);
+    const circle = await this.circleModel.findOne({
+      slug: normalizedSlug,
+      deletedAt: null,
+      status: CIRCLE_STATUSES.ACTIVE,
+    });
     if (!circle) {
       throw commonErrors.circleNotFound();
     }
+    const subscriptionState = await this.getSubscriptionStateForCircleIds(currentUserId, [
+      circle.id,
+    ]);
     return this.serializeCircle(
       circle,
       subscriptionState ? subscriptionState.circleIds.has(circle.id) : undefined,
@@ -340,32 +280,6 @@ export class CircleService implements OnModuleInit {
     return circles.map((circle) => circle.id);
   }
 
-  async listActiveCircleIds(): Promise<string[]> {
-    const redis = this.redisService.getClient();
-    const cached = await redis.get(ACTIVE_CIRCLE_IDS_CACHE_KEY);
-    if (cached) {
-      const parsed: unknown = JSON.parse(cached);
-      if (Array.isArray(parsed) && parsed.every((item) => typeof item === 'string')) {
-        return parsed;
-      }
-    }
-    const circles = await this.circleModel
-      .find({ deletedAt: null, status: CIRCLE_STATUSES.ACTIVE })
-      .select('_id');
-    const circleIds = circles.map((circle) => circle.id);
-    await redis.set(
-      ACTIVE_CIRCLE_IDS_CACHE_KEY,
-      JSON.stringify(circleIds),
-      REDIS_SET_EXPIRATION_UNITS.SECONDS,
-      ACTIVE_CIRCLE_IDS_CACHE_TTL_SECONDS,
-    );
-    return circleIds;
-  }
-
-  async invalidateActiveCircleIdsCache(): Promise<void> {
-    await this.redisService.getClient().del(ACTIVE_CIRCLE_IDS_CACHE_KEY);
-  }
-
   async listCircles(dto: ListCirclesDto, currentUserId?: string) {
     const page = dto.page ?? 1;
     const pageSize = dto.pageSize ?? 10;
@@ -376,23 +290,25 @@ export class CircleService implements OnModuleInit {
         : { subscriberCount: -1, postCount: -1, lastPostAt: -1, createdAt: -1, _id: -1 };
 
     const where: FilterQuery<Circle> = { deletedAt: null, status: CIRCLE_STATUSES.ACTIVE };
-    const [circles, total, subscriptionState] = await Promise.all([
+    const [circles, total] = await Promise.all([
       this.circleModel
         .find(where)
         .sort(sort)
         .skip((page - 1) * pageSize)
         .limit(pageSize),
       this.circleModel.countDocuments(where),
-      this.getSubscribedCircleIds(currentUserId),
     ]);
 
     const includeHotPosts = dto.includeHotPosts === true;
-    const hotPostsByCircle = includeHotPosts
-      ? await this.hotRankingService.getCirclesHotPosts(
-          circles.map((circle) => circle.id),
-          MAX_CIRCLE_HOT_POSTS,
-        )
-      : new Map<string, Array<{ id: string; title: string; createdAt: string }>>();
+    const circleIds = circles.map((circle) => circle.id);
+    const [subscriptionState, hotPostsByCircle] = await Promise.all([
+      this.getSubscriptionStateForCircleIds(currentUserId, circleIds),
+      includeHotPosts
+        ? this.hotRankingService.getCirclesHotPosts(circleIds, MAX_CIRCLE_HOT_POSTS)
+        : Promise.resolve(
+            new Map<string, Array<{ id: string; title: string; createdAt: string }>>(),
+          ),
+    ]);
 
     return {
       circles: circles.map((circle) => {
@@ -435,14 +351,17 @@ export class CircleService implements OnModuleInit {
       ],
     };
 
-    const [matches, exactMatch, subscriptionState] = await Promise.all([
+    const [matches, exactMatch] = await Promise.all([
       this.circleModel.find(where).limit(50),
       this.circleModel.findOne({
         normalizedName: normalizedQuery,
         deletedAt: null,
         status: CIRCLE_STATUSES.ACTIVE,
       }),
-      this.getSubscribedCircleIds(currentUserId),
+    ]);
+    const subscriptionState = await this.getSubscriptionStateForCircleIds(currentUserId, [
+      ...matches.map((circle) => circle.id),
+      ...(exactMatch ? [exactMatch.id] : []),
     ]);
     const ranked = matches
       .map((circle) => ({
@@ -558,7 +477,6 @@ export class CircleService implements OnModuleInit {
       throw error;
     }
 
-    await this.invalidateActiveCircleIdsCache();
     return {
       outcome: 'PUBLISHED' as const,
       message: apiMessage('api.success.circlePublished'),
@@ -784,7 +702,17 @@ export class CircleService implements OnModuleInit {
     if (!circle) throw commonErrors.circleNotFound();
     if (circle.status === status) return circle;
     const previousStatus = circle.status;
+    const previousVisibilityVersion = circle.visibilityVersion;
+    const nextVisibilityVersion = previousVisibilityVersion + 1;
+    await this.postVisibilityService.recordCircleStatusChanged(
+      circle.id,
+      previousVisibilityVersion,
+      nextVisibilityVersion,
+      status === CIRCLE_STATUSES.ACTIVE,
+      session,
+    );
     circle.status = status;
+    circle.visibilityVersion = nextVisibilityVersion;
     circle.bannedAt = status === CIRCLE_STATUSES.BANNED ? new Date() : null;
     await circle.save({ session });
     await this.recordMaintenanceLog(
@@ -842,7 +770,7 @@ export class CircleService implements OnModuleInit {
       kind: 'NORMAL' | 'OFFICIAL';
       createdByType: 'AGENT' | 'ADMIN';
     },
-    session?: ClientSession,
+    session: ClientSession,
   ): Promise<Circle> {
     const slug = await this.generateUniqueSlug(input.name, session);
     const circle = new this.circleModel({
@@ -860,9 +788,11 @@ export class CircleService implements OnModuleInit {
       creationWeekKey: input.creationWeekKey,
       kind: input.kind,
       status: CIRCLE_STATUSES.ACTIVE,
+      visibilityVersion: 1,
       bannedAt: null,
     });
     await circle.save({ session });
+    await this.postVisibilityService.initializeCircle(circle.id, true, 1, session);
     await this.circleRuleRevisionModel.create(
       [
         {
@@ -1130,8 +1060,8 @@ export class CircleService implements OnModuleInit {
     const agent = await this.agentModel.findById(agentId).select('_id');
     if (!agent) throw commonErrors.agentNotFound();
 
-    const [pageResult, subscriptionState] = await Promise.all([
-      this.circleSubscriptionModel.aggregate<CircleSubscriptionAggregatePage>([
+    const pageResult =
+      await this.circleSubscriptionModel.aggregate<CircleSubscriptionAggregatePage>([
         { $match: { agentId } },
         { $sort: { createdAt: -1, _id: -1 } },
         {
@@ -1160,17 +1090,18 @@ export class CircleService implements OnModuleInit {
             meta: [{ $count: 'total' }],
           },
         },
-      ]),
-      this.getSubscribedCircleIds(currentUserId),
-    ]);
+      ]);
     const subscriptions = pageResult[0]?.data ?? [];
     const total = pageResult[0]?.meta[0]?.total ?? 0;
     const circleIds = subscriptions.map((subscription) => subscription.circleId);
-    const circles = await this.circleModel.find({
-      _id: { $in: circleIds },
-      deletedAt: null,
-      status: CIRCLE_STATUSES.ACTIVE,
-    });
+    const [circles, subscriptionState] = await Promise.all([
+      this.circleModel.find({
+        _id: { $in: circleIds },
+        deletedAt: null,
+        status: CIRCLE_STATUSES.ACTIVE,
+      }),
+      this.getSubscriptionStateForCircleIds(currentUserId, circleIds),
+    ]);
     const circleMap = new Map(circles.map((circle) => [circle.id, circle]));
 
     return {
@@ -1197,6 +1128,28 @@ export class CircleService implements OnModuleInit {
   async getSubscribedCircleIdsForUser(currentUserId: string): Promise<string[]> {
     const subscriptionState = await this.getSubscribedCircleIds(currentUserId);
     return subscriptionState ? this.filterActiveCircleIds([...subscriptionState.circleIds]) : [];
+  }
+
+  private async getSubscriptionStateForCircleIds(
+    currentUserId: string | undefined,
+    circleIds: string[],
+  ): Promise<{ agentId: string; circleIds: Set<string> } | null> {
+    if (!currentUserId) return null;
+    const agent = await this.agentModel.findOne({ userId: currentUserId }).select('_id');
+    if (!agent) return null;
+
+    const uniqueCircleIds = [...new Set(circleIds)];
+    const subscriptions =
+      uniqueCircleIds.length === 0
+        ? []
+        : await this.circleSubscriptionModel
+            .find({ agentId: agent.id, circleId: { $in: uniqueCircleIds } })
+            .select('circleId')
+            .lean<Array<Pick<CircleSubscription, 'circleId'>>>();
+    return {
+      agentId: agent.id,
+      circleIds: new Set(subscriptions.map((subscription) => subscription.circleId)),
+    };
   }
 
   private async getSubscribedCircleIds(currentUserId?: string): Promise<{

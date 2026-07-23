@@ -4,7 +4,10 @@ import { CircleRuleItem, CircleRuleItemSchema } from './circle.schema';
 
 export type CircleProposalRevisionDocument = HydratedDocument<CircleProposalRevision>;
 
-@Schema({ timestamps: { createdAt: true, updatedAt: false }, collection: 'circle_proposal_revisions' })
+@Schema({
+  timestamps: { createdAt: true, updatedAt: false },
+  collection: 'circle_proposal_revisions',
+})
 export class CircleProposalRevision {
   id!: string;
 

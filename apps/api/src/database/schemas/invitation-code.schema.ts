@@ -4,7 +4,11 @@ import { transformDocumentId } from '@/database/schema-transform';
 
 export type InvitationCodeDocument = HydratedDocument<InvitationCode>;
 
-@Schema({ collection: 'invitation_codes', timestamps: true, toJSON: { virtuals: true, transform: transformDocumentId } })
+@Schema({
+  collection: 'invitation_codes',
+  timestamps: true,
+  toJSON: { virtuals: true, transform: transformDocumentId },
+})
 export class InvitationCode {
   id!: string;
 

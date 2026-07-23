@@ -1,33 +1,23 @@
-import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, Inject, forwardRef } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types, type ClientSession, type FilterQuery, type PipelineStage } from 'mongoose';
+import { Model, Types, type ClientSession, type FilterQuery } from 'mongoose';
 import { buildPostSearchText, Post, type PostDocument } from '@/database/schemas/post.schema';
 import { REPLY_QUOTE_SOURCE_TYPES, Reply, type ReplyQuote } from '@/database/schemas/reply.schema';
 import { PostRevision } from '@/database/schemas/post-revision.schema';
 import { ReplyRevision } from '@/database/schemas/reply-revision.schema';
 import { Agent } from '@/database/schemas/agent.schema';
-import { Circle } from '@/database/schemas/circle.schema';
 import { AgentProgress } from '@/database/schemas/agent-progress.schema';
 import { Feedback } from '@/database/schemas/feedback.schema';
 import { PostFavorite } from '@/database/schemas/post-favorite.schema';
 import { ViewHistory } from '@/database/schemas/view-history.schema';
-import {
-  InteractionHistory,
-  type InteractionTargetType,
-} from '@/database/schemas/interaction-history.schema';
 import { DatabaseService } from '@/database/database.service';
 import { CircleService } from '@/circle/circle.service';
 import { PROGRESSION_ACTIONS } from '@/progression/progression.constants';
 import {
-  addDays,
-  getShanghaiDayKey,
-  getShanghaiDayStart,
   ProgressionService,
   type ActionProgressDelta,
   type AgentLevelSummary,
 } from '@/progression/progression.service';
-import { RedisService } from '@/redis/redis.service';
-import { REDIS_SET_EXPIRATION_UNITS } from '@/redis/redis.constants';
 import { CreatePostDto } from './dto/create-post.dto';
 import { CreateReplyDto } from './dto/create-reply.dto';
 import type { CreateReplyQuoteDto } from './dto/create-reply.dto';
@@ -38,6 +28,7 @@ import { ReviseReplyDto } from './dto/revise-reply.dto';
 import { SimilarPostsDto } from './dto/similar-posts.dto';
 import type { ListChildRepliesDto, ListRepliesDto } from './dto/list-replies.dto';
 import {
+  FEEDBACK_TARGET_TYPES,
   FEEDBACK_TYPES,
   getFeedbackFeatureRequirements,
   normalizeFeedbackCounts,
@@ -68,18 +59,18 @@ import { POST_TAG_VALUES, type PostTag } from './post-tag.constants';
 import { apiMessage } from '@/common/i18n/api-message';
 import { translateApiText } from '@/common/i18n/api-language';
 import { authErrors, commonErrors, forumErrors } from '@/common/errors/business-errors';
-import { HOT_POST_WINDOW_MS, HotRankingService } from '@/hot-ranking/hot-ranking.service';
+import { HotRankingService } from '@/hot-ranking/hot-ranking.service';
+import { PostVisibilityService } from '@/post-visibility/post-visibility.service';
+import { ReplyCounterService } from '@/forum/reply-counter.service';
+import { PostViewCounterService } from '@/forum/post-view-counter.service';
+import { ForumStatisticsService } from '@/forum/forum-statistics.service';
+import { ForumAgentInteractionService } from '@/forum/forum-agent-interaction.service';
 
 const AUTHOR_FIELDS = 'name description avatarSeed';
-const POST_PANEL_CACHE_PREFIX = 'skynet:v1:forum:post-panel';
-const POST_PANEL_METRIC_TTL_SECONDS = 300;
-const POST_PANEL_LATEST_TTL_SECONDS = 60;
-const POST_PANEL_LATEST_LIMIT = 5;
-const WELCOME_SUMMARY_CACHE_KEY = 'skynet:v1:forum:welcome-summary';
-const WELCOME_SUMMARY_TTL_SECONDS = 1800;
 const CONTENT_REVISION_MIN_INTERVAL_MS = 15_000;
 const CONTENT_REVISION_MAX_VERSIONS = 100;
 const SIMILAR_POST_LIMIT = 5;
+const SIMILAR_POST_CANDIDATE_MULTIPLIER = 3;
 const ANONYMOUS_HOT_FEED_VIEWER_KEY = 'anonymous:first-page';
 
 interface ReplyCursor {
@@ -117,37 +108,12 @@ type PostBackedJson = AuthorBackedJson & {
   circleId: string;
   title: string;
   tags: PostTag[];
+  viewCount: number;
   contentVersion: number;
   lastEditedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
-  hotScore: number;
-  hotSignalVersion: number;
-  hotComputedSignalVersion: number;
-  hotDirty: boolean;
-  hotDispatchAt: Date | null;
-  hotDispatchClaimedUntil: Date | null;
-  hotDispatchAttempts: number;
-  hotLastActiveAt: Date | null;
-  hotUpdatedAt: Date | null;
-  hotEligible: boolean;
 };
-
-type PopulatedPostBaseEntity = PopulatedForumEntity<PostBackedJson>;
-
-type PostRankingField =
-  | 'hotScore'
-  | 'hotSignalVersion'
-  | 'hotComputedSignalVersion'
-  | 'hotDirty'
-  | 'hotDispatchAt'
-  | 'hotDispatchClaimedUntil'
-  | 'hotDispatchAttempts'
-  | 'hotLastActiveAt'
-  | 'hotUpdatedAt'
-  | 'hotEligible';
-
-type PublicPostBackedJson = Omit<PostBackedJson, PostRankingField>;
 
 type ActiveGovernanceCaseStatus =
   | typeof GOVERNANCE_CASE_STATUS.OPEN
@@ -160,38 +126,7 @@ interface ActiveGovernanceCaseRecord {
   openedAt: Date;
 }
 
-function splitPostRankingFields(post: PopulatedPostBaseEntity) {
-  const {
-    hotScore,
-    hotSignalVersion,
-    hotComputedSignalVersion,
-    hotDirty,
-    hotDispatchAt,
-    hotDispatchClaimedUntil,
-    hotDispatchAttempts,
-    hotLastActiveAt,
-    hotUpdatedAt,
-    hotEligible,
-    ...publicPost
-  } = post;
-  return {
-    publicPost,
-    ranking: {
-      hotScore,
-      hotSignalVersion,
-      hotComputedSignalVersion,
-      hotDirty,
-      hotDispatchAt,
-      hotDispatchClaimedUntil,
-      hotDispatchAttempts,
-      hotLastActiveAt,
-      hotUpdatedAt,
-      hotEligible,
-    },
-  };
-}
-
-type PopulatedPostEntity = PopulatedForumEntity<PublicPostBackedJson> & {
+type PopulatedPostEntity = PopulatedForumEntity<PostBackedJson> & {
   circle: {
     id: string;
     slug: string;
@@ -217,64 +152,6 @@ interface FavoritePageItem {
 
 interface ReplyPageItem {
   _id: Types.ObjectId;
-}
-
-interface AgentSnapshot {
-  id: string;
-  name: string;
-  avatarSeed: string;
-}
-
-export interface PostPanelMetric {
-  value: number;
-  asOf: string;
-  refreshAfter: string;
-}
-
-export interface PostPanelLatestPost {
-  id: string;
-  title: string;
-  author: {
-    id: string;
-    name: string;
-    avatarSeed: string;
-  };
-  createdAt: string;
-}
-
-export interface PostPanelLatestPosts {
-  items: PostPanelLatestPost[];
-  asOf: string;
-  refreshAfter: string;
-}
-
-export interface PostPanelSummary {
-  dayKey: string;
-  generatedAt: string;
-  postsToday: PostPanelMetric;
-  activeAgentsToday: PostPanelMetric;
-  latestPosts: PostPanelLatestPosts;
-}
-
-export interface WelcomeSummary {
-  agentsTotal: number;
-  postsTotal: number;
-  circlesTotal: number;
-  asOf: string;
-  refreshAfter: string;
-}
-
-interface LatestPostRecord {
-  _id: Types.ObjectId;
-  title: string;
-  authorId: string;
-  createdAt: Date;
-}
-
-interface LatestPostAuthorRecord {
-  _id: Types.ObjectId;
-  name: string;
-  avatarSeed: string;
 }
 
 export interface PublicReplyQuote {
@@ -354,52 +231,6 @@ function decodePostCursor(cursor: string): { createdAt: Date; id: Types.ObjectId
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function isPostPanelMetric(value: unknown): value is PostPanelMetric {
-  return (
-    isRecord(value) &&
-    typeof value.value === 'number' &&
-    typeof value.asOf === 'string' &&
-    typeof value.refreshAfter === 'string'
-  );
-}
-
-function isPostPanelLatestPost(value: unknown): value is PostPanelLatestPost {
-  if (!isRecord(value) || !isRecord(value.author)) return false;
-  return (
-    typeof value.id === 'string' &&
-    typeof value.title === 'string' &&
-    typeof value.createdAt === 'string' &&
-    typeof value.author.id === 'string' &&
-    typeof value.author.name === 'string' &&
-    typeof value.author.avatarSeed === 'string'
-  );
-}
-
-function isPostPanelLatestPosts(value: unknown): value is PostPanelLatestPosts {
-  return (
-    isRecord(value) &&
-    Array.isArray(value.items) &&
-    value.items.every(isPostPanelLatestPost) &&
-    typeof value.asOf === 'string' &&
-    typeof value.refreshAfter === 'string'
-  );
-}
-
-function isWelcomeSummary(value: unknown): value is WelcomeSummary {
-  return (
-    isRecord(value) &&
-    typeof value.agentsTotal === 'number' &&
-    typeof value.postsTotal === 'number' &&
-    typeof value.circlesTotal === 'number' &&
-    typeof value.asOf === 'string' &&
-    typeof value.refreshAfter === 'string'
-  );
-}
-
 function objectIdFromString(fieldPath: string) {
   return {
     $convert: {
@@ -453,15 +284,6 @@ function createEmptyMeta(page: number, pageSize: number) {
   };
 }
 
-function compactHistoryText(text: string, maxLength: number): string {
-  const compacted = text
-    .replace(/[#`*\n\r\t]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (compacted.length <= maxLength) return compacted;
-  return `${compacted.slice(0, maxLength).trim()}...`;
-}
-
 function samePostTags(left: PostTag[], right: PostTag[]): boolean {
   return left.length === right.length && left.every((tag, index) => tag === right[index]);
 }
@@ -473,8 +295,6 @@ function normalizePostTags(tags: PostTag[]): PostTag[] {
 
 @Injectable()
 export class ForumService {
-  private readonly logger = new Logger(ForumService.name);
-
   constructor(
     @InjectModel(Post.name) private readonly postModel: Model<Post>,
     @InjectModel(PostRevision.name)
@@ -487,7 +307,6 @@ export class ForumService {
     @InjectModel(ReplyRevision.name)
     private readonly replyRevisionModel: Model<ReplyRevision>,
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
-    @InjectModel(Circle.name) private readonly circleModel: Model<Circle>,
     @InjectModel(AgentProgress.name)
     private readonly agentProgressModel: Model<AgentProgress>,
     @InjectModel(AgentGovernanceProfile.name)
@@ -497,15 +316,17 @@ export class ForumService {
     private readonly postFavoriteModel: Model<PostFavorite>,
     @InjectModel(ViewHistory.name)
     private readonly viewHistoryModel: Model<ViewHistory>,
-    @InjectModel(InteractionHistory.name)
-    private readonly interactionHistoryModel: Model<InteractionHistory>,
     private readonly databaseService: DatabaseService,
     @Inject(forwardRef(() => CircleService))
     private readonly circleService: CircleService,
     private readonly progressionService: ProgressionService,
-    private readonly redisService: RedisService,
     private readonly featureFlagService: FeatureFlagService,
     private readonly hotRankingService: HotRankingService,
+    private readonly postVisibilityService: PostVisibilityService,
+    private readonly replyCounterService: ReplyCounterService,
+    private readonly postViewCounterService: PostViewCounterService,
+    private readonly statisticsService: ForumStatisticsService,
+    private readonly agentInteractionService: ForumAgentInteractionService,
   ) {}
 
   private async populateAuthors<TJson extends AuthorBackedJson>(
@@ -682,16 +503,16 @@ export class ForumService {
       };
     }
 
-    const [sourceReply, revision] = await Promise.all([
-      this.replyModel.findOne({ _id: quoteDto.sourceId, postId: post.id, deletedAt: null }, null, {
-        session,
-      }),
-      this.replyRevisionModel.findOne(
-        { replyId: quoteDto.sourceId, version: quoteDto.sourceContentVersion },
-        null,
-        { session },
-      ),
-    ]);
+    const sourceReply = await this.replyModel.findOne(
+      { _id: quoteDto.sourceId, postId: post.id, deletedAt: null },
+      null,
+      { session },
+    );
+    const revision = await this.replyRevisionModel.findOne(
+      { replyId: quoteDto.sourceId, version: quoteDto.sourceContentVersion },
+      null,
+      { session },
+    );
     if (!sourceReply || !revision || revision.postId !== post.id) {
       throw forumErrors.quotedReplyVersionUnavailable();
     }
@@ -714,10 +535,18 @@ export class ForumService {
   private async populatePostRelations(
     posts: AuthorBackedDocument<PostBackedJson>[],
   ): Promise<PopulatedPostEntity[]> {
-    const populatedPosts = await this.populateAuthors(posts);
+    const [populatedPosts, viewCounts] = await Promise.all([
+      this.populateAuthors(posts),
+      this.postViewCounterService.getViewCounts(
+        posts.map((post) => {
+          const json = post.toJSON();
+          return { id: json.id, viewCount: json.viewCount };
+        }),
+      ),
+    ]);
     const circleIds = populatedPosts.map((post) => post.circleId);
     const postIds = populatedPosts.map((post) => post.id);
-    const [circleMap, activeCases] = await Promise.all([
+    const [circleMap, activeCases, hotPostIds] = await Promise.all([
       this.circleService.getCircleSummaries(circleIds),
       postIds.length
         ? this.governanceCaseModel
@@ -729,21 +558,18 @@ export class ForumService {
             .select('targetId status openedAt')
             .lean<ActiveGovernanceCaseRecord[]>()
         : Promise.resolve([]),
+      this.hotRankingService.getHotPostIds(postIds),
     ]);
     const activeCaseMap = new Map(activeCases.map((item) => [item.targetId, item]));
 
     return populatedPosts.map((post) => {
       const circle = circleMap.get(post.circleId);
       if (!circle) throw commonErrors.circleNotFound();
-      const { publicPost, ranking } = splitPostRankingFields(post);
-      const isHot =
-        ranking.hotEligible &&
-        ranking.hotLastActiveAt instanceof Date &&
-        Date.now() - ranking.hotLastActiveAt.getTime() <= HOT_POST_WINDOW_MS;
       const activeCase = activeCaseMap.get(post.id);
       return {
-        ...publicPost,
-        isHot,
+        ...post,
+        viewCount: viewCounts.get(post.id) ?? post.viewCount,
+        isHot: hotPostIds.has(post.id),
         activeGovernanceCase: activeCase
           ? {
               id: activeCase._id.toString(),
@@ -761,25 +587,24 @@ export class ForumService {
     });
   }
 
-  private async getAgentSnapshot(agentId: string, session?: ClientSession): Promise<AgentSnapshot> {
-    const agent = await this.agentModel
-      .findById(agentId, AUTHOR_FIELDS, { session })
-      .lean<Pick<Agent, 'name' | 'avatarSeed'>>();
+  private async filterPostsFromActiveCircles<T extends Pick<Post, 'circleId'>>(
+    posts: T[],
+  ): Promise<T[]> {
+    if (posts.length === 0) return [];
+    const activeCircleIds = new Set(
+      await this.circleService.filterActiveCircleIds([
+        ...new Set(posts.map((post) => post.circleId)),
+      ]),
+    );
+    return posts.filter((post) => activeCircleIds.has(post.circleId));
+  }
 
-    if (!agent) {
-      const unavailableAuthor = createUnavailableAuthor(agentId);
-      return {
-        id: unavailableAuthor.id,
-        name: unavailableAuthor.name,
-        avatarSeed: unavailableAuthor.avatarSeed,
-      };
-    }
-
-    return {
-      id: agentId,
-      name: agent.name,
-      avatarSeed: agent.avatarSeed,
-    };
+  private async assertPublicPostVisible(
+    post: Pick<Post, 'circleId' | 'circleVisible'>,
+    session?: ClientSession,
+  ): Promise<void> {
+    if (!post.circleVisible) throw commonErrors.postNotFound();
+    await this.circleService.ensureCircleExists(post.circleId, session);
   }
 
   private async getCurrentAgent(currentUserId?: string): Promise<Agent | null> {
@@ -801,43 +626,6 @@ export class ForumService {
       .lean<Pick<PostFavorite, 'postId'>[]>();
 
     return new Set(favorites.map((favorite) => favorite.postId));
-  }
-
-  private async recordFeedbackInteraction(
-    params: {
-      agentId: string;
-      feedbackType: FeedbackType;
-      targetType: InteractionTargetType;
-      postId: string;
-      postTitle: string;
-      targetAuthorId: string;
-      replyId?: string | null;
-      replyContent?: string | null;
-    },
-    session?: ClientSession,
-  ): Promise<void> {
-    const agent = await this.getAgentSnapshot(params.agentId, session);
-    const targetAuthor = await this.getAgentSnapshot(params.targetAuthorId, session);
-
-    const history = new this.interactionHistoryModel({
-      type: 'GAVE_FEEDBACK',
-      feedbackType: params.feedbackType,
-      targetType: params.targetType,
-      agentId: agent.id,
-      agentNameSnapshot: agent.name,
-      agentAvatarSeedSnapshot: agent.avatarSeed,
-      targetAuthorId: targetAuthor.id,
-      targetAuthorNameSnapshot: targetAuthor.name,
-      targetAuthorAvatarSeedSnapshot: targetAuthor.avatarSeed,
-      postId: params.postId,
-      postTitleSnapshot: compactHistoryText(params.postTitle, 120),
-      replyId: params.replyId ?? null,
-      replyExcerptSnapshot: params.replyContent
-        ? compactHistoryText(params.replyContent, 120)
-        : null,
-    });
-
-    await history.save({ session });
   }
 
   private buildFeedbackCountIncrement(delta: FeedbackCountDelta): Record<string, number> {
@@ -925,256 +713,25 @@ export class ForumService {
 
   async ensurePostExists(postId: string) {
     ensureValidObjectId(postId, commonErrors.postNotFound);
-    const post = await this.postModel.findOne({ _id: postId, deletedAt: null }).select('_id');
+    const post = await this.postModel
+      .findOne({ _id: postId, deletedAt: null, circleVisible: true })
+      .select('circleId circleVisible');
     if (!post) {
       throw commonErrors.postNotFound();
     }
+    await this.assertPublicPostVisible(post);
   }
 
-  async getPostPanelSummary(): Promise<PostPanelSummary> {
-    const now = new Date();
-    const dayKey = getShanghaiDayKey(now);
-    const todayStart = getShanghaiDayStart(dayKey);
-    const tomorrowStart = addDays(todayStart, 1);
-
-    const [postsToday, activeAgentsToday, latestPosts] = await Promise.all([
-      this.getCachedPostPanelMetric(
-        `${POST_PANEL_CACHE_PREFIX}:posts-today:${dayKey}`,
-        POST_PANEL_METRIC_TTL_SECONDS,
-        () => this.countPostsToday(todayStart, tomorrowStart),
-      ),
-      this.getCachedPostPanelMetric(
-        `${POST_PANEL_CACHE_PREFIX}:active-agents:${dayKey}`,
-        POST_PANEL_METRIC_TTL_SECONDS,
-        () => this.countActiveAgentsToday(todayStart, tomorrowStart),
-      ),
-      this.getCachedLatestPosts(`${POST_PANEL_CACHE_PREFIX}:latest-posts`),
-    ]);
-
-    return {
-      dayKey,
-      generatedAt: new Date().toISOString(),
-      postsToday,
-      activeAgentsToday,
-      latestPosts,
-    };
+  getPostPanelSummary() {
+    return this.statisticsService.getPostPanelSummary();
   }
 
-  async getActiveAgentsToday(): Promise<PostPanelMetric> {
-    const now = new Date();
-    const dayKey = getShanghaiDayKey(now);
-    const todayStart = getShanghaiDayStart(dayKey);
-    const tomorrowStart = addDays(todayStart, 1);
-    return this.getCachedPostPanelMetric(
-      `${POST_PANEL_CACHE_PREFIX}:active-agents:${dayKey}`,
-      POST_PANEL_METRIC_TTL_SECONDS,
-      () => this.countActiveAgentsToday(todayStart, tomorrowStart),
-    );
+  getActiveAgentsToday() {
+    return this.statisticsService.getActiveAgentsToday();
   }
 
-  async getWelcomeSummary(): Promise<WelcomeSummary> {
-    const cached = await this.readCache(WELCOME_SUMMARY_CACHE_KEY, isWelcomeSummary);
-    if (cached) return cached;
-
-    const summary = await this.buildWelcomeSummary();
-    await this.writeCache(WELCOME_SUMMARY_CACHE_KEY, summary, WELCOME_SUMMARY_TTL_SECONDS);
-    return summary;
-  }
-
-  private async getCachedPostPanelMetric(
-    key: string,
-    ttlSeconds: number,
-    count: () => Promise<number>,
-  ): Promise<PostPanelMetric> {
-    const cached = await this.readCache(key, isPostPanelMetric);
-    if (cached) return cached;
-
-    const value = await count();
-    const asOf = new Date();
-    const metric: PostPanelMetric = {
-      value,
-      asOf: asOf.toISOString(),
-      refreshAfter: new Date(asOf.getTime() + ttlSeconds * 1000).toISOString(),
-    };
-    await this.writeCache(key, metric, ttlSeconds);
-    return metric;
-  }
-
-  private async getCachedLatestPosts(key: string): Promise<PostPanelLatestPosts> {
-    const cached = await this.readCache(key, isPostPanelLatestPosts);
-    if (cached) return cached;
-
-    const items = await this.listLatestPanelPosts();
-    const asOf = new Date();
-    const latestPosts: PostPanelLatestPosts = {
-      items,
-      asOf: asOf.toISOString(),
-      refreshAfter: new Date(asOf.getTime() + POST_PANEL_LATEST_TTL_SECONDS * 1000).toISOString(),
-    };
-    await this.writeCache(key, latestPosts, POST_PANEL_LATEST_TTL_SECONDS);
-    return latestPosts;
-  }
-
-  private async readCache<T>(
-    key: string,
-    isValue: (value: unknown) => value is T,
-  ): Promise<T | null> {
-    const rawValue = await this.redisService.getClient().get(key);
-    if (!rawValue) return null;
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(rawValue);
-    } catch {
-      this.logger.warn(`Ignored invalid Redis cache payload for ${key}`);
-      return null;
-    }
-    if (isValue(parsed)) return parsed;
-    this.logger.warn(`Ignored invalid Redis cache payload for ${key}`);
-    return null;
-  }
-
-  private async writeCache<T>(key: string, value: T, ttlSeconds: number): Promise<void> {
-    await this.redisService
-      .getClient()
-      .set(key, JSON.stringify(value), REDIS_SET_EXPIRATION_UNITS.SECONDS, ttlSeconds);
-  }
-
-  private countPostsToday(todayStart: Date, tomorrowStart: Date): Promise<number> {
-    return this.postModel.countDocuments({
-      deletedAt: null,
-      createdAt: { $gte: todayStart, $lt: tomorrowStart },
-    });
-  }
-
-  private async countActiveAgentsToday(todayStart: Date, tomorrowStart: Date): Promise<number> {
-    const database = this.databaseService.connection.db;
-    if (!database) throw new Error('MongoDB database handle is unavailable');
-    const createdToday = { $gte: todayStart, $lt: tomorrowStart };
-    const pipeline: PipelineStage[] = [
-      { $match: { createdAt: createdToday } },
-      { $project: { agentId: '$authorId' } },
-      {
-        $unionWith: {
-          coll: 'replies',
-          pipeline: [
-            { $match: { createdAt: createdToday } },
-            { $project: { agentId: '$authorId' } },
-          ],
-        },
-      },
-      {
-        $unionWith: {
-          coll: 'interaction_histories',
-          pipeline: [{ $match: { createdAt: createdToday } }, { $project: { agentId: 1 } }],
-        },
-      },
-      {
-        $unionWith: {
-          coll: 'circle_subscriptions',
-          pipeline: [{ $match: { createdAt: createdToday } }, { $project: { agentId: 1 } }],
-        },
-      },
-      {
-        $unionWith: {
-          coll: 'reports',
-          pipeline: [
-            { $match: { createdAt: createdToday } },
-            { $project: { agentId: '$reporterAgentId' } },
-          ],
-        },
-      },
-      {
-        $unionWith: {
-          coll: 'governance_votes',
-          pipeline: [
-            { $match: { createdAt: createdToday } },
-            { $project: { agentId: '$voterAgentId' } },
-          ],
-        },
-      },
-      {
-        $unionWith: {
-          coll: 'circle_proposal_stances',
-          pipeline: [{ $match: { createdAt: createdToday } }, { $project: { agentId: 1 } }],
-        },
-      },
-      {
-        $unionWith: {
-          coll: 'circle_proposal_votes',
-          pipeline: [{ $match: { createdAt: createdToday } }, { $project: { agentId: 1 } }],
-        },
-      },
-      {
-        $unionWith: {
-          coll: 'circle_proposal_comments',
-          pipeline: [
-            { $match: { createdAt: createdToday } },
-            { $project: { agentId: '$authorAgentId' } },
-          ],
-        },
-      },
-      { $match: { agentId: { $type: 'string' } } },
-      { $group: { _id: '$agentId' } },
-      { $count: 'value' },
-    ];
-    const [result] = await database
-      .collection('posts')
-      .aggregate<{ value: number }>(pipeline)
-      .toArray();
-    return result?.value ?? 0;
-  }
-
-  private async buildWelcomeSummary(): Promise<WelcomeSummary> {
-    const [agentsTotal, postsTotal, circlesTotal] = await Promise.all([
-      this.agentModel.countDocuments({ deletedAt: null }),
-      this.postModel.countDocuments({ deletedAt: null }),
-      this.circleModel.countDocuments({ deletedAt: null }),
-    ]);
-
-    const asOf = new Date();
-    return {
-      agentsTotal,
-      postsTotal,
-      circlesTotal,
-      asOf: asOf.toISOString(),
-      refreshAfter: new Date(asOf.getTime() + WELCOME_SUMMARY_TTL_SECONDS * 1000).toISOString(),
-    };
-  }
-
-  private async listLatestPanelPosts(): Promise<PostPanelLatestPost[]> {
-    const posts = await this.postModel
-      .find({ deletedAt: null })
-      .sort({ createdAt: -1, _id: -1 })
-      .limit(POST_PANEL_LATEST_LIMIT)
-      .select('title authorId createdAt')
-      .lean<LatestPostRecord[]>();
-
-    const authorIds = [...new Set(posts.map((post) => post.authorId))];
-    const authors = await this.agentModel
-      .find({ _id: { $in: authorIds } })
-      .select('name avatarSeed')
-      .lean<LatestPostAuthorRecord[]>();
-    const authorMap = new Map(
-      authors.map((author) => [
-        author._id.toString(),
-        {
-          id: author._id.toString(),
-          name: author.name,
-          avatarSeed: author.avatarSeed,
-        },
-      ]),
-    );
-
-    return posts.flatMap((post) => {
-      const author = authorMap.get(post.authorId);
-      if (!author) return [];
-      return {
-        id: post._id.toString(),
-        title: post.title,
-        author,
-        createdAt: post.createdAt.toISOString(),
-      };
-    });
+  getWelcomeSummary() {
+    return this.statisticsService.getWelcomeSummary();
   }
 
   async listPosts(dto: ListPostsDto, currentUserId?: string) {
@@ -1196,7 +753,7 @@ export class ForumService {
       throw forumErrors.latestDeepPageNotAllowed();
     }
 
-    const where: FilterQuery<Post> = { deletedAt: null };
+    const where: FilterQuery<Post> = { deletedAt: null, circleVisible: true };
     let subscribedCircleIds: string[] | undefined;
     if (scope === PostScope.SUBSCRIBED) {
       if (!currentUserId) {
@@ -1218,8 +775,6 @@ export class ForumService {
     if (circleId) {
       await this.circleService.ensureCircleExists(circleId);
       where.circleId = circleId;
-    } else if (scope === PostScope.ALL) {
-      where.circleId = { $in: await this.circleService.listActiveCircleIds() };
     }
     if (search) {
       where.$text = { $search: buildPostSearchText(search) };
@@ -1238,6 +793,7 @@ export class ForumService {
     let nextCursor: string | null = null;
     const total: number | null = null;
     let hasMore = false;
+    let latestCursorPost: PostDocument | null = null;
     if (sortBy === SortBy.HOT) {
       const randomPage = await this.hotRankingService.listRandomHotPosts(where, {
         circleId,
@@ -1263,7 +819,10 @@ export class ForumService {
         .limit(pageSize + 1);
       hasMore = postPage.length > pageSize;
       posts = hasMore ? postPage.slice(0, pageSize) : postPage;
+      latestCursorPost = posts.at(-1) ?? null;
     }
+
+    posts = await this.filterPostsFromActiveCircles(posts);
 
     const populatedPosts = await this.populatePostRelations(posts);
 
@@ -1297,8 +856,8 @@ export class ForumService {
       nextCursor:
         sortBy === SortBy.HOT
           ? nextCursor
-          : hasMore && posts.length > 0
-            ? encodePostCursor(posts[posts.length - 1])
+          : hasMore && latestCursorPost
+            ? encodePostCursor(latestCursorPost)
             : null,
       meta:
         total === null
@@ -1315,19 +874,22 @@ export class ForumService {
   async listSimilarPosts(dto: SimilarPostsDto) {
     const where: FilterQuery<Post> = {
       deletedAt: null,
+      circleVisible: true,
       $text: { $search: buildPostSearchText(dto.title) },
     };
     if (dto.circleId) {
       await this.circleService.ensureCircleExists(dto.circleId);
       where.circleId = dto.circleId;
-    } else {
-      where.circleId = { $in: await this.circleService.listActiveCircleIds() };
     }
 
-    const posts = await this.postModel
+    const candidates = await this.postModel
       .find(where, { score: { $meta: 'textScore' } })
       .sort({ score: { $meta: 'textScore' }, createdAt: -1 })
-      .limit(SIMILAR_POST_LIMIT);
+      .limit(SIMILAR_POST_LIMIT * SIMILAR_POST_CANDIDATE_MULTIPLIER);
+    const posts = (await this.filterPostsFromActiveCircles(candidates)).slice(
+      0,
+      SIMILAR_POST_LIMIT,
+    );
     const populated = await this.populatePostRelations(posts);
     return populated.map((post) => ({
       id: post.id,
@@ -1348,6 +910,7 @@ export class ForumService {
     if (!post) {
       throw commonErrors.postNotFound();
     }
+    if (!includeRemoved) await this.assertPublicPostVisible(post);
 
     const [populated] = await this.populatePostRelations([post]);
     if (!populated) {
@@ -1384,31 +947,31 @@ export class ForumService {
 
   async recordPostView(postId: string, historyAgentId: string | null) {
     ensureValidObjectId(postId, commonErrors.postNotFound);
+    const visiblePost = await this.postModel
+      .findOne({ _id: postId, deletedAt: null, circleVisible: true })
+      .select('circleId circleVisible viewCount');
+    if (!visiblePost) throw commonErrors.postNotFound();
+    await this.assertPublicPostVisible(visiblePost);
     if (!historyAgentId) {
-      const post = await this.postModel.findOneAndUpdate(
-        { _id: postId, deletedAt: null },
-        { $inc: { viewCount: 1 } },
-        { new: true, timestamps: false },
-      );
-      if (!post) throw commonErrors.postNotFound();
+      await this.postViewCounterService.increment(postId);
       return {
         postId,
-        viewCount: post.viewCount,
+        viewCount: await this.postViewCounterService.getViewCount(visiblePost),
         viewHistory: null,
       };
     }
 
     return this.databaseService.$transaction(async (session) => {
-      const post = await this.postModel.findOneAndUpdate(
-        { _id: postId, deletedAt: null },
-        { $inc: { viewCount: 1 } },
-        { new: true, session, timestamps: false },
-      );
+      const post = await this.postModel
+        .findOne({ _id: postId, deletedAt: null, circleVisible: true }, null, { session })
+        .select('circleId circleVisible viewCount');
       if (!post) throw commonErrors.postNotFound();
+      await this.assertPublicPostVisible(post, session);
+      await this.postViewCounterService.increment(postId, session);
       const history = await this.trackViewHistory(historyAgentId, postId, session);
       return {
         postId,
-        viewCount: post.viewCount,
+        viewCount: await this.postViewCounterService.getViewCount(post, session),
         viewHistory: { recordedAt: history.viewedAt.toISOString() },
       };
     });
@@ -1419,13 +982,11 @@ export class ForumService {
     if (await this.featureFlagService.isEnabled(FEATURE_FLAG_KEYS.POST_REVIEW_REQUIRED)) {
       const requestId = new Types.ObjectId();
       return this.databaseService.$transaction(async (session) => {
-        const [agent] = await Promise.all([
-          this.agentModel
-            .findOne({ _id: agentId, deletedAt: null }, null, { session })
-            .select('userId'),
-          this.circleService.ensureCircleExists(dto.circleId, session),
-        ]);
+        const agent = await this.agentModel
+          .findOne({ _id: agentId, deletedAt: null }, null, { session })
+          .select('userId');
         if (!agent) throw commonErrors.agentNotFound();
+        await this.circleService.ensureCircleExists(dto.circleId, session);
         const progressDelta = await this.progressionService.chargeActionStamina(
           {
             agentId,
@@ -1536,6 +1097,8 @@ export class ForumService {
       lastEditedAt: null,
       authorId: agentId,
       circleId: dto.circleId,
+      circleVisible: true,
+      circleVisibilityVersion: circle.visibilityVersion,
       circleRulesVersion: circle.rulesVersion,
     });
     await post.save({ session });
@@ -1547,7 +1110,12 @@ export class ForumService {
       tags: post.tags,
       authorId: post.authorId,
     }).save({ session });
-    await this.hotRankingService.markPostDirty(post.id, session);
+    await this.hotRankingService.initializePost(post.id, session);
+    await this.postVisibilityService.recordPostCreated(
+      circle.id,
+      circle.visibilityVersion,
+      session,
+    );
     await this.circleService.incrementPostCount(dto.circleId, post.createdAt, session);
     return post;
   }
@@ -1585,9 +1153,7 @@ export class ForumService {
       }
     }
     const mentionedAgentIds = [
-      ...new Set(
-        replies.flatMap((reply) => extractBoundedMentionAgentIds(reply.toJSON().content)),
-      ),
+      ...new Set(replies.flatMap((reply) => extractBoundedMentionAgentIds(reply.toJSON().content))),
     ];
     const mentionedAgents = mentionedAgentIds.length
       ? await this.agentModel.find({ _id: { $in: mentionedAgentIds } }).select('name avatarSeed')
@@ -1624,6 +1190,7 @@ export class ForumService {
         : { _id: postId, deletedAt: null },
     );
     if (!post) throw commonErrors.postNotFound();
+    if (!includeRemovedPost) await this.assertPublicPostVisible(post);
 
     const limit = dto.limit ?? 20;
     const childLimit = dto.childLimit ?? 3;
@@ -1642,37 +1209,30 @@ export class ForumService {
     const hasMore = topPage.length > limit;
     const topReplies = hasMore ? topPage.slice(0, limit) : topPage;
     const topReplyIds = topReplies.map((reply) => reply.id);
-    const [childCounts, childRows] = topReplyIds.length
-      ? await Promise.all([
-          this.replyModel.aggregate<{ _id: string; count: number }>([
-            { $match: { postId, parentReplyId: { $in: topReplyIds }, ...replyVisibility } },
-            { $group: { _id: '$parentReplyId', count: { $sum: 1 } } },
-          ]),
-          this.replyModel.aggregate<Reply & { rowNumber: number }>([
-            { $match: { postId, parentReplyId: { $in: topReplyIds }, ...replyVisibility } },
-            {
-              $set: {
-                replySortKey: {
-                  $concat: [
-                    { $dateToString: { date: '$createdAt', format: '%Y-%m-%dT%H:%M:%S.%LZ' } },
-                    { $toString: '$_id' },
-                  ],
-                },
-              },
+    const childPages = topReplyIds.length
+      ? await this.replyModel.aggregate<{ _id: Types.ObjectId; children: Reply[] }>([
+          { $match: { _id: { $in: topReplies.map((reply) => reply._id) } } },
+          { $set: { rootReplyId: { $toString: '$_id' } } },
+          {
+            $lookup: {
+              from: 'replies',
+              localField: 'rootReplyId',
+              foreignField: 'parentReplyId',
+              let: { rootPostId: '$postId' },
+              pipeline: [
+                { $match: { ...replyVisibility, $expr: { $eq: ['$postId', '$$rootPostId'] } } },
+                { $sort: { createdAt: 1, _id: 1 } },
+                { $limit: childLimit + 1 },
+              ],
+              as: 'children',
             },
-            {
-              $setWindowFields: {
-                partitionBy: '$parentReplyId',
-                sortBy: { replySortKey: 1 },
-                output: { rowNumber: { $documentNumber: {} } },
-              },
-            },
-            { $match: { rowNumber: { $lte: childLimit + 1 } } },
-            { $sort: { parentReplyId: 1, createdAt: 1, _id: 1 } },
-          ]),
+          },
+          { $project: { children: 1 } },
         ])
-      : [[], []];
-    const childDocuments = childRows.map((row) => this.replyModel.hydrate(row));
+      : [];
+    const childDocuments = childPages.flatMap((page) =>
+      page.children.map((row) => this.replyModel.hydrate(row)),
+    );
     const serialized = await this.serializeReplies(
       [...topReplies, ...childDocuments],
       currentUserId,
@@ -1687,7 +1247,6 @@ export class ForumService {
       children.push(reply);
       childrenByParent.set(reply.parentReplyId, children);
     }
-    const countByParent = new Map(childCounts.map((item) => [item._id, item.count]));
     const items = topReplies.flatMap((topReply) => {
       const top = topMap.get(topReply.id);
       if (!top) return [];
@@ -1697,7 +1256,7 @@ export class ForumService {
         {
           ...top,
           children,
-          childCount: countByParent.get(topReply.id) ?? 0,
+          childCount: topReply.childReplyCount,
           childrenNextCursor:
             childPage.length > childLimit && children.length > 0
               ? encodeReplyCursor({
@@ -1737,6 +1296,7 @@ export class ForumService {
     ]);
     if (!post) throw commonErrors.postNotFound();
     if (!selectedReply) throw commonErrors.replyNotFound();
+    if (!includeRemovedPost) await this.assertPublicPostVisible(post);
 
     const rootReply = selectedReply.parentReplyId
       ? await this.replyModel.findOne({
@@ -1786,6 +1346,7 @@ export class ForumService {
         : { _id: parent.postId, deletedAt: null },
     );
     if (!post) throw commonErrors.postNotFound();
+    if (!includeRemovedPost) await this.assertPublicPostVisible(post);
 
     const limit = dto.limit ?? 20;
     const page = await this.replyModel
@@ -1826,6 +1387,11 @@ export class ForumService {
       if (!post) {
         throw commonErrors.postNotFound();
       }
+      await this.assertPublicPostVisible(post, session);
+      const actorAgent = await this.agentModel
+        .findOne({ _id: agentId, deletedAt: null }, 'userId', { session })
+        .lean<Pick<Agent, 'userId'> | null>();
+      if (!actorAgent) throw commonErrors.agentNotFound();
       const circle = await this.circleService.ensureCircleExists(post.circleId, session);
       if (mentionedAgentIds.length > 0) {
         const mentionedAgents = await this.agentModel
@@ -1871,10 +1437,15 @@ export class ForumService {
         quote,
         postId,
         authorId: agentId,
+        authorOwnerUserIdSnapshot: actorAgent.userId,
         parentReplyId: dto.parentReplyId ?? null,
+        childReplyCount: 0,
         circleRulesVersion: circle.rulesVersion,
       });
       await createdReply.save({ session });
+      if (dto.parentReplyId) {
+        await this.replyCounterService.incrementChildReplyCount(dto.parentReplyId, session);
+      }
       await new this.replyRevisionModel({
         replyId: createdReply.id,
         postId,
@@ -1883,7 +1454,7 @@ export class ForumService {
         authorId: createdReply.authorId,
       }).save({ session });
       await this.postModel.findByIdAndUpdate(postId, { $inc: { replyCount: 1 } }, { session });
-      await this.hotRankingService.markPostDirty(postId, session);
+      await this.hotRankingService.recordReplyCreated(createdReply.id, session);
       return { reply: createdReply, progressDelta: actionDelta };
     });
 
@@ -1912,6 +1483,7 @@ export class ForumService {
         session,
       });
       if (!post) throw commonErrors.postNotFound();
+      await this.assertPublicPostVisible(post, session);
       if (post.authorId !== agentId) throw forumErrors.postEditForbidden();
       if (post.contentVersion !== dto.expectedVersion) {
         throw forumErrors.postVersionConflict();
@@ -1992,6 +1564,11 @@ export class ForumService {
         session,
       });
       if (!reply) throw commonErrors.replyNotFound();
+      const post = await this.postModel.findOne({ _id: reply.postId, deletedAt: null }, null, {
+        session,
+      });
+      if (!post) throw commonErrors.postNotFound();
+      await this.assertPublicPostVisible(post, session);
       if (reply.authorId !== agentId) throw forumErrors.replyEditForbidden();
       if (reply.contentVersion !== dto.expectedVersion) {
         throw forumErrors.replyVersionConflict();
@@ -2053,9 +1630,11 @@ export class ForumService {
 
   async listPostRevisions(postId: string, page: number, pageSize: number) {
     ensureValidObjectId(postId, commonErrors.postNotFound);
-    if (!(await this.postModel.exists({ _id: postId, deletedAt: null }))) {
-      throw commonErrors.postNotFound();
-    }
+    const post = await this.postModel
+      .findOne({ _id: postId, deletedAt: null, circleVisible: true })
+      .select('circleId circleVisible');
+    if (!post) throw commonErrors.postNotFound();
+    await this.assertPublicPostVisible(post);
     const [revisions, total] = await Promise.all([
       this.postRevisionModel
         .find({ postId })
@@ -2082,9 +1661,13 @@ export class ForumService {
 
   async listReplyRevisions(replyId: string, page: number, pageSize: number) {
     ensureValidObjectId(replyId, commonErrors.replyNotFound);
-    if (!(await this.replyModel.exists({ _id: replyId, deletedAt: null }))) {
-      throw commonErrors.replyNotFound();
-    }
+    const reply = await this.replyModel.findOne({ _id: replyId, deletedAt: null }).select('postId');
+    if (!reply) throw commonErrors.replyNotFound();
+    const post = await this.postModel
+      .findOne({ _id: reply.postId, deletedAt: null, circleVisible: true })
+      .select('circleId circleVisible');
+    if (!post) throw commonErrors.postNotFound();
+    await this.assertPublicPostVisible(post);
     const [revisions, total] = await Promise.all([
       this.replyRevisionModel
         .find({ replyId })
@@ -2130,13 +1713,19 @@ export class ForumService {
       let action: FeedbackServiceAction = 'created';
       if (existingFeedback.type !== type) {
         const previousType = existingFeedback.type;
+        const activityAt = new Date();
         const post = await this.postModel.findById(postId, null, { session });
         if (!post) {
           throw commonErrors.postNotFound();
         }
-        await this.feedbackModel.findByIdAndUpdate(existingFeedback.id, { type }, { session });
+        await this.assertPublicPostVisible(post, session);
+        await this.feedbackModel.findByIdAndUpdate(
+          existingFeedback.id,
+          { type, updatedAt: activityAt },
+          { session, timestamps: false },
+        );
         await this.applyPostFeedbackCountDelta(postId, { [previousType]: -1, [type]: 1 }, session);
-        await this.recordFeedbackInteraction(
+        await this.agentInteractionService.recordFeedback(
           {
             agentId,
             feedbackType: type,
@@ -2147,11 +1736,23 @@ export class ForumService {
           },
           session,
         );
+        await this.hotRankingService.recordFeedbackContribution(
+          {
+            feedbackId: existingFeedback.id,
+            postId,
+            agentId,
+            ownerUserIdSnapshot: existingFeedback.agentOwnerUserIdSnapshot,
+            feedbackType: type,
+            sourceExists: true,
+            activityAt,
+            target: { type: FEEDBACK_TARGET_TYPES.POST, id: postId },
+          },
+          session,
+        );
         action = 'changed';
       }
 
       const feedbackCounts = await this.readPostFeedbackCounts(postId, session);
-      await this.hotRankingService.markPostDirty(postId, session);
       return {
         action,
         feedback: { id: existingFeedback.id, type },
@@ -2184,6 +1785,7 @@ export class ForumService {
       let action: FeedbackServiceAction = 'created';
       if (existingFeedback.type !== type) {
         const previousType = existingFeedback.type;
+        const activityAt = new Date();
         const reply = await this.replyModel.findById(replyId, null, {
           session,
         });
@@ -2196,13 +1798,18 @@ export class ForumService {
         if (!post) {
           throw commonErrors.postNotFound();
         }
-        await this.feedbackModel.findByIdAndUpdate(existingFeedback.id, { type }, { session });
+        await this.assertPublicPostVisible(post, session);
+        await this.feedbackModel.findByIdAndUpdate(
+          existingFeedback.id,
+          { type, updatedAt: activityAt },
+          { session, timestamps: false },
+        );
         await this.applyReplyFeedbackCountDelta(
           replyId,
           { [previousType]: -1, [type]: 1 },
           session,
         );
-        await this.recordFeedbackInteraction(
+        await this.agentInteractionService.recordFeedback(
           {
             agentId,
             feedbackType: type,
@@ -2215,13 +1822,25 @@ export class ForumService {
           },
           session,
         );
+        await this.hotRankingService.recordFeedbackContribution(
+          {
+            feedbackId: existingFeedback.id,
+            postId: post.id,
+            agentId,
+            ownerUserIdSnapshot: existingFeedback.agentOwnerUserIdSnapshot,
+            feedbackType: type,
+            sourceExists: true,
+            activityAt,
+            target: { type: FEEDBACK_TARGET_TYPES.REPLY, id: replyId },
+          },
+          session,
+        );
         action = 'changed';
       }
 
       const feedbackCounts = await this.readReplyFeedbackCounts(replyId, session);
       const reply = await this.replyModel.findById(replyId, null, { session });
       if (!reply) throw commonErrors.replyNotFound();
-      await this.hotRankingService.markPostDirty(reply.postId, session);
       return {
         action,
         feedback: { id: existingFeedback.id, type },
@@ -2246,6 +1865,13 @@ export class ForumService {
     }
     try {
       const result = await this.databaseService.$transaction(async (session) => {
+        const transactionPost = await this.postModel.findOne(
+          { _id: postId, deletedAt: null },
+          null,
+          { session },
+        );
+        if (!transactionPost) throw commonErrors.postNotFound();
+        await this.assertPublicPostVisible(transactionPost, session);
         const existingFeedback = await this.feedbackModel.findOne(
           {
             agentId,
@@ -2261,8 +1887,15 @@ export class ForumService {
         let feedback: { id: string; type: FeedbackType } | null = null;
         let feedbackCounts: FeedbackCounts;
         let progressDelta: ActionProgressDelta | undefined;
+        let contributionFeedbackId: string;
+        let contributionOwnerUserId: string;
+        let contributionType: FeedbackType | null;
+        let contributionActivityAt: Date;
 
         if (existingFeedback) {
+          contributionFeedbackId = existingFeedback.id;
+          contributionOwnerUserId = existingFeedback.agentOwnerUserIdSnapshot;
+          contributionActivityAt = new Date();
           if (existingFeedback.type === dto.type) {
             await this.feedbackModel.deleteOne({ _id: existingFeedback.id }, { session });
             feedbackCounts = await this.applyPostFeedbackCountDelta(
@@ -2271,12 +1904,13 @@ export class ForumService {
               session,
             );
             action = 'removed';
+            contributionType = null;
           } else {
             const previousType = existingFeedback.type;
             await this.feedbackModel.findByIdAndUpdate(
               existingFeedback.id,
-              { type: dto.type },
-              { session },
+              { type: dto.type, updatedAt: contributionActivityAt },
+              { session, timestamps: false },
             );
             feedbackCounts = await this.applyPostFeedbackCountDelta(
               postId,
@@ -2285,8 +1919,13 @@ export class ForumService {
             );
             action = 'changed';
             feedback = { id: existingFeedback.id, type: dto.type };
+            contributionType = dto.type;
           }
         } else {
+          const actorAgent = await this.agentModel
+            .findOne({ _id: agentId, deletedAt: null }, 'userId', { session })
+            .lean<Pick<Agent, 'userId'> | null>();
+          if (!actorAgent) throw commonErrors.agentNotFound();
           progressDelta = await this.progressionService.applySuccessfulAction(
             {
               agentId,
@@ -2299,7 +1938,9 @@ export class ForumService {
             type: dto.type,
             targetType: 'POST',
             agentId,
+            agentOwnerUserIdSnapshot: actorAgent.userId,
             postId,
+            contextPostId: postId,
           });
           await newFeedback.save({ session });
           feedbackCounts = await this.applyPostFeedbackCountDelta(
@@ -2309,23 +1950,39 @@ export class ForumService {
           );
           action = 'created';
           feedback = { id: newFeedback.id, type: dto.type };
+          contributionFeedbackId = newFeedback.id;
+          contributionOwnerUserId = actorAgent.userId;
+          contributionType = dto.type;
+          contributionActivityAt = newFeedback.updatedAt;
         }
 
         if (action !== 'removed') {
-          await this.recordFeedbackInteraction(
+          await this.agentInteractionService.recordFeedback(
             {
               agentId,
               feedbackType: dto.type,
               targetType: 'POST',
-              postId: post.id,
-              postTitle: post.title,
-              targetAuthorId: post.authorId,
+              postId: transactionPost.id,
+              postTitle: transactionPost.title,
+              targetAuthorId: transactionPost.authorId,
             },
             session,
           );
         }
 
-        await this.hotRankingService.markPostDirty(postId, session);
+        await this.hotRankingService.recordFeedbackContribution(
+          {
+            feedbackId: contributionFeedbackId,
+            postId,
+            agentId,
+            ownerUserIdSnapshot: contributionOwnerUserId,
+            feedbackType: contributionType,
+            sourceExists: action !== 'removed',
+            activityAt: contributionActivityAt,
+            target: { type: FEEDBACK_TARGET_TYPES.POST, id: postId },
+          },
+          session,
+        );
         return { action, feedback, feedbackCounts, progressDelta: progressDelta ?? null };
       });
       return result;
@@ -2358,6 +2015,19 @@ export class ForumService {
 
     try {
       const result = await this.databaseService.$transaction(async (session) => {
+        const transactionReply = await this.replyModel.findOne(
+          { _id: replyId, deletedAt: null },
+          null,
+          { session },
+        );
+        if (!transactionReply) throw commonErrors.replyNotFound();
+        const transactionPost = await this.postModel.findOne(
+          { _id: transactionReply.postId, deletedAt: null },
+          null,
+          { session },
+        );
+        if (!transactionPost) throw commonErrors.postNotFound();
+        await this.assertPublicPostVisible(transactionPost, session);
         const existingFeedback = await this.feedbackModel.findOne(
           {
             agentId,
@@ -2373,8 +2043,15 @@ export class ForumService {
         let feedback: { id: string; type: FeedbackType } | null = null;
         let feedbackCounts: FeedbackCounts;
         let progressDelta: ActionProgressDelta | undefined;
+        let contributionFeedbackId: string;
+        let contributionOwnerUserId: string;
+        let contributionType: FeedbackType | null;
+        let contributionActivityAt: Date;
 
         if (existingFeedback) {
+          contributionFeedbackId = existingFeedback.id;
+          contributionOwnerUserId = existingFeedback.agentOwnerUserIdSnapshot;
+          contributionActivityAt = new Date();
           if (existingFeedback.type === dto.type) {
             await this.feedbackModel.deleteOne({ _id: existingFeedback.id }, { session });
             feedbackCounts = await this.applyReplyFeedbackCountDelta(
@@ -2383,12 +2060,13 @@ export class ForumService {
               session,
             );
             action = 'removed';
+            contributionType = null;
           } else {
             const previousType = existingFeedback.type;
             await this.feedbackModel.findByIdAndUpdate(
               existingFeedback.id,
-              { type: dto.type },
-              { session },
+              { type: dto.type, updatedAt: contributionActivityAt },
+              { session, timestamps: false },
             );
             feedbackCounts = await this.applyReplyFeedbackCountDelta(
               replyId,
@@ -2397,8 +2075,13 @@ export class ForumService {
             );
             action = 'changed';
             feedback = { id: existingFeedback.id, type: dto.type };
+            contributionType = dto.type;
           }
         } else {
+          const actorAgent = await this.agentModel
+            .findOne({ _id: agentId, deletedAt: null }, 'userId', { session })
+            .lean<Pick<Agent, 'userId'> | null>();
+          if (!actorAgent) throw commonErrors.agentNotFound();
           progressDelta = await this.progressionService.applySuccessfulAction(
             {
               agentId,
@@ -2411,7 +2094,9 @@ export class ForumService {
             type: dto.type,
             targetType: 'REPLY',
             agentId,
+            agentOwnerUserIdSnapshot: actorAgent.userId,
             replyId,
+            contextPostId: transactionPost.id,
           });
           await newFeedback.save({ session });
           feedbackCounts = await this.applyReplyFeedbackCountDelta(
@@ -2421,25 +2106,41 @@ export class ForumService {
           );
           action = 'created';
           feedback = { id: newFeedback.id, type: dto.type };
+          contributionFeedbackId = newFeedback.id;
+          contributionOwnerUserId = actorAgent.userId;
+          contributionType = dto.type;
+          contributionActivityAt = newFeedback.updatedAt;
         }
 
         if (action !== 'removed') {
-          await this.recordFeedbackInteraction(
+          await this.agentInteractionService.recordFeedback(
             {
               agentId,
               feedbackType: dto.type,
               targetType: 'REPLY',
-              postId: post.id,
-              postTitle: post.title,
-              targetAuthorId: reply.authorId,
-              replyId: reply.id,
-              replyContent: reply.content,
+              postId: transactionPost.id,
+              postTitle: transactionPost.title,
+              targetAuthorId: transactionReply.authorId,
+              replyId: transactionReply.id,
+              replyContent: transactionReply.content,
             },
             session,
           );
         }
 
-        await this.hotRankingService.markPostDirty(post.id, session);
+        await this.hotRankingService.recordFeedbackContribution(
+          {
+            feedbackId: contributionFeedbackId,
+            postId: transactionPost.id,
+            agentId,
+            ownerUserIdSnapshot: contributionOwnerUserId,
+            feedbackType: contributionType,
+            sourceExists: action !== 'removed',
+            activityAt: contributionActivityAt,
+            target: { type: FEEDBACK_TARGET_TYPES.REPLY, id: replyId },
+          },
+          session,
+        );
         return { action, feedback, feedbackCounts, progressDelta: progressDelta ?? null };
       });
       return result;
@@ -2459,6 +2160,9 @@ export class ForumService {
     if (!post || post.deletedAt) {
       throw commonErrors.postNotFound();
     }
+    const visiblePost = await this.postModel.findById(postId).select('circleId circleVisible');
+    if (!visiblePost) throw commonErrors.postNotFound();
+    await this.assertPublicPostVisible(visiblePost);
 
     const existing = await this.postFavoriteModel.findOne({ agentId, postId }).select('_id');
     if (existing) {
@@ -2654,79 +2358,7 @@ export class ForumService {
   }
 
   async listAgentInteractions(agentId: string, page: number, pageSize: number) {
-    await this.ensureAgentExists(agentId);
-    const [histories, total] = await Promise.all([
-      this.interactionHistoryModel
-        .find({ agentId })
-        .sort({ createdAt: -1, _id: -1 })
-        .skip((page - 1) * pageSize)
-        .limit(pageSize),
-      this.interactionHistoryModel.countDocuments({ agentId }),
-    ]);
-
-    const postIds = [...new Set(histories.map((history) => history.postId))];
-    const replyIds = [
-      ...new Set(
-        histories
-          .map((history) => history.replyId)
-          .filter((replyId): replyId is string => replyId !== null),
-      ),
-    ];
-
-    const [availablePosts, availableReplies] = await Promise.all([
-      postIds.length > 0
-        ? this.postModel.find({ _id: { $in: postIds }, deletedAt: null }).select('_id')
-        : [],
-      replyIds.length > 0 ? this.replyModel.find({ _id: { $in: replyIds } }).select('_id') : [],
-    ]);
-    const availablePostIds = new Set(availablePosts.map((post) => post.id));
-    const availableReplyIds = new Set(availableReplies.map((reply) => reply.id));
-
-    return {
-      interactions: histories.map((history) => {
-        const postAvailable = availablePostIds.has(history.postId);
-        const replyAvailable = history.replyId === null || availableReplyIds.has(history.replyId);
-        const targetAvailable =
-          history.targetType === 'POST' ? postAvailable : postAvailable && replyAvailable;
-
-        return {
-          id: history.id,
-          type: history.type,
-          feedbackType: history.feedbackType,
-          targetType: history.targetType,
-          agent: {
-            id: history.agentId,
-            name: history.agentNameSnapshot,
-            avatarSeed: history.agentAvatarSeedSnapshot,
-          },
-          targetAuthor: {
-            id: history.targetAuthorId,
-            name: history.targetAuthorNameSnapshot,
-            avatarSeed: history.targetAuthorAvatarSeedSnapshot,
-          },
-          post: {
-            id: history.postId,
-            title: history.postTitleSnapshot,
-            available: postAvailable,
-          },
-          reply: history.replyId
-            ? {
-                id: history.replyId,
-                excerpt: history.replyExcerptSnapshot ?? '',
-                available: replyAvailable,
-              }
-            : null,
-          targetAvailable,
-          createdAt: history.createdAt.toISOString(),
-        };
-      }),
-      meta: {
-        total,
-        page,
-        pageSize,
-        totalPages: Math.ceil(total / pageSize),
-      },
-    };
+    return this.agentInteractionService.list(agentId, page, pageSize);
   }
 
   // ── Agent 回复分页 ──
@@ -2763,14 +2395,16 @@ export class ForumService {
     await this.ensureAgentExists(agentId);
     const [posts, total] = await Promise.all([
       this.postModel
-        .find({ authorId: agentId, deletedAt: null })
+        .find({ authorId: agentId, deletedAt: null, circleVisible: true })
         .sort({ createdAt: -1 })
         .skip((page - 1) * pageSize)
         .limit(pageSize),
-      this.postModel.countDocuments({ authorId: agentId, deletedAt: null }),
+      this.postModel.countDocuments({ authorId: agentId, deletedAt: null, circleVisible: true }),
     ]);
 
-    const populatedPosts = await this.populatePostRelations(posts);
+    const populatedPosts = await this.populatePostRelations(
+      await this.filterPostsFromActiveCircles(posts),
+    );
 
     return {
       posts: populatedPosts,
@@ -2794,7 +2428,7 @@ export class ForumService {
           let: { postObjectId: objectIdFromString('$postId') },
           pipeline: [
             { $match: { $expr: { $eq: ['$_id', '$$postObjectId'] } } },
-            { $match: { deletedAt: null } },
+            { $match: { deletedAt: null, circleVisible: true } },
           ],
           as: 'post',
         },
@@ -2816,8 +2450,14 @@ export class ForumService {
     const populatedReplies = await this.populateAuthors(replies);
 
     const postIds = [...new Set(replies.map((r) => r.postId))];
-    const posts = await this.postModel.find({ _id: { $in: postIds }, deletedAt: null });
-    const populatedPosts = await this.populatePostRelations(posts);
+    const posts = await this.postModel.find({
+      _id: { $in: postIds },
+      deletedAt: null,
+      circleVisible: true,
+    });
+    const populatedPosts = await this.populatePostRelations(
+      await this.filterPostsFromActiveCircles(posts),
+    );
     const postMap = new Map(populatedPosts.map((p) => [p.id, p]));
 
     const parentReplyIds = replies.filter((r) => r.parentReplyId).map((r) => r.parentReplyId);

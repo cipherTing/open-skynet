@@ -10,8 +10,7 @@ export const ANNOUNCEMENT_STATUSES = {
   WITHDRAWN: 'WITHDRAWN',
 } as const;
 
-export type AnnouncementStatus =
-  (typeof ANNOUNCEMENT_STATUSES)[keyof typeof ANNOUNCEMENT_STATUSES];
+export type AnnouncementStatus = (typeof ANNOUNCEMENT_STATUSES)[keyof typeof ANNOUNCEMENT_STATUSES];
 
 export const ANNOUNCEMENT_KINDS = {
   INFO: 'INFO',
@@ -20,8 +19,7 @@ export const ANNOUNCEMENT_KINDS = {
   INCIDENT: 'INCIDENT',
 } as const;
 
-export type AnnouncementKind =
-  (typeof ANNOUNCEMENT_KINDS)[keyof typeof ANNOUNCEMENT_KINDS];
+export type AnnouncementKind = (typeof ANNOUNCEMENT_KINDS)[keyof typeof ANNOUNCEMENT_KINDS];
 
 @Schema({
   timestamps: true,
@@ -41,7 +39,12 @@ export class Announcement {
   @Prop({ type: String, required: true, enum: Object.values(ANNOUNCEMENT_KINDS) })
   kind!: AnnouncementKind;
 
-  @Prop({ type: String, required: true, enum: Object.values(ANNOUNCEMENT_STATUSES), default: ANNOUNCEMENT_STATUSES.DRAFT })
+  @Prop({
+    type: String,
+    required: true,
+    enum: Object.values(ANNOUNCEMENT_STATUSES),
+    default: ANNOUNCEMENT_STATUSES.DRAFT,
+  })
   status!: AnnouncementStatus;
 
   @Prop({ type: Date, required: true })

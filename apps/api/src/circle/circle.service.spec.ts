@@ -33,6 +33,11 @@ import { FeatureFlagService } from '@/system/feature-flag.service';
 import { RedisService } from '@/redis/redis.service';
 import { CircleService } from './circle.service';
 import { HotRankingService } from '@/hot-ranking/hot-ranking.service';
+import {
+  CirclePostVisibilityState,
+  CirclePostVisibilityStateSchema,
+} from '@/database/schemas/circle-post-visibility-state.schema';
+import { PostVisibilityService } from '@/post-visibility/post-visibility.service';
 
 describe('CircleService creation and subscriptions', () => {
   jest.setTimeout(60_000);
@@ -69,11 +74,13 @@ describe('CircleService creation and subscriptions', () => {
           { name: ContentReviewRequest.name, schema: ContentReviewRequestSchema },
           { name: GovernanceCase.name, schema: GovernanceCaseSchema },
           { name: Post.name, schema: PostSchema },
+          { name: CirclePostVisibilityState.name, schema: CirclePostVisibilityStateSchema },
         ]),
       ],
       providers: [
         DatabaseService,
         CircleService,
+        PostVisibilityService,
         { provide: FeatureFlagService, useValue: featureFlagService },
         { provide: RedisService, useValue: { getClient: () => redisClient } },
         { provide: HotRankingService, useValue: { getCirclesHotPosts } },
@@ -106,6 +113,7 @@ describe('CircleService creation and subscriptions', () => {
       'content_review_requests',
       'governance_cases',
       'posts',
+      'circle_post_visibility_states',
     ];
     await Promise.all(collections.map((name) => connection.db?.collection(name).deleteMany({})));
   });

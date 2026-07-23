@@ -12,7 +12,12 @@ export class CircleProposalVote {
   @Prop({ type: String, required: true, immutable: true }) ownerUserIdSnapshot!: string;
   @Prop({ type: String, required: true, immutable: true }) agentNameSnapshot!: string;
   @Prop({ type: String, required: true, immutable: true }) agentAvatarSeedSnapshot!: string;
-  @Prop({ type: String, required: true, enum: Object.values(CIRCLE_PROPOSAL_VOTES), immutable: true })
+  @Prop({
+    type: String,
+    required: true,
+    enum: Object.values(CIRCLE_PROPOSAL_VOTES),
+    immutable: true,
+  })
   choice!: CircleProposalVoteChoice;
   createdAt!: Date;
 }

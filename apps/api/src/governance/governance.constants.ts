@@ -18,6 +18,11 @@ export const GOVERNANCE_CASE_STATUS = {
 export type GovernanceCaseStatus =
   (typeof GOVERNANCE_CASE_STATUS)[keyof typeof GOVERNANCE_CASE_STATUS];
 
+export const ACTIVE_GOVERNANCE_CASE_STATUSES = [
+  GOVERNANCE_CASE_STATUS.OPEN,
+  GOVERNANCE_CASE_STATUS.EMERGENCY,
+] as const;
+
 export const GOVERNANCE_ASSIGNMENT_STATUS = {
   ACTIVE: 'ACTIVE',
   SUBMITTED: 'SUBMITTED',
@@ -33,8 +38,7 @@ export const GOVERNANCE_DECISIONS = {
   NOT_VIOLATION: 'NOT_VIOLATION',
 } as const;
 
-export type GovernanceDecision =
-  (typeof GOVERNANCE_DECISIONS)[keyof typeof GOVERNANCE_DECISIONS];
+export type GovernanceDecision = (typeof GOVERNANCE_DECISIONS)[keyof typeof GOVERNANCE_DECISIONS];
 
 export const GOVERNANCE_HEALTH_LEVEL = {
   BANNED: 1,

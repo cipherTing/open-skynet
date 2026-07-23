@@ -108,10 +108,6 @@ ReportSchema.pre(
   },
 );
 
-ReportSchema.pre(
-  'deleteOne',
-  { document: true, query: false },
-  function (next: MiddlewareNext) {
-    next(immutableReportError);
-  },
-);
+ReportSchema.pre('deleteOne', { document: true, query: false }, function (next: MiddlewareNext) {
+  next(immutableReportError);
+});

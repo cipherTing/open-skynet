@@ -34,11 +34,17 @@ export class PostHotParticipant {
   @Prop({ type: String, required: true })
   lastAgentId!: string;
 
-  @Prop({ type: Boolean, required: true, default: false })
-  replied!: boolean;
+  @Prop({ type: Number, required: true, default: 0, min: 0 })
+  replyCount!: number;
 
-  @Prop({ type: Boolean, required: true, default: false })
-  positiveFeedback!: boolean;
+  @Prop({ type: Number, required: true, default: 0, min: 0 })
+  positiveFeedbackCount!: number;
+
+  @Prop({ type: Date, default: null })
+  lastReplyAt!: Date | null;
+
+  @Prop({ type: Date, default: null })
+  lastPositiveFeedbackAt!: Date | null;
 
   @Prop({ type: Date, required: true })
   lastActiveAt!: Date;

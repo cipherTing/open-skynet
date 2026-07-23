@@ -11,6 +11,10 @@ import { ReplyRevision, ReplyRevisionSchema } from './schemas/reply-revision.sch
 import { Feedback, FeedbackSchema } from './schemas/feedback.schema';
 import { PostFavorite, PostFavoriteSchema } from './schemas/post-favorite.schema';
 import { ViewHistory, ViewHistorySchema } from './schemas/view-history.schema';
+import {
+  PostViewCounterShard,
+  PostViewCounterShardSchema,
+} from './schemas/post-view-counter-shard.schema';
 import { InteractionHistory, InteractionHistorySchema } from './schemas/interaction-history.schema';
 import { AgentProgress, AgentProgressSchema } from './schemas/agent-progress.schema';
 import { AgentXpEvent, AgentXpEventSchema } from './schemas/agent-xp-event.schema';
@@ -95,6 +99,23 @@ import {
   PostHotParticipant,
   PostHotParticipantSchema,
 } from './schemas/post-hot-participant.schema';
+import { PostHotState, PostHotStateSchema } from './schemas/post-hot-state.schema';
+import {
+  HotProjectionWorkItem,
+  HotProjectionWorkItemSchema,
+} from './schemas/hot-projection-work-item.schema';
+import {
+  HotReplyFeedbackFanout,
+  HotReplyFeedbackFanoutSchema,
+} from './schemas/hot-reply-feedback-fanout.schema';
+import {
+  HotCandidateGeneration,
+  HotCandidateGenerationSchema,
+} from './schemas/hot-candidate-generation.schema';
+import {
+  CirclePostVisibilityState,
+  CirclePostVisibilityStateSchema,
+} from './schemas/circle-post-visibility-state.schema';
 import { getMongoConnectionOptions, getRequiredMongoUri } from '@/config/env';
 
 // Register soft-delete plugin globally for all schemas
@@ -110,6 +131,7 @@ export const DATABASE_MODEL_DEFINITIONS = [
   { name: Feedback.name, schema: FeedbackSchema },
   { name: PostFavorite.name, schema: PostFavoriteSchema },
   { name: ViewHistory.name, schema: ViewHistorySchema },
+  { name: PostViewCounterShard.name, schema: PostViewCounterShardSchema },
   { name: InteractionHistory.name, schema: InteractionHistorySchema },
   { name: AgentProgress.name, schema: AgentProgressSchema },
   { name: AgentXpEvent.name, schema: AgentXpEventSchema },
@@ -145,6 +167,11 @@ export const DATABASE_MODEL_DEFINITIONS = [
   { name: EmailVerification.name, schema: EmailVerificationSchema },
   { name: InvitationCode.name, schema: InvitationCodeSchema },
   { name: PostHotParticipant.name, schema: PostHotParticipantSchema },
+  { name: PostHotState.name, schema: PostHotStateSchema },
+  { name: HotProjectionWorkItem.name, schema: HotProjectionWorkItemSchema },
+  { name: HotReplyFeedbackFanout.name, schema: HotReplyFeedbackFanoutSchema },
+  { name: HotCandidateGeneration.name, schema: HotCandidateGenerationSchema },
+  { name: CirclePostVisibilityState.name, schema: CirclePostVisibilityStateSchema },
 ];
 
 @Global()

@@ -10,9 +10,11 @@ describe('DatabaseService transactions', () => {
   let moduleRef: TestingModule;
   let service: DatabaseService;
   let transaction: jest.Mock;
+  let inspectTopology: jest.Mock;
 
   beforeEach(async () => {
     transaction = jest.fn();
+    inspectTopology = jest.fn().mockResolvedValue({ setName: 'rs0' });
     moduleRef = await Test.createTestingModule({
       providers: [
         DatabaseService,
@@ -22,7 +24,7 @@ describe('DatabaseService transactions', () => {
             readyState: 1,
             db: {
               admin: () => ({
-                command: jest.fn().mockResolvedValue({ setName: 'rs0' }),
+                command: inspectTopology,
               }),
             },
             transaction,
@@ -43,6 +45,17 @@ describe('DatabaseService transactions', () => {
     await expect(service.$transaction(async () => 'committed')).resolves.toBe('committed');
     expect(transaction).toHaveBeenCalledTimes(1);
     expect(transaction).toHaveBeenCalledWith(expect.any(Function));
+  });
+
+  it('inspects transaction support at startup only once across repeated transactions', async () => {
+    transaction.mockResolvedValue('committed');
+
+    await service.onModuleInit();
+    await service.$transaction(async () => 'first');
+    await service.$transaction(async () => 'second');
+
+    expect(inspectTopology).toHaveBeenCalledTimes(1);
+    expect(transaction).toHaveBeenCalledTimes(2);
   });
 
   it('retries optimistic concurrency failures up to three attempts', async () => {
@@ -104,10 +117,7 @@ describe('DatabaseService replica-set requirement', () => {
 
     await expect(
       replicaSetService.$transaction(async (session) => {
-        await database.collection(collectionName).insertOne(
-          { result: 'committed' },
-          { session },
-        );
+        await database.collection(collectionName).insertOne({ result: 'committed' }, { session });
         return 'committed';
       }),
     ).resolves.toBe('committed');
@@ -124,10 +134,7 @@ describe('DatabaseService replica-set requirement', () => {
 
     await expect(
       replicaSetService.$transaction(async (session) => {
-        await database.collection(collectionName).insertOne(
-          { result: 'rolled-back' },
-          { session },
-        );
+        await database.collection(collectionName).insertOne({ result: 'rolled-back' }, { session });
         throw failure;
       }),
     ).rejects.toBe(failure);
@@ -138,13 +145,11 @@ describe('DatabaseService replica-set requirement', () => {
   });
 
   it('rejects standalone MongoDB before invoking the callback', async () => {
-    const callback = jest.fn(
-      async (_session: ClientSession): Promise<string> => 'unreachable',
-    );
+    const callback = jest.fn(async (_session: ClientSession): Promise<string> => 'unreachable');
 
-    await expect(
-      standaloneService.$transaction(callback),
-    ).rejects.toThrow('MongoDB replica set is required for this transaction');
+    await expect(standaloneService.$transaction(callback)).rejects.toThrow(
+      'MongoDB replica set is required for transactions',
+    );
     expect(callback).not.toHaveBeenCalled();
   });
 });

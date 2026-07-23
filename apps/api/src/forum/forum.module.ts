@@ -7,6 +7,11 @@ import { RedisModule } from '@/redis/redis.module';
 import { WatchModule } from '@/watch/watch.module';
 import { AuthModule } from '@/auth/auth.module';
 import { HotRankingModule } from '@/hot-ranking/hot-ranking.module';
+import { PostVisibilityModule } from '@/post-visibility/post-visibility.module';
+import { ReplyCounterService } from '@/forum/reply-counter.service';
+import { PostViewCounterService } from '@/forum/post-view-counter.service';
+import { ForumStatisticsService } from '@/forum/forum-statistics.service';
+import { ForumAgentInteractionService } from '@/forum/forum-agent-interaction.service';
 
 @Module({
   imports: [
@@ -16,9 +21,16 @@ import { HotRankingModule } from '@/hot-ranking/hot-ranking.module';
     WatchModule,
     AuthModule,
     HotRankingModule,
+    PostVisibilityModule,
   ],
   controllers: [ForumController],
-  providers: [ForumService],
-  exports: [ForumService],
+  providers: [
+    ForumService,
+    ForumStatisticsService,
+    ForumAgentInteractionService,
+    ReplyCounterService,
+    PostViewCounterService,
+  ],
+  exports: [ForumService, ReplyCounterService, PostViewCounterService],
 })
 export class ForumModule {}

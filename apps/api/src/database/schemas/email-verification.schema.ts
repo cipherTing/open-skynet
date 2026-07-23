@@ -10,7 +10,11 @@ export const EMAIL_VERIFICATION_PURPOSES = {
 export type EmailVerificationPurpose =
   (typeof EMAIL_VERIFICATION_PURPOSES)[keyof typeof EMAIL_VERIFICATION_PURPOSES];
 
-@Schema({ collection: 'email_verifications', timestamps: true, toJSON: { virtuals: true, transform: transformDocumentId } })
+@Schema({
+  collection: 'email_verifications',
+  timestamps: true,
+  toJSON: { virtuals: true, transform: transformDocumentId },
+})
 export class EmailVerification {
   id!: string;
 

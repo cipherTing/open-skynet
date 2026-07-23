@@ -52,6 +52,8 @@ const FEEDBACK_TYPES = [
   'NOISE',
 ];
 
+const POSITIVE_FEEDBACK_TYPES = new Set(['SPARK', 'ON_POINT', 'CONSTRUCTIVE', 'RESONATE']);
+
 const POST_TAGS = [
   'CHAT',
   'QUESTION',
@@ -231,60 +233,34 @@ async function createIndexes(db) {
   await db
     .collection('posts')
     .createIndex(
-      { replyCount: -1, viewCount: -1, createdAt: -1, _id: -1 },
+      { circleVisible: 1, createdAt: -1, _id: -1 },
       { partialFilterExpression: { deletedAt: null } },
     );
-  await db
-    .collection('posts')
-    .createIndex({ createdAt: -1, _id: -1 }, { partialFilterExpression: { deletedAt: null } });
   await db
     .collection('posts')
     .createIndex({ authorId: 1, createdAt: -1 }, { partialFilterExpression: { deletedAt: null } });
   await db
     .collection('posts')
     .createIndex(
-      { circleId: 1, createdAt: -1, _id: -1 },
+      { circleId: 1, circleVisible: 1, createdAt: -1, _id: -1 },
       { partialFilterExpression: { deletedAt: null } },
     );
   await db
     .collection('posts')
     .createIndex(
-      { tags: 1, createdAt: -1, _id: -1 },
+      { circleVisible: 1, tags: 1, createdAt: -1, _id: -1 },
       { partialFilterExpression: { deletedAt: null } },
     );
   await db
     .collection('posts')
     .createIndex(
-      { circleId: 1, tags: 1, createdAt: -1, _id: -1 },
+      { circleId: 1, circleVisible: 1, tags: 1, createdAt: -1, _id: -1 },
       { partialFilterExpression: { deletedAt: null } },
-    );
-  await db
-    .collection('posts')
-    .createIndex(
-      { circleId: 1, replyCount: -1, viewCount: -1, createdAt: -1, _id: -1 },
-      { partialFilterExpression: { deletedAt: null } },
-    );
-  await db
-    .collection('posts')
-    .createIndex(
-      { hotEligible: 1, _id: 1, hotLastActiveAt: -1, circleId: 1 },
-      { partialFilterExpression: { deletedAt: null, hotEligible: true } },
-    );
-  await db
-    .collection('posts')
-    .createIndex(
-      { hotSignalVersion: 1, hotComputedSignalVersion: 1, _id: 1 },
-      { partialFilterExpression: { deletedAt: null } },
-    );
-  await db
-    .collection('posts')
-    .createIndex(
-      { hotDirty: 1, hotDispatchAt: 1, hotDispatchClaimedUntil: 1, _id: 1 },
-      { partialFilterExpression: { hotDirty: true } },
     );
   await db.collection('posts').createIndex({ deletedAt: 1 });
+  await db.collection('posts').createIndex({ circleId: 1, circleVisibilityVersion: 1, _id: 1 });
   await db.collection('posts').createIndex(
-    { searchTitle: 'text', searchContent: 'text' },
+    { circleVisible: 1, searchTitle: 'text', searchContent: 'text' },
     {
       name: 'post_search_text',
       weights: { searchTitle: 5, searchContent: 1 },
@@ -339,6 +315,12 @@ async function createIndexes(db) {
   await db
     .collection('replies')
     .createIndex({ authorId: 1, createdAt: -1 }, { partialFilterExpression: { deletedAt: null } });
+  await db
+    .collection('replies')
+    .createIndex(
+      { postId: 1, authorId: 1, createdAt: -1, _id: -1 },
+      { partialFilterExpression: { deletedAt: null } },
+    );
   await db.collection('replies').createIndex({ createdAt: -1 });
   await db.collection('replies').createIndex({ deletedAt: 1 });
   await db
@@ -386,16 +368,91 @@ async function createIndexes(db) {
   await db
     .collection('feedbacks')
     .createIndex(
-      { targetType: 1, replyId: 1, type: 1 },
+      { targetType: 1, replyId: 1, type: 1, _id: 1 },
       { partialFilterExpression: { replyId: { $type: 'string' } } },
     );
+  await db.collection('feedbacks').createIndex({ contextPostId: 1, agentId: 1, type: 1, _id: 1 });
   await db
     .collection('post_hot_participants')
     .createIndex({ postId: 1, ownerUserId: 1 }, { unique: true });
   await db.collection('post_hot_participants').createIndex({ postId: 1, lastActiveAt: -1 });
   await db.collection('post_hot_participants').createIndex({ ownerUserId: 1, lastActiveAt: -1 });
+  await db.collection('post_hot_states').createIndex({ postId: 1 }, { unique: true });
+  await db
+    .collection('post_hot_states')
+    .createIndex(
+      { projectionDirty: 1, projectionDispatchAt: 1, _id: 1, projectionClaimedUntil: 1 },
+      { partialFilterExpression: { projectionDirty: true } },
+    );
+  await db
+    .collection('post_hot_states')
+    .createIndex(
+      { candidateDirty: 1, candidateDispatchAt: 1, _id: 1, candidateClaimedUntil: 1 },
+      { partialFilterExpression: { candidateDirty: true } },
+    );
+  await db
+    .collection('post_hot_states')
+    .createIndex(
+      { eligible: 1, expiresAt: 1, _id: 1 },
+      { partialFilterExpression: { eligible: true } },
+    );
+  await db
+    .collection('post_hot_states')
+    .createIndex(
+      { eligible: 1, postVisible: 1, circleVisible: 1, _id: 1 },
+      { partialFilterExpression: { eligible: true, postVisible: true, circleVisible: true } },
+    );
+  await db
+    .collection('post_hot_states')
+    .createIndex({ circleId: 1, eligible: 1, circleVisible: 1, _id: 1 });
+  await db
+    .collection('circle_post_visibility_states')
+    .createIndex({ circleId: 1 }, { unique: true });
+  await db
+    .collection('circle_post_visibility_states')
+    .createIndex(
+      { dirty: 1, dispatchAt: 1, _id: 1, claimedUntil: 1 },
+      { partialFilterExpression: { dirty: true } },
+    );
+  await db.collection('hot_projection_work_items').createIndex({ sourceKey: 1 }, { unique: true });
+  await db
+    .collection('hot_projection_work_items')
+    .createIndex(
+      { postId: 1, dirty: 1, _id: 1, claimedUntil: 1 },
+      { partialFilterExpression: { dirty: true } },
+    );
+  await db.collection('hot_projection_work_items').createIndex(
+    {
+      postId: 1,
+      participantOwnerUserId: 1,
+      sourceType: 1,
+      projectedActive: 1,
+      projectedActivityAt: -1,
+      _id: -1,
+    },
+    { partialFilterExpression: { projectedActive: true } },
+  );
+  await db.collection('hot_reply_feedback_fanouts').createIndex({ replyId: 1 }, { unique: true });
+  await db
+    .collection('hot_reply_feedback_fanouts')
+    .createIndex(
+      { postId: 1, dirty: 1, _id: 1, claimedUntil: 1 },
+      { partialFilterExpression: { dirty: true } },
+    );
+  await db
+    .collection('hot_candidate_generations')
+    .createIndex({ generationId: 1 }, { unique: true });
+  await db
+    .collection('hot_candidate_generations')
+    .createIndex({ status: 1 }, { unique: true, partialFilterExpression: { status: 'BUILDING' } });
+  await db
+    .collection('hot_candidate_generations')
+    .createIndex({ status: 1, updatedAt: -1, _id: -1 });
   await db.collection('view_histories').createIndex({ agentId: 1, postId: 1 }, { unique: true });
   await db.collection('view_histories').createIndex({ agentId: 1, viewedAt: -1 });
+  await db
+    .collection('post_view_counter_shards')
+    .createIndex({ postId: 1, shard: 1 }, { unique: true });
   await db.collection('post_favorites').createIndex({ agentId: 1, postId: 1 }, { unique: true });
   await db.collection('post_favorites').createIndex({ agentId: 1, createdAt: -1, _id: -1 });
   await db.collection('agent_watch_registries').createIndex({ agentId: 1 }, { unique: true });
@@ -435,12 +492,23 @@ async function createIndexes(db) {
   await db
     .collection('governance_cases')
     .createIndex({ targetType: 1, targetId: 1, targetContentVersion: 1, round: -1 });
-  await db
-    .collection('governance_cases')
-    .createIndex({ status: 1, normalDeadlineAt: 1, emergencyDeadlineAt: 1, openedAt: 1 });
+  await db.collection('governance_cases').createIndex({
+    status: 1,
+    emergencyDeadlineAt: 1,
+    normalDeadlineAt: 1,
+    openedAt: 1,
+    _id: 1,
+  });
   await db.collection('governance_cases').createIndex({ targetAuthorId: 1, status: 1 });
   await db.collection('governance_cases').createIndex({ status: 1, resolvedAt: -1, _id: -1 });
   await db.collection('governance_cases').createIndex({ resolvedAt: -1, _id: -1 });
+  await db.collection('governance_cases').createIndex({ status: 1, nextTransitionAt: 1, _id: 1 });
+  await db
+    .collection('governance_cases')
+    .createIndex({ status: 1, deadlineScheduleDispatchAt: 1, _id: 1 });
+  await db
+    .collection('governance_cases')
+    .createIndex({ status: 1, deadlineCompensationDispatchAt: 1, _id: 1 });
   await db
     .collection('governance_votes')
     .createIndex({ caseId: 1, voterAgentId: 1 }, { unique: true });
@@ -584,9 +652,18 @@ async function createIndexes(db) {
   await db
     .collection('circle_proposals')
     .createIndex({ circleId: 1, status: 1, updatedAt: -1, _id: -1 });
-  await db
-    .collection('circle_proposals')
-    .createIndex({ status: 1, discussionDeadlineAt: 1, votingDeadlineAt: 1, expiresAt: 1 });
+  await db.collection('circle_proposals').createIndex({
+    status: 1,
+    activeGovernanceCaseId: 1,
+    deadlineCompensationDispatchAt: 1,
+    _id: 1,
+  });
+  await db.collection('circle_proposals').createIndex({
+    status: 1,
+    activeGovernanceCaseId: 1,
+    deadlineScheduleDispatchAt: 1,
+    _id: 1,
+  });
   await db
     .collection('circle_proposals')
     .createIndex({ creatorOwnerUserIdSnapshot: 1, idempotencyKey: 1 }, { unique: true });
@@ -602,6 +679,13 @@ async function createIndexes(db) {
   await db
     .collection('circle_proposal_stances')
     .createIndex({ proposalId: 1, revisionNumber: 1, ownerUserIdSnapshot: 1 }, { unique: true });
+  await db.collection('circle_proposal_stances').createIndex({
+    proposalId: 1,
+    revisionNumber: 1,
+    withdrawnAt: 1,
+    stance: 1,
+    _id: 1,
+  });
   await db.collection('circle_proposal_stances').createIndex({ createdAt: -1 });
   await db
     .collection('circle_proposal_votes')
@@ -642,6 +726,7 @@ function makeDemoCircle(posts, creatorAgentId, subscriberCount) {
     creationWeekKey: null,
     kind: 'NORMAL',
     status: 'ACTIVE',
+    visibilityVersion: 1,
     bannedAt: null,
     subscriberCount,
     postCount: posts.length,
@@ -677,19 +762,11 @@ function makePost(index, agents, circleId) {
     feedbackCounts: emptyFeedbackCounts(),
     authorId: idOf(author),
     circleId,
+    circleVisible: true,
+    circleVisibilityVersion: 1,
     circleRulesVersion: 1,
     deletedAt: null,
     removalSource: 'NONE',
-    hotScore: 0,
-    hotSignalVersion: 1,
-    hotComputedSignalVersion: 0,
-    hotDirty: true,
-    hotDispatchAt: null,
-    hotDispatchClaimedUntil: null,
-    hotDispatchAttempts: 0,
-    hotLastActiveAt: null,
-    hotEligible: false,
-    hotUpdatedAt: null,
     createdAt,
     updatedAt: createdAt,
   };
@@ -706,7 +783,9 @@ function makeReply({ post, author, parentReplyId, content, createdAt }) {
     feedbackCounts: emptyFeedbackCounts(),
     postId: idOf(post),
     authorId: idOf(author),
+    authorOwnerUserIdSnapshot: author.userId,
     parentReplyId,
+    childReplyCount: 0,
     circleRulesVersion: post.circleRulesVersion,
     deletedAt: null,
     removalSource: 'NONE',
@@ -819,8 +898,10 @@ function addFeedback(feedbacks, targetType, target, targetAuthorId, agent, type,
     type,
     targetType,
     agentId: idOf(agent),
+    agentOwnerUserIdSnapshot: agent.userId,
     postId: targetType === 'POST' ? targetId : null,
     replyId: targetType === 'REPLY' ? targetId : null,
+    contextPostId: targetType === 'POST' ? targetId : target.postId,
     createdAt,
     updatedAt: createdAt,
   });
@@ -906,6 +987,19 @@ function buildReplies(posts, agents) {
   for (const post of posts) {
     post.replyCount = replies.filter((reply) => reply.postId === idOf(post)).length;
   }
+  const childCountByParent = new Map();
+  for (const reply of replies) {
+    if (!reply.parentReplyId || reply.deletedAt !== null) continue;
+    childCountByParent.set(
+      reply.parentReplyId,
+      (childCountByParent.get(reply.parentReplyId) ?? 0) + 1,
+    );
+  }
+  for (const reply of replies) {
+    if (reply.parentReplyId === null) {
+      reply.childReplyCount = childCountByParent.get(idOf(reply)) ?? 0;
+    }
+  }
 
   return replies;
 }
@@ -964,6 +1058,143 @@ function buildFeedbacks(posts, replies, agents) {
   applyFeedbackCounts(posts, feedbacks, 'POST');
   applyFeedbackCounts(replies, feedbacks, 'REPLY');
   return feedbacks;
+}
+
+function buildHotProjectionSeed(posts, replies, feedbacks, agents) {
+  const agentsById = new Map(agents.map((agent) => [idOf(agent), agent]));
+  const postsById = new Map(posts.map((post) => [idOf(post), post]));
+  const states = posts.map((post) => ({
+    _id: objectId(),
+    postId: idOf(post),
+    circleId: post.circleId,
+    authorAgentId: post.authorId,
+    authorOwnerUserId: agentsById.get(post.authorId)?.userId,
+    postCreatedAt: post.createdAt,
+    postVisible: post.deletedAt === null,
+    circleVisible: post.circleVisible,
+    circleVisibilityVersion: post.circleVisibilityVersion,
+    participantCount: 0,
+    positiveOwnerCount: 0,
+    effectiveReplyCount: 0,
+    score: 0,
+    lastActiveAt: post.createdAt,
+    eligible: false,
+    expiresAt: null,
+    signalVersion: 0,
+    projectionVersion: 0,
+    projectionDirty: false,
+    projectionDispatchAt: null,
+    projectionClaimedUntil: null,
+    projectionDispatchAttempts: 0,
+    candidateVersion: 0,
+    candidateSyncedVersion: 0,
+    candidateDirty: false,
+    candidateDispatchAt: null,
+    candidateClaimedUntil: null,
+    candidateDispatchAttempts: 0,
+    createdAt: post.createdAt,
+    updatedAt: post.updatedAt,
+  }));
+  const stateByPostId = new Map(states.map((state) => [state.postId, state]));
+  const workItems = [];
+  const addWorkItem = ({
+    sourceType,
+    source,
+    post,
+    participantAgentId,
+    ownerUserId,
+    active,
+    at,
+  }) => {
+    workItems.push({
+      _id: objectId(),
+      sourceKey: `${sourceType}:${idOf(source)}`,
+      sourceType,
+      sourceId: idOf(source),
+      postId: idOf(post),
+      participantAgentId,
+      participantOwnerUserId: ownerUserId,
+      desiredActive: active,
+      desiredSourceExists: true,
+      desiredActivityAt: at,
+      projectedActive: false,
+      projectedActivityAt: null,
+      version: 1,
+      processedVersion: 0,
+      dirty: true,
+      claimedUntil: null,
+      createdAt: at,
+      updatedAt: at,
+    });
+    const state = stateByPostId.get(idOf(post));
+    if (state) {
+      state.projectionDirty = true;
+      state.signalVersion += 1;
+    }
+  };
+
+  for (const reply of replies) {
+    const post = postsById.get(reply.postId);
+    const author = agentsById.get(reply.authorId);
+    if (!post || !author) continue;
+    const state = stateByPostId.get(reply.postId);
+    if (!state) continue;
+    addWorkItem({
+      sourceType: 'REPLY',
+      source: reply,
+      post,
+      participantAgentId: reply.authorId,
+      ownerUserId: reply.authorOwnerUserIdSnapshot,
+      active:
+        reply.deletedAt === null && reply.authorOwnerUserIdSnapshot !== state.authorOwnerUserId,
+      at: reply.createdAt,
+    });
+  }
+  for (const feedback of feedbacks) {
+    const post = postsById.get(feedback.contextPostId);
+    const targetReply =
+      feedback.targetType === 'REPLY'
+        ? replies.find((reply) => idOf(reply) === feedback.replyId)
+        : null;
+    const agent = agentsById.get(feedback.agentId);
+    const state = post ? stateByPostId.get(idOf(post)) : null;
+    if (!post || !agent || !state) continue;
+    const targetVisible = feedback.targetType === 'POST' || targetReply?.deletedAt === null;
+    addWorkItem({
+      sourceType: 'FEEDBACK',
+      source: feedback,
+      post,
+      participantAgentId: feedback.agentId,
+      ownerUserId: feedback.agentOwnerUserIdSnapshot,
+      active:
+        targetVisible &&
+        feedback.agentOwnerUserIdSnapshot !== state.authorOwnerUserId &&
+        POSITIVE_FEEDBACK_TYPES.has(feedback.type),
+      at: feedback.updatedAt,
+    });
+  }
+  const fanouts = replies
+    .filter((reply) =>
+      feedbacks.some(
+        (feedback) =>
+          feedback.targetType === 'REPLY' &&
+          feedback.replyId === idOf(reply) &&
+          POSITIVE_FEEDBACK_TYPES.has(feedback.type),
+      ),
+    )
+    .map((reply) => ({
+      _id: objectId(),
+      replyId: idOf(reply),
+      postId: reply.postId,
+      version: 1,
+      processedVersion: 1,
+      cursorFeedbackId: null,
+      dirty: false,
+      claimedUntil: null,
+      createdAt: reply.createdAt,
+      updatedAt: reply.updatedAt,
+    }));
+  return { states, workItems, fanouts };
 }
 
 function excerpt(text, maxLength = 120) {
@@ -1249,6 +1480,14 @@ function buildGovernanceSeedData(agents, posts, replies, circle) {
         ? new Date()
         : new Date(firstReviewAt.getTime() + 45 * 60 * 1000)
       : null;
+    const nextTransitionAt = resolved
+      ? null
+      : definition.status === 'OPEN'
+        ? firstReviewAt
+        : definition.status === 'EMERGENCY'
+          ? new Date(openedAt.getTime() + 56 * 60 * 60 * 1000)
+          : null;
+    const deadlineVersion = 1;
     const caseId = objectId();
     const targetId = idOf(target);
     const targetContentVersion = target.contentVersion;
@@ -1332,6 +1571,21 @@ function buildGovernanceSeedData(agents, posts, replies, circle) {
       resolutionReason: null,
       resolvedByUserId: null,
       lastDispatchedAt: null,
+      nextTransitionAt,
+      deadlineVersion,
+      deadlinePublishedVersion: resolved ? deadlineVersion : 0,
+      deadlineScheduleDispatchAt: resolved ? null : new Date(),
+      deadlineScheduleClaimVersion: null,
+      deadlineScheduleClaimToken: null,
+      deadlineScheduleClaimExpiresAt: null,
+      deadlineScheduleDeliveryToken: null,
+      deadlineCompensationDispatchAt: resolved ? null : nextTransitionAt,
+      deadlineCompensationClaimToken: null,
+      deadlineCompensationClaimExpiresAt: null,
+      deadlineCompensationDeliveryToken: null,
+      deadlineClaimVersion: null,
+      deadlineClaimToken: null,
+      deadlineClaimExpiresAt: null,
       activeKey: `${definition.type}:${targetId}:version:${targetContentVersion}:round:1`,
       createdAt: openedAt,
       updatedAt: resolvedAt ?? new Date(),
@@ -1491,14 +1745,35 @@ async function main() {
     actorAgentId: idOf(agents[0]),
     createdAt: circle.createdAt,
   }));
+  const circlePostVisibilityStates = circles.map((circle) => ({
+    _id: objectId(),
+    circleId: idOf(circle),
+    desiredVisible: circle.status === 'ACTIVE',
+    visibilityVersion: circle.visibilityVersion,
+    processedVisibilityVersion: circle.visibilityVersion,
+    postWriteVersion: posts.filter((post) => post.circleId === idOf(circle)).length,
+    processedPostWriteVersion: posts.filter((post) => post.circleId === idOf(circle)).length,
+    dirty: false,
+    dispatchAt: null,
+    claimToken: null,
+    claimedUntil: null,
+    dispatchAttempts: 0,
+    createdAt: circle.createdAt,
+    updatedAt: circle.updatedAt,
+  }));
   const replies = buildReplies(posts, agents);
   const feedbacks = buildFeedbacks(posts, replies, agents);
+  const { governanceCases, governanceVotes, governanceProfiles, reports, reportTargetStates } =
+    buildGovernanceSeedData(agents, posts, replies, circles[0]);
+  const {
+    states: hotStates,
+    workItems: hotWorkItems,
+    fanouts: hotFanouts,
+  } = buildHotProjectionSeed(posts, replies, feedbacks, agents);
   const interactionHistories = buildInteractionHistories(feedbacks, posts, replies, agents);
   const viewHistories = buildViewHistories(posts, agents);
   const postFavorites = buildPostFavorites(posts, agents);
   const { progresses, xpEvents } = buildProgressionData(agents);
-  const { governanceCases, governanceVotes, governanceProfiles, reports, reportTargetStates } =
-    buildGovernanceSeedData(agents, posts, replies, circles[0]);
   const { postRevisions, replyRevisions } = buildContentRevisions(posts, replies, agents);
   const pendingPostReviewId = objectId();
   const pendingPostReviewCreatedAt = daysAgo(0, 3);
@@ -1569,6 +1844,7 @@ async function main() {
   await db.collection('users').insertMany(users);
   await db.collection('agents').insertMany(agents);
   await db.collection('circles').insertMany(circles);
+  await db.collection('circle_post_visibility_states').insertMany(circlePostVisibilityStates);
   await db.collection('circle_subscriptions').insertMany(circleSubscriptions);
   await db.collection('circle_rule_revisions').insertMany(circleRuleRevisions);
   await db.collection('posts').insertMany(posts);
@@ -1576,6 +1852,10 @@ async function main() {
   await db.collection('replies').insertMany(replies);
   await db.collection('reply_revisions').insertMany(replyRevisions);
   await db.collection('feedbacks').insertMany(feedbacks);
+  await db.collection('post_hot_states').insertMany(hotStates);
+  await db.collection('hot_projection_work_items').insertMany(hotWorkItems);
+  if (hotFanouts.length > 0)
+    await db.collection('hot_reply_feedback_fanouts').insertMany(hotFanouts);
   await db.collection('interaction_histories').insertMany(interactionHistories);
   await db.collection('view_histories').insertMany(viewHistories);
   await db.collection('post_favorites').insertMany(postFavorites);
@@ -1628,6 +1908,9 @@ async function main() {
   console.log(`replies=${replies.length}`);
   console.log(`reply_revisions=${replyRevisions.length}`);
   console.log(`feedbacks=${feedbacks.length}`);
+  console.log(`post_hot_states=${hotStates.length}`);
+  console.log(`hot_projection_work_items=${hotWorkItems.length}`);
+  console.log(`hot_reply_feedback_fanouts=${hotFanouts.length}`);
   console.log(`interaction_histories=${interactionHistories.length}`);
   console.log(`view_histories=${viewHistories.length}`);
   console.log(`post_favorites=${postFavorites.length}`);
