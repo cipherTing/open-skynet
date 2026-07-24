@@ -5,6 +5,9 @@ import mongoose from 'mongoose';
 
 const HOT_DISPATCH_SCAN_LIMIT = 20;
 const HOT_PROJECTION_WORK_BATCH_SIZE = 12;
+const HOT_REPLY_BRANCH_FANOUT_BATCH_SIZE = 50;
+const HOT_REPLY_BRANCH_CURSOR_INDEX = 'postId_1_parentReplyId_1__id_1';
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const HOT_CANDIDATE_REBUILD_BATCH_SIZE = 250;
 const HOT_CANDIDATE_REBUILD_INDEX = 'eligible_1_postVisible_1_circleVisible_1__id_1';
 const POST_VISIBILITY_DISPATCH_BATCH_SIZE = 10;
@@ -14,6 +17,8 @@ const POST_VISIBILITY_POST_INDEX = 'circleId_1_circleVisibilityVersion_1__id_1';
 const TOP_REPLY_PAGE_SIZE = 21;
 const CHILD_REPLY_PAGE_SIZE = 4;
 const CHILD_REPLY_PAGE_INDEX = 'postId_1_parentReplyId_1_createdAt_1__id_1';
+const GLOBAL_VISIBLE_LATEST_POST_INDEX = 'circleVisible_1_createdAt_-1__id_-1';
+const POST_ACTIVITY_TIME_INDEX = 'createdAt_-1';
 const POST_VIEW_COUNTER_SHARD_COUNT = 32;
 const POST_VIEW_COUNTER_POST_COUNT = 20;
 const POST_VIEW_COUNTER_PAGE_LIMIT = POST_VIEW_COUNTER_SHARD_COUNT * POST_VIEW_COUNTER_POST_COUNT;
@@ -843,6 +848,18 @@ async function main() {
   const results = await Promise.all([
     db
       .collection('posts')
+      .find({ deletedAt: null, circleVisible: true })
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(20)
+      .explain('executionStats'),
+    db
+      .collection('posts')
+      .find({ deletedAt: null, createdAt: { $gte: new Date(now.getTime() - ONE_DAY_MS) } })
+      .sort({ createdAt: -1 })
+      .limit(20)
+      .explain('executionStats'),
+    db
+      .collection('posts')
       .find({ circleId: circle._id.toString(), circleVisible: true, deletedAt: null })
       .sort({ createdAt: -1, _id: -1 })
       .limit(20)
@@ -932,6 +949,22 @@ async function main() {
       })
       .sort({ createdAt: 1, _id: 1 })
       .limit(CHILD_REPLY_PAGE_SIZE)
+      .explain('executionStats'),
+    db
+      .collection('replies')
+      .find({
+        postId: largeReplyBranch.postId,
+        parentReplyId: largeReplyBranch.rootReplyId,
+        deletedAt: { $exists: true },
+      })
+      .sort({ _id: 1 })
+      .limit(HOT_REPLY_BRANCH_FANOUT_BATCH_SIZE + 1)
+      .explain('executionStats'),
+    db
+      .collection('hot_reply_branch_fanouts')
+      .find({ postId: largeReplyBranch.postId, dirty: true, claimedUntil: null })
+      .sort({ _id: 1 })
+      .limit(HOT_DISPATCH_SCAN_LIMIT)
       .explain('executionStats'),
     db
       .collection('post_view_counter_shards')
@@ -1067,6 +1100,8 @@ async function main() {
       .explain('executionStats'),
   ]);
   const names = [
+    'global-visible-latest-posts',
+    'recent-post-activity',
     'circle-latest-posts',
     'hot-projection-dispatch',
     'hot-candidate-dispatch',
@@ -1077,6 +1112,8 @@ async function main() {
     'circle-proposal-support-quorum',
     'circle-proposal-objection-exists',
     'large-reply-branch-page',
+    'large-reply-branch-hot-fanout-page',
+    'hot-branch-fanout-dispatch',
     'post-view-counter-page',
     'subscription-all-relations',
     'subscription-current-page-state',
@@ -1099,10 +1136,24 @@ async function main() {
     return summary;
   };
 
+  assertExecutionBound(
+    requireSummary('global-visible-latest-posts'),
+    20,
+    20,
+    GLOBAL_VISIBLE_LATEST_POST_INDEX,
+  );
+  assertExecutionBound(requireSummary('recent-post-activity'), 20, 20, POST_ACTIVITY_TIME_INDEX);
   assertExecutionBound(requireSummary('circle-latest-posts'), 20, 20);
   assertExecutionBound(requireSummary('hot-projection-dispatch'), 20, 20);
   assertExecutionBound(requireSummary('hot-candidate-dispatch'), 20, 20);
   assertExecutionBound(requireSummary('hot-expiry'), 20, 20);
+  assertExecutionBound(
+    requireSummary('large-reply-branch-hot-fanout-page'),
+    HOT_REPLY_BRANCH_FANOUT_BATCH_SIZE + 1,
+    HOT_REPLY_BRANCH_FANOUT_BATCH_SIZE + 1,
+    HOT_REPLY_BRANCH_CURSOR_INDEX,
+  );
+  assertExecutionBound(requireSummary('hot-branch-fanout-dispatch'), 1, 1);
   assertExecutionBound(
     requireSummary('hot-candidate-rebuild'),
     HOT_CANDIDATE_REBUILD_BATCH_SIZE,

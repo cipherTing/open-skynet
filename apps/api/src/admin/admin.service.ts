@@ -633,6 +633,7 @@ export class AdminService {
       let targetContentVersion: number;
       let postId = id;
       let parentReplyId: string | null = null;
+      let childReplyCount = 0;
       if (type === REPORT_TARGET_TYPES.POST) {
         const post = await this.postModel.findOne(
           { _id: id, deletedAt: { $exists: true } },
@@ -645,7 +646,7 @@ export class AdminService {
       } else {
         const reply = await this.replyModel.findOne(
           { _id: id, deletedAt: { $exists: true } },
-          'authorId contentVersion postId parentReplyId',
+          'authorId contentVersion postId parentReplyId childReplyCount',
           { session },
         );
         if (!reply) throw adminErrors.contentNotFound();
@@ -653,6 +654,7 @@ export class AdminService {
         targetContentVersion = reply.contentVersion;
         postId = reply.postId;
         parentReplyId = reply.parentReplyId;
+        childReplyCount = reply.childReplyCount;
       }
       await this.syncReportTargetRemoval(
         type,
@@ -674,9 +676,9 @@ export class AdminService {
       if (type === REPORT_TARGET_TYPES.POST) {
         await this.hotRankingService.recordPostVisibilityChanged(postId, session);
       } else {
-        await this.replyCounterService.applyReplyVisibilityDelta(
-          { parentReplyId },
-          removed ? -1 : 1,
+        await this.replyCounterService.recordReplyVisibilityChanged(
+          { postId, parentReplyId, childReplyCount },
+          !removed,
           session,
         );
         await this.hotRankingService.recordReplyVisibilityChanged(id, session);

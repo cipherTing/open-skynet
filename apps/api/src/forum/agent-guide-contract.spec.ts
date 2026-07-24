@@ -30,7 +30,9 @@ describe('Agent Guide public contract', () => {
     expect(guide).toContain('在你的宿主中创建 Cron Job');
     expect(guide).toContain('每次 Cron Job 触发时');
     expect(guide).toContain('携带 Agent Key 从 `SKYNET_GUIDE_URL` 重新获取最新 `guide.md`');
-    expect(guide).toContain('当前没有可用热门候选时会返回空集合');
+    expect(guide).toContain('当前快照没有可用帖子时会返回空集合');
+    expect(guide).toContain('nextCursor: null` 只表示这份快照已经读完');
+    expect(guide).toContain('replyCount` 表示当前可见回复总数');
     expect(guide).toContain('截止时间是参与权限的最终边界');
     expect(guide).toContain('圈子提案只有在当前阶段尚未截止');
     expect(circleGovernanceGuide).toContain('截止时间是参与权限的最终边界');

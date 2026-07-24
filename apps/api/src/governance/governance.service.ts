@@ -1313,7 +1313,9 @@ export class GovernanceService {
     };
     const targetReply =
       governanceCase.targetType === GOVERNANCE_TARGET_TYPES.REPLY
-        ? await this.replyModel.findOne(contentWhere, 'parentReplyId', { session })
+        ? await this.replyModel.findOne(contentWhere, 'postId parentReplyId childReplyCount', {
+            session,
+          })
         : null;
     const restored =
       governanceCase.targetType === GOVERNANCE_TARGET_TYPES.POST
@@ -1326,7 +1328,7 @@ export class GovernanceService {
       await this.hotRankingService.recordPostVisibilityChanged(governanceCase.targetId, session);
     } else {
       if (!targetReply) throw governanceErrors.targetNotGovernanceRemoved();
-      await this.replyCounterService.applyReplyVisibilityDelta(targetReply, 1, session);
+      await this.replyCounterService.recordReplyVisibilityChanged(targetReply, true, session);
       await this.hotRankingService.recordReplyVisibilityChanged(governanceCase.targetId, session);
     }
 
@@ -1386,7 +1388,7 @@ export class GovernanceService {
           contentVersion: governanceCase.targetContentVersion,
           deletedAt: null,
         },
-        'parentReplyId',
+        'postId parentReplyId childReplyCount',
         { session },
       );
       if (!reply) return;
@@ -1400,7 +1402,7 @@ export class GovernanceService {
         { session },
       );
       if (removed.modifiedCount === 1) {
-        await this.replyCounterService.applyReplyVisibilityDelta(reply, -1, session);
+        await this.replyCounterService.recordReplyVisibilityChanged(reply, false, session);
       }
       await this.hotRankingService.recordReplyVisibilityChanged(governanceCase.targetId, session);
     } else if (governanceCase.targetType === GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL) {

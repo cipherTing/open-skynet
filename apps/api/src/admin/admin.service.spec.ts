@@ -19,9 +19,12 @@ import {
   ContentReviewRequestSchema,
 } from '@/database/schemas/content-review-request.schema';
 import { GovernanceCase } from '@/database/schemas/governance-case.schema';
-import { Post } from '@/database/schemas/post.schema';
-import { Reply } from '@/database/schemas/reply.schema';
-import { ReportTargetState } from '@/database/schemas/report-target-state.schema';
+import { Post, PostSchema } from '@/database/schemas/post.schema';
+import { Reply, ReplySchema } from '@/database/schemas/reply.schema';
+import {
+  ReportTargetState,
+  ReportTargetStateSchema,
+} from '@/database/schemas/report-target-state.schema';
 import {
   AgentGovernanceHistory,
   AgentGovernanceHistorySchema,
@@ -45,6 +48,7 @@ import { AdminAuditService } from './admin-audit.service';
 import { AdminService } from './admin.service';
 import { ReplyCounterService } from '@/forum/reply-counter.service';
 import { HotRankingService } from '@/hot-ranking/hot-ranking.service';
+import { REPORT_TARGET_TYPES } from '@/report/report.constants';
 import type { AdminPrincipal } from './interfaces/admin-principal.interface';
 
 const ADMIN: AdminPrincipal = {
@@ -101,22 +105,20 @@ describe('AdminService moderation paths', () => {
           { name: AgentGovernanceProfile.name, schema: AgentGovernanceProfileSchema },
           { name: AgentGovernanceHistory.name, schema: AgentGovernanceHistorySchema },
           { name: ContentReviewRequest.name, schema: ContentReviewRequestSchema },
+          { name: Post.name, schema: PostSchema },
+          { name: Reply.name, schema: ReplySchema },
+          { name: ReportTargetState.name, schema: ReportTargetStateSchema },
         ]),
       ],
       providers: [
         AdminService,
-        {
-          provide: ReplyCounterService,
-          useValue: { applyReplyVisibilityDelta: jest.fn().mockResolvedValue(undefined) },
-        },
+        ReplyCounterService,
         AdminAuditService,
         DatabaseService,
         { provide: getModelToken(User.name), useValue: {} },
         { provide: getModelToken(BrowserSession.name), useValue: {} },
         { provide: getModelToken(AgentProgress.name), useValue: {} },
         { provide: getModelToken(AgentXpEvent.name), useValue: {} },
-        { provide: getModelToken(Post.name), useValue: {} },
-        { provide: getModelToken(Reply.name), useValue: {} },
         { provide: getModelToken(Circle.name), useValue: {} },
         { provide: getModelToken(CircleProposal.name), useValue: {} },
         { provide: getModelToken(GovernanceCase.name), useValue: {} },
@@ -124,7 +126,6 @@ describe('AdminService moderation paths', () => {
         { provide: getModelToken(GovernanceVote.name), useValue: {} },
         { provide: getModelToken(Report.name), useValue: {} },
         { provide: getModelToken(GovernanceCorrection.name), useValue: {} },
-        { provide: getModelToken(ReportTargetState.name), useValue: {} },
         { provide: HealthService, useValue: {} },
         { provide: ForumService, useValue: forumService },
         { provide: CircleService, useValue: circleService },
@@ -140,6 +141,9 @@ describe('AdminService moderation paths', () => {
       connection.model(Agent.name).init(),
       connection.model(AgentGovernanceProfile.name).init(),
       connection.model(ContentReviewRequest.name).init(),
+      connection.model(Post.name).init(),
+      connection.model(Reply.name).init(),
+      connection.model(ReportTargetState.name).init(),
     ]);
   });
 
@@ -160,6 +164,9 @@ describe('AdminService moderation paths', () => {
       connection.model(Agent.name).deleteMany({}),
       connection.model(AgentGovernanceProfile.name).deleteMany({}),
       connection.model(ContentReviewRequest.name).deleteMany({}),
+      connection.collection('posts').deleteMany({}),
+      connection.collection('replies').deleteMany({}),
+      connection.collection('report_target_states').deleteMany({}),
       connection.db?.collection('agent_governance_history').deleteMany({}),
     ]);
   });
@@ -291,6 +298,58 @@ describe('AdminService moderation paths', () => {
       reason: '证据充分，直接裁定违规',
       changes: { decision: 'VIOLATION' },
     });
+  });
+
+  it('updates the visible reply count when an administrator hides and restores a root branch', async () => {
+    const post = await connection.model(Post.name).create({
+      title: '管理员回复计数测试',
+      content: '正文',
+      tags: ['DISCUSSION'],
+      authorId: new Types.ObjectId().toString(),
+      circleId: new Types.ObjectId().toString(),
+      circleRulesVersion: 1,
+      replyCount: 2,
+    });
+    const rootReply = await connection.model(Reply.name).create({
+      content: '一级回复',
+      postId: post.id,
+      authorId: new Types.ObjectId().toString(),
+      authorOwnerUserIdSnapshot: new Types.ObjectId().toString(),
+      parentReplyId: null,
+      childReplyCount: 1,
+      circleRulesVersion: 1,
+    });
+    await connection.model(Reply.name).create({
+      content: '二级回复',
+      postId: post.id,
+      authorId: new Types.ObjectId().toString(),
+      authorOwnerUserIdSnapshot: new Types.ObjectId().toString(),
+      parentReplyId: rootReply.id,
+      circleRulesVersion: 1,
+    });
+
+    await service.setContentRemoved(
+      ADMIN,
+      REPORT_TARGET_TYPES.REPLY,
+      rootReply.id,
+      true,
+      '管理员隐藏违规回复支线',
+    );
+    await expect(connection.model(Post.name).findById(post.id).lean()).resolves.toMatchObject({
+      replyCount: 0,
+    });
+
+    await service.setContentRemoved(
+      ADMIN,
+      REPORT_TARGET_TYPES.REPLY,
+      rootReply.id,
+      false,
+      '管理员复核后恢复回复支线',
+    );
+    await expect(connection.model(Post.name).findById(post.id).lean()).resolves.toMatchObject({
+      replyCount: 2,
+    });
+    expect(hotRankingService.recordReplyVisibilityChanged).toHaveBeenCalledTimes(2);
   });
 
   it('bans an Agent without destroying its key and restores the latest pending health level', async () => {

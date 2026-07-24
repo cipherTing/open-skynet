@@ -15,6 +15,10 @@ import {
   HotProjectionWorkItemSchema,
 } from '@/database/schemas/hot-projection-work-item.schema';
 import {
+  HotReplyBranchFanout,
+  HotReplyBranchFanoutSchema,
+} from '@/database/schemas/hot-reply-branch-fanout.schema';
+import {
   HotReplyFeedbackFanout,
   HotReplyFeedbackFanoutSchema,
 } from '@/database/schemas/hot-reply-feedback-fanout.schema';
@@ -35,7 +39,10 @@ import {
   HOT_RANKING_CANDIDATE_QUEUE,
   HOT_RANKING_CANDIDATE_MAINTENANCE_QUEUE,
   HOT_RANKING_PROJECTION_QUEUE,
+  HOT_PAGE_SCAN_SIZE,
+  HOT_REPLY_BRANCH_FANOUT_BATCH_SIZE,
   HOT_REPLY_FEEDBACK_FANOUT_BATCH_SIZE,
+  HOT_SNAPSHOT_SAMPLE_SIZE,
 } from '@/hot-ranking/hot-ranking.constants';
 import { HotRankingProjectionService } from '@/hot-ranking/hot-ranking-projection.service';
 import { HotCandidateIndexService } from '@/hot-ranking/hot-candidate-index.service';
@@ -179,6 +186,7 @@ describe('Hot ranking projection and candidates', () => {
   let agentModel: Model<Agent>;
   let stateModel: Model<PostHotState>;
   let workItemModel: Model<HotProjectionWorkItem>;
+  let branchFanoutModel: Model<HotReplyBranchFanout>;
   let participantModel: Model<PostHotParticipant>;
   let generationModel: Model<HotCandidateGeneration>;
   const redis = createRedisDouble();
@@ -200,6 +208,7 @@ describe('Hot ranking projection and candidates', () => {
           { name: PostHotState.name, schema: PostHotStateSchema },
           { name: PostHotParticipant.name, schema: PostHotParticipantSchema },
           { name: HotProjectionWorkItem.name, schema: HotProjectionWorkItemSchema },
+          { name: HotReplyBranchFanout.name, schema: HotReplyBranchFanoutSchema },
           { name: HotReplyFeedbackFanout.name, schema: HotReplyFeedbackFanoutSchema },
           { name: HotCandidateGeneration.name, schema: HotCandidateGenerationSchema },
         ]),
@@ -233,6 +242,7 @@ describe('Hot ranking projection and candidates', () => {
     agentModel = moduleRef.get(getModelToken(Agent.name));
     stateModel = moduleRef.get(getModelToken(PostHotState.name));
     workItemModel = moduleRef.get(getModelToken(HotProjectionWorkItem.name));
+    branchFanoutModel = moduleRef.get(getModelToken(HotReplyBranchFanout.name));
     participantModel = moduleRef.get(getModelToken(PostHotParticipant.name));
     generationModel = moduleRef.get(getModelToken(HotCandidateGeneration.name));
   });
@@ -252,6 +262,7 @@ describe('Hot ranking projection and candidates', () => {
         'post_hot_states',
         'post_hot_participants',
         'hot_projection_work_items',
+        'hot_reply_branch_fanouts',
         'hot_reply_feedback_fanouts',
         'hot_candidate_generations',
         'circles',
@@ -312,13 +323,18 @@ describe('Hot ranking projection and candidates', () => {
     return post;
   }
 
-  async function createReply(post: Post, author: Agent, content: string): Promise<Reply> {
+  async function createReply(
+    post: Post,
+    author: Agent,
+    content: string,
+    parentReplyId: string | null = null,
+  ): Promise<Reply> {
     const reply = await replyModel.create({
       content,
       postId: post.id,
       authorId: author.id,
       authorOwnerUserIdSnapshot: author.userId,
-      parentReplyId: null,
+      parentReplyId,
       circleRulesVersion: 1,
     });
     await connection.transaction((session) => service.recordReplyCreated(reply.id, session));
@@ -339,6 +355,7 @@ describe('Hot ranking projection and candidates', () => {
       replyId: targetReply.id,
       contextPostId: post.id,
     });
+    await replyModel.updateOne({ _id: targetReply.id }, { $inc: { 'feedbackCounts.SPARK': 1 } });
     await connection.transaction((session) =>
       service.recordFeedbackContribution(
         {
@@ -364,6 +381,17 @@ describe('Hot ranking projection and candidates', () => {
       await projectionService.projectPost(postId, state.signalVersion);
     }
     throw new Error('热度投影没有在测试上限内清空');
+  }
+
+  async function setReplyVisibility(replyId: string, visible: boolean): Promise<void> {
+    await connection.transaction(async (session) => {
+      await replyModel.updateOne(
+        { _id: replyId },
+        { $set: { deletedAt: visible ? null : new Date() } },
+        { session },
+      );
+      await service.recordReplyVisibilityChanged(replyId, session);
+    });
   }
 
   it('registers only bounded BullMQ schedulers during module initialization', async () => {
@@ -615,6 +643,63 @@ describe('Hot ranking projection and candidates', () => {
     });
   });
 
+  it('fans out a hidden root branch in bounded child batches and restores the latest state', async () => {
+    const author = await createAgent('branch-author');
+    const replyAuthor = await createAgent('branch-reply-author');
+    const voter = await createAgent('branch-voter');
+    const post = await createPost(author);
+    const rootReply = await createReply(post, replyAuthor, '分支一级回复');
+    const childReplies: Reply[] = [];
+    for (let index = 0; index < HOT_REPLY_BRANCH_FANOUT_BATCH_SIZE + 5; index += 1) {
+      childReplies.push(
+        await createReply(post, replyAuthor, `分支二级回复 ${index}`, rootReply.id),
+      );
+    }
+    const lastChildReply = childReplies.at(-1);
+    if (!lastChildReply) throw new Error('测试二级回复缺失');
+    await createPositiveFeedback(post, lastChildReply, voter);
+    await drainProjection(post.id);
+    await expect(stateModel.findOne({ postId: post.id }).lean()).resolves.toMatchObject({
+      effectiveReplyCount: HOT_REPLY_BRANCH_FANOUT_BATCH_SIZE + 6,
+      positiveOwnerCount: 1,
+      projectionDirty: false,
+    });
+
+    await setReplyVisibility(rootReply.id, false);
+    await expect(
+      branchFanoutModel.findOne({ rootReplyId: rootReply.id }).lean(),
+    ).resolves.toMatchObject({ dirty: true, cursorReplyId: null });
+    const dirtyState = await stateModel.findOne({ postId: post.id });
+    if (!dirtyState) throw new Error('测试热度状态缺失');
+    await projectionService.projectPost(post.id, dirtyState.signalVersion);
+
+    await expect(
+      workItemModel.countDocuments({
+        sourceType: 'REPLY',
+        sourceId: { $in: childReplies.map((reply) => reply.id) },
+        desiredActive: false,
+      }),
+    ).resolves.toBe(HOT_REPLY_BRANCH_FANOUT_BATCH_SIZE);
+    await expect(
+      branchFanoutModel.findOne({ rootReplyId: rootReply.id }).lean(),
+    ).resolves.toMatchObject({ dirty: true, cursorReplyId: expect.any(String) });
+
+    await drainProjection(post.id);
+    await expect(stateModel.findOne({ postId: post.id }).lean()).resolves.toMatchObject({
+      effectiveReplyCount: 0,
+      positiveOwnerCount: 0,
+      projectionDirty: false,
+    });
+
+    await setReplyVisibility(rootReply.id, true);
+    await drainProjection(post.id);
+    await expect(stateModel.findOne({ postId: post.id }).lean()).resolves.toMatchObject({
+      effectiveReplyCount: HOT_REPLY_BRANCH_FANOUT_BATCH_SIZE + 6,
+      positiveOwnerCount: 1,
+      projectionDirty: false,
+    });
+  });
+
   it('converges to the latest reply visibility after delete and restore races', async () => {
     const author = await createAgent('visibility-race-author');
     const replyAuthor = await createAgent('visibility-race-reply-author');
@@ -737,7 +822,7 @@ describe('Hot ranking projection and candidates', () => {
     ).toBe(false);
   });
 
-  it('bounds MongoDB candidate filtering to four rounds per hot-feed request', async () => {
+  it('scans one bounded hot snapshot completely before declaring it exhausted', async () => {
     const generationId = 'bounded-query-generation';
     redis.values.set('skynet:v2:hot-posts:active-generation', generationId);
     redis.values.set(`skynet:v2:hot-posts:generation:${generationId}:ready`, '1');
@@ -750,12 +835,137 @@ describe('Hot ranking projection and candidates', () => {
 
     await expect(
       service.listRandomHotPosts({ deletedAt: null }, { filterKey: 'bounded', limit: 20 }),
-    ).resolves.toMatchObject({ posts: [] });
+    ).resolves.toMatchObject({ posts: [], nextCursor: null });
 
-    expect(stateFindSpy).toHaveBeenCalledTimes(4);
-    expect(postFindSpy).toHaveBeenCalledTimes(4);
+    const expectedQueryCount = Math.ceil(HOT_SNAPSHOT_SAMPLE_SIZE / HOT_PAGE_SCAN_SIZE);
+    expect(stateFindSpy).toHaveBeenCalledTimes(expectedQueryCount);
+    expect(postFindSpy).toHaveBeenCalledTimes(expectedQueryCount);
+    expect(redis.client.srandmember).toHaveBeenCalledTimes(1);
     stateFindSpy.mockRestore();
     postFindSpy.mockRestore();
+  });
+
+  it('finds a valid post near the end of the same random snapshot', async () => {
+    const author = await createAgent('late-snapshot-author');
+    const post = await createPost(author, '快照尾部仍可发现');
+    const generationId = 'late-snapshot-generation';
+    await createReadyGeneration(generationId);
+    await stateModel.updateOne(
+      { postId: post.id },
+      {
+        $set: {
+          eligible: true,
+          expiresAt: new Date(Date.now() + 60_000),
+          projectionDirty: false,
+        },
+      },
+    );
+    const invalidIds = Array.from({ length: HOT_PAGE_SCAN_SIZE * 2 }, () =>
+      new Types.ObjectId().toString(),
+    );
+    redis.sets.set(
+      `skynet:v2:hot-posts:generation:${generationId}:all`,
+      new Set([...invalidIds, post.id]),
+    );
+
+    await expect(
+      service.listRandomHotPosts({ deletedAt: null }, { filterKey: 'late-valid', limit: 1 }),
+    ).resolves.toMatchObject({
+      posts: [expect.objectContaining({ id: post.id })],
+      nextCursor: null,
+    });
+    expect(redis.client.srandmember).toHaveBeenCalledTimes(1);
+  });
+
+  it('paginates within one snapshot and creates a new sample for a fresh first page', async () => {
+    const author = await createAgent('snapshot-pagination-author');
+    const posts = await Promise.all([
+      createPost(author, '快照分页一'),
+      createPost(author, '快照分页二'),
+      createPost(author, '快照分页三'),
+    ]);
+    const generationId = 'snapshot-pagination-generation';
+    await createReadyGeneration(generationId);
+    await stateModel.updateMany(
+      { postId: { $in: posts.map((post) => post.id) } },
+      {
+        $set: {
+          eligible: true,
+          expiresAt: new Date(Date.now() + 60_000),
+          projectionDirty: false,
+        },
+      },
+    );
+    redis.sets.set(
+      `skynet:v2:hot-posts:generation:${generationId}:all`,
+      new Set(posts.map((post) => post.id)),
+    );
+
+    const firstPage = await service.listRandomHotPosts(
+      { deletedAt: null },
+      { filterKey: 'snapshot-pages', limit: 2 },
+    );
+    expect(firstPage.posts.map((post) => post.id)).toEqual(
+      posts.slice(0, 2).map((post) => post.id),
+    );
+    expect(firstPage.nextCursor).not.toBeNull();
+    if (!firstPage.nextCursor) throw new Error('热门第一页缺少快照游标');
+
+    const secondPage = await service.listRandomHotPosts(
+      { deletedAt: null },
+      { filterKey: 'snapshot-pages', limit: 2, cursor: firstPage.nextCursor },
+    );
+    expect(secondPage.posts.map((post) => post.id)).toEqual([posts[2].id]);
+    expect(secondPage.nextCursor).toBeNull();
+    expect(redis.client.srandmember).toHaveBeenCalledTimes(1);
+
+    await service.listRandomHotPosts(
+      { deletedAt: null },
+      { filterKey: 'snapshot-pages', limit: 2 },
+    );
+    expect(redis.client.srandmember).toHaveBeenCalledTimes(2);
+  });
+
+  it('continues from the exact consumed offset when a scan batch mixes invalid and valid ids', async () => {
+    const author = await createAgent('mixed-snapshot-author');
+    const firstPost = await createPost(author, '混合快照第一页');
+    const secondPost = await createPost(author, '混合快照第二页');
+    const generationId = 'mixed-snapshot-generation';
+    await createReadyGeneration(generationId);
+    await stateModel.updateMany(
+      { postId: { $in: [firstPost.id, secondPost.id] } },
+      {
+        $set: {
+          eligible: true,
+          expiresAt: new Date(Date.now() + 60_000),
+          projectionDirty: false,
+        },
+      },
+    );
+    const firstInvalidBatch = Array.from({ length: HOT_PAGE_SCAN_SIZE - 1 }, () =>
+      new Types.ObjectId().toString(),
+    );
+    const secondInvalidBatch = Array.from({ length: HOT_PAGE_SCAN_SIZE - 1 }, () =>
+      new Types.ObjectId().toString(),
+    );
+    redis.sets.set(
+      `skynet:v2:hot-posts:generation:${generationId}:all`,
+      new Set([...firstInvalidBatch, firstPost.id, ...secondInvalidBatch, secondPost.id]),
+    );
+
+    const firstPage = await service.listRandomHotPosts(
+      { deletedAt: null },
+      { filterKey: 'mixed-snapshot', limit: 1 },
+    );
+    expect(firstPage.posts.map((post) => post.id)).toEqual([firstPost.id]);
+    if (!firstPage.nextCursor) throw new Error('混合快照第一页缺少游标');
+
+    const secondPage = await service.listRandomHotPosts(
+      { deletedAt: null },
+      { filterKey: 'mixed-snapshot', limit: 1, cursor: firstPage.nextCursor },
+    );
+    expect(secondPage.posts.map((post) => post.id)).toEqual([secondPost.id]);
+    expect(secondPage.nextCursor).toBeNull();
   });
 
   it('reads multiple circle candidate sets through one Redis pipeline', async () => {

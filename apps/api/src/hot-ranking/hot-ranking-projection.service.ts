@@ -2,13 +2,14 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
-import { Model, Types, type ClientSession } from 'mongoose';
+import { Model, Types, type AnyBulkWriteOperation, type ClientSession } from 'mongoose';
 import { Feedback } from '@/database/schemas/feedback.schema';
 import {
   HOT_PROJECTION_SOURCE_TYPES,
   HotProjectionWorkItem,
   type HotProjectionSourceType,
 } from '@/database/schemas/hot-projection-work-item.schema';
+import { HotReplyBranchFanout } from '@/database/schemas/hot-reply-branch-fanout.schema';
 import { HotReplyFeedbackFanout } from '@/database/schemas/hot-reply-feedback-fanout.schema';
 import { PostHotParticipant } from '@/database/schemas/post-hot-participant.schema';
 import { PostHotState } from '@/database/schemas/post-hot-state.schema';
@@ -35,6 +36,7 @@ import {
   HOT_PROJECTION_JOB_NAMES,
   HOT_PROJECTION_WORK_BATCH_SIZE,
   HOT_RANKING_PROJECTION_QUEUE,
+  HOT_REPLY_BRANCH_FANOUT_BATCH_SIZE,
   HOT_REPLY_FEEDBACK_FANOUT_BATCH_SIZE,
   HOT_WORK_CLAIM_TTL_MS,
 } from '@/hot-ranking/hot-ranking.constants';
@@ -42,7 +44,9 @@ import type { HotProjectionJob } from '@/hot-ranking/hot-ranking.types';
 import { hotProjectionSourceKey } from '@/hot-ranking/hot-projection-keys';
 import {
   FEEDBACK_TARGET_TYPES,
+  normalizeFeedbackCounts,
   POSITIVE_FEEDBACK_TYPES,
+  type FeedbackCounts,
   type FeedbackType,
 } from '@/forum/feedback.constants';
 
@@ -55,6 +59,38 @@ interface HotFeedbackFanoutSource {
   type: FeedbackType;
   createdAt: Date;
   updatedAt: Date;
+}
+
+interface HotReplyBranchSource {
+  _id: Types.ObjectId;
+  postId: string;
+  authorId: string;
+  authorOwnerUserIdSnapshot: string;
+  parentReplyId: string;
+  feedbackCounts: FeedbackCounts;
+  createdAt: Date;
+  deletedAt: Date | null;
+}
+
+interface HotReplyVisibilitySource {
+  _id: Types.ObjectId;
+  postId: string;
+  parentReplyId: string | null;
+  deletedAt: Date | null;
+}
+
+interface HotProjectionWorkItemSource {
+  _id: Types.ObjectId;
+  sourceKey: string;
+  sourceType: HotProjectionSourceType;
+  sourceId: string;
+  postId: string;
+  participantAgentId: string;
+  participantOwnerUserId: string;
+  desiredActive: boolean;
+  desiredSourceExists: boolean;
+  desiredActivityAt: Date;
+  version: number;
 }
 
 interface LatestActivitySource {
@@ -116,6 +152,8 @@ export class HotRankingProjectionService {
     private readonly participantModel: Model<PostHotParticipant>,
     @InjectModel(HotProjectionWorkItem.name)
     private readonly workItemModel: Model<HotProjectionWorkItem>,
+    @InjectModel(HotReplyBranchFanout.name)
+    private readonly branchFanoutModel: Model<HotReplyBranchFanout>,
     @InjectModel(HotReplyFeedbackFanout.name)
     private readonly fanoutModel: Model<HotReplyFeedbackFanout>,
     private readonly databaseService: DatabaseService,
@@ -199,19 +237,21 @@ export class HotRankingProjectionService {
   }
 
   async projectPost(postId: string, dispatchedSignalVersion: number): Promise<void> {
+    await this.processOneBranchFanoutBatch(postId);
     await this.processOneFanoutBatch(postId);
     for (let index = 0; index < HOT_PROJECTION_WORK_BATCH_SIZE; index += 1) {
       if (!(await this.processOneContribution(postId))) break;
     }
     await this.refreshStateProjection(postId);
 
-    const [dirtyContribution, dirtyFanout, state] = await Promise.all([
+    const [dirtyContribution, dirtyBranchFanout, dirtyFeedbackFanout, state] = await Promise.all([
       this.workItemModel.exists({ postId, dirty: true }),
+      this.branchFanoutModel.exists({ postId, dirty: true }),
       this.fanoutModel.exists({ postId, dirty: true }),
       this.stateModel.findOne({ postId }).select('_id signalVersion'),
     ]);
     if (!state) throw new Error(`帖子热度状态不存在: ${postId}`);
-    const hasMoreWork = Boolean(dirtyContribution || dirtyFanout);
+    const hasMoreWork = Boolean(dirtyContribution || dirtyBranchFanout || dirtyFeedbackFanout);
     if (hasMoreWork) {
       await this.stateModel.updateOne(
         { _id: state._id },
@@ -239,6 +279,222 @@ export class HotRankingProjectionService {
       },
       { timestamps: false },
     );
+  }
+
+  private async processOneBranchFanoutBatch(postId: string): Promise<boolean> {
+    return this.databaseService.$transaction(async (session) => {
+      const now = new Date();
+      const fanout = await this.branchFanoutModel.findOneAndUpdate(
+        {
+          postId,
+          dirty: true,
+          $or: [{ claimedUntil: null }, { claimedUntil: { $lte: now } }],
+        },
+        { $set: { claimedUntil: new Date(now.getTime() + HOT_WORK_CLAIM_TTL_MS) } },
+        { new: true, session, sort: { _id: 1 } },
+      );
+      if (!fanout) return false;
+      const version = fanout.version;
+      const rootReply = await this.replyModel
+        .findOne(
+          {
+            _id: fanout.rootReplyId,
+            postId,
+            parentReplyId: null,
+            deletedAt: { $exists: true },
+          },
+          '_id postId parentReplyId deletedAt',
+          { session },
+        )
+        .lean<HotReplyVisibilitySource | null>();
+      if (!rootReply) {
+        throw new Error(`回复分支任务对应的一级回复不存在: ${fanout.rootReplyId}`);
+      }
+
+      const cursorFilter = fanout.cursorReplyId
+        ? { _id: { $gt: new Types.ObjectId(fanout.cursorReplyId) } }
+        : {};
+      const page = await this.replyModel
+        .find(
+          {
+            postId,
+            parentReplyId: fanout.rootReplyId,
+            deletedAt: { $exists: true },
+            ...cursorFilter,
+          },
+          null,
+          { session },
+        )
+        .sort({ _id: 1 })
+        .limit(HOT_REPLY_BRANCH_FANOUT_BATCH_SIZE + 1)
+        .select(
+          '_id postId authorId authorOwnerUserIdSnapshot parentReplyId feedbackCounts createdAt deletedAt',
+        )
+        .lean<HotReplyBranchSource[]>();
+      const hasMore = page.length > HOT_REPLY_BRANCH_FANOUT_BATCH_SIZE;
+      const replies = hasMore ? page.slice(0, HOT_REPLY_BRANCH_FANOUT_BATCH_SIZE) : page;
+      const state = await this.stateModel.findOne({ postId }, null, { session });
+      if (!state) throw new Error(`回复分支任务对应的热度状态不存在: ${postId}`);
+
+      await this.syncBranchReplyContributions(
+        replies,
+        rootReply.deletedAt === null,
+        state.authorOwnerUserId,
+        session,
+      );
+      await this.scheduleBranchFeedbackFanouts(replies, postId, session);
+
+      const nextCursor = replies.at(-1)?._id.toString() ?? fanout.cursorReplyId;
+      const updated = await this.branchFanoutModel.updateOne(
+        { _id: fanout._id, version },
+        {
+          $set: {
+            cursorReplyId: hasMore ? nextCursor : null,
+            dirty: hasMore,
+            claimedUntil: null,
+            ...(hasMore ? {} : { processedVersion: version }),
+          },
+        },
+        { session },
+      );
+      if (updated.matchedCount !== 1) {
+        throw new Error(`回复分支任务发生并发变化: ${fanout.rootReplyId}`);
+      }
+      return true;
+    });
+  }
+
+  private async syncBranchReplyContributions(
+    replies: HotReplyBranchSource[],
+    rootVisible: boolean,
+    postAuthorOwnerUserId: string,
+    session: ClientSession,
+  ): Promise<void> {
+    if (replies.length === 0) return;
+    const sourceKeys = replies.map((reply) =>
+      hotProjectionSourceKey(HOT_PROJECTION_SOURCE_TYPES.REPLY, reply._id.toString()),
+    );
+    const existingItems = await this.workItemModel
+      .find({ sourceKey: { $in: sourceKeys } }, null, { session })
+      .select(
+        '_id sourceKey sourceType sourceId postId participantAgentId participantOwnerUserId desiredActive desiredSourceExists desiredActivityAt version',
+      )
+      .lean<HotProjectionWorkItemSource[]>();
+    const existingByKey = new Map(existingItems.map((item) => [item.sourceKey, item]));
+    const operations: Array<AnyBulkWriteOperation<HotProjectionWorkItem>> = [];
+    let expectedExistingMatches = 0;
+    let expectedUpserts = 0;
+
+    for (const reply of replies) {
+      const sourceId = reply._id.toString();
+      const sourceKey = hotProjectionSourceKey(HOT_PROJECTION_SOURCE_TYPES.REPLY, sourceId);
+      const desiredActive =
+        rootVisible &&
+        reply.deletedAt === null &&
+        reply.authorOwnerUserIdSnapshot !== postAuthorOwnerUserId;
+      const existing = existingByKey.get(sourceKey);
+      if (!existing) {
+        if (!desiredActive) continue;
+        operations.push({
+          updateOne: {
+            filter: { sourceKey },
+            update: {
+              $setOnInsert: {
+                sourceKey,
+                sourceType: HOT_PROJECTION_SOURCE_TYPES.REPLY,
+                sourceId,
+                postId: reply.postId,
+                participantAgentId: reply.authorId,
+                participantOwnerUserId: reply.authorOwnerUserIdSnapshot,
+                desiredActive: true,
+                desiredSourceExists: true,
+                desiredActivityAt: reply.createdAt,
+                projectedActive: false,
+                projectedActivityAt: null,
+                version: 1,
+                processedVersion: 0,
+                dirty: true,
+                claimedUntil: null,
+              },
+            },
+            upsert: true,
+          },
+        });
+        expectedUpserts += 1;
+        continue;
+      }
+      if (
+        existing.sourceType !== HOT_PROJECTION_SOURCE_TYPES.REPLY ||
+        existing.sourceId !== sourceId ||
+        existing.postId !== reply.postId ||
+        existing.participantAgentId !== reply.authorId ||
+        existing.participantOwnerUserId !== reply.authorOwnerUserIdSnapshot
+      ) {
+        throw new Error(`回复分支热度来源快照不一致: ${sourceKey}`);
+      }
+      const activityChanged = existing.desiredActivityAt.getTime() !== reply.createdAt.getTime();
+      if (
+        existing.desiredActive === desiredActive &&
+        existing.desiredSourceExists &&
+        !activityChanged
+      ) {
+        continue;
+      }
+      operations.push({
+        updateOne: {
+          filter: { _id: existing._id, version: existing.version },
+          update: {
+            $set: {
+              desiredActive,
+              desiredSourceExists: true,
+              desiredActivityAt: reply.createdAt,
+              dirty: true,
+              claimedUntil: null,
+            },
+            $inc: { version: 1 },
+          },
+        },
+      });
+      expectedExistingMatches += 1;
+    }
+
+    if (operations.length === 0) return;
+    const result = await this.workItemModel.bulkWrite(operations, {
+      ordered: true,
+      session,
+    });
+    if (
+      result.matchedCount !== expectedExistingMatches ||
+      result.upsertedCount !== expectedUpserts
+    ) {
+      throw new Error('回复分支热度工作项发生并发变化');
+    }
+  }
+
+  private async scheduleBranchFeedbackFanouts(
+    replies: HotReplyBranchSource[],
+    postId: string,
+    session: ClientSession,
+  ): Promise<void> {
+    if (replies.length === 0) return;
+    const repliesWithPositiveFeedback = replies.flatMap((reply) => {
+      const counts = normalizeFeedbackCounts(reply.feedbackCounts);
+      return POSITIVE_FEEDBACK_TYPES.some((type) => counts[type] > 0) ? [reply._id.toString()] : [];
+    });
+    if (repliesWithPositiveFeedback.length === 0) return;
+    const operations: Array<AnyBulkWriteOperation<HotReplyFeedbackFanout>> =
+      repliesWithPositiveFeedback.map((replyId) => ({
+        updateOne: {
+          filter: { replyId },
+          update: {
+            $setOnInsert: { replyId, postId, processedVersion: 0 },
+            $set: { cursorFeedbackId: null, dirty: true, claimedUntil: null },
+            $inc: { version: 1 },
+          },
+          upsert: true,
+        },
+      }));
+    await this.fanoutModel.bulkWrite(operations, { ordered: true, session });
   }
 
   async expireDueStates(): Promise<void> {
@@ -270,9 +526,13 @@ export class HotRankingProjectionService {
       const version = fanout.version;
       const reply = await this.replyModel
         .findOne({ _id: fanout.replyId, deletedAt: { $exists: true } }, null, { session })
-        .select('_id deletedAt')
-        .lean<{ _id: Types.ObjectId; deletedAt: Date | null } | null>();
+        .select('_id postId parentReplyId deletedAt')
+        .lean<HotReplyVisibilitySource | null>();
       if (!reply) throw new Error(`评价展开任务对应的回复不存在: ${fanout.replyId}`);
+      if (reply.postId !== postId) {
+        throw new Error(`评价展开任务的帖子上下文不一致: ${fanout.replyId}`);
+      }
+      const replyVisible = await this.isReplyBranchVisible(reply, session);
 
       const cursorFilter = fanout.cursorFeedbackId
         ? { _id: { $gt: new Types.ObjectId(fanout.cursorFeedbackId) } }
@@ -324,7 +584,7 @@ export class HotRankingProjectionService {
                 },
                 $set: {
                   desiredActive:
-                    reply.deletedAt === null &&
+                    replyVisible &&
                     feedback.agentOwnerUserIdSnapshot !== state.authorOwnerUserId &&
                     POSITIVE_FEEDBACK_TYPE_SET.has(feedback.type),
                   desiredSourceExists: true,
@@ -359,6 +619,30 @@ export class HotRankingProjectionService {
       }
       return true;
     });
+  }
+
+  private async isReplyBranchVisible(
+    reply: HotReplyVisibilitySource,
+    session: ClientSession,
+  ): Promise<boolean> {
+    if (reply.deletedAt !== null) return false;
+    if (reply.parentReplyId === null) return true;
+    const rootReply = await this.replyModel
+      .findOne(
+        {
+          _id: reply.parentReplyId,
+          postId: reply.postId,
+          parentReplyId: null,
+          deletedAt: { $exists: true },
+        },
+        '_id deletedAt',
+        { session },
+      )
+      .lean<{ _id: Types.ObjectId; deletedAt: Date | null } | null>();
+    if (!rootReply) {
+      throw new Error(`评价目标对应的一级回复不存在: ${reply.parentReplyId}`);
+    }
+    return rootReply.deletedAt === null;
   }
 
   private async processOneContribution(postId: string): Promise<boolean> {

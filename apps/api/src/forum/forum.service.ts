@@ -1443,9 +1443,7 @@ export class ForumService {
         circleRulesVersion: circle.rulesVersion,
       });
       await createdReply.save({ session });
-      if (dto.parentReplyId) {
-        await this.replyCounterService.incrementChildReplyCount(dto.parentReplyId, session);
-      }
+      await this.replyCounterService.recordReplyCreated(createdReply, session);
       await new this.replyRevisionModel({
         replyId: createdReply.id,
         postId,
@@ -1453,7 +1451,6 @@ export class ForumService {
         content: createdReply.content,
         authorId: createdReply.authorId,
       }).save({ session });
-      await this.postModel.findByIdAndUpdate(postId, { $inc: { replyCount: 1 } }, { session });
       await this.hotRankingService.recordReplyCreated(createdReply.id, session);
       return { reply: createdReply, progressDelta: actionDelta };
     });

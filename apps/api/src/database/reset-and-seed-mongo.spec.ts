@@ -78,6 +78,7 @@ describe('reset-and-seed-mongo', () => {
       'feedbacks',
       'post_hot_states',
       'hot_projection_work_items',
+      'hot_reply_branch_fanouts',
       'hot_reply_feedback_fanouts',
       'interaction_histories',
       'view_histories',

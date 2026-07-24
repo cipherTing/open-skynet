@@ -61,9 +61,13 @@ describe('ForumService circle feeds', () => {
     assertEnabled: jest.fn().mockResolvedValue(undefined),
     isEnabled: jest.fn().mockResolvedValue(false),
   };
+  const redisValues = new Map<string, string>();
   const redisClient = {
-    get: jest.fn().mockResolvedValue(null),
-    set: jest.fn().mockResolvedValue('OK'),
+    get: jest.fn(async (key: string) => redisValues.get(key) ?? null),
+    set: jest.fn(async (key: string, value: string) => {
+      redisValues.set(key, value);
+      return 'OK';
+    }),
   };
 
   beforeAll(async () => {
@@ -173,6 +177,7 @@ describe('ForumService circle feeds', () => {
 
   beforeEach(async () => {
     subscriptionsByUser.clear();
+    redisValues.clear();
     jest.clearAllMocks();
     featureFlagServiceMock.assertEnabled.mockResolvedValue(undefined);
     featureFlagServiceMock.isEnabled.mockResolvedValue(false);
@@ -829,6 +834,46 @@ describe('ForumService circle feeds', () => {
     expect(first.value).toBe(1);
     expect(second).toEqual(first);
     expect(redisClient.set).toHaveBeenCalledTimes(1);
+  });
+
+  it('excludes circle-hidden posts from panel and welcome statistics', async () => {
+    const circle = await createCircle('statistics-visibility');
+    const author = await createAgent('statistics-visibility-author');
+    const visiblePost = await createPost(circle.id, author.id, 1);
+    const hiddenPost = await createPost(circle.id, author.id, 2);
+    const now = new Date();
+    await connection
+      .collection('posts')
+      .updateOne({ _id: visiblePost._id }, { $set: { createdAt: now } });
+    await connection
+      .collection('posts')
+      .updateOne({ _id: hiddenPost._id }, { $set: { createdAt: now, circleVisible: false } });
+
+    const [panel, welcome] = await Promise.all([
+      service.getPostPanelSummary(),
+      service.getWelcomeSummary(),
+    ]);
+
+    expect(panel.postsToday.value).toBe(1);
+    expect(panel.latestPosts.items.map((post) => post.id)).toEqual([visiblePost.id]);
+    expect(welcome.postsTotal).toBe(1);
+  });
+
+  it('rehydrates cached latest post ids before returning titles', async () => {
+    const circle = await createCircle('latest-cache-visibility');
+    const author = await createAgent('latest-cache-visibility-author');
+    const post = await createPost(circle.id, author.id, 1);
+
+    const first = await service.getPostPanelSummary();
+    expect(first.latestPosts.items.map((item) => item.id)).toContain(post.id);
+
+    await connection
+      .model(Circle.name)
+      .updateOne({ _id: circle.id }, { $set: { status: 'BANNED', bannedAt: new Date() } });
+    const second = await service.getPostPanelSummary();
+
+    expect(second.latestPosts.items).toEqual([]);
+    expect(redisClient.get).toHaveBeenCalledWith('skynet:v2:forum:post-panel:latest-posts');
   });
 
   it('records immutable interaction snapshots through the interaction domain service', async () => {

@@ -110,10 +110,7 @@ describe('GovernanceService integration', () => {
       ],
       providers: [
         GovernanceService,
-        {
-          provide: ReplyCounterService,
-          useValue: { applyReplyVisibilityDelta: jest.fn().mockResolvedValue(undefined) },
-        },
+        ReplyCounterService,
         GovernanceDeadlineService,
         {
           provide: HotRankingService,
@@ -1443,6 +1440,95 @@ describe('GovernanceService integration', () => {
       nextRound: 2,
       action: 'RESTORE_CONTENT',
       publicReason: '复核后确认原裁决依据不足，恢复内容。',
+    });
+  });
+
+  it('updates the visible reply count when governance hides and restores a root branch', async () => {
+    const postAuthor = await createAgent('governance-branch-post-author');
+    const replyAuthor = await createAgent('governance-branch-reply-author');
+    const post = await createPost({
+      title: '治理回复计数测试',
+      content: '正文',
+      authorId: postAuthor.id,
+      replyCount: 2,
+    });
+    const rootReply = await connection.model(Reply.name).create({
+      postId: post.id,
+      parentReplyId: null,
+      content: '被治理的一级回复',
+      authorId: replyAuthor.id,
+      authorOwnerUserIdSnapshot: replyAuthor.userId,
+      childReplyCount: 1,
+      circleRulesVersion: 1,
+      contentVersion: 1,
+      lastEditedAt: null,
+    });
+    await connection.model(Reply.name).create({
+      postId: post.id,
+      parentReplyId: rootReply.id,
+      content: '支线二级回复',
+      authorId: postAuthor.id,
+      authorOwnerUserIdSnapshot: postAuthor.userId,
+      circleRulesVersion: 1,
+      contentVersion: 1,
+      lastEditedAt: null,
+    });
+    await connection.model(ReplyRevision.name).create({
+      replyId: rootReply.id,
+      postId: post.id,
+      version: 1,
+      content: rootReply.content,
+      authorId: rootReply.authorId,
+    });
+    const reporters = await createReporterAgents(`governance-branch-${rootReply.id}`);
+    const governanceCase = await openGovernanceCase({
+      targetType: GOVERNANCE_TARGET_TYPES.REPLY,
+      targetId: rootReply.id,
+      targetContentVersion: 1,
+      round: 1,
+      reporters: reporters.map((reporter) => ({
+        agentId: reporter.id,
+        ownerUserId: reporter.userId,
+      })),
+    });
+    await connection.model(ReportTargetState.name).create({
+      targetKey: getReportTargetKey(GOVERNANCE_TARGET_TYPES.REPLY, rootReply.id, 1, 1),
+      targetType: GOVERNANCE_TARGET_TYPES.REPLY,
+      targetId: rootReply.id,
+      targetContentVersion: 1,
+      round: 1,
+      targetAuthorId: replyAuthor.id,
+      qualifiedReporters: reporters.map((reporter) => ({
+        agentId: reporter.id,
+        ownerUserId: reporter.userId,
+      })),
+      status: REPORT_TARGET_STATUSES.CASE_OPEN,
+      caseId: governanceCase.id,
+    });
+
+    await connection.transaction((session) =>
+      service.resolveCaseForAdmin(
+        governanceCase.id,
+        'VIOLATION',
+        '管理员确认该回复支线违规。',
+        'admin-user-id',
+        session,
+      ),
+    );
+    await expect(connection.model(Post.name).findById(post.id).lean()).resolves.toMatchObject({
+      replyCount: 0,
+    });
+
+    await connection.transaction((session) =>
+      service.restoreGovernanceRemovedContentForAdmin(
+        governanceCase.id,
+        '复核后恢复该回复支线。',
+        'admin-user-id',
+        session,
+      ),
+    );
+    await expect(connection.model(Post.name).findById(post.id).lean()).resolves.toMatchObject({
+      replyCount: 2,
     });
   });
 

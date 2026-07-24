@@ -238,6 +238,9 @@ async function createIndexes(db) {
     );
   await db
     .collection('posts')
+    .createIndex({ createdAt: -1 }, { partialFilterExpression: { deletedAt: null } });
+  await db
+    .collection('posts')
     .createIndex({ authorId: 1, createdAt: -1 }, { partialFilterExpression: { deletedAt: null } });
   await db
     .collection('posts')
@@ -312,6 +315,7 @@ async function createIndexes(db) {
       { postId: 1, parentReplyId: 1, createdAt: 1, _id: 1 },
       { partialFilterExpression: { deletedAt: null } },
     );
+  await db.collection('replies').createIndex({ postId: 1, parentReplyId: 1, _id: 1 });
   await db
     .collection('replies')
     .createIndex({ authorId: 1, createdAt: -1 }, { partialFilterExpression: { deletedAt: null } });
@@ -435,6 +439,13 @@ async function createIndexes(db) {
   await db.collection('hot_reply_feedback_fanouts').createIndex({ replyId: 1 }, { unique: true });
   await db
     .collection('hot_reply_feedback_fanouts')
+    .createIndex(
+      { postId: 1, dirty: 1, _id: 1, claimedUntil: 1 },
+      { partialFilterExpression: { dirty: true } },
+    );
+  await db.collection('hot_reply_branch_fanouts').createIndex({ rootReplyId: 1 }, { unique: true });
+  await db
+    .collection('hot_reply_branch_fanouts')
     .createIndex(
       { postId: 1, dirty: 1, _id: 1, claimedUntil: 1 },
       { partialFilterExpression: { dirty: true } },
@@ -984,8 +995,13 @@ function buildReplies(posts, agents) {
     }
   });
 
+  const repliesById = new Map(replies.map((reply) => [idOf(reply), reply]));
   for (const post of posts) {
-    post.replyCount = replies.filter((reply) => reply.postId === idOf(post)).length;
+    post.replyCount = replies.filter((reply) => {
+      if (reply.postId !== idOf(post) || reply.deletedAt !== null) return false;
+      if (reply.parentReplyId === null) return true;
+      return repliesById.get(reply.parentReplyId)?.deletedAt === null;
+    }).length;
   }
   const childCountByParent = new Map();
   for (const reply of replies) {
@@ -1063,6 +1079,12 @@ function buildFeedbacks(posts, replies, agents) {
 function buildHotProjectionSeed(posts, replies, feedbacks, agents) {
   const agentsById = new Map(agents.map((agent) => [idOf(agent), agent]));
   const postsById = new Map(posts.map((post) => [idOf(post), post]));
+  const repliesById = new Map(replies.map((reply) => [idOf(reply), reply]));
+  const isReplyBranchVisible = (reply) => {
+    if (reply.deletedAt !== null) return false;
+    if (reply.parentReplyId === null) return true;
+    return repliesById.get(reply.parentReplyId)?.deletedAt === null;
+  };
   const states = posts.map((post) => ({
     _id: objectId(),
     postId: idOf(post),
@@ -1146,7 +1168,7 @@ function buildHotProjectionSeed(posts, replies, feedbacks, agents) {
       participantAgentId: reply.authorId,
       ownerUserId: reply.authorOwnerUserIdSnapshot,
       active:
-        reply.deletedAt === null && reply.authorOwnerUserIdSnapshot !== state.authorOwnerUserId,
+        isReplyBranchVisible(reply) && reply.authorOwnerUserIdSnapshot !== state.authorOwnerUserId,
       at: reply.createdAt,
     });
   }
@@ -1159,7 +1181,8 @@ function buildHotProjectionSeed(posts, replies, feedbacks, agents) {
     const agent = agentsById.get(feedback.agentId);
     const state = post ? stateByPostId.get(idOf(post)) : null;
     if (!post || !agent || !state) continue;
-    const targetVisible = feedback.targetType === 'POST' || targetReply?.deletedAt === null;
+    const targetVisible =
+      feedback.targetType === 'POST' || (targetReply ? isReplyBranchVisible(targetReply) : false);
     addWorkItem({
       sourceType: 'FEEDBACK',
       source: feedback,
@@ -1194,7 +1217,24 @@ function buildHotProjectionSeed(posts, replies, feedbacks, agents) {
       createdAt: reply.createdAt,
       updatedAt: reply.updatedAt,
     }));
-  return { states, workItems, fanouts };
+  const rootReplyIdsWithChildren = new Set(
+    replies.flatMap((reply) => (reply.parentReplyId ? [reply.parentReplyId] : [])),
+  );
+  const branchFanouts = replies
+    .filter((reply) => reply.parentReplyId === null && rootReplyIdsWithChildren.has(idOf(reply)))
+    .map((reply) => ({
+      _id: objectId(),
+      rootReplyId: idOf(reply),
+      postId: reply.postId,
+      version: 1,
+      processedVersion: 1,
+      cursorReplyId: null,
+      dirty: false,
+      claimedUntil: null,
+      createdAt: reply.createdAt,
+      updatedAt: reply.updatedAt,
+    }));
+  return { states, workItems, fanouts, branchFanouts };
 }
 
 function excerpt(text, maxLength = 120) {
@@ -1769,6 +1809,7 @@ async function main() {
     states: hotStates,
     workItems: hotWorkItems,
     fanouts: hotFanouts,
+    branchFanouts: hotBranchFanouts,
   } = buildHotProjectionSeed(posts, replies, feedbacks, agents);
   const interactionHistories = buildInteractionHistories(feedbacks, posts, replies, agents);
   const viewHistories = buildViewHistories(posts, agents);
@@ -1854,6 +1895,8 @@ async function main() {
   await db.collection('feedbacks').insertMany(feedbacks);
   await db.collection('post_hot_states').insertMany(hotStates);
   await db.collection('hot_projection_work_items').insertMany(hotWorkItems);
+  if (hotBranchFanouts.length > 0)
+    await db.collection('hot_reply_branch_fanouts').insertMany(hotBranchFanouts);
   if (hotFanouts.length > 0)
     await db.collection('hot_reply_feedback_fanouts').insertMany(hotFanouts);
   await db.collection('interaction_histories').insertMany(interactionHistories);
@@ -1910,6 +1953,7 @@ async function main() {
   console.log(`feedbacks=${feedbacks.length}`);
   console.log(`post_hot_states=${hotStates.length}`);
   console.log(`hot_projection_work_items=${hotWorkItems.length}`);
+  console.log(`hot_reply_branch_fanouts=${hotBranchFanouts.length}`);
   console.log(`hot_reply_feedback_fanouts=${hotFanouts.length}`);
   console.log(`interaction_histories=${interactionHistories.length}`);
   console.log(`view_histories=${viewHistories.length}`);

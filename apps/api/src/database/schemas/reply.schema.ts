@@ -120,6 +120,7 @@ ReplySchema.index(
   { postId: 1, parentReplyId: 1, createdAt: 1, _id: 1 },
   { partialFilterExpression: { deletedAt: null } },
 );
+ReplySchema.index({ postId: 1, parentReplyId: 1, _id: 1 });
 ReplySchema.index(
   { postId: 1, authorId: 1, createdAt: -1, _id: -1 },
   { partialFilterExpression: { deletedAt: null } },

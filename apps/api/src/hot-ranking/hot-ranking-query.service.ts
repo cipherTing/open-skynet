@@ -13,11 +13,9 @@ import { Circle } from '@/database/schemas/circle.schema';
 import { CIRCLE_STATUSES } from '@/circle/circle.constants';
 import {
   HOT_CANDIDATE_OVERSAMPLE_MULTIPLIER,
-  HOT_PAGE_QUERY_ROUND_LIMIT,
   HOT_PAGE_SCAN_SIZE,
   HOT_POST_MAX_PAGE_SIZE,
   HOT_SNAPSHOT_KEY_PREFIX,
-  HOT_SNAPSHOT_REFILL_LIMIT,
   HOT_SNAPSHOT_SAMPLE_SIZE,
   HOT_SNAPSHOT_TTL_SECONDS,
   MAX_CIRCLE_HOT_POSTS,
@@ -65,7 +63,9 @@ function parseHotSnapshot(value: string): HotSnapshot | null {
     !isRecord(parsed) ||
     typeof parsed.filterHash !== 'string' ||
     !Array.isArray(parsed.ids) ||
-    !parsed.ids.every((id) => typeof id === 'string')
+    parsed.ids.length > HOT_SNAPSHOT_SAMPLE_SIZE ||
+    !parsed.ids.every((id) => typeof id === 'string' && Types.ObjectId.isValid(id)) ||
+    new Set(parsed.ids).size !== parsed.ids.length
   ) {
     return null;
   }
@@ -162,26 +162,7 @@ export class HotRankingQueryService {
     }
 
     const posts: PostDocument[] = [];
-    const seenIds = new Set(ids);
-    let refillCount = 0;
-    let queryRounds = 0;
-    while (posts.length < limit && queryRounds < HOT_PAGE_QUERY_ROUND_LIMIT) {
-      if (offset >= ids.length) {
-        if (refillCount >= HOT_SNAPSHOT_REFILL_LIMIT) break;
-        const additionalIds = (
-          await this.sampleCandidateIds(
-            options.circleId,
-            HOT_SNAPSHOT_SAMPLE_SIZE,
-            options.circleIds,
-          )
-        ).filter((id) => !seenIds.has(id));
-        if (additionalIds.length === 0) break;
-        additionalIds.forEach((id) => seenIds.add(id));
-        ids.push(...additionalIds);
-        refillCount += 1;
-        await this.writeSnapshot(snapshotId, { filterHash, ids });
-      }
-
+    while (posts.length < limit && offset < ids.length) {
       const scanStart = offset;
       const scanIds = ids.slice(scanStart, scanStart + HOT_PAGE_SCAN_SIZE);
       const [validIds, rows] = await Promise.all([
@@ -218,7 +199,6 @@ export class HotRankingQueryService {
         if (posts.length >= limit) break;
       }
       offset = scanStart + consumed;
-      queryRounds += 1;
     }
 
     return {

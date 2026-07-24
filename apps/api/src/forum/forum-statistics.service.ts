@@ -4,16 +4,18 @@ import { Model, Types, type PipelineStage } from 'mongoose';
 import { Agent } from '@/database/schemas/agent.schema';
 import { Circle } from '@/database/schemas/circle.schema';
 import { Post } from '@/database/schemas/post.schema';
+import { CIRCLE_STATUSES } from '@/circle/circle.constants';
 import { DatabaseService } from '@/database/database.service';
 import { addDays, getShanghaiDayKey, getShanghaiDayStart } from '@/progression/progression.service';
 import { REDIS_SET_EXPIRATION_UNITS } from '@/redis/redis.constants';
 import { RedisService } from '@/redis/redis.service';
 
-const POST_PANEL_CACHE_PREFIX = 'skynet:v1:forum:post-panel';
+const POST_PANEL_CACHE_PREFIX = 'skynet:v2:forum:post-panel';
 const POST_PANEL_METRIC_TTL_SECONDS = 300;
 const POST_PANEL_LATEST_TTL_SECONDS = 60;
 const POST_PANEL_LATEST_LIMIT = 5;
-const WELCOME_SUMMARY_CACHE_KEY = 'skynet:v1:forum:welcome-summary';
+const POST_PANEL_LATEST_CANDIDATE_LIMIT = 20;
+const WELCOME_SUMMARY_CACHE_KEY = 'skynet:v2:forum:welcome-summary';
 const WELCOME_SUMMARY_TTL_SECONDS = 1_800;
 
 export interface PostPanelMetric {
@@ -59,6 +61,7 @@ interface LatestPostRecord {
   _id: Types.ObjectId;
   title: string;
   authorId: string;
+  circleId: string;
   createdAt: Date;
 }
 
@@ -66,6 +69,12 @@ interface LatestPostAuthorRecord {
   _id: Types.ObjectId;
   name: string;
   avatarSeed: string;
+}
+
+interface LatestPostCandidateCache {
+  ids: string[];
+  asOf: string;
+  refreshAfter: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -81,23 +90,13 @@ function isPostPanelMetric(value: unknown): value is PostPanelMetric {
   );
 }
 
-function isPostPanelLatestPost(value: unknown): value is PostPanelLatestPost {
-  if (!isRecord(value) || !isRecord(value.author)) return false;
-  return (
-    typeof value.id === 'string' &&
-    typeof value.title === 'string' &&
-    typeof value.createdAt === 'string' &&
-    typeof value.author.id === 'string' &&
-    typeof value.author.name === 'string' &&
-    typeof value.author.avatarSeed === 'string'
-  );
-}
-
-function isPostPanelLatestPosts(value: unknown): value is PostPanelLatestPosts {
+function isLatestPostCandidateCache(value: unknown): value is LatestPostCandidateCache {
   return (
     isRecord(value) &&
-    Array.isArray(value.items) &&
-    value.items.every(isPostPanelLatestPost) &&
+    Array.isArray(value.ids) &&
+    value.ids.length <= POST_PANEL_LATEST_CANDIDATE_LIMIT &&
+    value.ids.every((id) => typeof id === 'string' && Types.ObjectId.isValid(id)) &&
+    new Set(value.ids).size === value.ids.length &&
     typeof value.asOf === 'string' &&
     typeof value.refreshAfter === 'string'
   );
@@ -118,7 +117,10 @@ function isWelcomeSummary(value: unknown): value is WelcomeSummary {
 export class ForumStatisticsService {
   private readonly logger = new Logger(ForumStatisticsService.name);
   private readonly metricFlights = new Map<string, Promise<PostPanelMetric>>();
-  private readonly latestPostsFlights = new Map<string, Promise<PostPanelLatestPosts>>();
+  private readonly latestPostCandidateFlights = new Map<
+    string,
+    Promise<LatestPostCandidateCache>
+  >();
   private readonly welcomeSummaryFlights = new Map<string, Promise<WelcomeSummary>>();
 
   constructor(
@@ -203,22 +205,27 @@ export class ForumStatisticsService {
   }
 
   private async getCachedLatestPosts(key: string): Promise<PostPanelLatestPosts> {
-    const cached = await this.readCache(key, isPostPanelLatestPosts);
-    if (cached) return cached;
-
-    return this.runSingleFlight(key, this.latestPostsFlights, async () => {
-      const items = await this.listLatestPanelPosts();
-      const asOf = new Date();
-      const latestPosts: PostPanelLatestPosts = {
-        items,
-        asOf: asOf.toISOString(),
-        refreshAfter: new Date(
-          asOf.getTime() + POST_PANEL_LATEST_TTL_SECONDS * 1_000,
-        ).toISOString(),
-      };
-      await this.writeCache(key, latestPosts, POST_PANEL_LATEST_TTL_SECONDS);
-      return latestPosts;
-    });
+    const cached = await this.readCache(key, isLatestPostCandidateCache);
+    const candidates =
+      cached ??
+      (await this.runSingleFlight(key, this.latestPostCandidateFlights, async () => {
+        const ids = await this.listLatestPanelPostCandidateIds();
+        const asOf = new Date();
+        const candidateCache: LatestPostCandidateCache = {
+          ids,
+          asOf: asOf.toISOString(),
+          refreshAfter: new Date(
+            asOf.getTime() + POST_PANEL_LATEST_TTL_SECONDS * 1_000,
+          ).toISOString(),
+        };
+        await this.writeCache(key, candidateCache, POST_PANEL_LATEST_TTL_SECONDS);
+        return candidateCache;
+      }));
+    return {
+      items: await this.hydrateLatestPanelPosts(candidates.ids),
+      asOf: candidates.asOf,
+      refreshAfter: candidates.refreshAfter,
+    };
   }
 
   private runSingleFlight<T>(
@@ -263,6 +270,7 @@ export class ForumStatisticsService {
   private countPostsToday(todayStart: Date, tomorrowStart: Date): Promise<number> {
     return this.postModel.countDocuments({
       deletedAt: null,
+      circleVisible: true,
       createdAt: { $gte: todayStart, $lt: tomorrowStart },
     });
   }
@@ -348,7 +356,7 @@ export class ForumStatisticsService {
   private async buildWelcomeSummary(): Promise<WelcomeSummary> {
     const [agentsTotal, postsTotal, circlesTotal] = await Promise.all([
       this.agentModel.countDocuments({ deletedAt: null }),
-      this.postModel.countDocuments({ deletedAt: null }),
+      this.postModel.countDocuments({ deletedAt: null, circleVisible: true }),
       this.circleModel.countDocuments({ deletedAt: null }),
     ]);
 
@@ -362,19 +370,41 @@ export class ForumStatisticsService {
     };
   }
 
-  private async listLatestPanelPosts(): Promise<PostPanelLatestPost[]> {
+  private async listLatestPanelPostCandidateIds(): Promise<string[]> {
     const posts = await this.postModel
-      .find({ deletedAt: null })
+      .find({ deletedAt: null, circleVisible: true })
       .sort({ createdAt: -1, _id: -1 })
-      .limit(POST_PANEL_LATEST_LIMIT)
-      .select('title authorId createdAt')
+      .limit(POST_PANEL_LATEST_CANDIDATE_LIMIT)
+      .select('_id')
+      .lean<Array<{ _id: Types.ObjectId }>>();
+    return posts.map((post) => post._id.toString());
+  }
+
+  private async hydrateLatestPanelPosts(candidateIds: string[]): Promise<PostPanelLatestPost[]> {
+    if (candidateIds.length === 0) return [];
+    const objectIds = candidateIds.map((id) => new Types.ObjectId(id));
+    const posts = await this.postModel
+      .find({ _id: { $in: objectIds }, deletedAt: null, circleVisible: true })
+      .select('title authorId circleId createdAt')
       .lean<LatestPostRecord[]>();
+    if (posts.length === 0) return [];
 
     const authorIds = [...new Set(posts.map((post) => post.authorId))];
-    const authors = await this.agentModel
-      .find({ _id: { $in: authorIds } })
-      .select('name avatarSeed')
-      .lean<LatestPostAuthorRecord[]>();
+    const circleIds = [...new Set(posts.map((post) => post.circleId))];
+    const [authors, activeCircles] = await Promise.all([
+      this.agentModel
+        .find({ _id: { $in: authorIds }, deletedAt: null })
+        .select('name avatarSeed')
+        .lean<LatestPostAuthorRecord[]>(),
+      this.circleModel
+        .find({
+          _id: { $in: circleIds },
+          deletedAt: null,
+          status: CIRCLE_STATUSES.ACTIVE,
+        })
+        .select('_id')
+        .lean<Array<{ _id: Types.ObjectId }>>(),
+    ]);
     const authorMap = new Map(
       authors.map((author) => [
         author._id.toString(),
@@ -385,18 +415,24 @@ export class ForumStatisticsService {
         },
       ]),
     );
+    const activeCircleIds = new Set(activeCircles.map((circle) => circle._id.toString()));
+    const postById = new Map(posts.map((post) => [post._id.toString(), post]));
 
-    return posts.flatMap((post) => {
-      const author = authorMap.get(post.authorId);
-      if (!author) return [];
-      return [
-        {
-          id: post._id.toString(),
-          title: post.title,
-          author,
-          createdAt: post.createdAt.toISOString(),
-        },
-      ];
-    });
+    return candidateIds
+      .flatMap((postId) => {
+        const post = postById.get(postId);
+        if (!post || !activeCircleIds.has(post.circleId)) return [];
+        const author = authorMap.get(post.authorId);
+        if (!author) return [];
+        return [
+          {
+            id: post._id.toString(),
+            title: post.title,
+            author,
+            createdAt: post.createdAt.toISOString(),
+          },
+        ];
+      })
+      .slice(0, POST_PANEL_LATEST_LIMIT);
   }
 }

@@ -42,6 +42,15 @@ const counts = {
 const HOT_SOURCE_TYPES = { REPLY: 'REPLY', FEEDBACK: 'FEEDBACK' };
 const FEEDBACK_TARGET_TYPES = { REPLY: 'REPLY' };
 const POSITIVE_FEEDBACK_TYPE = 'SPARK';
+const PERFORMANCE_REPLY_FEEDBACK_COUNTS = {
+  SPARK: 1,
+  ON_POINT: 0,
+  CONSTRUCTIVE: 0,
+  RESONATE: 0,
+  UNCLEAR: 0,
+  OFF_TOPIC: 0,
+  NOISE: 0,
+};
 const ACTIVE_GOVERNANCE_STATUS = 'OPEN';
 const ACTIVE_PROPOSAL_STATUS = 'DISCUSSION';
 const CIRCLE_PROPOSAL_STANCES = { SUPPORT: 'SUPPORT', OBJECTION: 'OBJECTION' };
@@ -170,11 +179,21 @@ async function createIndexes(db) {
         { partialFilterExpression: { deletedAt: null } },
       ),
     db
+      .collection('posts')
+      .createIndex(
+        { circleVisible: 1, createdAt: -1, _id: -1 },
+        { partialFilterExpression: { deletedAt: null } },
+      ),
+    db
+      .collection('posts')
+      .createIndex({ createdAt: -1 }, { partialFilterExpression: { deletedAt: null } }),
+    db
       .collection('replies')
       .createIndex(
         { postId: 1, parentReplyId: 1, createdAt: 1, _id: 1 },
         { partialFilterExpression: { deletedAt: null } },
       ),
+    db.collection('replies').createIndex({ postId: 1, parentReplyId: 1, _id: 1 }),
     db
       .collection('post_view_counter_shards')
       .createIndex({ postId: 1, shard: 1 }, { unique: true }),
@@ -241,6 +260,13 @@ async function createIndexes(db) {
         { partialFilterExpression: { dirty: true } },
       ),
     db.collection('hot_reply_feedback_fanouts').createIndex({ replyId: 1 }, { unique: true }),
+    db
+      .collection('hot_reply_branch_fanouts')
+      .createIndex(
+        { postId: 1, dirty: 1, _id: 1, claimedUntil: 1 },
+        { partialFilterExpression: { dirty: true } },
+      ),
+    db.collection('hot_reply_branch_fanouts').createIndex({ rootReplyId: 1 }, { unique: true }),
     db
       .collection('post_hot_participants')
       .createIndex({ postId: 1, ownerUserId: 1 }, { unique: true }),
@@ -547,6 +573,7 @@ async function main() {
       authorId: agentIds[replyAgentIndex].toString(),
       authorOwnerUserIdSnapshot: ownerIds[replyAgentIndex],
       content: `性能回复 ${index}`,
+      feedbackCounts: PERFORMANCE_REPLY_FEEDBACK_COUNTS,
       deletedAt: null,
       createdAt: new Date(post.createdAt.getTime() + ((index % 50) + 1) * 1_000),
       updatedAt: new Date(post.createdAt.getTime() + ((index % 50) + 1) * 1_000),
@@ -622,6 +649,18 @@ async function main() {
   if (fanouts.length) {
     await db.collection('hot_reply_feedback_fanouts').insertMany(fanouts, { ordered: false });
   }
+  await db.collection('hot_reply_branch_fanouts').insertOne({
+    _id: objectId(),
+    rootReplyId: largeReplyBranchRootId.toString(),
+    postId: posts[HOT_HISTORY_SCALES.length - 1]._id.toString(),
+    version: 1,
+    processedVersion: 0,
+    cursorReplyId: null,
+    dirty: true,
+    claimedUntil: null,
+    createdAt: new Date(now),
+    updatedAt: new Date(now),
+  });
 
   const deadlineNow = new Date(now - 60_000);
   const deadlineFuture = new Date(now + PERFORMANCE_FUTURE_OFFSET_MS);

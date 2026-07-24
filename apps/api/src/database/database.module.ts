@@ -109,6 +109,10 @@ import {
   HotReplyFeedbackFanoutSchema,
 } from './schemas/hot-reply-feedback-fanout.schema';
 import {
+  HotReplyBranchFanout,
+  HotReplyBranchFanoutSchema,
+} from './schemas/hot-reply-branch-fanout.schema';
+import {
   HotCandidateGeneration,
   HotCandidateGenerationSchema,
 } from './schemas/hot-candidate-generation.schema';
@@ -170,6 +174,7 @@ export const DATABASE_MODEL_DEFINITIONS = [
   { name: PostHotState.name, schema: PostHotStateSchema },
   { name: HotProjectionWorkItem.name, schema: HotProjectionWorkItemSchema },
   { name: HotReplyFeedbackFanout.name, schema: HotReplyFeedbackFanoutSchema },
+  { name: HotReplyBranchFanout.name, schema: HotReplyBranchFanoutSchema },
   { name: HotCandidateGeneration.name, schema: HotCandidateGenerationSchema },
   { name: CirclePostVisibilityState.name, schema: CirclePostVisibilityStateSchema },
 ];

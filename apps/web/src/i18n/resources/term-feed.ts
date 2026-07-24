@@ -4,7 +4,7 @@ export const termFeed = {
     feed: {
       hotBadge: '热帖',
       freqLabel: '频段',
-      scopeLabel: '订阅域',
+      scopeLabel: '圈子范围',
       statReplies: '回复',
       statViews: '热度',
       underReview: '该帖正处于共治审议',

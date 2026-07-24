@@ -7,6 +7,7 @@ import {
   HotProjectionWorkItem,
   type HotProjectionSourceType,
 } from '@/database/schemas/hot-projection-work-item.schema';
+import { HotReplyBranchFanout } from '@/database/schemas/hot-reply-branch-fanout.schema';
 import { HotReplyFeedbackFanout } from '@/database/schemas/hot-reply-feedback-fanout.schema';
 import { PostHotState } from '@/database/schemas/post-hot-state.schema';
 import { Post } from '@/database/schemas/post.schema';
@@ -36,7 +37,20 @@ interface HotReplySource {
   postId: string;
   authorId: string;
   authorOwnerUserIdSnapshot: string;
+  parentReplyId: string | null;
   createdAt: Date;
+  deletedAt: Date | null;
+}
+
+interface HotReplyVisibilitySource {
+  _id: Types.ObjectId;
+  postId: string;
+  parentReplyId: string | null;
+  deletedAt: Date | null;
+}
+
+interface HotRootReplyVisibilitySource {
+  _id: Types.ObjectId;
   deletedAt: Date | null;
 }
 
@@ -53,6 +67,8 @@ export class HotRankingWorkService {
     @InjectModel(PostHotState.name) private readonly stateModel: Model<PostHotState>,
     @InjectModel(HotProjectionWorkItem.name)
     private readonly workItemModel: Model<HotProjectionWorkItem>,
+    @InjectModel(HotReplyBranchFanout.name)
+    private readonly branchFanoutModel: Model<HotReplyBranchFanout>,
     @InjectModel(HotReplyFeedbackFanout.name)
     private readonly fanoutModel: Model<HotReplyFeedbackFanout>,
   ) {}
@@ -132,11 +148,18 @@ export class HotRankingWorkService {
       }
       case FEEDBACK_TARGET_TYPES.REPLY: {
         const reply = await this.replyModel
-          .findOne({ _id: input.target.id, postId: input.postId, deletedAt: null }, '_id', {
-            session,
-          })
-          .lean<{ _id: Types.ObjectId } | null>();
-        return reply !== null;
+          .findOne(
+            {
+              _id: input.target.id,
+              postId: input.postId,
+              deletedAt: { $exists: true },
+            },
+            '_id postId parentReplyId deletedAt',
+            { session },
+          )
+          .lean<HotReplyVisibilitySource | null>();
+        if (!reply) return false;
+        return this.isReplyBranchVisible(reply, session);
       }
       default: {
         const exhaustiveTarget: never = input.target;
@@ -152,10 +175,11 @@ export class HotRankingWorkService {
   ): Promise<void> {
     const reply = await this.replyModel
       .findOne({ _id: replyId, deletedAt: { $exists: true } }, null, { session })
-      .select('_id postId authorId authorOwnerUserIdSnapshot createdAt deletedAt')
+      .select('_id postId authorId authorOwnerUserIdSnapshot parentReplyId createdAt deletedAt')
       .lean<HotReplySource | null>();
     if (!reply) throw new Error(`回复不存在，无法记录热度变化: ${replyId}`);
     const state = await this.requireState(reply.postId, session);
+    const branchVisible = await this.isReplyBranchVisible(reply, session);
     const contributionChanged = await this.upsertWorkItem(
       {
         sourceType: HOT_PROJECTION_SOURCE_TYPES.REPLY,
@@ -163,29 +187,77 @@ export class HotRankingWorkService {
         postId: reply.postId,
         participantAgentId: reply.authorId,
         participantOwnerUserId: reply.authorOwnerUserIdSnapshot,
-        desiredActive:
-          reply.deletedAt === null && reply.authorOwnerUserIdSnapshot !== state.authorOwnerUserId,
+        desiredActive: branchVisible && reply.authorOwnerUserIdSnapshot !== state.authorOwnerUserId,
         desiredSourceExists: true,
         desiredActivityAt: reply.createdAt,
       },
       session,
     );
-    let feedbackFanoutChanged = false;
     if (scheduleFeedbackFanout) {
-      await this.fanoutModel.updateOne(
-        { replyId },
-        {
-          $setOnInsert: { replyId, postId: reply.postId, processedVersion: 0 },
-          $set: { cursorFeedbackId: null, dirty: true, claimedUntil: null },
-          $inc: { version: 1 },
-        },
-        { upsert: true, session },
-      );
-      feedbackFanoutChanged = true;
+      await this.scheduleReplyFeedbackFanout(replyId, reply.postId, session);
+      if (reply.parentReplyId === null) {
+        await this.scheduleReplyBranchFanout(replyId, reply.postId, session);
+      }
     }
-    if (contributionChanged || feedbackFanoutChanged) {
+    if (contributionChanged || scheduleFeedbackFanout) {
       await this.markStateProjectionDirty(state._id, session);
     }
+  }
+
+  private async isReplyBranchVisible(
+    reply: HotReplyVisibilitySource,
+    session: ClientSession,
+  ): Promise<boolean> {
+    if (reply.deletedAt !== null) return false;
+    if (reply.parentReplyId === null) return true;
+    const rootReply = await this.replyModel
+      .findOne(
+        {
+          _id: reply.parentReplyId,
+          postId: reply.postId,
+          parentReplyId: null,
+          deletedAt: { $exists: true },
+        },
+        '_id deletedAt',
+        { session },
+      )
+      .lean<HotRootReplyVisibilitySource | null>();
+    if (!rootReply) {
+      throw new Error(`二级回复对应的一级回复不存在: ${reply.parentReplyId}`);
+    }
+    return rootReply.deletedAt === null;
+  }
+
+  private async scheduleReplyFeedbackFanout(
+    replyId: string,
+    postId: string,
+    session: ClientSession,
+  ): Promise<void> {
+    await this.fanoutModel.updateOne(
+      { replyId },
+      {
+        $setOnInsert: { replyId, postId, processedVersion: 0 },
+        $set: { cursorFeedbackId: null, dirty: true, claimedUntil: null },
+        $inc: { version: 1 },
+      },
+      { upsert: true, session },
+    );
+  }
+
+  private async scheduleReplyBranchFanout(
+    rootReplyId: string,
+    postId: string,
+    session: ClientSession,
+  ): Promise<void> {
+    await this.branchFanoutModel.updateOne(
+      { rootReplyId },
+      {
+        $setOnInsert: { rootReplyId, postId, processedVersion: 0 },
+        $set: { cursorReplyId: null, dirty: true, claimedUntil: null },
+        $inc: { version: 1 },
+      },
+      { upsert: true, session },
+    );
   }
 
   private async ensureState(postId: string, session: ClientSession) {
@@ -241,9 +313,7 @@ export class HotRankingWorkService {
   private async readPost(postId: string, session: ClientSession): Promise<HotPostSource> {
     const post = await this.postModel
       .findOne({ _id: postId, deletedAt: { $exists: true } }, null, { session })
-      .select(
-        '_id authorId circleId circleVisible circleVisibilityVersion createdAt deletedAt',
-      )
+      .select('_id authorId circleId circleVisible circleVisibilityVersion createdAt deletedAt')
       .lean<HotPostSource | null>();
     if (!post) throw new Error(`帖子不存在，无法维护热度状态: ${postId}`);
     return post;

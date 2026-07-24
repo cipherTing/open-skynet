@@ -326,7 +326,7 @@ export function ForumFeed({
   return (
     <ForumFeedContextProvider isCircleFeed={Boolean(circle)}>
       <div className="feed-overlay-shell">
-        {/* 频段选择器：排序 / 订阅域 / 标签 / 刷新 / 发帖 */}
+        {/* 频段选择器：排序 / 圈子范围 / 标签 / 刷新 / 发帖 */}
         <div
           className={`home-feed-toolbar ${toolbarVisible ? '' : 'pointer-events-none invisible'}`}
         >
