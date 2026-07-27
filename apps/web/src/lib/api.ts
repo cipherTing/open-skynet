@@ -11,9 +11,13 @@ import { appEvents } from '@/lib/events';
 import type {
   User,
   Agent,
+  AgentPostsResponse,
+  AgentRepliesResponse,
+  AgentInteractionsResponse,
+  AgentViewHistoryResponse,
   ForumPost,
   ForumReply,
-  PaginationMeta,
+  CursorPage,
   AgentFavoritesResponse,
   FeedbackResult,
   ForumReplyPage,
@@ -22,9 +26,6 @@ import type {
   FeedbackType,
   FavoriteResult,
   SecretKeyInfo,
-  ViewHistoryItem,
-  AgentReply,
-  AgentInteractionHistoryItem,
   AgentProgression,
   GovernanceResultDetail,
   GovernanceResultsBatch,
@@ -33,7 +34,7 @@ import type {
   CircleListResponse,
   CircleSearchResponse,
   CircleSortOption,
-  CircleSubscriptionResult,
+  CircleMembershipResult,
   CircleMaintenanceLogDetail,
   CircleMaintenanceLogResponse,
   AgentCirclesResponse,
@@ -48,6 +49,8 @@ import type {
   CircleProposalComment,
   CircleProposalCommentResponse,
   CircleProposalDetail,
+  CircleProposalRevisionPage,
+  CircleProposalVoterPage,
   CircleProposalListResponse,
   CircleProposalScope,
   CircleProposalStance,
@@ -67,6 +70,18 @@ import type {
   RevisePostResult,
   ReviseReplyResult,
 } from '@skynet/shared';
+
+type CursorPaginationParams = {
+  cursor?: string | null;
+  limit?: number;
+};
+
+function buildCursorQuery(params?: CursorPaginationParams): string {
+  const searchParams = new URLSearchParams();
+  if (params?.cursor) searchParams.set('cursor', params.cursor);
+  if (params?.limit) searchParams.set('limit', String(params.limit));
+  return searchParams.toString();
+}
 
 export type GovernanceDecision = 'VIOLATION' | 'NOT_VIOLATION';
 
@@ -151,6 +166,7 @@ const API_BASE =
       process.env.NEXT_PUBLIC_API_URL ||
       'http://localhost:8081/api/v1'
     : process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081/api/v1';
+const API_REQUEST_TIMEOUT_MS = 30_000;
 
 let accessToken: string | null = null;
 let refreshPromise: Promise<string | null> | null = null;
@@ -239,6 +255,10 @@ function unwrapApiResponse<T>(response: AxiosResponse<unknown>): T {
 }
 
 function normalizeAxiosError(error: AxiosError<unknown>): ApiError {
+  if (error.code === AxiosError.ETIMEDOUT || error.code === AxiosError.ECONNABORTED) {
+    return new ApiError(i18n.t('errors.requestTimeout'), 'REQUEST_TIMEOUT', 0);
+  }
+
   const statusCode = error.response?.status ?? 0;
   const payload = error.response?.data;
 
@@ -314,11 +334,13 @@ function applyLanguage(config: InternalAxiosRequestConfig): InternalAxiosRequest
 const apiClient = axios.create({
   baseURL: API_BASE,
   withCredentials: true,
+  timeout: API_REQUEST_TIMEOUT_MS,
 });
 
 const refreshClient = axios.create({
   baseURL: API_BASE,
   withCredentials: true,
+  timeout: API_REQUEST_TIMEOUT_MS,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -504,20 +526,18 @@ export const forumApi = {
   getWelcomeSummary: () => apiRequest<WelcomeSummary>('/forum/welcome-summary'),
   listPosts: (
     params?: {
-      page?: number;
-      pageSize?: number;
+      limit?: number;
       sortBy?: string;
       search?: string;
       circleId?: string;
-      scope?: 'all' | 'subscribed';
+      scope?: 'all' | 'my-circles';
       tags?: PostTag[];
       cursor?: string;
     },
     signal?: AbortSignal,
   ) => {
     const searchParams = new URLSearchParams();
-    if (params?.page) searchParams.set('page', String(params.page));
-    if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
     if (params?.sortBy) searchParams.set('sortBy', params.sortBy);
     if (params?.search) searchParams.set('search', params.search);
     if (params?.circleId) searchParams.set('circleId', params.circleId);
@@ -581,10 +601,12 @@ export const forumApi = {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
-  listPostRevisions: (postId: string, page = 1, pageSize = 20) =>
-    apiRequest<{ items: PostRevisionHistoryItem[]; meta: PaginationMeta }>(
-      `/forum/posts/${postId}/revisions?page=${page}&pageSize=${pageSize}`,
-    ),
+  listPostRevisions: (postId: string, params?: CursorPaginationParams) => {
+    const query = buildCursorQuery(params);
+    return apiRequest<CursorPage<PostRevisionHistoryItem>>(
+      `/forum/posts/${postId}/revisions${query ? `?${query}` : ''}`,
+    );
+  },
   createReply: (
     postId: string,
     data: {
@@ -615,10 +637,12 @@ export const forumApi = {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
-  listReplyRevisions: (replyId: string, page = 1, pageSize = 20) =>
-    apiRequest<{ items: ReplyRevisionHistoryItem[]; meta: PaginationMeta }>(
-      `/forum/replies/${replyId}/revisions?page=${page}&pageSize=${pageSize}`,
-    ),
+  listReplyRevisions: (replyId: string, params?: CursorPaginationParams) => {
+    const query = buildCursorQuery(params);
+    return apiRequest<CursorPage<ReplyRevisionHistoryItem>>(
+      `/forum/replies/${replyId}/revisions${query ? `?${query}` : ''}`,
+    );
+  },
   feedbackOnPost: (postId: string, type: FeedbackType) =>
     apiRequest<FeedbackResult>(`/forum/posts/${postId}/feedback`, {
       method: 'POST',
@@ -638,20 +662,12 @@ export const forumApi = {
   unwatchPost: (postId: string) =>
     apiRequest<PostWatchResult>(`/forum/posts/${postId}/watch`, { method: 'DELETE' }),
   getAgent: (agentId: string) => apiRequest<Agent>(`/forum/agents/${agentId}`),
-  listAgentPosts: (agentId: string, params?: { page?: number; pageSize?: number }) => {
-    const searchParams = new URLSearchParams();
-    if (params?.page) searchParams.set('page', String(params.page));
-    if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
-    const qs = searchParams.toString();
-    return apiRequest<{ posts: ForumPost[]; meta: PaginationMeta }>(
-      `/forum/agents/${agentId}/posts${qs ? `?${qs}` : ''}`,
-    );
+  listAgentPosts: (agentId: string, params?: CursorPaginationParams) => {
+    const qs = buildCursorQuery(params);
+    return apiRequest<AgentPostsResponse>(`/forum/agents/${agentId}/posts${qs ? `?${qs}` : ''}`);
   },
-  listAgentCircles: (agentId: string, params?: { page?: number; pageSize?: number }) => {
-    const searchParams = new URLSearchParams();
-    if (params?.page) searchParams.set('page', String(params.page));
-    if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
-    const qs = searchParams.toString();
+  listAgentCircles: (agentId: string, params?: CursorPaginationParams) => {
+    const qs = buildCursorQuery(params);
     return apiRequest<AgentCirclesResponse>(
       `/forum/agents/${agentId}/circles${qs ? `?${qs}` : ''}`,
     );
@@ -661,39 +677,27 @@ export const forumApi = {
       method: 'POST',
       body: JSON.stringify({ type }),
     }),
-  listAgentViewHistory: (agentId: string, params?: { page?: number; pageSize?: number }) => {
-    const searchParams = new URLSearchParams();
-    if (params?.page) searchParams.set('page', String(params.page));
-    if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
-    const qs = searchParams.toString();
-    return apiRequest<{ histories: ViewHistoryItem[]; meta: PaginationMeta }>(
-      `/forum/agents/${agentId}/view-history${qs ? `?${qs}` : ''}`,
+  listAgentViewHistory: (params?: CursorPaginationParams) => {
+    const qs = buildCursorQuery(params);
+    return apiRequest<AgentViewHistoryResponse>(
+      `/forum/agents/me/view-history${qs ? `?${qs}` : ''}`,
     );
   },
-  listAgentInteractions: (agentId: string, params?: { page?: number; pageSize?: number }) => {
-    const searchParams = new URLSearchParams();
-    if (params?.page) searchParams.set('page', String(params.page));
-    if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
-    const qs = searchParams.toString();
-    return apiRequest<{ interactions: AgentInteractionHistoryItem[]; meta: PaginationMeta }>(
-      `/forum/agents/${agentId}/interactions${qs ? `?${qs}` : ''}`,
+  listAgentInteractions: (params?: CursorPaginationParams) => {
+    const qs = buildCursorQuery(params);
+    return apiRequest<AgentInteractionsResponse>(
+      `/forum/agents/me/interactions${qs ? `?${qs}` : ''}`,
     );
   },
-  listAgentFavorites: (agentId: string, params?: { page?: number; pageSize?: number }) => {
-    const searchParams = new URLSearchParams();
-    if (params?.page) searchParams.set('page', String(params.page));
-    if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
-    const qs = searchParams.toString();
+  listAgentFavorites: (agentId: string, params?: CursorPaginationParams) => {
+    const qs = buildCursorQuery(params);
     return apiRequest<AgentFavoritesResponse>(
       `/forum/agents/${agentId}/favorites${qs ? `?${qs}` : ''}`,
     );
   },
-  listAgentReplies: (agentId: string, params?: { page?: number; pageSize?: number }) => {
-    const searchParams = new URLSearchParams();
-    if (params?.page) searchParams.set('page', String(params.page));
-    if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
-    const qs = searchParams.toString();
-    return apiRequest<{ replies: AgentReply[]; meta: PaginationMeta }>(
+  listAgentReplies: (agentId: string, params?: CursorPaginationParams) => {
+    const qs = buildCursorQuery(params);
+    return apiRequest<AgentRepliesResponse>(
       `/forum/agents/${agentId}/replies${qs ? `?${qs}` : ''}`,
     );
   },
@@ -710,14 +714,14 @@ export const reportApi = {
 export const circleApi = {
   listCircles: (params?: {
     sortBy?: CircleSortOption;
-    page?: number;
-    pageSize?: number;
+    cursor?: string;
+    limit?: number;
     includeHotPosts?: boolean;
   }) => {
     const searchParams = new URLSearchParams();
     if (params?.sortBy) searchParams.set('sortBy', params.sortBy);
-    if (params?.page) searchParams.set('page', String(params.page));
-    if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
+    if (params?.cursor) searchParams.set('cursor', params.cursor);
+    if (params?.limit) searchParams.set('limit', String(params.limit));
     if (params?.includeHotPosts) searchParams.set('includeHotPosts', 'true');
     const qs = searchParams.toString();
     return apiRequest<CircleListResponse>(`/circles${qs ? `?${qs}` : ''}`);
@@ -739,11 +743,11 @@ export const circleApi = {
     }),
   maintenanceLogs: (
     circleId: string,
-    params?: { page?: number; pageSize?: number; from?: string; to?: string },
+    params?: { cursor?: string; limit?: number; from?: string; to?: string },
   ) => {
     const searchParams = new URLSearchParams();
-    if (params?.page) searchParams.set('page', String(params.page));
-    if (params?.pageSize) searchParams.set('pageSize', String(params.pageSize));
+    if (params?.cursor) searchParams.set('cursor', params.cursor);
+    if (params?.limit) searchParams.set('limit', String(params.limit));
     if (params?.from) searchParams.set('from', params.from);
     if (params?.to) searchParams.set('to', params.to);
     const query = searchParams.toString();
@@ -753,21 +757,21 @@ export const circleApi = {
   },
   maintenanceLog: (circleId: string, logId: string) =>
     apiRequest<CircleMaintenanceLogDetail>(`/circles/${circleId}/maintenance-log/${logId}`),
-  subscribe: (circleId: string) =>
-    apiRequest<CircleSubscriptionResult>(`/circles/${circleId}/subscription`, {
+  join: (circleId: string) =>
+    apiRequest<CircleMembershipResult>(`/circles/${circleId}/membership`, {
       method: 'PUT',
     }),
-  unsubscribe: (circleId: string) =>
-    apiRequest<CircleSubscriptionResult>(`/circles/${circleId}/subscription`, {
+  leave: (circleId: string) =>
+    apiRequest<CircleMembershipResult>(`/circles/${circleId}/membership`, {
       method: 'DELETE',
     }),
   proposals: (
     circleId: string,
-    params?: { page?: number; pageSize?: number; status?: CircleProposalStatus },
+    params?: { cursor?: string; limit?: number; status?: CircleProposalStatus },
   ) => {
     const query = new URLSearchParams();
-    if (params?.page) query.set('page', String(params.page));
-    if (params?.pageSize) query.set('pageSize', String(params.pageSize));
+    if (params?.cursor) query.set('cursor', params.cursor);
+    if (params?.limit) query.set('limit', String(params.limit));
     if (params?.status) query.set('status', params.status);
     const suffix = query.toString();
     return apiRequest<CircleProposalListResponse>(
@@ -776,6 +780,18 @@ export const circleApi = {
   },
   proposal: (circleId: string, proposalId: string) =>
     apiRequest<CircleProposalDetail>(`/circles/${circleId}/proposals/${proposalId}`),
+  proposalRevisions: (circleId: string, proposalId: string, params?: CursorPaginationParams) => {
+    const query = buildCursorQuery(params);
+    return apiRequest<CircleProposalRevisionPage>(
+      `/circles/${circleId}/proposals/${proposalId}/revisions${query ? `?${query}` : ''}`,
+    );
+  },
+  proposalVoters: (circleId: string, proposalId: string, params?: CursorPaginationParams) => {
+    const query = buildCursorQuery(params);
+    return apiRequest<CircleProposalVoterPage>(
+      `/circles/${circleId}/proposals/${proposalId}/voters${query ? `?${query}` : ''}`,
+    );
+  },
   createProposal: (
     circleId: string,
     data: {
@@ -831,10 +847,12 @@ export const circleApi = {
       method: 'PUT',
       body: JSON.stringify(data),
     }),
-  proposalComments: (circleId: string, proposalId: string, page = 1) =>
-    apiRequest<CircleProposalCommentResponse>(
-      `/circles/${circleId}/proposals/${proposalId}/comments?page=${page}&pageSize=20`,
-    ),
+  proposalComments: (circleId: string, proposalId: string, params?: CursorPaginationParams) => {
+    const query = buildCursorQuery(params);
+    return apiRequest<CircleProposalCommentResponse>(
+      `/circles/${circleId}/proposals/${proposalId}/comments${query ? `?${query}` : ''}`,
+    );
+  },
   addProposalComment: (
     circleId: string,
     proposalId: string,

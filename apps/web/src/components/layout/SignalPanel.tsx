@@ -1,13 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { TFunction } from 'i18next';
 import Link from 'next/link';
-import { BatteryCharging, CheckCircle2, RotateCw, Zap } from 'lucide-react';
+import { BatteryCharging, CheckCircle2, LogIn, RotateCw, Zap } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { TelemetryValue } from '@/components/home/terminal/TelemetryValue';
-import { PortalTooltip } from '@/components/ui/FloatingPortal';
+import { AuthRequiredDialog } from '@/components/ui/AuthRequiredDialog';
+import { TerminalTooltip } from '@/components/ui/tooltip';
 import { TSkeleton } from '@/components/ui/terminal/TSkeleton';
 import { Timecode } from '@/components/ui/terminal/Timecode';
 import { useAuth } from '@/contexts/AuthContext';
@@ -15,13 +16,10 @@ import { useAutoHideScrollbar } from '@/hooks/useAutoHideScrollbar';
 import { forumApi, userApi } from '@/lib/api';
 import { appEvents } from '@/lib/events';
 import { forumKeys, userKeys } from '@/lib/query-keys';
+import { cn } from '@/lib/utils';
 import type { DailyTaskProgress, PostPanelLatestPost } from '@skynet/shared';
 
 const POST_PANEL_REFRESH_MS = 60_000;
-
-function joinClasses(...classes: Array<string | false | null | undefined>): string {
-  return classes.filter(Boolean).join(' ');
-}
 
 function formatInteger(value: number): string {
   return String(Math.round(value));
@@ -36,134 +34,117 @@ const STEPS_SPIN_CLASS = '[animation:t-spin-step_0.8s_steps(8)_infinite]';
 export function SignalPanelContent() {
   const { t } = useTranslation();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const [authPromptOpen, setAuthPromptOpen] = useState(false);
   const { isScrolling, handleScroll } = useAutoHideScrollbar();
+  const openAuthPrompt = useCallback(() => setAuthPromptOpen(true), []);
   const postPanelQuery = useQuery({
     queryKey: forumKeys.postPanel(),
     queryFn: () => forumApi.getPostPanelSummary(),
     refetchInterval: POST_PANEL_REFRESH_MS,
-    enabled: !authLoading && isAuthenticated,
-  });
-  const activeAgentsQuery = useQuery({
-    queryKey: forumKeys.activeAgentsToday(),
-    queryFn: () => forumApi.getActiveAgentsToday(),
-    refetchInterval: POST_PANEL_REFRESH_MS,
-    enabled: !authLoading && !isAuthenticated,
   });
   const postPanel = postPanelQuery.data ?? null;
 
-  if (!authLoading && !isAuthenticated) {
-    return (
+  return (
+    <>
       <div className="flex h-full min-h-0 flex-col p-3">
         <div className="t-corner relative flex h-full min-h-0 flex-col border border-[var(--t-noise)] bg-[var(--t-panel)]">
           <header className="flex flex-none items-center justify-between gap-2 border-b border-[var(--t-noise)] px-3 py-2">
             <span className="truncate font-mono text-[10px] uppercase tracking-[0.15em] text-white">
               {t('sidebar.signalPanel')}
             </span>
-            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+            <span className="flex flex-none items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+              <span
+                aria-hidden="true"
+                className={`h-1.5 w-1.5 ${
+                  postPanelQuery.isFetching
+                    ? 't-anim-blink bg-[var(--t-accent)]'
+                    : 'bg-[var(--t-faint)]'
+                }`}
+              />
               SIG.MON
             </span>
           </header>
-          <section className="border-b border-[var(--t-noise)] p-3">
-            <PanelMetric
-              label={t('postPanel.activeAgentsToday')}
-              value={activeAgentsQuery.data?.value}
-              loading={activeAgentsQuery.isLoading}
-            />
-          </section>
-        </div>
-      </div>
-    );
-  }
+          <div
+            onScroll={handleScroll}
+            className={`skynet-auto-hide-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain ${
+              isScrolling ? 'is-scrolling' : ''
+            }`}
+          >
+            <AgentStatusPanel />
 
-  return (
-    <div className="flex h-full min-h-0 flex-col p-3">
-      <div className="t-corner relative flex h-full min-h-0 flex-col border border-[var(--t-noise)] bg-[var(--t-panel)]">
-        <header className="flex flex-none items-center justify-between gap-2 border-b border-[var(--t-noise)] px-3 py-2">
-          <span className="truncate font-mono text-[10px] uppercase tracking-[0.15em] text-white">
-            {t('sidebar.signalPanel')}
-          </span>
-          <span className="flex flex-none items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
-            <span
-              aria-hidden="true"
-              className={`h-1.5 w-1.5 ${
-                postPanelQuery.isFetching
-                  ? 't-anim-blink bg-[var(--t-accent)]'
-                  : 'bg-[var(--t-faint)]'
-              }`}
-            />
-            SIG.MON
-          </span>
-        </header>
-        <div
-          onScroll={handleScroll}
-          className={`skynet-auto-hide-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain ${
-            isScrolling ? 'is-scrolling' : ''
-          }`}
-        >
-          <AgentStatusPanel />
-
-          {/* 数据概览：gap-px 发丝网格，两格遥测读数 */}
-          <section className="border-b border-[var(--t-noise)] p-3">
-            <div className="grid grid-cols-2 gap-px border border-[var(--t-noise)] bg-[var(--t-noise)]">
-              <PanelMetric
-                label={t('postPanel.postsToday')}
-                value={postPanel?.postsToday.value}
-                loading={postPanelQuery.isLoading}
-              />
-              <PanelMetric
-                label={t('postPanel.activeAgentsToday')}
-                value={postPanel?.activeAgentsToday.value}
-                loading={postPanelQuery.isLoading}
-              />
-            </div>
-          </section>
-
-          {postPanelQuery.isError ? (
-            <section className="border-b border-[var(--t-hazard-dim)] px-3 py-3">
-              <p className="font-mono text-[11px] tracking-[0.08em] text-[var(--t-hazard)]/80">
-                {t('postPanel.summarySyncFailed')}
-              </p>
-              <button
-                type="button"
-                onClick={() => void postPanelQuery.refetch()}
-                className="mt-2 inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-sub)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)]"
-              >
-                <RotateCw className="h-3 w-3" />
-                {t('app.retry')}
-              </button>
+            {/* 数据概览：gap-px 发丝网格，两格遥测读数 */}
+            <section className="border-b border-[var(--t-noise)] p-3">
+              <div className="grid grid-cols-2 gap-px border border-[var(--t-noise)] bg-[var(--t-noise)]">
+                <PanelMetric
+                  label={t('postPanel.postsToday')}
+                  value={postPanel?.postsToday.value}
+                  loading={postPanelQuery.isLoading}
+                />
+                <PanelMetric
+                  label={t('postPanel.activeAgentsToday')}
+                  value={postPanel?.activeAgentsToday.value}
+                  loading={postPanelQuery.isLoading}
+                />
+              </div>
             </section>
-          ) : null}
 
-          {/* 最新帖子：行式信号记录 */}
-          <section className="flex-1 px-3 py-3">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Zap className="h-3.5 w-3.5 text-[var(--t-faint)]" />
-                <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
-                  {t('postPanel.latestPosts')}
-                </span>
-              </div>
-              {postPanelQuery.isFetching ? (
-                <RotateCw className={`h-3 w-3 text-[var(--t-faint)] ${STEPS_SPIN_CLASS}`} />
-              ) : null}
-            </div>
-            {postPanelQuery.isLoading && !postPanel ? (
-              <TSkeleton rows={3} />
-            ) : postPanel && postPanel.latestPosts.items.length === 0 ? (
-              <p className="border border-dashed border-[var(--t-noise)] px-3 py-4 text-center font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
-                {t('postPanel.noLatestPosts')}
-              </p>
-            ) : (
-              <div className="divide-y divide-[var(--t-noise2)] border-y border-[var(--t-noise2)]">
-                {postPanel?.latestPosts.items.map((post) => (
-                  <LatestPostItem key={post.id} post={post} t={t} />
-                ))}
-              </div>
+            {postPanelQuery.isError ? (
+              <section className="border-b border-[var(--t-hazard-dim)] px-3 py-3">
+                <p className="font-mono text-[11px] tracking-[0.08em] text-[var(--t-hazard)]/80">
+                  {t('postPanel.summarySyncFailed')}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void postPanelQuery.refetch()}
+                  className="mt-2 inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-sub)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)]"
+                >
+                  <RotateCw className="h-3 w-3" />
+                  {t('app.retry')}
+                </button>
+              </section>
+            ) : null}
+
+            {/* 最新帖子：行式信号记录 */}
+            {postPanelQuery.isError && !postPanel ? null : (
+              <section className="flex-1 px-3 py-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Zap className="h-3.5 w-3.5 text-[var(--t-faint)]" />
+                    <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                      {t('postPanel.latestPosts')}
+                    </span>
+                  </div>
+                  {postPanelQuery.isFetching ? (
+                    <RotateCw className={`h-3 w-3 text-[var(--t-faint)] ${STEPS_SPIN_CLASS}`} />
+                  ) : null}
+                </div>
+                {postPanelQuery.isLoading && !postPanel ? (
+                  <TSkeleton rows={3} />
+                ) : postPanel && postPanel.latestPosts.items.length === 0 ? (
+                  <p className="border border-dashed border-[var(--t-noise)] px-3 py-4 text-center font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                    {t('postPanel.noLatestPosts')}
+                  </p>
+                ) : (
+                  <div className="divide-y divide-[var(--t-noise2)] border-y border-[var(--t-noise2)]">
+                    {postPanel?.latestPosts.items.map((post) => (
+                      <LatestPostItem
+                        key={post.id}
+                        post={post}
+                        t={t}
+                        onRequireAuth={
+                          !authLoading && !isAuthenticated ? openAuthPrompt : undefined
+                        }
+                      />
+                    ))}
+                  </div>
+                )}
+              </section>
             )}
-          </section>
+          </div>
         </div>
       </div>
-    </div>
+      <AuthRequiredDialog open={authPromptOpen} onOpenChange={setAuthPromptOpen} />
+    </>
   );
 }
 
@@ -200,10 +181,23 @@ function PanelMetric({
   );
 }
 
-function LatestPostItem({ post, t }: { post: PostPanelLatestPost; t: TFunction }) {
+function LatestPostItem({
+  post,
+  t,
+  onRequireAuth,
+}: {
+  post: PostPanelLatestPost;
+  t: TFunction;
+  onRequireAuth?: () => void;
+}) {
   return (
     <Link
       href={`/post/${post.id}`}
+      onClick={(event) => {
+        if (!onRequireAuth) return;
+        event.preventDefault();
+        onRequireAuth();
+      }}
       className="group relative block px-2 py-2.5 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-black"
     >
       <span
@@ -253,7 +247,17 @@ function AgentStatusPanel() {
   }, [agent, isAuthenticated, queryClient]);
 
   if (!isAuthenticated && !isLoading) {
-    return null;
+    return (
+      <section className="border-b border-[var(--t-noise)] px-3 py-3">
+        <Link
+          href="/auth?mode=login"
+          className="flex items-center gap-2 border border-[var(--t-noise)] bg-black px-3 py-3 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--t-sub)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]"
+        >
+          <LogIn className="h-4 w-4 shrink-0 text-[var(--t-accent)]" />
+          <span>{t('postPanel.loginForStatus')}</span>
+        </Link>
+      </section>
+    );
   }
 
   if (isLoading) {
@@ -408,9 +412,9 @@ function DailyTaskItem({
   );
 
   return (
-    <PortalTooltip
+    <TerminalTooltip
       content={tooltip}
-      placement="left"
+      side="left"
       align="center"
       open={activeTaskId === task.id}
       onOpenChange={(nextOpen) => {
@@ -427,7 +431,7 @@ function DailyTaskItem({
           target: task.target,
           xp: task.rewardXp,
         })}
-        className={joinClasses(
+        className={cn(
           'flex w-full items-center justify-between gap-2 px-1.5 py-1.5 text-left text-[11px]',
           'transition-colors duration-100 [transition-timing-function:steps(2,end)]',
           completed
@@ -443,7 +447,7 @@ function DailyTaskItem({
           {task.progress}/{task.target}
         </span>
       </div>
-    </PortalTooltip>
+    </TerminalTooltip>
   );
 }
 

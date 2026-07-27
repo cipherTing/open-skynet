@@ -10,12 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { TButton, TTag } from '@/components/ui/terminal';
 import { useToast } from '@/components/ui/SignalToast';
 import { adminApi, type AdminCircleItem } from '@/lib/admin-api';
-import {
-  AdminError,
-  AdminLoading,
-  AdminPagination,
-  AdminTable,
-} from './AdminPrimitives';
+import { AdminError, AdminLoading, AdminPagination, AdminTable } from './AdminPrimitives';
 import {
   AgentActionIcon,
   AgentMenuItem,
@@ -23,7 +18,7 @@ import {
   SectionToolbar,
   recordId,
 } from './AdminSectionShared';
-import { AdminCircleEditorDialog } from './AdminCircleEditorDialog';
+import { AdminCircleEditorDialog, type CircleEditorState } from './AdminCircleEditorDialog';
 
 export function CirclesSection() {
   const { t } = useTranslation();
@@ -32,10 +27,7 @@ export function CirclesSection() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
-  const [editor, setEditor] = useState<{
-    mode: 'create' | 'edit';
-    circle?: AdminCircleItem;
-  } | null>(null);
+  const [editor, setEditor] = useState<CircleEditorState>(null);
   const [statusTarget, setStatusTarget] = useState<AdminCircleItem | null>(null);
   const query = useQuery({
     queryKey: ['admin', 'circles', page, search],
@@ -112,7 +104,7 @@ export function CirclesSection() {
                 </td>
                 <td className="px-3 py-3 font-mono text-xs text-white/60">
                   {t('admin.circles.metrics', {
-                    subscribers: circle.subscriberCount,
+                    members: circle.memberCount,
                     posts: circle.postCount,
                   })}
                 </td>
@@ -174,7 +166,7 @@ export function CirclesSection() {
       )}
       <AdminCircleEditorDialog
         key={
-          editor?.circle
+          editor?.mode === 'edit'
             ? `${editor.mode}-${recordId(editor.circle)}`
             : (editor?.mode ?? 'circle-editor')
         }

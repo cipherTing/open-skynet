@@ -20,5 +20,11 @@ export default defineConfig([
       ],
     },
   },
+  {
+    files: ['src/components/ui/VirtualList.tsx'],
+    rules: {
+      'react-hooks/incompatible-library': 'off',
+    },
+  },
   globalIgnores(['.next/**', 'out/**', 'build/**', 'coverage/**', 'next-env.d.ts']),
 ]);

@@ -3,7 +3,7 @@
 import { BadgeCheck, ShieldCheck, ShieldAlert, ShieldX } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { AgentAvatar } from '@/components/ui/AgentAvatar';
-import { PortalTooltip } from '@/components/ui/FloatingPortal';
+import { TerminalTooltip } from '@/components/ui/tooltip';
 import { TTag } from '@/components/ui/terminal';
 import { TelemetryValue } from '@/components/home/terminal/TelemetryValue';
 import type { AgentProfile } from '@/config/agent-dimensions';
@@ -85,13 +85,7 @@ function LevelPlate({
 }
 
 /** 元数据栅格单元：10px 暗绿标签 + 等宽读数。 */
-function MetaCell({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
+function MetaCell({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="border-b border-r border-[var(--t-noise)] px-4 py-2.5 sm:px-5">
       <dt className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
@@ -116,19 +110,17 @@ export function AgentHero({ agent, isOwnAgent }: AgentHeroProps) {
     ? t(`agent.levelNames.${level.level}`, { defaultValue: level.name })
     : '';
   const nextLevelXp = level?.nextLevelXp ?? null;
-  const xpToNext =
-    level && nextLevelXp !== null
-      ? Math.max(0, nextLevelXp - level.xpTotal)
-      : null;
+  const xpToNext = level && nextLevelXp !== null ? Math.max(0, nextLevelXp - level.xpTotal) : null;
   let nextLevelHint = t('agent.nextPrivate');
   if (isOwnAgent) {
-    nextLevelHint =
-      xpToNext === null ? t('agent.maxLevel') : t('agent.nextXp', { xp: xpToNext });
+    nextLevelHint = xpToNext === null ? t('agent.maxLevel') : t('agent.nextXp', { xp: xpToNext });
   }
   const activeDays = daysSince(agent.createdAt);
   const healthLevel = agent.healthLevel;
   const rawHealthCode = healthLevel?.code ?? '';
-  const healthCode: AgentHealthLevelCode = isKnownHealthCode(rawHealthCode) ? rawHealthCode : 'good';
+  const healthCode: AgentHealthLevelCode = isKnownHealthCode(rawHealthCode)
+    ? rawHealthCode
+    : 'good';
   const healthName = t(`agent.health.status.${healthCode}`);
   const fileCode = buildFileCode(agent.id);
   const levelFloor = level
@@ -136,7 +128,10 @@ export function AgentHero({ agent, isOwnAgent }: AgentHeroProps) {
     : 0;
   const levelProgress =
     level && nextLevelXp !== null && nextLevelXp > levelFloor
-      ? Math.min(100, Math.max(0, ((level.xpTotal - levelFloor) / (nextLevelXp - levelFloor)) * 100))
+      ? Math.min(
+          100,
+          Math.max(0, ((level.xpTotal - levelFloor) / (nextLevelXp - levelFloor)) * 100),
+        )
       : null;
 
   return (
@@ -166,7 +161,9 @@ export function AgentHero({ agent, isOwnAgent }: AgentHeroProps) {
               {/* 档案编号 */}
               <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                 {t('agent.fileNo')} <span className="text-[var(--t-accent)]">{fileCode}</span>
-                <span aria-hidden className="mx-2 text-[var(--t-faint)]">{'//'}</span>
+                <span aria-hidden className="mx-2 text-[var(--t-faint)]">
+                  {'//'}
+                </span>
                 u/{agent.name}
               </div>
 
@@ -184,8 +181,8 @@ export function AgentHero({ agent, isOwnAgent }: AgentHeroProps) {
                   </TTag>
                 )}
 
-                <PortalTooltip
-                  placement="bottom"
+                <TerminalTooltip
+                  side="bottom"
                   align="start"
                   contentClassName="w-72 py-3 px-3"
                   content={
@@ -212,13 +209,16 @@ export function AgentHero({ agent, isOwnAgent }: AgentHeroProps) {
                       <span className="mr-1 inline-flex items-center">
                         <HealthIcon code={healthCode} />
                       </span>
-                      {t('agent.health.badge', { label: t('agent.health.label'), status: healthName })}
+                      {t('agent.health.badge', {
+                        label: t('agent.health.label'),
+                        status: healthName,
+                      })}
                     </TTag>
                   </button>
-                </PortalTooltip>
+                </TerminalTooltip>
 
-                <PortalTooltip
-                  placement="bottom"
+                <TerminalTooltip
+                  side="bottom"
                   align="start"
                   contentClassName="w-80 py-2 px-1"
                   content={
@@ -281,9 +281,13 @@ export function AgentHero({ agent, isOwnAgent }: AgentHeroProps) {
                   }
                 >
                   <button type="button" className="cursor-help">
-                    <LevelPlate level={level} levelName={currentLevelName} inactiveLabel={t('agent.inactive')} />
+                    <LevelPlate
+                      level={level}
+                      levelName={currentLevelName}
+                      inactiveLabel={t('agent.inactive')}
+                    />
                   </button>
-                </PortalTooltip>
+                </TerminalTooltip>
 
                 {/* 经验遥测值（微跳） */}
                 <span className="inline-flex items-baseline gap-1.5 font-mono text-[10px] uppercase tracking-[0.15em]">
@@ -344,7 +348,11 @@ export function AgentHero({ agent, isOwnAgent }: AgentHeroProps) {
           </MetaCell>
           <MetaCell label={t('agentTerm.metaLinked')}>{formatLinkedDate(agent.createdAt)}</MetaCell>
           <MetaCell label={t('agentTerm.metaStatus')}>
-            <span className={healthCode === 'good' ? 'text-[var(--t-accent)]' : 'text-[var(--t-signal)]'}>
+            <span
+              className={
+                healthCode === 'good' ? 'text-[var(--t-accent)]' : 'text-[var(--t-signal)]'
+              }
+            >
               {healthCode === 'good' ? t('agentTerm.statusRunning') : healthName}
             </span>
           </MetaCell>

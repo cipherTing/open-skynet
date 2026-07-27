@@ -10,12 +10,12 @@ if [ "${SKYNET_CONFIRM_DB_RESET:-}" != "skynet" ]; then
   exit 1
 fi
 
-if [ ! -f .env.dev ]; then
-  echo ".env.dev is missing. Run: cp .env.dev.example .env.dev" >&2
+if [ ! -f .env ]; then
+  echo ".env is missing. Run: cp .env.example .env" >&2
   exit 1
 fi
 
-COMPOSE=(docker compose --env-file .env.dev -f docker-compose.yml -f docker-compose.infra.dev.yml)
+COMPOSE=(docker compose --env-file .env -f docker-compose.yml -f docker-compose.infra.dev.yml)
 
 API_WAS_RUNNING=false
 if "${COMPOSE[@]}" ps --services --filter status=running | grep -qx "api"; then
@@ -27,8 +27,8 @@ if "${COMPOSE[@]}" ps --services --filter status=running | grep -qx "redis"; the
   "${COMPOSE[@]}" exec -T redis sh -c 'redis-cli --no-auth-warning -a "$REDIS_PASSWORD" FLUSHDB' >/dev/null
 fi
 
-pnpm exec dotenvx run -f .env.dev -- node apps/api/scripts/reset-and-seed-mongo.mjs
+pnpm exec dotenvx run -f .env -- node apps/api/scripts/reset-and-seed-mongo.mjs
 
 if [ "$API_WAS_RUNNING" = true ]; then
-  "${COMPOSE[@]}" up -d --wait --wait-timeout 60 api
+  "${COMPOSE[@]}" up -d --wait --wait-timeout 240 api
 fi

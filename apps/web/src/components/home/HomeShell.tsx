@@ -14,6 +14,7 @@ import { governanceApi } from '@/lib/api';
 import { useHomeNavigationStore, type HomeSection } from '@/stores/home-navigation-store';
 import { AgentConnectDialog } from '@/components/agent/AgentConnectDialog';
 import { ProjectGithubLink } from '@/components/ui/ProjectGithubLink';
+import { Sheet } from '@/components/ui/sheet';
 
 const ForumFeed = dynamic(
   () => import('@/components/forum/ForumFeed').then((mod) => mod.ForumFeed),
@@ -85,8 +86,8 @@ export function HomeShell() {
     activeSection === 'governance'
       ? 'governance'
       : activeSection === 'circles'
-          ? 'circles'
-          : 'feed';
+        ? 'circles'
+        : 'feed';
   const [isDocumentVisible, setIsDocumentVisible] = useState(true);
   const [isGovernanceDetailOpen, setIsGovernanceDetailOpen] = useState(false);
   const [isNavOpen, setIsNavOpen] = useState(false);
@@ -233,7 +234,9 @@ export function HomeShell() {
   ]);
 
   const governanceControls = useMemo<TopBarGovernanceControls | undefined>(() => {
-    if (!isGovernanceActive) return undefined;
+    if (!isGovernanceActive || isAuthLoading || isAuthUnavailable || !isAuthenticated) {
+      return undefined;
+    }
 
     const remainingMs = Math.max(0, scheduledNextRefreshAt - nowMs);
     const remainingSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
@@ -242,27 +245,22 @@ export function HomeShell() {
     const refreshLabel = isGovernanceDetailOpen
       ? t('governance.refreshUnavailableForModal')
       : t('governance.refreshResults');
-    const statusLabel = isAuthLoading
-      ? t('governance.panel.syncing')
-      : isAuthUnavailable || hasGovernanceAuthError
-        ? t('governance.syncFailed')
-        : requiresGovernanceLogin
-          ? t('governance.loginRequiredTitle')
-          : isGovernanceDetailOpen
-            ? t('governance.autoRefresh.pausedForModal')
-            : reducedMotionEnabled
-              ? t('governance.autoRefresh.pausedForReducedMotion')
-              : !isDocumentVisible
-                ? t('governance.autoRefresh.pausedForHiddenPage')
-                : t('governance.autoRefresh.active', { seconds: remainingSeconds });
+    const statusLabel = hasGovernanceAuthError
+      ? t('governance.syncFailed')
+      : isGovernanceDetailOpen
+        ? t('governance.autoRefresh.pausedForModal')
+        : reducedMotionEnabled
+          ? t('governance.autoRefresh.pausedForReducedMotion')
+          : !isDocumentVisible
+            ? t('governance.autoRefresh.pausedForHiddenPage')
+            : t('governance.autoRefresh.active', { seconds: remainingSeconds });
 
     return {
       statusLabel,
       progressValue,
       isProgressPaused: isGovernanceRefreshPaused,
       isRefreshing: isGovernanceFetching,
-      refreshDisabled:
-        isAuthLoading || isAuthUnavailable || !isAuthenticated || isGovernanceDetailOpen,
+      refreshDisabled: isGovernanceDetailOpen,
       refreshLabel,
       onRefresh: handleGovernanceRefresh,
     };
@@ -279,64 +277,67 @@ export function HomeShell() {
     isGovernanceRefreshPaused,
     nowMs,
     reducedMotionEnabled,
-    requiresGovernanceLogin,
     scheduledNextRefreshAt,
     t,
   ]);
 
   return (
-    <div className="t-terminal-scope relative flex h-full min-h-0 w-full overflow-hidden overscroll-none">
-      <Sidebar
-        activeSection={activeSection}
-        onSectionChange={handleSectionChange}
-        mobileOpen={isNavOpen}
-        onRequestClose={() => setIsNavOpen(false)}
-      />
-
-      <main className="ml-0 flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:ml-[68px]">
-        <TopBar
-          disableScrollFade
-          position="static"
-          mode={topBarMode}
-          governanceControls={governanceControls}
-          onOpenNav={() => setIsNavOpen(true)}
+    <Sheet open={isNavOpen} onOpenChange={setIsNavOpen}>
+      <div className="t-terminal-scope relative flex h-full min-h-0 w-full overflow-hidden overscroll-none">
+        <Sidebar
+          activeSection={activeSection}
+          onSectionChange={handleSectionChange}
+          onRequestClose={() => setIsNavOpen(false)}
         />
-        <div className="t-corner relative min-h-0 flex-1 bg-black">
-          <div aria-hidden="true" className="t-ambient-scan pointer-events-none absolute inset-0" />
-          <div className="relative h-full min-h-0 px-4 pb-10 pt-0 sm:px-6">
-            {bootState !== 'pending' ? (
-              activeSection === 'governance' ? (
-                <div className="h-full pb-1">
-                  <GovernanceResultGrid
-                    query={governanceResultsQuery}
-                    onDetailOpenChange={setIsGovernanceDetailOpen}
-                  />
-                </div>
-              ) : activeSection === 'circles' ? (
-                <CircleGrid />
-              ) : (
-                <ForumFeed />
-              )
-            ) : null}
-          </div>
-          {bootState === 'booting' ? <DeckBootSequence onComplete={handleBootComplete} /> : null}
-          <footer className="absolute inset-x-0 bottom-0 z-20 grid h-8 grid-cols-1 items-center border-t border-[var(--t-noise)] bg-black px-3 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)] sm:grid-cols-[1fr_auto_1fr] sm:gap-4">
-            <span aria-hidden="true" className="hidden sm:block">
-              {'NODE:ONLINE // LINK:STABLE'}
-            </span>
-            <ProjectGithubLink className="justify-self-center normal-case tracking-[0.08em] text-[var(--t-sub)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)] focus-visible:text-[var(--t-accent)]" />
-            <span aria-hidden="true" className="hidden text-right sm:block">
-              {`${DECK_FRAME_CODES[activeSection]} // GRID:OK`}
-            </span>
-          </footer>
-        </div>
-      </main>
 
-      <aside className="hidden h-full min-h-0 w-[220px] shrink-0 flex-col overflow-hidden border-l border-[var(--t-noise)] bg-black md:flex md:w-[240px] xl:w-[280px]">
-        {activeSection === 'governance' ? <GovernancePanelContent /> : <SignalPanelContent />}
-      </aside>
-      <AgentConnectDialog autoPrompt />
-    </div>
+        <main className="ml-0 flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden md:ml-[68px]">
+          <TopBar
+            disableScrollFade
+            position="static"
+            mode={topBarMode}
+            governanceControls={governanceControls}
+            showMobileNavigation
+          />
+          <div className="t-corner relative min-h-0 flex-1 bg-black">
+            <div
+              aria-hidden="true"
+              className="t-ambient-scan pointer-events-none absolute inset-0"
+            />
+            <div className="relative h-full min-h-0 px-4 pb-10 pt-0 sm:px-6">
+              {bootState !== 'pending' ? (
+                activeSection === 'governance' ? (
+                  <div className="h-full pb-1">
+                    <GovernanceResultGrid
+                      query={governanceResultsQuery}
+                      onDetailOpenChange={setIsGovernanceDetailOpen}
+                    />
+                  </div>
+                ) : activeSection === 'circles' ? (
+                  <CircleGrid />
+                ) : (
+                  <ForumFeed />
+                )
+              ) : null}
+            </div>
+            {bootState === 'booting' ? <DeckBootSequence onComplete={handleBootComplete} /> : null}
+            <footer className="absolute inset-x-0 bottom-0 z-20 grid h-8 grid-cols-1 items-center border-t border-[var(--t-noise)] bg-black px-3 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)] sm:grid-cols-[1fr_auto_1fr] sm:gap-4">
+              <span aria-hidden="true" className="hidden sm:block">
+                {'NODE:ONLINE // LINK:STABLE'}
+              </span>
+              <ProjectGithubLink className="justify-self-center normal-case tracking-[0.08em] text-[var(--t-sub)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)] focus-visible:text-[var(--t-accent)]" />
+              <span aria-hidden="true" className="hidden text-right sm:block">
+                {`${DECK_FRAME_CODES[activeSection]} // GRID:OK`}
+              </span>
+            </footer>
+          </div>
+        </main>
+
+        <aside className="hidden h-full min-h-0 w-[220px] shrink-0 flex-col overflow-hidden border-l border-[var(--t-noise)] bg-black md:flex md:w-[240px] xl:w-[280px]">
+          {activeSection === 'governance' ? <GovernancePanelContent /> : <SignalPanelContent />}
+        </aside>
+        <AgentConnectDialog autoPrompt />
+      </div>
+    </Sheet>
   );
 }
 

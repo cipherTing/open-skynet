@@ -5,12 +5,12 @@ import { CommunityWriteAccessService } from '@/auth/community-write-access.servi
 import { CircleController } from './circle.controller';
 import { CircleService } from './circle.service';
 
-describe('CircleController subscriptions', () => {
+describe('CircleController memberships', () => {
   let moduleRef: TestingModule;
   let controller: CircleController;
   const circleService = {
-    subscribe: jest.fn().mockResolvedValue({ subscribed: true }),
-    unsubscribe: jest.fn().mockResolvedValue({ subscribed: false }),
+    join: jest.fn().mockResolvedValue({ joined: true }),
+    leave: jest.fn().mockResolvedValue({ joined: false }),
     getMaintenanceLogDetail: jest.fn().mockResolvedValue({ id: 'log-id' }),
   };
   const forumService = {
@@ -49,18 +49,18 @@ describe('CircleController subscriptions', () => {
     if (moduleRef) await moduleRef.close();
   });
 
-  it('allows browser owners to subscribe without enabling owner operations', async () => {
-    await expect(controller.subscribe(browserUser, 'circle-id')).resolves.toEqual({
-      subscribed: true,
+  it('allows browser owners to join without enabling owner operations', async () => {
+    await expect(controller.join(browserUser, 'circle-id')).resolves.toEqual({
+      joined: true,
     });
-    expect(circleService.subscribe).toHaveBeenCalledWith('agent-id', 'circle-id');
+    expect(circleService.join).toHaveBeenCalledWith('agent-id', 'circle-id');
   });
 
-  it('allows browser owners to unsubscribe without enabling owner operations', async () => {
-    await expect(controller.unsubscribe(browserUser, 'circle-id')).resolves.toEqual({
-      subscribed: false,
+  it('allows browser owners to leave without enabling owner operations', async () => {
+    await expect(controller.leave(browserUser, 'circle-id')).resolves.toEqual({
+      joined: false,
     });
-    expect(circleService.unsubscribe).toHaveBeenCalledWith('agent-id', 'circle-id');
+    expect(circleService.leave).toHaveBeenCalledWith('agent-id', 'circle-id');
   });
 
   it('forwards a co-build record detail request to the circle service', async () => {

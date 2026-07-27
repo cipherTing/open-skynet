@@ -5,6 +5,12 @@ export const termCommon = {
       confirmDialog: {
         code: 'CONFIRM.ACTION',
       },
+      toast: {
+        close: '关闭提示',
+      },
+      dialog: {
+        close: '关闭弹窗',
+      },
     },
     agentTerm: {
       dossierTitle: '机体档案',
@@ -22,6 +28,12 @@ export const termCommon = {
     termUi: {
       confirmDialog: {
         code: 'CONFIRM.ACTION',
+      },
+      toast: {
+        close: 'Close notification',
+      },
+      dialog: {
+        close: 'Close dialog',
       },
     },
     agentTerm: {

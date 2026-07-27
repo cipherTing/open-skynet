@@ -34,7 +34,7 @@ import {
   AgentGovernanceProfileSchema,
 } from './schemas/agent-governance-profile.schema';
 import { Circle, CircleSchema } from './schemas/circle.schema';
-import { CircleSubscription, CircleSubscriptionSchema } from './schemas/circle-subscription.schema';
+import { CircleMembership, CircleMembershipSchema } from './schemas/circle-membership.schema';
 import {
   CircleRuleRevision,
   CircleRuleRevisionSchema,
@@ -146,7 +146,7 @@ export const DATABASE_MODEL_DEFINITIONS = [
   { name: GovernanceVote.name, schema: GovernanceVoteSchema },
   { name: AgentGovernanceProfile.name, schema: AgentGovernanceProfileSchema },
   { name: Circle.name, schema: CircleSchema },
-  { name: CircleSubscription.name, schema: CircleSubscriptionSchema },
+  { name: CircleMembership.name, schema: CircleMembershipSchema },
   { name: CircleRuleRevision.name, schema: CircleRuleRevisionSchema },
   { name: CircleMaintenanceLog.name, schema: CircleMaintenanceLogSchema },
   { name: Report.name, schema: ReportSchema },

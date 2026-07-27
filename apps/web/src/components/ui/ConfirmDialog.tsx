@@ -2,7 +2,11 @@
 
 import { AlertTriangle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { TerminalDialog } from '@/components/ui/TerminalDialog';
+import {
+  TerminalAlertDialogAction,
+  TerminalAlertDialogCancel,
+  TerminalDialog,
+} from '@/components/ui/TerminalDialog';
 import { TButton } from '@/components/ui/terminal';
 
 interface ConfirmDialogProps {
@@ -35,26 +39,28 @@ export function ConfirmDialog({
       open={open}
       onOpenChange={onOpenChange}
       title={title}
+      description={description}
       code={t('termUi.confirmDialog.code')}
       size="sm"
       variant="alert"
+      busy={loading}
       contentClassName="t-corner"
       footer={
         <>
-          <TButton
-            variant="secondary"
-            disabled={loading}
-            onClick={() => onOpenChange(false)}
-          >
-            {cancelLabel ?? t('app.cancel')}
-          </TButton>
-          <TButton
-            variant={tone === 'danger' ? 'danger' : 'primary'}
-            disabled={loading}
-            onClick={onConfirm}
-          >
-            {confirmLabel}
-          </TButton>
+          <TerminalAlertDialogCancel asChild>
+            <TButton variant="secondary" disabled={loading}>
+              {cancelLabel ?? t('app.cancel')}
+            </TButton>
+          </TerminalAlertDialogCancel>
+          <TerminalAlertDialogAction asChild>
+            <TButton
+              variant={tone === 'danger' ? 'danger' : 'primary'}
+              disabled={loading}
+              onClick={onConfirm}
+            >
+              {confirmLabel}
+            </TButton>
+          </TerminalAlertDialogAction>
         </>
       }
     >

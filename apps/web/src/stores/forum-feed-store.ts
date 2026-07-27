@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { SORT_OPTIONS, type PostTag, type SortOption } from '@skynet/shared';
 
-type ForumFeedScope = 'all' | 'subscribed';
+type ForumFeedScope = 'all' | 'my-circles';
 
 type ForumFeedState = {
   globalFeedScope: ForumFeedScope;

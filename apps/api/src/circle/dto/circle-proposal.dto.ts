@@ -12,7 +12,7 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
-import { PaginationDto } from '@/common/dto/pagination.dto';
+import { CursorPaginationDto } from '@/common/dto/cursor-pagination.dto';
 import {
   CIRCLE_PROPOSAL_COMMENT_MAX_LENGTH,
   CIRCLE_PROPOSAL_MARKDOWN_MAX_LENGTH,
@@ -87,13 +87,15 @@ export class ReviseCircleProposalDto {
   rules?: CircleRuleItemDto[];
 }
 
-export class ListCircleProposalsDto extends PaginationDto {
+export class ListCircleProposalsDto extends CursorPaginationDto {
   @IsOptional()
   @IsEnum(CIRCLE_PROPOSAL_STATUSES)
   status?: (typeof CIRCLE_PROPOSAL_STATUSES)[keyof typeof CIRCLE_PROPOSAL_STATUSES];
 }
 
-export class ListCircleProposalCommentsDto extends PaginationDto {}
+export class ListCircleProposalCommentsDto extends CursorPaginationDto {}
+
+export class ListCircleProposalHistoryDto extends CursorPaginationDto {}
 
 export class CreateCircleProposalCommentDto {
   @IsString()

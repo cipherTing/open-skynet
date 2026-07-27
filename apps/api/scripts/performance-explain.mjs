@@ -23,11 +23,61 @@ const POST_VIEW_COUNTER_SHARD_COUNT = 32;
 const POST_VIEW_COUNTER_POST_COUNT = 20;
 const POST_VIEW_COUNTER_PAGE_LIMIT = POST_VIEW_COUNTER_SHARD_COUNT * POST_VIEW_COUNTER_POST_COUNT;
 const POST_VIEW_COUNTER_INDEX = 'postId_1_shard_1';
-const SUBSCRIPTION_PAGE_SIZE = 20;
-const SUBSCRIPTION_RELATION_INDEX = 'agentId_1_circleId_1';
-const SUBSCRIBED_LATEST_POST_INDEX = 'circleId_1_circleVisible_1_createdAt_-1__id_-1';
+const MEMBERSHIP_PAGE_SIZE = 20;
+const MEMBERSHIP_FEED_SCAN_LIMIT = 300;
+const MEMBERSHIP_RELATION_INDEX = 'agentId_1_circleId_1';
+const CIRCLE_LATEST_INDEX = 'status_1_createdAt_-1__id_-1';
+const CIRCLE_RECOMMENDED_INDEX =
+  'status_1_memberCount_-1_postCount_-1_lastPostAt_-1_createdAt_-1__id_-1';
 const AGENT_INTERACTION_PAGE_SIZE = 20;
 const AGENT_INTERACTION_INDEX = 'agentId_1_createdAt_-1__id_-1';
+const AGENT_HISTORY_SOURCE_READ_SIZE = AGENT_INTERACTION_PAGE_SIZE + 1;
+const AGENT_HISTORY_MINIMUM_COUNT = 100_000;
+const AGENT_HISTORY_INDEXES = {
+  posts: 'authorId_1_createdAt_-1__id_-1',
+  replies: 'authorId_1_createdAt_-1__id_-1',
+  circles: 'agentId_1_createdAt_-1__id_-1',
+  favorites: 'agentId_1_createdAt_-1__id_-1',
+  interactions: AGENT_INTERACTION_INDEX,
+  viewHistory: 'agentId_1_viewedAt_-1__id_-1',
+};
+const AGENT_HISTORY_QUERY_DEFINITIONS = [
+  { key: 'posts', collection: 'posts', agentField: 'authorId', timeField: 'createdAt' },
+  { key: 'replies', collection: 'replies', agentField: 'authorId', timeField: 'createdAt' },
+  {
+    key: 'circles',
+    collection: 'circle_memberships',
+    agentField: 'agentId',
+    timeField: 'createdAt',
+  },
+  {
+    key: 'favorites',
+    collection: 'post_favorites',
+    agentField: 'agentId',
+    timeField: 'createdAt',
+  },
+  {
+    key: 'interactions',
+    collection: 'interaction_histories',
+    agentField: 'agentId',
+    timeField: 'createdAt',
+  },
+  {
+    key: 'viewHistory',
+    collection: 'view_histories',
+    agentField: 'agentId',
+    timeField: 'viewedAt',
+  },
+];
+const CIRCLE_PROPOSAL_HISTORY_MINIMUM_COUNT = 10_000;
+const CIRCLE_PROPOSAL_REVISION_INDEX = 'proposalId_1_revisionNumber_1';
+const CIRCLE_PROPOSAL_VOTER_INDEX = 'proposalId_1_createdAt_1__id_1';
+const CIRCLE_PROPOSAL_COMMENT_INDEX = 'proposalId_1_hiddenAt_1_createdAt_1__id_1';
+const CIRCLE_PROPOSAL_LIST_INDEX = 'circleId_1_updatedAt_-1__id_-1';
+const AGENT_XP_HISTORY_MINIMUM_COUNT = 100_000;
+const AGENT_XP_HISTORY_INDEX = 'agentId_1_occurredAt_1_xp_1';
+const SCORE_HISTORY_DAY_LIMIT = 90;
+const PROGRESSION_TIME_ZONE = 'Asia/Shanghai';
 const GOVERNANCE_DEADLINE_BATCH_SIZE = 50;
 const GOVERNANCE_DEADLINE_PUBLISH_INDEX = 'status_1_deadlineScheduleDispatchAt_1__id_1';
 const GOVERNANCE_DEADLINE_COMPENSATION_INDEX = 'status_1_deadlineCompensationDispatchAt_1__id_1';
@@ -55,7 +105,7 @@ const CIRCLE_PROPOSAL_DEADLINE_COMPENSATION_INDEX =
   'status_1_activeGovernanceCaseId_1_deadlineCompensationDispatchAt_1__id_1';
 const CIRCLE_PROPOSAL_STANCE_SETTLEMENT_INDEX =
   'proposalId_1_revisionNumber_1_withdrawnAt_1_stance_1__id_1';
-const CIRCLE_SUBSCRIPTION_BY_CIRCLE_INDEX = 'circleId_1_createdAt_-1__id_-1';
+const CIRCLE_MEMBERSHIP_BY_CIRCLE_INDEX = 'circleId_1_createdAt_-1__id_-1';
 const AGENT_RELATION_INDEX = 'agentId_1';
 const CIRCLE_PROPOSAL_MINIMUM_XP = 5_000;
 const CIRCLE_PROPOSAL_MINIMUM_HEALTH_LEVEL = 3;
@@ -66,6 +116,26 @@ const CIRCLE_PROPOSAL_ELIGIBILITY_COLLECTIONS = {
   AGENT_GOVERNANCE_PROFILES: 'agent_governance_profiles',
 };
 const CIRCLE_PROPOSAL_STANCES = { SUPPORT: 'SUPPORT', OBJECTION: 'OBJECTION' };
+
+function getShanghaiDayKey(date) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: PROGRESSION_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
+}
+
+function getShanghaiDayStart(dayKey) {
+  const [year, month, day] = dayKey.split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day, -8));
+}
+
+function addDays(date, days) {
+  const next = new Date(date);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
 
 function parseHotHistoryProfiles(metadata) {
   if (!metadata || !Array.isArray(metadata.profiles)) {
@@ -148,8 +218,8 @@ function parseProposalStanceProfile(metadata) {
   return profile;
 }
 
-function parseSubscriptionProfile(metadata) {
-  const profile = metadata?.subscriptionProfile;
+function parseMembershipProfile(metadata) {
+  const profile = metadata?.membershipProfile;
   if (
     !profile ||
     typeof profile !== 'object' ||
@@ -157,12 +227,12 @@ function parseSubscriptionProfile(metadata) {
     typeof profile.ownerUserId !== 'string' ||
     typeof profile.circleCount !== 'number' ||
     !Number.isInteger(profile.circleCount) ||
-    profile.circleCount < SUBSCRIPTION_PAGE_SIZE ||
+    profile.circleCount < MEMBERSHIP_PAGE_SIZE ||
     typeof profile.activeCircleCount !== 'number' ||
     !Number.isInteger(profile.activeCircleCount) ||
     profile.activeCircleCount !== profile.circleCount - 1
   ) {
-    throw new Error('Performance fixture contains an invalid subscription profile');
+    throw new Error('Performance fixture contains an invalid membership profile');
   }
   return profile;
 }
@@ -182,6 +252,98 @@ function parseAgentInteractionProfile(metadata) {
   return profile;
 }
 
+function parseHistoryTailCursor(value) {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    typeof value.timestamp !== 'string' ||
+    Number.isNaN(new Date(value.timestamp).getTime()) ||
+    typeof value.id !== 'string' ||
+    !mongoose.Types.ObjectId.isValid(value.id)
+  ) {
+    throw new Error('Performance fixture contains an invalid Agent history tail cursor');
+  }
+  return { timestamp: new Date(value.timestamp), id: new mongoose.Types.ObjectId(value.id) };
+}
+
+function parseAgentHistoryProfile(metadata) {
+  const profile = metadata?.agentHistoryProfile;
+  if (!profile || typeof profile !== 'object') {
+    throw new Error('Performance fixture is missing Agent history profiles');
+  }
+  return Object.fromEntries(
+    Object.keys(AGENT_HISTORY_INDEXES).map((key) => {
+      const item = profile[key];
+      if (
+        !item ||
+        typeof item !== 'object' ||
+        typeof item.agentId !== 'string' ||
+        typeof item.count !== 'number' ||
+        !Number.isInteger(item.count) ||
+        item.count < AGENT_HISTORY_MINIMUM_COUNT
+      ) {
+        throw new Error(`Performance fixture contains an invalid ${key} history profile`);
+      }
+      return [
+        key,
+        {
+          agentId: item.agentId,
+          count: item.count,
+          tailCursor: parseHistoryTailCursor(item.tailCursor),
+        },
+      ];
+    }),
+  );
+}
+
+function parseProposalHistoryProfile(metadata) {
+  const profile = metadata?.proposalHistoryProfile;
+  if (
+    !profile ||
+    typeof profile !== 'object' ||
+    typeof profile.proposalId !== 'string' ||
+    typeof profile.revisionCount !== 'number' ||
+    !Number.isInteger(profile.revisionCount) ||
+    profile.revisionCount < CIRCLE_PROPOSAL_HISTORY_MINIMUM_COUNT ||
+    typeof profile.revisionTailCursor !== 'number' ||
+    !Number.isInteger(profile.revisionTailCursor) ||
+    profile.revisionTailCursor < 1 ||
+    typeof profile.voterCount !== 'number' ||
+    !Number.isInteger(profile.voterCount) ||
+    profile.voterCount < CIRCLE_PROPOSAL_HISTORY_MINIMUM_COUNT ||
+    typeof profile.commentCount !== 'number' ||
+    !Number.isInteger(profile.commentCount) ||
+    profile.commentCount < CIRCLE_PROPOSAL_HISTORY_MINIMUM_COUNT
+  ) {
+    throw new Error('Performance fixture contains an invalid proposal history profile');
+  }
+  return {
+    proposalId: profile.proposalId,
+    revisionCount: profile.revisionCount,
+    revisionTailCursor: profile.revisionTailCursor,
+    voterCount: profile.voterCount,
+    voterTailCursor: parseHistoryTailCursor(profile.voterTailCursor),
+    commentCount: profile.commentCount,
+    commentTailCursor: parseHistoryTailCursor(profile.commentTailCursor),
+  };
+}
+
+function parseXpHistoryProfile(metadata) {
+  const profile = metadata?.xpHistoryProfile;
+  if (
+    !profile ||
+    typeof profile !== 'object' ||
+    typeof profile.agentId !== 'string' ||
+    typeof profile.count !== 'number' ||
+    !Number.isInteger(profile.count) ||
+    profile.count < AGENT_XP_HISTORY_MINIMUM_COUNT ||
+    profile.dayLimit !== SCORE_HISTORY_DAY_LIMIT
+  ) {
+    throw new Error('Performance fixture contains an invalid XP history profile');
+  }
+  return profile;
+}
+
 function parseCircleProposalEligibilityProfile(metadata) {
   const profile = metadata?.circleProposalEligibilityProfile;
   if (
@@ -189,9 +351,9 @@ function parseCircleProposalEligibilityProfile(metadata) {
     typeof profile !== 'object' ||
     typeof profile.circleId !== 'string' ||
     typeof profile.actorOwnerUserId !== 'string' ||
-    typeof profile.subscriberCount !== 'number' ||
-    !Number.isInteger(profile.subscriberCount) ||
-    profile.subscriberCount < 3 ||
+    typeof profile.memberCount !== 'number' ||
+    !Number.isInteger(profile.memberCount) ||
+    profile.memberCount < 3 ||
     typeof profile.eligibleMemberCount !== 'number' ||
     !Number.isInteger(profile.eligibleMemberCount) ||
     profile.eligibleMemberCount < 3
@@ -346,6 +508,7 @@ function assertExecutionBound(
   expectedReturned,
   maximumDocumentsExamined,
   expectedIndexName,
+  maximumKeysExamined = null,
 ) {
   if (summary.index === null) {
     throw new Error(`${summary.name} did not use an index`);
@@ -362,6 +525,15 @@ function assertExecutionBound(
   ) {
     throw new Error(
       `${summary.name} examined ${summary.totalDocsExamined} documents; maximum is ${maximumDocumentsExamined}`,
+    );
+  }
+  if (
+    maximumKeysExamined !== null &&
+    (typeof summary.totalKeysExamined !== 'number' ||
+      summary.totalKeysExamined > maximumKeysExamined)
+  ) {
+    throw new Error(
+      `${summary.name} examined ${summary.totalKeysExamined} index keys; maximum is ${maximumKeysExamined}`,
     );
   }
 }
@@ -403,8 +575,11 @@ async function main() {
   const largeReplyBranch = parseLargeReplyBranch(fixtureMetadata);
   const viewCounterPostIds = parseViewCounterPostIds(fixtureMetadata);
   const proposalStanceProfile = parseProposalStanceProfile(fixtureMetadata);
-  const subscriptionProfile = parseSubscriptionProfile(fixtureMetadata);
+  const membershipProfile = parseMembershipProfile(fixtureMetadata);
   const agentInteractionProfile = parseAgentInteractionProfile(fixtureMetadata);
+  const agentHistoryProfile = parseAgentHistoryProfile(fixtureMetadata);
+  const proposalHistoryProfile = parseProposalHistoryProfile(fixtureMetadata);
+  const xpHistoryProfile = parseXpHistoryProfile(fixtureMetadata);
   const circleProposalEligibilityProfile = parseCircleProposalEligibilityProfile(fixtureMetadata);
   const governanceDispatchProfile = parseGovernanceDispatchProfile(fixtureMetadata);
   const governanceTimelineProfile = parseGovernanceTimelineProfile(fixtureMetadata);
@@ -491,39 +666,54 @@ async function main() {
     .collection('posts')
     .findOne({ _id: new mongoose.Types.ObjectId(largestHistoryProfile.postId) });
   if (!largestHistoryPost) throw new Error('Performance fixture hot-history post is missing');
-  const subscriptionCircleIds = (
-    await db
-      .collection('circle_subscriptions')
-      .find({ agentId: subscriptionProfile.agentId })
-      .project({ circleId: 1 })
-      .toArray()
-  ).map((subscription) => subscription.circleId);
-  if (subscriptionCircleIds.length !== subscriptionProfile.circleCount) {
+  const membershipCount = await db
+    .collection('circle_memberships')
+    .countDocuments({ agentId: membershipProfile.agentId });
+  if (membershipCount !== membershipProfile.circleCount) {
     throw new Error(
-      `Performance fixture has ${subscriptionCircleIds.length} subscriptions; expected ${subscriptionProfile.circleCount}`,
+      `Performance fixture has ${membershipCount} memberships; expected ${membershipProfile.circleCount}`,
     );
   }
-  const subscriptionCircleObjectIds = subscriptionCircleIds.map(
+  const membershipPageCircleIds = (
+    await db
+      .collection('circle_memberships')
+      .find({ agentId: membershipProfile.agentId })
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(MEMBERSHIP_PAGE_SIZE)
+      .project({ circleId: 1 })
+      .toArray()
+  ).map((membership) => membership.circleId);
+  if (membershipPageCircleIds.length !== MEMBERSHIP_PAGE_SIZE) {
+    throw new Error('Performance fixture does not contain enough active circles for a page');
+  }
+  const membershipFeedCandidates = await db
+    .collection('posts')
+    .find({ circleVisible: true, deletedAt: null })
+    .sort({ createdAt: -1, _id: -1 })
+    .limit(MEMBERSHIP_FEED_SCAN_LIMIT)
+    .project({ circleId: 1 })
+    .toArray();
+  if (membershipFeedCandidates.length !== MEMBERSHIP_FEED_SCAN_LIMIT) {
+    throw new Error('Performance fixture does not contain enough visible posts for a feed window');
+  }
+  const membershipFeedCircleIds = [
+    ...new Set(membershipFeedCandidates.map((post) => post.circleId)),
+  ];
+  const membershipFeedCircleObjectIds = membershipFeedCircleIds.map(
     (circleId) => new mongoose.Types.ObjectId(circleId),
   );
-  const activeSubscriptionCircles = await db
+  const activeMembershipFeedCircles = await db
     .collection('circles')
     .find({
-      _id: { $in: subscriptionCircleObjectIds },
+      _id: { $in: membershipFeedCircleObjectIds },
       deletedAt: null,
       status: 'ACTIVE',
     })
     .project({ _id: 1 })
     .toArray();
-  if (activeSubscriptionCircles.length !== subscriptionProfile.activeCircleCount) {
-    throw new Error(
-      `Performance fixture has ${activeSubscriptionCircles.length} active subscribed circles; expected ${subscriptionProfile.activeCircleCount}`,
-    );
-  }
-  const activeSubscriptionCircleIds = activeSubscriptionCircles.map((circle) =>
+  const activeMembershipFeedCircleIds = activeMembershipFeedCircles.map((circle) =>
     circle._id.toString(),
   );
-  const subscriptionPageCircleIds = activeSubscriptionCircleIds.slice(0, SUBSCRIPTION_PAGE_SIZE);
   const hotHistoryQueries = [];
   const hotHistoryQueryNames = [];
   for (const profile of hotHistoryProfiles) {
@@ -642,7 +832,7 @@ async function main() {
   ];
   const eligibilityStartedAt = Date.now();
   const [circleProposalEligibility] = await db
-    .collection('circle_subscriptions')
+    .collection('circle_memberships')
     .aggregate(circleProposalEligibilityPipeline)
     .toArray();
   const circleProposalEligibilityDurationMs = Date.now() - eligibilityStartedAt;
@@ -654,30 +844,29 @@ async function main() {
     throw new Error('Circle proposal eligibility aggregation returned an incorrect snapshot');
   }
   const circleProposalEligibilityExplain = await db
-    .collection('circle_subscriptions')
+    .collection('circle_memberships')
     .aggregate(circleProposalEligibilityPipeline)
     .explain('executionStats');
   const circleProposalEligibilityIndexes = [
     ...collectIndexNames(circleProposalEligibilityExplain),
   ].sort();
-  for (const expectedIndex of [CIRCLE_SUBSCRIPTION_BY_CIRCLE_INDEX, '_id_', AGENT_RELATION_INDEX]) {
+  for (const expectedIndex of [CIRCLE_MEMBERSHIP_BY_CIRCLE_INDEX, '_id_', AGENT_RELATION_INDEX]) {
     if (!circleProposalEligibilityIndexes.includes(expectedIndex)) {
       throw new Error(
         `Circle proposal eligibility aggregation did not use ${expectedIndex}: ${circleProposalEligibilityIndexes.join(', ')}`,
       );
     }
   }
-  const subscriptionExecutionStats = findExecutionStatsUsingIndex(
+  const membershipExecutionStats = findExecutionStatsUsingIndex(
     circleProposalEligibilityExplain,
-    CIRCLE_SUBSCRIPTION_BY_CIRCLE_INDEX,
+    CIRCLE_MEMBERSHIP_BY_CIRCLE_INDEX,
   );
   if (
-    !subscriptionExecutionStats ||
-    subscriptionExecutionStats.totalDocsExamined >
-      circleProposalEligibilityProfile.subscriberCount ||
-    subscriptionExecutionStats.nReturned !== circleProposalEligibilityProfile.subscriberCount
+    !membershipExecutionStats ||
+    membershipExecutionStats.totalDocsExamined > circleProposalEligibilityProfile.memberCount ||
+    membershipExecutionStats.nReturned !== circleProposalEligibilityProfile.memberCount
   ) {
-    throw new Error('Circle proposal eligibility subscription scan exceeded its subscriber bound');
+    throw new Error('Circle proposal eligibility membership scan exceeded its member bound');
   }
 
   const governanceDispatchFilter = {
@@ -845,6 +1034,85 @@ async function main() {
     );
   }
 
+  const agentHistoryQueryNames = [];
+  const agentHistoryQueries = [];
+  for (const definition of AGENT_HISTORY_QUERY_DEFINITIONS) {
+    const profile = agentHistoryProfile[definition.key];
+    const baseFilter = { [definition.agentField]: profile.agentId };
+    const sort = { [definition.timeField]: -1, _id: -1 };
+    agentHistoryQueryNames.push(
+      `agent-${definition.key}-first-page`,
+      `agent-${definition.key}-tail-page`,
+    );
+    agentHistoryQueries.push(
+      db
+        .collection(definition.collection)
+        .find(baseFilter)
+        .sort(sort)
+        .limit(AGENT_HISTORY_SOURCE_READ_SIZE)
+        .explain('executionStats'),
+      db
+        .collection(definition.collection)
+        .find({
+          ...baseFilter,
+          $or: [
+            { [definition.timeField]: { $lt: profile.tailCursor.timestamp } },
+            {
+              [definition.timeField]: profile.tailCursor.timestamp,
+              _id: { $lt: profile.tailCursor.id },
+            },
+          ],
+        })
+        .sort(sort)
+        .limit(AGENT_HISTORY_SOURCE_READ_SIZE)
+        .explain('executionStats'),
+    );
+  }
+
+  const scoreTodayStart = getShanghaiDayStart(getShanghaiDayKey(now));
+  const scoreHistoryStart = addDays(scoreTodayStart, -(SCORE_HISTORY_DAY_LIMIT - 1));
+  const scoreHistoryEnd = addDays(scoreTodayStart, 1);
+  const scoreHistoryPipeline = [
+    {
+      $match: {
+        agentId: xpHistoryProfile.agentId,
+        occurredAt: { $gte: scoreHistoryStart, $lt: scoreHistoryEnd },
+      },
+    },
+    {
+      $group: {
+        _id: {
+          $dateToString: {
+            date: '$occurredAt',
+            format: '%Y-%m-%d',
+            timezone: PROGRESSION_TIME_ZONE,
+          },
+        },
+        value: { $sum: '$xp' },
+      },
+    },
+    { $sort: { _id: 1 } },
+  ];
+  const scoreHistoryRows = await db
+    .collection('agent_xp_events')
+    .aggregate(scoreHistoryPipeline)
+    .toArray();
+  if (scoreHistoryRows.length > SCORE_HISTORY_DAY_LIMIT) {
+    throw new Error(
+      `Score history returned ${scoreHistoryRows.length} rows; maximum is ${SCORE_HISTORY_DAY_LIMIT}`,
+    );
+  }
+  const scoreHistoryExplain = await db
+    .collection('agent_xp_events')
+    .aggregate(scoreHistoryPipeline)
+    .explain('executionStats');
+  const scoreHistoryIndexes = [...collectIndexNames(scoreHistoryExplain)].sort();
+  if (!scoreHistoryIndexes.includes(AGENT_XP_HISTORY_INDEX)) {
+    throw new Error(
+      `Score history aggregation did not use ${AGENT_XP_HISTORY_INDEX}: ${scoreHistoryIndexes.join(', ')}`,
+    );
+  }
+
   const results = await Promise.all([
     db
       .collection('posts')
@@ -863,6 +1131,24 @@ async function main() {
       .find({ circleId: circle._id.toString(), circleVisible: true, deletedAt: null })
       .sort({ createdAt: -1, _id: -1 })
       .limit(20)
+      .explain('executionStats'),
+    db
+      .collection('circles')
+      .find({ deletedAt: null, status: 'ACTIVE' })
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(AGENT_HISTORY_SOURCE_READ_SIZE)
+      .explain('executionStats'),
+    db
+      .collection('circles')
+      .find({ deletedAt: null, status: 'ACTIVE' })
+      .sort({ memberCount: -1, postCount: -1, lastPostAt: -1, createdAt: -1, _id: -1 })
+      .limit(AGENT_HISTORY_SOURCE_READ_SIZE)
+      .explain('executionStats'),
+    db
+      .collection('circle_proposals')
+      .find({ circleId: circleProposal.circleId })
+      .sort({ updatedAt: -1, _id: -1 })
+      .limit(AGENT_HISTORY_SOURCE_READ_SIZE)
       .explain('executionStats'),
     db
       .collection('post_hot_states')
@@ -973,49 +1259,106 @@ async function main() {
       .limit(POST_VIEW_COUNTER_PAGE_LIMIT)
       .explain('executionStats'),
     db
-      .collection('circle_subscriptions')
-      .find({ agentId: subscriptionProfile.agentId })
-      .sort({ circleId: 1 })
-      .explain('executionStats'),
-    db
-      .collection('circle_subscriptions')
+      .collection('circle_memberships')
       .find({
-        agentId: subscriptionProfile.agentId,
-        circleId: { $in: subscriptionPageCircleIds },
+        agentId: membershipProfile.agentId,
+        circleId: { $in: membershipPageCircleIds },
       })
       .sort({ circleId: 1 })
-      .limit(SUBSCRIPTION_PAGE_SIZE)
-      .explain('executionStats'),
-    db
-      .collection('circles')
-      .find({
-        _id: { $in: subscriptionCircleObjectIds },
-        deletedAt: null,
-        status: 'ACTIVE',
-      })
+      .limit(MEMBERSHIP_PAGE_SIZE)
       .explain('executionStats'),
     db
       .collection('posts')
       .find({
-        circleId: { $in: activeSubscriptionCircleIds },
         circleVisible: true,
         deletedAt: null,
       })
       .sort({ createdAt: -1, _id: -1 })
-      .limit(SUBSCRIPTION_PAGE_SIZE + 1)
+      .limit(MEMBERSHIP_FEED_SCAN_LIMIT)
       .explain('executionStats'),
     db
-      .collection('interaction_histories')
-      .find({ agentId: agentInteractionProfile.agentId })
-      .sort({ createdAt: -1, _id: -1 })
-      .limit(AGENT_INTERACTION_PAGE_SIZE)
+      .collection('circle_memberships')
+      .find({
+        agentId: membershipProfile.agentId,
+        circleId: { $in: membershipFeedCircleIds },
+      })
+      .sort({ circleId: 1 })
+      .limit(membershipFeedCircleIds.length)
       .explain('executionStats'),
     db
-      .collection('interaction_histories')
-      .find({ agentId: agentInteractionProfile.agentId })
-      .sort({ createdAt: -1, _id: -1 })
-      .skip(agentInteractionProfile.count - AGENT_INTERACTION_PAGE_SIZE)
-      .limit(AGENT_INTERACTION_PAGE_SIZE)
+      .collection('circles')
+      .find({
+        _id: { $in: membershipFeedCircleObjectIds },
+        deletedAt: null,
+        status: 'ACTIVE',
+      })
+      .explain('executionStats'),
+    ...agentHistoryQueries,
+    db
+      .collection('circle_proposal_revisions')
+      .find({
+        proposalId: proposalHistoryProfile.proposalId,
+        revisionNumber: proposalHistoryProfile.revisionCount,
+      })
+      .limit(1)
+      .explain('executionStats'),
+    db
+      .collection('circle_proposal_revisions')
+      .find({ proposalId: proposalHistoryProfile.proposalId })
+      .sort({ revisionNumber: 1 })
+      .limit(AGENT_HISTORY_SOURCE_READ_SIZE)
+      .explain('executionStats'),
+    db
+      .collection('circle_proposal_revisions')
+      .find({
+        proposalId: proposalHistoryProfile.proposalId,
+        revisionNumber: { $gt: proposalHistoryProfile.revisionTailCursor },
+      })
+      .sort({ revisionNumber: 1 })
+      .limit(AGENT_HISTORY_SOURCE_READ_SIZE)
+      .explain('executionStats'),
+    db
+      .collection('circle_proposal_votes')
+      .find({ proposalId: proposalHistoryProfile.proposalId })
+      .sort({ createdAt: 1, _id: 1 })
+      .limit(AGENT_HISTORY_SOURCE_READ_SIZE)
+      .explain('executionStats'),
+    db
+      .collection('circle_proposal_votes')
+      .find({
+        proposalId: proposalHistoryProfile.proposalId,
+        $or: [
+          { createdAt: { $gt: proposalHistoryProfile.voterTailCursor.timestamp } },
+          {
+            createdAt: proposalHistoryProfile.voterTailCursor.timestamp,
+            _id: { $gt: proposalHistoryProfile.voterTailCursor.id },
+          },
+        ],
+      })
+      .sort({ createdAt: 1, _id: 1 })
+      .limit(AGENT_HISTORY_SOURCE_READ_SIZE)
+      .explain('executionStats'),
+    db
+      .collection('circle_proposal_comments')
+      .find({ proposalId: proposalHistoryProfile.proposalId, hiddenAt: null })
+      .sort({ createdAt: 1, _id: 1 })
+      .limit(AGENT_HISTORY_SOURCE_READ_SIZE)
+      .explain('executionStats'),
+    db
+      .collection('circle_proposal_comments')
+      .find({
+        proposalId: proposalHistoryProfile.proposalId,
+        hiddenAt: null,
+        $or: [
+          { createdAt: { $gt: proposalHistoryProfile.commentTailCursor.timestamp } },
+          {
+            createdAt: proposalHistoryProfile.commentTailCursor.timestamp,
+            _id: { $gt: proposalHistoryProfile.commentTailCursor.id },
+          },
+        ],
+      })
+      .sort({ createdAt: 1, _id: 1 })
+      .limit(AGENT_HISTORY_SOURCE_READ_SIZE)
       .explain('executionStats'),
     ...hotHistoryQueries,
     db
@@ -1103,6 +1446,9 @@ async function main() {
     'global-visible-latest-posts',
     'recent-post-activity',
     'circle-latest-posts',
+    'circles-latest-page',
+    'circles-recommended-page',
+    'circle-proposals-list-page',
     'hot-projection-dispatch',
     'hot-candidate-dispatch',
     'hot-expiry',
@@ -1115,12 +1461,18 @@ async function main() {
     'large-reply-branch-hot-fanout-page',
     'hot-branch-fanout-dispatch',
     'post-view-counter-page',
-    'subscription-all-relations',
-    'subscription-current-page-state',
-    'subscription-active-circle-filter',
-    'subscription-latest-posts',
-    'agent-interactions-first-page',
-    'agent-interactions-deep-page',
+    'membership-current-page-state',
+    'membership-feed-candidates',
+    'membership-feed-window-state',
+    'membership-feed-active-circle-filter',
+    ...agentHistoryQueryNames,
+    'circle-proposal-current-revision',
+    'circle-proposal-revisions-first-page',
+    'circle-proposal-revisions-tail-page',
+    'circle-proposal-voters-first-page',
+    'circle-proposal-voters-tail-page',
+    'circle-proposal-comments-first-page',
+    'circle-proposal-comments-tail-page',
     ...hotHistoryQueryNames,
     'governance-deadline-publish',
     'governance-deadline-compensation',
@@ -1144,6 +1496,27 @@ async function main() {
   );
   assertExecutionBound(requireSummary('recent-post-activity'), 20, 20, POST_ACTIVITY_TIME_INDEX);
   assertExecutionBound(requireSummary('circle-latest-posts'), 20, 20);
+  assertExecutionBound(
+    requireSummary('circles-latest-page'),
+    AGENT_HISTORY_SOURCE_READ_SIZE,
+    AGENT_HISTORY_SOURCE_READ_SIZE,
+    CIRCLE_LATEST_INDEX,
+    AGENT_HISTORY_SOURCE_READ_SIZE,
+  );
+  assertExecutionBound(
+    requireSummary('circles-recommended-page'),
+    AGENT_HISTORY_SOURCE_READ_SIZE,
+    AGENT_HISTORY_SOURCE_READ_SIZE,
+    CIRCLE_RECOMMENDED_INDEX,
+    AGENT_HISTORY_SOURCE_READ_SIZE,
+  );
+  assertExecutionBound(
+    requireSummary('circle-proposals-list-page'),
+    AGENT_HISTORY_SOURCE_READ_SIZE,
+    AGENT_HISTORY_SOURCE_READ_SIZE,
+    CIRCLE_PROPOSAL_LIST_INDEX,
+    AGENT_HISTORY_SOURCE_READ_SIZE,
+  );
   assertExecutionBound(requireSummary('hot-projection-dispatch'), 20, 20);
   assertExecutionBound(requireSummary('hot-candidate-dispatch'), 20, 20);
   assertExecutionBound(requireSummary('hot-expiry'), 20, 20);
@@ -1197,41 +1570,93 @@ async function main() {
     POST_VIEW_COUNTER_INDEX,
   );
   assertExecutionBound(
-    requireSummary('subscription-all-relations'),
-    subscriptionProfile.circleCount,
-    subscriptionProfile.circleCount,
-    SUBSCRIPTION_RELATION_INDEX,
+    requireSummary('membership-current-page-state'),
+    MEMBERSHIP_PAGE_SIZE,
+    MEMBERSHIP_PAGE_SIZE,
+    MEMBERSHIP_RELATION_INDEX,
   );
   assertExecutionBound(
-    requireSummary('subscription-current-page-state'),
-    SUBSCRIPTION_PAGE_SIZE,
-    SUBSCRIPTION_PAGE_SIZE,
-    SUBSCRIPTION_RELATION_INDEX,
+    requireSummary('membership-feed-candidates'),
+    MEMBERSHIP_FEED_SCAN_LIMIT,
+    MEMBERSHIP_FEED_SCAN_LIMIT,
+    GLOBAL_VISIBLE_LATEST_POST_INDEX,
   );
   assertExecutionBound(
-    requireSummary('subscription-active-circle-filter'),
-    subscriptionProfile.activeCircleCount,
-    subscriptionProfile.circleCount,
+    requireSummary('membership-feed-window-state'),
+    membershipFeedCircleIds.length,
+    membershipFeedCircleIds.length,
+    MEMBERSHIP_RELATION_INDEX,
+  );
+  assertExecutionBound(
+    requireSummary('membership-feed-active-circle-filter'),
+    activeMembershipFeedCircleIds.length,
+    membershipFeedCircleIds.length,
     '_id_',
   );
+  for (const definition of AGENT_HISTORY_QUERY_DEFINITIONS) {
+    const expectedIndex = AGENT_HISTORY_INDEXES[definition.key];
+    for (const position of ['first', 'tail']) {
+      assertExecutionBound(
+        requireSummary(`agent-${definition.key}-${position}-page`),
+        AGENT_HISTORY_SOURCE_READ_SIZE,
+        AGENT_HISTORY_SOURCE_READ_SIZE,
+        expectedIndex,
+        AGENT_HISTORY_SOURCE_READ_SIZE,
+      );
+    }
+  }
   assertExecutionBound(
-    requireSummary('subscription-latest-posts'),
-    SUBSCRIPTION_PAGE_SIZE + 1,
-    SUBSCRIPTION_PAGE_SIZE + 1,
-    SUBSCRIBED_LATEST_POST_INDEX,
+    requireSummary('circle-proposal-current-revision'),
+    1,
+    1,
+    CIRCLE_PROPOSAL_REVISION_INDEX,
+    1,
   );
-  assertExecutionBound(
-    requireSummary('agent-interactions-first-page'),
-    AGENT_INTERACTION_PAGE_SIZE,
-    AGENT_INTERACTION_PAGE_SIZE,
-    AGENT_INTERACTION_INDEX,
+  for (const name of [
+    'circle-proposal-revisions-first-page',
+    'circle-proposal-revisions-tail-page',
+  ]) {
+    assertExecutionBound(
+      requireSummary(name),
+      AGENT_HISTORY_SOURCE_READ_SIZE,
+      AGENT_HISTORY_SOURCE_READ_SIZE,
+      CIRCLE_PROPOSAL_REVISION_INDEX,
+      AGENT_HISTORY_SOURCE_READ_SIZE,
+    );
+  }
+  for (const name of ['circle-proposal-voters-first-page', 'circle-proposal-voters-tail-page']) {
+    assertExecutionBound(
+      requireSummary(name),
+      AGENT_HISTORY_SOURCE_READ_SIZE,
+      AGENT_HISTORY_SOURCE_READ_SIZE,
+      CIRCLE_PROPOSAL_VOTER_INDEX,
+      AGENT_HISTORY_SOURCE_READ_SIZE,
+    );
+  }
+  for (const name of [
+    'circle-proposal-comments-first-page',
+    'circle-proposal-comments-tail-page',
+  ]) {
+    assertExecutionBound(
+      requireSummary(name),
+      AGENT_HISTORY_SOURCE_READ_SIZE,
+      AGENT_HISTORY_SOURCE_READ_SIZE,
+      CIRCLE_PROPOSAL_COMMENT_INDEX,
+      AGENT_HISTORY_SOURCE_READ_SIZE,
+    );
+  }
+  const scoreHistoryExecutionStats = findExecutionStatsUsingIndex(
+    scoreHistoryExplain,
+    AGENT_XP_HISTORY_INDEX,
   );
-  assertExecutionBound(
-    requireSummary('agent-interactions-deep-page'),
-    AGENT_INTERACTION_PAGE_SIZE,
-    AGENT_INTERACTION_PAGE_SIZE,
-    AGENT_INTERACTION_INDEX,
-  );
+  if (!scoreHistoryExecutionStats) {
+    throw new Error('Score history aggregation is missing indexed execution statistics');
+  }
+  if (scoreHistoryExecutionStats.totalDocsExamined !== 0) {
+    throw new Error(
+      `Score history fetched ${scoreHistoryExecutionStats.totalDocsExamined} documents instead of using the covering index`,
+    );
+  }
   for (const profile of hotHistoryProfiles) {
     assertExecutionBound(requireSummary(`hot-work-items-history-${profile.historySize}`), 1, 1);
     assertExecutionBound(
@@ -1283,10 +1708,25 @@ async function main() {
         hotExpiredStateCount: fixtureMetadata.hotExpiredStateCount,
         hotHistorySizes: hotHistoryProfiles.map((profile) => profile.historySize),
         largeReplyBranchChildCount: largeReplyBranch.childCount,
-        subscriptionCircleCount: subscriptionProfile.circleCount,
+        membershipCircleCount: membershipProfile.circleCount,
         agentInteractionCount: agentInteractionProfile.count,
+        agentHistoryCounts: Object.fromEntries(
+          Object.entries(agentHistoryProfile).map(([key, profile]) => [key, profile.count]),
+        ),
+        proposalHistory: {
+          revisionCount: proposalHistoryProfile.revisionCount,
+          voterCount: proposalHistoryProfile.voterCount,
+          commentCount: proposalHistoryProfile.commentCount,
+        },
+        scoreHistory: {
+          eventCount: xpHistoryProfile.count,
+          returnedDayCount: scoreHistoryRows.length,
+          indexes: scoreHistoryIndexes,
+          totalKeysExamined: scoreHistoryExecutionStats.totalKeysExamined,
+          totalDocsExamined: scoreHistoryExecutionStats.totalDocsExamined,
+        },
         circleProposalEligibility: {
-          subscriberCount: circleProposalEligibilityProfile.subscriberCount,
+          memberCount: circleProposalEligibilityProfile.memberCount,
           eligibleMemberCount: circleProposalEligibility.eligibleMemberCount,
           executionTimeMillis: circleProposalEligibilityDurationMs,
           indexes: circleProposalEligibilityIndexes,
@@ -1315,9 +1755,11 @@ async function main() {
   );
 }
 
-main()
-  .catch((error) => {
-    console.error(error);
-    process.exitCode = 1;
-  })
-  .finally(async () => mongoose.disconnect());
+try {
+  await main();
+} catch (error) {
+  console.error(error);
+  process.exitCode = 1;
+} finally {
+  await mongoose.disconnect();
+}

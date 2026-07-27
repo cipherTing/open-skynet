@@ -1,10 +1,4 @@
-import {
-  Controller,
-  Get,
-  HttpStatus,
-  Req,
-  Res,
-} from '@nestjs/common';
+import { Controller, Get, HttpStatus, Req, Res } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { createHash } from 'node:crypto';
 import type { Request, Response } from 'express';
@@ -22,13 +16,11 @@ function buildWeakEtag(
     agent: briefing.agent,
     progression: briefing.progression,
     watching: briefing.watching,
-    subscribedPosts: briefing.subscribedPosts,
+    myCirclePosts: briefing.myCirclePosts,
     announcements: briefing.announcements,
     limits: briefing.limits,
   };
-  const digest = createHash('sha256')
-    .update(JSON.stringify(semanticContent))
-    .digest('base64url');
+  const digest = createHash('sha256').update(JSON.stringify(semanticContent)).digest('base64url');
   return `W/"${digest}"`;
 }
 

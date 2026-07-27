@@ -1,26 +1,20 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Logger,
-  Module,
-  Post,
-  Query,
-} from '@nestjs/common';
+import { Body, Controller, Get, Logger, Module, Post, Query } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { IsString, MinLength } from 'class-validator';
 import type { INestApplication } from '@nestjs/common';
 import { resolve } from 'node:path';
 import request from 'supertest';
-import {
-  AcceptLanguageResolver,
-  I18nModule,
-} from 'nestjs-i18n';
+import { AcceptLanguageResolver, I18nModule } from 'nestjs-i18n';
 import { apiErrors, apiMessage } from '@/common/i18n/api-message';
 import { HttpExceptionFilter } from '@/common/filters/http-exception.filter';
-import { TransformInterceptor } from '@/common/interceptors/transform.interceptor';
+import {
+  TransformInterceptor,
+  type ResponseSemanticsReader,
+} from '@/common/interceptors/transform.interceptor';
 import { InsufficientStaminaException } from '@/progression/insufficient-stamina.exception';
 import { ApiValidationPipe } from '@/common/pipes/api-validation.pipe';
+import { CursorPaginationDto } from '@/common/dto/cursor-pagination.dto';
+import type { ResponseSemantics } from '@/common/semantics/response-semantics';
 
 class TestBodyDto {
   @IsString()
@@ -47,6 +41,16 @@ class ForumController {
   @Get('query-semantics')
   querySemantics(@Query() query: TestQueryDto) {
     return { title: query.value };
+  }
+
+  @Get('business-data-field')
+  businessDataField() {
+    return { data: 'original-business-field' };
+  }
+
+  @Get('cursor-pagination')
+  cursorPagination(@Query() query: CursorPaginationDto) {
+    return query;
   }
 
   @Get('error')
@@ -79,7 +83,6 @@ class ForumController {
       nextRecoverAt: '2026-07-19T01:00:00.000Z',
     });
   }
-
 }
 
 @Module({
@@ -88,9 +91,7 @@ class ForumController {
       fallbackLanguage: 'en',
       fallbacks: { 'en-*': 'en', 'zh-*': 'zh' },
       loaderOptions: { path: resolve(__dirname, '../../i18n'), watch: false },
-      resolvers: [
-        { use: AcceptLanguageResolver, options: { matchType: 'loose' } },
-      ],
+      resolvers: [{ use: AcceptLanguageResolver, options: { matchType: 'loose' } }],
       logging: false,
     }),
   ],
@@ -107,12 +108,29 @@ describe('API language contract', () => {
     loggerError = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     moduleRef = await Test.createTestingModule({ imports: [ContractTestModule] }).compile();
     app = moduleRef.createNestApplication();
-    app.useGlobalPipes(new ApiValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-    }));
-    app.useGlobalInterceptors(new TransformInterceptor());
+    app.useGlobalPipes(
+      new ApiValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    );
+    const successSemantics: ResponseSemantics = {
+      message: 'System-generated result message in the negotiated response language.',
+      'level.name': 'Human-readable name of the current level.',
+      createdAt: 'Time when this record was created.',
+    };
+    const querySemantics: ResponseSemantics = {
+      title: 'Title associated with this resource.',
+    };
+    const responseSemanticsReader: ResponseSemanticsReader = {
+      get: async (handlerKey) => {
+        if (handlerKey === 'ForumController.success') return successSemantics;
+        if (handlerKey === 'ForumController.querySemantics') return querySemantics;
+        return null;
+      },
+    };
+    app.useGlobalInterceptors(new TransformInterceptor(responseSemanticsReader));
     app.useGlobalFilters(new HttpExceptionFilter());
     await app.init();
   });
@@ -129,21 +147,18 @@ describe('API language contract', () => {
     ['zh', 'zh-CN', '已退出登录。', '虚位'],
     ['zh-CN;q=0.9,en;q=0.8', 'zh-CN', '已退出登录。', '虚位'],
     ['fr-FR', 'en', 'Signed out successfully.', 'Vacant'],
-  ])(
-    'negotiates %s as %s',
-    async (acceptLanguage, contentLanguage, message, levelName) => {
-      const pending = request(app.getHttpServer()).get('/contract-test/success');
-      if (acceptLanguage) pending.set('Accept-Language', acceptLanguage);
-      const response = await pending.expect(200);
-      expect(response.headers['content-language']).toBe(contentLanguage);
-      expect(response.headers.vary).toContain('Accept-Language');
-      expect(response.body.data).toEqual({
-        message,
-        level: { name: levelName },
-        createdAt: '2026-07-19T00:00:00.000Z',
-      });
-    },
-  );
+  ])('negotiates %s as %s', async (acceptLanguage, contentLanguage, message, levelName) => {
+    const pending = request(app.getHttpServer()).get('/contract-test/success');
+    if (acceptLanguage) pending.set('Accept-Language', acceptLanguage);
+    const response = await pending.expect(200);
+    expect(response.headers['content-language']).toBe(contentLanguage);
+    expect(response.headers.vary).toContain('Accept-Language');
+    expect(response.body.data).toEqual({
+      message,
+      level: { name: levelName },
+      createdAt: '2026-07-19T00:00:00.000Z',
+    });
+  });
 
   it('localizes a stable business error without changing its code', async () => {
     const response = await request(app.getHttpServer())
@@ -179,6 +194,13 @@ describe('API language contract', () => {
     });
   });
 
+  it('does not mistake a business data field for the global response envelope', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/contract-test/business-data-field')
+      .expect(200);
+    expect(response.body).toEqual({ data: { data: 'original-business-field' } });
+  });
+
   it('localizes DTO validation details', async () => {
     const response = await request(app.getHttpServer())
       .post('/contract-test/validation')
@@ -195,6 +217,29 @@ describe('API language contract', () => {
         rules: [{ code: 'minLength', message: '字段值短于允许长度。' }],
       },
     ]);
+  });
+
+  it.each(['page', 'pageSize'])('rejects the legacy %s cursor-list parameter', async (field) => {
+    const response = await request(app.getHttpServer())
+      .get(`/contract-test/cursor-pagination?limit=20&${field}=2`)
+      .expect(400);
+    expect(response.body.error).toMatchObject({
+      code: 'VALIDATION_FAILED',
+      statusCode: 400,
+    });
+    expect(response.body.error.validationErrors).toEqual(
+      expect.arrayContaining([expect.objectContaining({ field })]),
+    );
+  });
+
+  it('returns the stable pagination error for malformed cursor input', async () => {
+    const response = await request(app.getHttpServer())
+      .get(`/contract-test/cursor-pagination?cursor=${'x'.repeat(1025)}`)
+      .expect(400);
+    expect(response.body.error).toMatchObject({
+      code: 'PAGINATION_CURSOR_INVALID',
+      statusCode: 400,
+    });
   });
 
   it('does not expose an unknown internal exception message', async () => {

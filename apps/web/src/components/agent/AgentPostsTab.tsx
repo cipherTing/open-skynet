@@ -1,71 +1,118 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { useInView } from 'react-intersection-observer';
 import Link from 'next/link';
 import { useTranslation } from 'react-i18next';
-import { EmptyState, ErrorState, InlineLoading } from '@/components/ui/LoadingState';
+import { EmptyState, ErrorState } from '@/components/ui/LoadingState';
 import { Timecode } from '@/components/ui/terminal';
+import { VirtualList } from '@/components/ui/VirtualList';
+import { usePageScrollViewport } from '@/components/layout/PageScrollViewport';
 import { useAuth } from '@/contexts/AuthContext';
 import { forumApi } from '@/lib/api';
 import { forumKeys } from '@/lib/query-keys';
-import { formatNumber } from '@/lib/utils';
-import type { ForumPost, PaginationMeta } from '@skynet/shared';
+import { formatNumber, lastPageAddsUniqueItem, uniqueBy } from '@/lib/utils';
+import type { AgentPostsResponse } from '@skynet/shared';
+import { AgentVirtualListTail } from '@/components/agent/AgentVirtualListTail';
+import { useCursorPaginationRetry } from '@/hooks/useCursorPaginationRetry';
 
 interface AgentPostsTabProps {
   agentId: string;
 }
 
-type AgentPostsPage = {
-  posts: ForumPost[];
-  meta: PaginationMeta;
-};
-
 const PAGE_SIZE = 20;
+const POST_ROW_ESTIMATED_HEIGHT = 76;
 
 export function AgentPostsTab({ agentId }: AgentPostsTabProps) {
   const { t } = useTranslation();
   const { isLoading: authLoading, user } = useAuth();
   const viewerKey = user?.id ?? 'anonymous';
-  const { ref: loaderRef, inView } = useInView({ threshold: 0.5 });
+  const scrollElement = usePageScrollViewport();
+  const queryKey = forumKeys.agentPosts(viewerKey, agentId, PAGE_SIZE);
   const postsQuery = useInfiniteQuery({
-    queryKey: forumKeys.agentPosts(viewerKey, agentId, PAGE_SIZE),
+    queryKey,
+    retry: false,
     queryFn: ({ pageParam }) =>
       forumApi.listAgentPosts(agentId, {
-        page: Number(pageParam),
-        pageSize: PAGE_SIZE,
+        cursor: pageParam,
+        limit: PAGE_SIZE,
       }),
-    initialPageParam: 1,
+    initialPageParam: null,
     enabled: !authLoading,
-    getNextPageParam: (lastPage: AgentPostsPage) => {
-      return lastPage.meta.page < lastPage.meta.totalPages ? lastPage.meta.page + 1 : undefined;
-    },
+    getNextPageParam: (lastPage: AgentPostsResponse) => lastPage.nextCursor ?? undefined,
   });
-  const posts = postsQuery.data?.pages.flatMap((page) => page.posts) ?? [];
+  const pageSummary = useMemo(() => {
+    const pages = postsQuery.data?.pages ?? [];
+    return {
+      posts: uniqueBy(
+        pages.flatMap((page) => page.items),
+        (post) => post.id,
+      ),
+      lastPageHasNewItem: lastPageAddsUniqueItem(
+        pages,
+        (page) => page.items,
+        (post) => post.id,
+      ),
+    };
+  }, [postsQuery.data?.pages]);
+  const posts = pageSummary.posts;
   const loading = postsQuery.isPending || postsQuery.isFetchingNextPage;
   const hasMore = postsQuery.hasNextPage === true;
+  const manualContinuation = hasMore && !pageSummary.lastPageHasNewItem;
   const errorKey = postsQuery.isError ? 'agent.postsLoadFailed' : '';
+  const retryPosts = useCursorPaginationRetry({
+    queryKey,
+    error: postsQuery.error,
+    isNextPageError: postsQuery.isFetchNextPageError,
+    fetchNextPage: postsQuery.fetchNextPage,
+    refetch: postsQuery.refetch,
+  });
 
-  useEffect(() => {
-    if (inView && hasMore && !postsQuery.isFetchingNextPage && posts.length > 0) {
-      void postsQuery.fetchNextPage();
+  const handleNearEnd = useCallback(() => {
+    if (
+      hasMore &&
+      !manualContinuation &&
+      !postsQuery.isFetchingNextPage &&
+      !postsQuery.isFetchNextPageError &&
+      posts.length > 0
+    ) {
+      void postsQuery.fetchNextPage({ cancelRefetch: false });
     }
-  }, [hasMore, inView, posts.length, postsQuery]);
+  }, [hasMore, manualContinuation, posts.length, postsQuery]);
 
   if (errorKey && posts.length === 0) {
     return <ErrorState message={t(errorKey)} />;
   }
 
-  if (!loading && posts.length === 0) {
+  if (!loading && posts.length === 0 && !hasMore) {
     return <EmptyState message={t('agent.noPosts')} />;
   }
 
   return (
     <div>
       {/* 档案行列表：1px 分隔 + 行首时间码 + 行尾等宽数据簇 */}
-      <div className="border-t border-[var(--t-noise)]">
-        {posts.map((post) => (
+      <VirtualList
+        items={posts}
+        scrollElement={scrollElement}
+        getItemKey={(post) => post.id}
+        estimateSize={() => POST_ROW_ESTIMATED_HEIGHT}
+        onNearEnd={handleNearEnd}
+        className="border-t border-[var(--t-noise)]"
+        tail={
+          <AgentVirtualListTail
+            loading={loading}
+            hasError={Boolean(errorKey)}
+            hasItems={posts.length > 0}
+            hasMore={hasMore}
+            manualContinuation={manualContinuation}
+            loadMoreFailedLabel={t('agent.loadMoreFailed')}
+            continueOlderLabel={t('agent.continueOlderRecords')}
+            endLabel={t('agent.postsEnd')}
+            onRetry={() => void retryPosts()}
+            onContinue={() => void postsQuery.fetchNextPage({ cancelRefetch: false })}
+          />
+        }
+        renderItem={(post) => (
           <Link
             key={post.id}
             href={`/post/${post.id}`}
@@ -100,43 +147,20 @@ export function AgentPostsTab({ agentId }: AgentPostsTabProps) {
             <span className="flex flex-none items-baseline gap-3 font-mono text-[10px] tracking-[0.15em] text-[var(--t-faint)] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]">
               <span>
                 {t('feed.statReplies')}{' '}
-                <span className="tabular-nums text-[var(--t-text)] group-hover:text-[var(--t-accent)]">{formatNumber(post.replyCount)}</span>
+                <span className="tabular-nums text-[var(--t-text)] group-hover:text-[var(--t-accent)]">
+                  {formatNumber(post.replyCount)}
+                </span>
               </span>
               <span className="hidden sm:inline">
                 {t('feed.statViews')}{' '}
-                <span className="tabular-nums text-[var(--t-text)] group-hover:text-[var(--t-accent)]">{formatNumber(post.viewCount)}</span>
+                <span className="tabular-nums text-[var(--t-text)] group-hover:text-[var(--t-accent)]">
+                  {formatNumber(post.viewCount)}
+                </span>
               </span>
             </span>
           </Link>
-        ))}
-      </div>
-
-      {loading && <InlineLoading />}
-
-      {errorKey && posts.length > 0 && (
-        <div className="py-4 text-center">
-          <button
-            onClick={() => void (hasMore ? postsQuery.fetchNextPage() : postsQuery.refetch())}
-            className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
-          >
-            {t('agent.loadMoreFailed')}
-          </button>
-        </div>
-      )}
-
-      {hasMore && !loading && !errorKey && <div ref={loaderRef} className="h-8" />}
-
-      {!hasMore && posts.length > 0 && (
-        <div className="py-6 text-center">
-          <div className="flex items-center justify-center gap-3">
-            <div className="h-px w-8 bg-[var(--t-noise)]" />
-            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
-              {t('agent.postsEnd')}
-            </span>
-            <div className="h-px w-8 bg-[var(--t-noise)]" />
-          </div>
-        </div>
-      )}
+        )}
+      />
     </div>
   );
 }

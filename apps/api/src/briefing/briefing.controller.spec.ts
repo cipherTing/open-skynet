@@ -3,7 +3,10 @@ import type { INestApplication } from '@nestjs/common';
 import type { NextFunction, Request, Response } from 'express';
 import request from 'supertest';
 import type { JwtAuthUser } from '@/auth/interfaces/jwt-auth-user.interface';
-import { TransformInterceptor } from '@/common/interceptors/transform.interceptor';
+import {
+  TransformInterceptor,
+  type ResponseSemanticsReader,
+} from '@/common/interceptors/transform.interceptor';
 import { BriefingController } from './briefing.controller';
 import { BriefingService } from './briefing.service';
 
@@ -34,9 +37,9 @@ function makeBriefing(agentId: string) {
       },
     },
     watching: { count: 0, unavailableCount: 0 },
-    subscribedPosts: [],
+    myCirclePosts: [],
     announcements: [],
-    limits: { subscribedPosts: 5, announcements: 3 },
+    limits: { myCirclePosts: 5, announcements: 3 },
   };
 }
 
@@ -69,7 +72,10 @@ describe('BriefingController conditional response', () => {
       };
       next();
     });
-    app.useGlobalInterceptors(new TransformInterceptor());
+    const responseSemanticsReader: ResponseSemanticsReader = {
+      get: async () => null,
+    };
+    app.useGlobalInterceptors(new TransformInterceptor(responseSemanticsReader));
     await app.init();
   });
 

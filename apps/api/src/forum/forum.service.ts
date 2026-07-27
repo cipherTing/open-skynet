@@ -2,7 +2,12 @@ import { Injectable, Inject, forwardRef } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types, type ClientSession, type FilterQuery } from 'mongoose';
 import { buildPostSearchText, Post, type PostDocument } from '@/database/schemas/post.schema';
-import { REPLY_QUOTE_SOURCE_TYPES, Reply, type ReplyQuote } from '@/database/schemas/reply.schema';
+import {
+  REPLY_QUOTE_SOURCE_TYPES,
+  Reply,
+  type ReplyDocument,
+  type ReplyQuote,
+} from '@/database/schemas/reply.schema';
 import { PostRevision } from '@/database/schemas/post-revision.schema';
 import { ReplyRevision } from '@/database/schemas/reply-revision.schema';
 import { Agent } from '@/database/schemas/agent.schema';
@@ -65,18 +70,30 @@ import { ReplyCounterService } from '@/forum/reply-counter.service';
 import { PostViewCounterService } from '@/forum/post-view-counter.service';
 import { ForumStatisticsService } from '@/forum/forum-statistics.service';
 import { ForumAgentInteractionService } from '@/forum/forum-agent-interaction.service';
+import {
+  CURSOR_PAGINATION_DEFAULT_LIMIT,
+  type CursorPaginationDto,
+} from '@/common/dto/cursor-pagination.dto';
+import {
+  decodeTimestampCursor as decodeResourceTimestampCursor,
+  encodeTimestampCursor as encodeResourceTimestampCursor,
+  RESOURCE_CURSOR_KINDS,
+} from '@/common/pagination/resource-cursor';
+import {
+  decodeOrdinalCursor,
+  decodeTimestampCursor,
+  encodeOrdinalCursor,
+  encodeTimestampCursor,
+  PAGINATION_CURSOR_KINDS,
+  type PaginationContext,
+} from '@/common/pagination/pagination-cursor';
 
 const AUTHOR_FIELDS = 'name description avatarSeed';
 const CONTENT_REVISION_MIN_INTERVAL_MS = 15_000;
 const CONTENT_REVISION_MAX_VERSIONS = 100;
 const SIMILAR_POST_LIMIT = 5;
 const SIMILAR_POST_CANDIDATE_MULTIPLIER = 3;
-const ANONYMOUS_HOT_FEED_VIEWER_KEY = 'anonymous:first-page';
-
-interface ReplyCursor {
-  createdAt: string;
-  id: string;
-}
+const POST_FEED_CANDIDATE_SCAN_LIMIT = 300;
 
 export interface PopulatedAuthor {
   id: string;
@@ -94,23 +111,19 @@ export interface AuthorBackedJson {
   feedbackCounts?: Partial<FeedbackCounts> | null;
 }
 
-export interface AuthorBackedDocument<TJson extends AuthorBackedJson = AuthorBackedJson> {
-  authorId: string;
-  toJSON(): TJson;
-}
-
 export type PopulatedForumEntity<TJson extends AuthorBackedJson = AuthorBackedJson> = TJson & {
   feedbackCounts: FeedbackCounts;
   author: PopulatedAuthor;
 };
 
 type PostBackedJson = AuthorBackedJson & {
-  circleId: string;
   title: string;
   tags: PostTag[];
   viewCount: number;
   contentVersion: number;
   lastEditedAt: Date | null;
+  replyCount: number;
+  circleRulesVersion: number;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -126,6 +139,12 @@ interface ActiveGovernanceCaseRecord {
   openedAt: Date;
 }
 
+interface PostFeedCandidateRecord {
+  _id: Types.ObjectId;
+  circleId: string;
+  createdAt: Date;
+}
+
 type PopulatedPostEntity = PopulatedForumEntity<PostBackedJson> & {
   circle: {
     id: string;
@@ -134,25 +153,6 @@ type PopulatedPostEntity = PopulatedForumEntity<PostBackedJson> & {
     topic: string;
   };
 };
-
-interface AggregatePage<T> {
-  data: T[];
-  meta: Array<{ total: number }>;
-}
-
-interface ViewHistoryPageItem {
-  postId: string;
-  viewedAt: Date;
-}
-
-interface FavoritePageItem {
-  postId: string;
-  favoritedAt: Date;
-}
-
-interface ReplyPageItem {
-  _id: Types.ObjectId;
-}
 
 export interface PublicReplyQuote {
   sourceType: ReplyQuote['sourceType'];
@@ -172,8 +172,11 @@ type ReplyBackedJson = AuthorBackedJson & {
   postId: string;
   parentReplyId: string | null;
   quote?: ReplyQuote | null;
+  circleRulesVersion: number;
   createdAt: Date;
   updatedAt: Date;
+  deletedAt: Date | null;
+  removalSource: Reply['removalSource'];
 };
 
 type PopulatedReplyEntity = PopulatedForumEntity<ReplyBackedJson>;
@@ -191,55 +194,6 @@ export interface FeedbackServiceResult {
 
 function isDuplicateKeyError(error: unknown): error is { code: 11000 } {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 11000;
-}
-
-function encodeReplyCursor(reply: { id: string; createdAt: Date }): string {
-  return Buffer.from(
-    JSON.stringify({ createdAt: reply.createdAt.toISOString(), id: reply.id }),
-  ).toString('base64url');
-}
-
-function decodeReplyCursor(cursor: string): { createdAt: Date; id: Types.ObjectId } {
-  try {
-    const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as ReplyCursor;
-    const createdAt = new Date(parsed.createdAt);
-    if (!Number.isFinite(createdAt.getTime()) || !Types.ObjectId.isValid(parsed.id)) {
-      throw new Error('invalid cursor');
-    }
-    return { createdAt, id: new Types.ObjectId(parsed.id) };
-  } catch {
-    throw forumErrors.replyCursorInvalid();
-  }
-}
-
-function encodePostCursor(post: { id: string; createdAt: Date }): string {
-  return Buffer.from(
-    JSON.stringify({ createdAt: post.createdAt.toISOString(), id: post.id }),
-  ).toString('base64url');
-}
-
-function decodePostCursor(cursor: string): { createdAt: Date; id: Types.ObjectId } {
-  try {
-    const parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8')) as ReplyCursor;
-    const createdAt = new Date(parsed.createdAt);
-    if (!Number.isFinite(createdAt.getTime()) || !Types.ObjectId.isValid(parsed.id)) {
-      throw new Error('invalid cursor');
-    }
-    return { createdAt, id: new Types.ObjectId(parsed.id) };
-  } catch {
-    throw forumErrors.postCursorInvalid();
-  }
-}
-
-function objectIdFromString(fieldPath: string) {
-  return {
-    $convert: {
-      input: fieldPath,
-      to: 'objectId',
-      onError: null,
-      onNull: null,
-    },
-  };
 }
 
 function ensureValidObjectId(id: string, errorFactory: () => Error): void {
@@ -275,15 +229,6 @@ function toPublicAgentHealthLevel(
   return { value: GOVERNANCE_HEALTH_LEVEL.GOOD, code: 'good' };
 }
 
-function createEmptyMeta(page: number, pageSize: number) {
-  return {
-    total: 0,
-    page,
-    pageSize,
-    totalPages: 0,
-  };
-}
-
 function samePostTags(left: PostTag[], right: PostTag[]): boolean {
   return left.length === right.length && left.every((tag, index) => tag === right[index]);
 }
@@ -291,6 +236,41 @@ function samePostTags(left: PostTag[], right: PostTag[]): boolean {
 function normalizePostTags(tags: PostTag[]): PostTag[] {
   const selected = new Set(tags);
   return POST_TAG_VALUES.filter((tag) => selected.has(tag));
+}
+
+function serializePublicPost(post: PostDocument): PostBackedJson {
+  return {
+    id: post.id,
+    title: post.title,
+    content: post.content,
+    tags: post.tags,
+    contentVersion: post.contentVersion,
+    lastEditedAt: post.lastEditedAt,
+    viewCount: post.viewCount,
+    replyCount: post.replyCount,
+    feedbackCounts: post.feedbackCounts,
+    circleRulesVersion: post.circleRulesVersion,
+    createdAt: post.createdAt,
+    updatedAt: post.updatedAt,
+  };
+}
+
+function serializePublicReply(reply: ReplyDocument): ReplyBackedJson {
+  return {
+    id: reply.id,
+    content: reply.content,
+    contentVersion: reply.contentVersion,
+    lastEditedAt: reply.lastEditedAt,
+    quote: reply.quote,
+    feedbackCounts: reply.feedbackCounts,
+    postId: reply.postId,
+    parentReplyId: reply.parentReplyId,
+    circleRulesVersion: reply.circleRulesVersion,
+    createdAt: reply.createdAt,
+    updatedAt: reply.updatedAt,
+    deletedAt: reply.deletedAt,
+    removalSource: reply.removalSource,
+  };
 }
 
 @Injectable()
@@ -329,8 +309,12 @@ export class ForumService {
     private readonly agentInteractionService: ForumAgentInteractionService,
   ) {}
 
-  private async populateAuthors<TJson extends AuthorBackedJson>(
-    items: AuthorBackedDocument<TJson>[],
+  private async populateAuthors<
+    TDocument extends { authorId: string },
+    TJson extends AuthorBackedJson,
+  >(
+    items: TDocument[],
+    serialize: (item: TDocument) => TJson,
   ): Promise<PopulatedForumEntity<TJson>[]> {
     const authorIds = [...new Set(items.map((i) => i.authorId))];
     const [authors, levelMap] = await Promise.all([
@@ -350,7 +334,7 @@ export class ForumService {
       ]),
     );
     return items.map((item) => {
-      const json = item.toJSON();
+      const json = serialize(item);
       return {
         ...json,
         feedbackCounts: normalizeFeedbackCounts(json.feedbackCounts),
@@ -532,19 +516,15 @@ export class ForumService {
     };
   }
 
-  private async populatePostRelations(
-    posts: AuthorBackedDocument<PostBackedJson>[],
-  ): Promise<PopulatedPostEntity[]> {
+  private async populatePostRelations(posts: PostDocument[]): Promise<PopulatedPostEntity[]> {
     const [populatedPosts, viewCounts] = await Promise.all([
-      this.populateAuthors(posts),
+      this.populateAuthors(posts, serializePublicPost),
       this.postViewCounterService.getViewCounts(
-        posts.map((post) => {
-          const json = post.toJSON();
-          return { id: json.id, viewCount: json.viewCount };
-        }),
+        posts.map((post) => ({ id: post.id, viewCount: post.viewCount })),
       ),
     ]);
-    const circleIds = populatedPosts.map((post) => post.circleId);
+    const sourceById = new Map(posts.map((post) => [post.id, post]));
+    const circleIds = posts.map((post) => post.circleId);
     const postIds = populatedPosts.map((post) => post.id);
     const [circleMap, activeCases, hotPostIds] = await Promise.all([
       this.circleService.getCircleSummaries(circleIds),
@@ -563,7 +543,9 @@ export class ForumService {
     const activeCaseMap = new Map(activeCases.map((item) => [item.targetId, item]));
 
     return populatedPosts.map((post) => {
-      const circle = circleMap.get(post.circleId);
+      const source = sourceById.get(post.id);
+      if (!source) throw commonErrors.postNotFound();
+      const circle = circleMap.get(source.circleId);
       if (!circle) throw commonErrors.circleNotFound();
       const activeCase = activeCaseMap.get(post.id);
       return {
@@ -736,8 +718,7 @@ export class ForumService {
 
   async listPosts(dto: ListPostsDto, currentUserId?: string) {
     const {
-      page = 1,
-      pageSize = 20,
+      limit = CURSOR_PAGINATION_DEFAULT_LIMIT,
       sortBy = SortBy.HOT,
       search,
       circleId,
@@ -745,32 +726,19 @@ export class ForumService {
       tags,
       cursor,
     } = dto;
-
-    if (sortBy === SortBy.HOT && page > 1 && !cursor) {
-      throw forumErrors.hotCursorInvalid();
-    }
-    if (sortBy === SortBy.LATEST && page > 1) {
-      throw forumErrors.latestDeepPageNotAllowed();
-    }
-
+    const currentAgent = await this.getCurrentAgent(currentUserId);
+    const cursorContext: PaginationContext = {
+      sortBy,
+      scope,
+      search: search ?? null,
+      circleId: circleId ?? null,
+      tags: tags ?? [],
+    };
+    const cursorSubjectId = scope === PostScope.MY_CIRCLES ? currentAgent?.id : undefined;
     const where: FilterQuery<Post> = { deletedAt: null, circleVisible: true };
-    let subscribedCircleIds: string[] | undefined;
-    if (scope === PostScope.SUBSCRIBED) {
-      if (!currentUserId) {
-        throw forumErrors.subscribedFeedAuthRequired();
-      }
-      if (circleId) {
-        throw forumErrors.subscribedFeedCircleConflict();
-      }
-      subscribedCircleIds = await this.circleService.getSubscribedCircleIdsForUser(currentUserId);
-      if (subscribedCircleIds.length === 0) {
-        return {
-          posts: [],
-          nextCursor: null,
-          meta: null,
-        };
-      }
-      where.circleId = { $in: subscribedCircleIds };
+    if (scope === PostScope.MY_CIRCLES) {
+      if (!currentAgent) throw forumErrors.myCirclesFeedAuthRequired();
+      if (circleId) throw forumErrors.myCirclesFeedCircleConflict();
     }
     if (circleId) {
       await this.circleService.ensureCircleExists(circleId);
@@ -782,64 +750,96 @@ export class ForumService {
     if (tags?.length) where.tags = { $in: tags };
 
     if (sortBy === SortBy.LATEST && cursor) {
-      const decoded = decodePostCursor(cursor);
+      const decoded = decodeTimestampCursor(cursor, PAGINATION_CURSOR_KINDS.POSTS, {
+        context: cursorContext,
+        subjectId: cursorSubjectId,
+      });
       where.$or = [
-        { createdAt: { $lt: decoded.createdAt } },
-        { createdAt: decoded.createdAt, _id: { $lt: decoded.id } },
+        { createdAt: { $lt: decoded.timestamp } },
+        { createdAt: decoded.timestamp, _id: { $lt: decoded.id } },
       ];
     }
 
     let posts: PostDocument[];
     let nextCursor: string | null = null;
-    const total: number | null = null;
-    let hasMore = false;
-    let latestCursorPost: PostDocument | null = null;
     if (sortBy === SortBy.HOT) {
       const randomPage = await this.hotRankingService.listRandomHotPosts(where, {
         circleId,
-        circleIds: scope === PostScope.SUBSCRIBED ? subscribedCircleIds : undefined,
+        membershipAgentId: scope === PostScope.MY_CIRCLES ? currentAgent?.id : undefined,
         candidateFilter: search || tags?.length ? where : undefined,
-        filterKey: JSON.stringify({
-          viewer: currentUserId ?? ANONYMOUS_HOT_FEED_VIEWER_KEY,
-          circleId,
-          scope,
-          search: search ?? null,
-          tags: tags ?? [],
-        }),
-        limit: pageSize,
+        cursorContext,
+        cursorSubjectId,
+        limit,
         cursor,
       });
       posts = randomPage.posts;
       nextCursor = randomPage.nextCursor;
-      hasMore = nextCursor !== null;
     } else {
-      const postPage = await this.postModel
+      const scanLimit = scope === PostScope.MY_CIRCLES ? POST_FEED_CANDIDATE_SCAN_LIMIT : limit + 1;
+      const candidates = await this.postModel
         .find(where)
         .sort({ createdAt: -1, _id: -1 })
-        .limit(pageSize + 1);
-      hasMore = postPage.length > pageSize;
-      posts = hasMore ? postPage.slice(0, pageSize) : postPage;
-      latestCursorPost = posts.at(-1) ?? null;
+        .limit(scanLimit)
+        .select('_id circleId createdAt')
+        .lean<PostFeedCandidateRecord[]>();
+      const activePosts = await this.filterPostsFromActiveCircles(candidates);
+      const activePostIds = new Set(activePosts.map((post) => post._id.toString()));
+      const joinedCircleIds =
+        scope === PostScope.MY_CIRCLES && currentAgent
+          ? await this.circleService.filterJoinedCircleIds(currentAgent.id, [
+              ...new Set(candidates.map((post) => post.circleId)),
+            ])
+          : null;
+      const selectedPostIds: string[] = [];
+      let consumedCount = 0;
+      let lastConsumed: PostFeedCandidateRecord | null = null;
+      for (const candidate of candidates) {
+        consumedCount += 1;
+        lastConsumed = candidate;
+        if (
+          activePostIds.has(candidate._id.toString()) &&
+          (joinedCircleIds === null || joinedCircleIds.has(candidate.circleId))
+        ) {
+          selectedPostIds.push(candidate._id.toString());
+        }
+        if (selectedPostIds.length >= limit) break;
+      }
+      const selectedPosts = await this.postModel.find({
+        _id: { $in: selectedPostIds.map((postId) => new Types.ObjectId(postId)) },
+        deletedAt: null,
+      });
+      const selectedPostById = new Map(selectedPosts.map((post) => [post.id, post]));
+      posts = selectedPostIds.flatMap((postId) => {
+        const post = selectedPostById.get(postId);
+        return post ? [post] : [];
+      });
+      const sourceExhausted = candidates.length < scanLimit && consumedCount === candidates.length;
+      nextCursor =
+        sourceExhausted || !lastConsumed
+          ? null
+          : encodeTimestampCursor(
+              PAGINATION_CURSOR_KINDS.POSTS,
+              lastConsumed.createdAt,
+              lastConsumed._id.toString(),
+              { context: cursorContext, subjectId: cursorSubjectId },
+            );
     }
-
-    posts = await this.filterPostsFromActiveCircles(posts);
 
     const populatedPosts = await this.populatePostRelations(posts);
 
     let currentAgentFeedbacks: Map<string, string> | undefined;
     let currentAgentFavoritePostIds = new Set<string>();
     if (currentUserId) {
-      const agent = await this.getCurrentAgent(currentUserId);
-      if (agent) {
+      if (currentAgent) {
         const postIds = posts.map((p) => p.id);
         const [feedbacks, favorites] = await Promise.all([
           this.feedbackModel.find({
-            agentId: agent.id,
+            agentId: currentAgent.id,
             targetType: 'POST',
             postId: { $in: postIds },
           }),
           this.postFavoriteModel
-            .find({ agentId: agent.id, postId: { $in: postIds } })
+            .find({ agentId: currentAgent.id, postId: { $in: postIds } })
             .select('postId'),
         ]);
         currentAgentFeedbacks = new Map(feedbacks.map((f) => [f.postId!, f.type]));
@@ -848,26 +848,12 @@ export class ForumService {
     }
 
     return {
-      posts: populatedPosts.map((post) => ({
+      items: populatedPosts.map((post) => ({
         ...post,
         currentAgentFeedback: currentAgentFeedbacks?.get(post.id) ?? null,
         currentAgentFavorited: currentAgentFavoritePostIds.has(post.id),
       })),
-      nextCursor:
-        sortBy === SortBy.HOT
-          ? nextCursor
-          : hasMore && latestCursorPost
-            ? encodePostCursor(latestCursorPost)
-            : null,
-      meta:
-        total === null
-          ? null
-          : {
-              total,
-              page,
-              pageSize,
-              totalPages: Math.ceil(total / pageSize),
-            },
+      nextCursor,
     };
   }
 
@@ -942,6 +928,12 @@ export class ForumService {
       ...populated,
       currentAgentFeedback,
       currentAgentFavorited,
+      ...(includeRemoved
+        ? {
+            deletedAt: post.deletedAt,
+            removalSource: post.removalSource,
+          }
+        : {}),
     };
   }
 
@@ -1120,23 +1112,26 @@ export class ForumService {
     return post;
   }
 
-  private buildReplyCursorFilter(cursor?: string): FilterQuery<Reply> {
+  private buildReplyCursorFilter(
+    cursor: string | undefined,
+    kind:
+      | typeof PAGINATION_CURSOR_KINDS.POST_REPLIES
+      | typeof PAGINATION_CURSOR_KINDS.REPLY_CHILDREN,
+    context: PaginationContext,
+  ): FilterQuery<Reply> {
     if (!cursor) return {};
-    const decoded = decodeReplyCursor(cursor);
+    const decoded = decodeTimestampCursor(cursor, kind, { context });
     return {
       $or: [
-        { createdAt: { $gt: decoded.createdAt } },
-        { createdAt: decoded.createdAt, _id: { $gt: decoded.id } },
+        { createdAt: { $gt: decoded.timestamp } },
+        { createdAt: decoded.timestamp, _id: { $gt: decoded.id } },
       ],
     };
   }
 
-  private async serializeReplies(
-    replies: AuthorBackedDocument<ReplyBackedJson>[],
-    currentUserId?: string,
-  ) {
+  private async serializeReplies(replies: ReplyDocument[], currentUserId?: string) {
     const populated = await this.enrichReplyQuotes(
-      await this.populateAuthors<ReplyBackedJson>(replies),
+      await this.populateAuthors(replies, serializePublicReply),
     );
     let currentAgentFeedbacks: Map<string, string> | undefined;
     if (currentUserId && replies.length > 0) {
@@ -1202,7 +1197,9 @@ export class ForumService {
         postId,
         parentReplyId: null,
         ...replyVisibility,
-        ...this.buildReplyCursorFilter(dto.cursor),
+        ...this.buildReplyCursorFilter(dto.cursor, PAGINATION_CURSOR_KINDS.POST_REPLIES, {
+          postId,
+        }),
       })
       .sort({ createdAt: 1, _id: 1 })
       .limit(limit + 1);
@@ -1259,10 +1256,12 @@ export class ForumService {
           childCount: topReply.childReplyCount,
           childrenNextCursor:
             childPage.length > childLimit && children.length > 0
-              ? encodeReplyCursor({
-                  id: children[children.length - 1].id,
-                  createdAt: new Date(children[children.length - 1].createdAt),
-                })
+              ? encodeTimestampCursor(
+                  PAGINATION_CURSOR_KINDS.REPLY_CHILDREN,
+                  new Date(children[children.length - 1].createdAt),
+                  children[children.length - 1].id,
+                  { context: { postId, parentReplyId: topReply.id } },
+                )
               : null,
         },
       ];
@@ -1271,7 +1270,12 @@ export class ForumService {
       items,
       nextCursor:
         hasMore && topReplies.length > 0
-          ? encodeReplyCursor(topReplies[topReplies.length - 1])
+          ? encodeTimestampCursor(
+              PAGINATION_CURSOR_KINDS.POST_REPLIES,
+              topReplies[topReplies.length - 1].createdAt,
+              topReplies[topReplies.length - 1].id,
+              { context: { postId } },
+            )
           : null,
     };
   }
@@ -1354,7 +1358,10 @@ export class ForumService {
         postId: parent.postId,
         parentReplyId: parent.id,
         ...replyVisibility,
-        ...this.buildReplyCursorFilter(dto.cursor),
+        ...this.buildReplyCursorFilter(dto.cursor, PAGINATION_CURSOR_KINDS.REPLY_CHILDREN, {
+          postId: parent.postId,
+          parentReplyId: parent.id,
+        }),
       })
       .sort({ createdAt: 1, _id: 1 })
       .limit(limit + 1);
@@ -1363,7 +1370,14 @@ export class ForumService {
     return {
       items: await this.serializeReplies(replies, currentUserId),
       nextCursor:
-        hasMore && replies.length > 0 ? encodeReplyCursor(replies[replies.length - 1]) : null,
+        hasMore && replies.length > 0
+          ? encodeTimestampCursor(
+              PAGINATION_CURSOR_KINDS.REPLY_CHILDREN,
+              replies[replies.length - 1].createdAt,
+              replies[replies.length - 1].id,
+              { context: { postId: parent.postId, parentReplyId: parent.id } },
+            )
+          : null,
     };
   }
 
@@ -1456,7 +1470,7 @@ export class ForumService {
     });
 
     const [populated] = await this.enrichReplyQuotes(
-      await this.populateAuthors<ReplyBackedJson>([reply]),
+      await this.populateAuthors([reply], serializePublicReply),
     );
     return {
       reply: populated,
@@ -1620,26 +1634,30 @@ export class ForumService {
     const reply = await this.replyModel.findById(replyId);
     if (!reply) throw commonErrors.replyNotFound();
     const [populated] = await this.enrichReplyQuotes(
-      await this.populateAuthors<ReplyBackedJson>([reply]),
+      await this.populateAuthors([reply], serializePublicReply),
     );
     return { reply: populated };
   }
 
-  async listPostRevisions(postId: string, page: number, pageSize: number) {
+  async listPostRevisions(postId: string, dto: CursorPaginationDto) {
     ensureValidObjectId(postId, commonErrors.postNotFound);
     const post = await this.postModel
       .findOne({ _id: postId, deletedAt: null, circleVisible: true })
       .select('circleId circleVisible');
     if (!post) throw commonErrors.postNotFound();
     await this.assertPublicPostVisible(post);
-    const [revisions, total] = await Promise.all([
-      this.postRevisionModel
-        .find({ postId })
-        .sort({ version: -1 })
-        .skip((page - 1) * pageSize)
-        .limit(pageSize),
-      this.postRevisionModel.countDocuments({ postId }),
-    ]);
+    const limit = dto.limit ?? CURSOR_PAGINATION_DEFAULT_LIMIT;
+    const cursorVersion = dto.cursor
+      ? decodeOrdinalCursor(dto.cursor, PAGINATION_CURSOR_KINDS.POST_REVISIONS, {
+          context: { postId },
+        })
+      : null;
+    const page = await this.postRevisionModel
+      .find({ postId, ...(cursorVersion === null ? {} : { version: { $lt: cursorVersion } }) })
+      .sort({ version: -1, _id: -1 })
+      .limit(limit + 1);
+    const hasMore = page.length > limit;
+    const revisions = hasMore ? page.slice(0, limit) : page;
     const authorMap = await this.getPublicAuthorMap(revisions.map((revision) => revision.authorId));
     return {
       items: revisions.map((revision) => ({
@@ -1652,11 +1670,18 @@ export class ForumService {
         publicContentHiddenAt: revision.publicContentHiddenAt?.toISOString() ?? null,
         publicContentHideReason: revision.publicContentHideReason,
       })),
-      meta: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) },
+      nextCursor:
+        hasMore && revisions.length > 0
+          ? encodeOrdinalCursor(
+              PAGINATION_CURSOR_KINDS.POST_REVISIONS,
+              revisions[revisions.length - 1].version,
+              { context: { postId } },
+            )
+          : null,
     };
   }
 
-  async listReplyRevisions(replyId: string, page: number, pageSize: number) {
+  async listReplyRevisions(replyId: string, dto: CursorPaginationDto) {
     ensureValidObjectId(replyId, commonErrors.replyNotFound);
     const reply = await this.replyModel.findOne({ _id: replyId, deletedAt: null }).select('postId');
     if (!reply) throw commonErrors.replyNotFound();
@@ -1665,14 +1690,18 @@ export class ForumService {
       .select('circleId circleVisible');
     if (!post) throw commonErrors.postNotFound();
     await this.assertPublicPostVisible(post);
-    const [revisions, total] = await Promise.all([
-      this.replyRevisionModel
-        .find({ replyId })
-        .sort({ version: -1 })
-        .skip((page - 1) * pageSize)
-        .limit(pageSize),
-      this.replyRevisionModel.countDocuments({ replyId }),
-    ]);
+    const limit = dto.limit ?? CURSOR_PAGINATION_DEFAULT_LIMIT;
+    const cursorVersion = dto.cursor
+      ? decodeOrdinalCursor(dto.cursor, PAGINATION_CURSOR_KINDS.REPLY_REVISIONS, {
+          context: { replyId },
+        })
+      : null;
+    const page = await this.replyRevisionModel
+      .find({ replyId, ...(cursorVersion === null ? {} : { version: { $lt: cursorVersion } }) })
+      .sort({ version: -1, _id: -1 })
+      .limit(limit + 1);
+    const hasMore = page.length > limit;
+    const revisions = hasMore ? page.slice(0, limit) : page;
     const authorMap = await this.getPublicAuthorMap(revisions.map((revision) => revision.authorId));
     return {
       items: revisions.map((revision) => ({
@@ -1683,7 +1712,14 @@ export class ForumService {
         publicContentHiddenAt: revision.publicContentHiddenAt?.toISOString() ?? null,
         publicContentHideReason: revision.publicContentHideReason,
       })),
-      meta: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) },
+      nextCursor:
+        hasMore && revisions.length > 0
+          ? encodeOrdinalCursor(
+              PAGINATION_CURSOR_KINDS.REPLY_REVISIONS,
+              revisions[revisions.length - 1].version,
+              { context: { replyId } },
+            )
+          : null,
     };
   }
 
@@ -2199,12 +2235,7 @@ export class ForumService {
     }
   }
 
-  async listAgentFavorites(
-    agentId: string,
-    page: number,
-    pageSize: number,
-    currentUserId?: string,
-  ) {
+  async listAgentFavorites(agentId: string, dto: CursorPaginationDto, currentUserId?: string) {
     ensureValidObjectId(agentId, commonErrors.agentNotFound);
     const agent = await this.agentModel.findById(agentId).select('userId favoritesPublic');
     if (!agent) {
@@ -2213,45 +2244,38 @@ export class ForumService {
 
     const isOwner = currentUserId !== undefined && agent.userId === currentUserId;
     if (agent.favoritesPublic === false && !isOwner) {
-      return {
-        hidden: true,
-        favorites: [],
-        meta: createEmptyMeta(page, pageSize),
-      };
+      return { hidden: true, items: [], nextCursor: null };
     }
-
-    const [pageResult] = await this.postFavoriteModel.aggregate<AggregatePage<FavoritePageItem>>([
-      { $match: { agentId } },
-      { $sort: { createdAt: -1, _id: -1 } },
-      {
-        $lookup: {
-          from: 'posts',
-          let: { postObjectId: objectIdFromString('$postId') },
-          pipeline: [
-            { $match: { $expr: { $eq: ['$_id', '$$postObjectId'] } } },
-            { $match: { deletedAt: null } },
-          ],
-          as: 'post',
-        },
-      },
-      { $match: { post: { $ne: [] } } },
-      {
-        $facet: {
-          data: [
-            { $skip: (page - 1) * pageSize },
-            { $limit: pageSize },
-            { $project: { postId: 1, favoritedAt: '$createdAt' } },
-          ],
-          meta: [{ $count: 'total' }],
-        },
-      },
-    ]);
-
-    const favorites = pageResult?.data ?? [];
-    const total = pageResult?.meta[0]?.total ?? 0;
+    const limit = dto.limit ?? CURSOR_PAGINATION_DEFAULT_LIMIT;
+    const cursor = dto.cursor
+      ? decodeResourceTimestampCursor(dto.cursor, RESOURCE_CURSOR_KINDS.AGENT_FAVORITES, agentId)
+      : null;
+    const candidates = await this.postFavoriteModel
+      .find({
+        agentId,
+        ...(cursor
+          ? {
+              $or: [
+                { createdAt: { $lt: cursor.timestamp } },
+                { createdAt: cursor.timestamp, _id: { $lt: cursor.id } },
+              ],
+            }
+          : {}),
+      })
+      .select('postId createdAt')
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(limit + 1);
+    const hasMore = candidates.length > limit;
+    const favorites = hasMore ? candidates.slice(0, limit) : candidates;
     const postIds = favorites.map((favorite) => favorite.postId);
-    const posts = await this.postModel.find({ _id: { $in: postIds }, deletedAt: null });
-    const populatedPosts = await this.populatePostRelations(posts);
+    const posts = await this.postModel.find({
+      _id: { $in: postIds },
+      deletedAt: null,
+      circleVisible: true,
+    });
+    const populatedPosts = await this.populatePostRelations(
+      await this.filterPostsFromActiveCircles(posts),
+    );
     const postMap = new Map(populatedPosts.map((post) => [post.id, post]));
     const currentAgentFavoritePostIds = await this.getCurrentAgentFavoritePostIds(
       currentUserId,
@@ -2260,7 +2284,7 @@ export class ForumService {
 
     return {
       hidden: false,
-      favorites: favorites
+      items: favorites
         .map((favorite) => {
           const post = postMap.get(favorite.postId);
           if (!post) return null;
@@ -2269,16 +2293,19 @@ export class ForumService {
               ...post,
               currentAgentFavorited: currentAgentFavoritePostIds.has(post.id),
             },
-            favoritedAt: favorite.favoritedAt.toISOString(),
+            favoritedAt: favorite.createdAt.toISOString(),
           };
         })
         .filter((favorite) => favorite !== null),
-      meta: {
-        total,
-        page,
-        pageSize,
-        totalPages: Math.ceil(total / pageSize),
-      },
+      nextCursor:
+        hasMore && favorites.length > 0
+          ? encodeResourceTimestampCursor(
+              RESOURCE_CURSOR_KINDS.AGENT_FAVORITES,
+              agentId,
+              favorites[favorites.length - 1].createdAt,
+              favorites[favorites.length - 1].id,
+            )
+          : null,
     };
   }
 
@@ -2300,40 +2327,39 @@ export class ForumService {
     return created;
   }
 
-  async listAgentViewHistory(agentId: string, page: number, pageSize: number) {
+  async listAgentViewHistory(agentId: string, dto: CursorPaginationDto) {
     await this.ensureAgentExists(agentId);
-    const [pageResult] = await this.viewHistoryModel.aggregate<AggregatePage<ViewHistoryPageItem>>([
-      { $match: { agentId } },
-      { $sort: { viewedAt: -1 } },
-      {
-        $lookup: {
-          from: 'posts',
-          let: { postObjectId: objectIdFromString('$postId') },
-          pipeline: [
-            { $match: { $expr: { $eq: ['$_id', '$$postObjectId'] } } },
-            { $match: { deletedAt: null } },
-          ],
-          as: 'post',
-        },
-      },
-      { $match: { post: { $ne: [] } } },
-      {
-        $facet: {
-          data: [
-            { $skip: (page - 1) * pageSize },
-            { $limit: pageSize },
-            { $project: { postId: 1, viewedAt: 1 } },
-          ],
-          meta: [{ $count: 'total' }],
-        },
-      },
-    ]);
-    const histories = pageResult?.data ?? [];
-    const total = pageResult?.meta[0]?.total ?? 0;
+    const limit = dto.limit ?? CURSOR_PAGINATION_DEFAULT_LIMIT;
+    const cursor = dto.cursor
+      ? decodeResourceTimestampCursor(dto.cursor, RESOURCE_CURSOR_KINDS.AGENT_VIEW_HISTORY, agentId)
+      : null;
+    const candidates = await this.viewHistoryModel
+      .find({
+        agentId,
+        ...(cursor
+          ? {
+              $or: [
+                { viewedAt: { $lt: cursor.timestamp } },
+                { viewedAt: cursor.timestamp, _id: { $lt: cursor.id } },
+              ],
+            }
+          : {}),
+      })
+      .select('postId viewedAt')
+      .sort({ viewedAt: -1, _id: -1 })
+      .limit(limit + 1);
+    const hasMore = candidates.length > limit;
+    const histories = hasMore ? candidates.slice(0, limit) : candidates;
 
     const postIds = [...new Set(histories.map((h) => h.postId))];
-    const posts = await this.postModel.find({ _id: { $in: postIds }, deletedAt: null });
-    const populatedPosts = await this.populatePostRelations(posts);
+    const posts = await this.postModel.find({
+      _id: { $in: postIds },
+      deletedAt: null,
+      circleVisible: true,
+    });
+    const populatedPosts = await this.populatePostRelations(
+      await this.filterPostsFromActiveCircles(posts),
+    );
     const postMap = new Map(populatedPosts.map((p) => [p.id, p]));
 
     const filteredHistories = histories
@@ -2344,18 +2370,21 @@ export class ForumService {
       .filter((h) => h.post);
 
     return {
-      histories: filteredHistories,
-      meta: {
-        total,
-        page,
-        pageSize,
-        totalPages: Math.ceil(total / pageSize),
-      },
+      items: filteredHistories,
+      nextCursor:
+        hasMore && histories.length > 0
+          ? encodeResourceTimestampCursor(
+              RESOURCE_CURSOR_KINDS.AGENT_VIEW_HISTORY,
+              agentId,
+              histories[histories.length - 1].viewedAt,
+              histories[histories.length - 1].id,
+            )
+          : null,
     };
   }
 
-  async listAgentInteractions(agentId: string, page: number, pageSize: number) {
-    return this.agentInteractionService.list(agentId, page, pageSize);
+  async listAgentInteractions(agentId: string, dto: CursorPaginationDto) {
+    return this.agentInteractionService.list(agentId, dto);
   }
 
   // ── Agent 回复分页 ──
@@ -2388,65 +2417,77 @@ export class ForumService {
     };
   }
 
-  async listAgentPosts(agentId: string, page: number, pageSize: number) {
+  async listAgentPosts(agentId: string, dto: CursorPaginationDto) {
     await this.ensureAgentExists(agentId);
-    const [posts, total] = await Promise.all([
-      this.postModel
-        .find({ authorId: agentId, deletedAt: null, circleVisible: true })
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * pageSize)
-        .limit(pageSize),
-      this.postModel.countDocuments({ authorId: agentId, deletedAt: null, circleVisible: true }),
-    ]);
+    const limit = dto.limit ?? CURSOR_PAGINATION_DEFAULT_LIMIT;
+    const cursor = dto.cursor
+      ? decodeResourceTimestampCursor(dto.cursor, RESOURCE_CURSOR_KINDS.AGENT_POSTS, agentId)
+      : null;
+    const candidates = await this.postModel
+      .find({
+        authorId: agentId,
+        ...(cursor
+          ? {
+              $or: [
+                { createdAt: { $lt: cursor.timestamp } },
+                { createdAt: cursor.timestamp, _id: { $lt: cursor.id } },
+              ],
+            }
+          : {}),
+      })
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(limit + 1);
+    const hasMore = candidates.length > limit;
+    const posts = hasMore ? candidates.slice(0, limit) : candidates;
 
+    const visiblePosts = posts.filter((post) => post.deletedAt === null && post.circleVisible);
     const populatedPosts = await this.populatePostRelations(
-      await this.filterPostsFromActiveCircles(posts),
+      await this.filterPostsFromActiveCircles(visiblePosts),
     );
 
     return {
-      posts: populatedPosts,
-      meta: {
-        total,
-        page,
-        pageSize,
-        totalPages: Math.ceil(total / pageSize),
-      },
+      items: populatedPosts,
+      nextCursor:
+        hasMore && posts.length > 0
+          ? encodeResourceTimestampCursor(
+              RESOURCE_CURSOR_KINDS.AGENT_POSTS,
+              agentId,
+              posts[posts.length - 1].createdAt,
+              posts[posts.length - 1].id,
+            )
+          : null,
     };
   }
 
-  async listAgentReplies(agentId: string, page: number, pageSize: number) {
+  async listAgentReplies(agentId: string, dto: CursorPaginationDto) {
     await this.ensureAgentExists(agentId);
-    const [pageResult] = await this.replyModel.aggregate<AggregatePage<ReplyPageItem>>([
-      { $match: { authorId: agentId } },
-      { $sort: { createdAt: -1 } },
-      {
-        $lookup: {
-          from: 'posts',
-          let: { postObjectId: objectIdFromString('$postId') },
-          pipeline: [
-            { $match: { $expr: { $eq: ['$_id', '$$postObjectId'] } } },
-            { $match: { deletedAt: null, circleVisible: true } },
-          ],
-          as: 'post',
-        },
-      },
-      { $match: { post: { $ne: [] } } },
-      {
-        $facet: {
-          data: [{ $skip: (page - 1) * pageSize }, { $limit: pageSize }, { $project: { _id: 1 } }],
-          meta: [{ $count: 'total' }],
-        },
-      },
-    ]);
-    const replyIds = pageResult?.data.map((item) => item._id) ?? [];
-    const total = pageResult?.meta[0]?.total ?? 0;
-    const replies = await this.replyModel.find({ _id: { $in: replyIds } });
-    const replyOrder = new Map(replyIds.map((replyId, index) => [String(replyId), index]));
-    replies.sort((a, b) => (replyOrder.get(a.id) ?? 0) - (replyOrder.get(b.id) ?? 0));
+    const limit = dto.limit ?? CURSOR_PAGINATION_DEFAULT_LIMIT;
+    const cursor = dto.cursor
+      ? decodeResourceTimestampCursor(dto.cursor, RESOURCE_CURSOR_KINDS.AGENT_REPLIES, agentId)
+      : null;
+    const candidates = await this.replyModel
+      .find({
+        authorId: agentId,
+        ...(cursor
+          ? {
+              $or: [
+                { createdAt: { $lt: cursor.timestamp } },
+                { createdAt: cursor.timestamp, _id: { $lt: cursor.id } },
+              ],
+            }
+          : {}),
+      })
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(limit + 1);
+    const hasMore = candidates.length > limit;
+    const replies = hasMore ? candidates.slice(0, limit) : candidates;
 
-    const populatedReplies = await this.populateAuthors(replies);
+    const visibleReplies = replies.filter((reply) => reply.deletedAt === null);
+    const populatedReplies = await this.enrichReplyQuotes(
+      await this.populateAuthors(visibleReplies, serializePublicReply),
+    );
 
-    const postIds = [...new Set(replies.map((r) => r.postId))];
+    const postIds = [...new Set(visibleReplies.map((reply) => reply.postId))];
     const posts = await this.postModel.find({
       _id: { $in: postIds },
       deletedAt: null,
@@ -2457,10 +2498,16 @@ export class ForumService {
     );
     const postMap = new Map(populatedPosts.map((p) => [p.id, p]));
 
-    const parentReplyIds = replies.filter((r) => r.parentReplyId).map((r) => r.parentReplyId);
+    const parentReplyIds = visibleReplies
+      .filter((reply) => reply.parentReplyId)
+      .map((reply) => reply.parentReplyId);
     const parentReplies =
-      parentReplyIds.length > 0 ? await this.replyModel.find({ _id: { $in: parentReplyIds } }) : [];
-    const populatedParentReplies = await this.populateAuthors(parentReplies);
+      parentReplyIds.length > 0
+        ? await this.replyModel.find({ _id: { $in: parentReplyIds }, deletedAt: null })
+        : [];
+    const populatedParentReplies = await this.enrichReplyQuotes(
+      await this.populateAuthors(parentReplies, serializePublicReply),
+    );
     const parentReplyMap = new Map(populatedParentReplies.map((r) => [r.id, r]));
 
     const filteredReplies = populatedReplies
@@ -2486,16 +2533,19 @@ export class ForumService {
             : null,
         };
       })
-      .filter((r) => r.post);
+      .filter((reply) => reply.post && (!reply.parentReplyId || reply.parentReply));
 
     return {
-      replies: filteredReplies,
-      meta: {
-        total,
-        page,
-        pageSize,
-        totalPages: Math.ceil(total / pageSize),
-      },
+      items: filteredReplies,
+      nextCursor:
+        hasMore && replies.length > 0
+          ? encodeResourceTimestampCursor(
+              RESOURCE_CURSOR_KINDS.AGENT_REPLIES,
+              agentId,
+              replies[replies.length - 1].createdAt,
+              replies[replies.length - 1].id,
+            )
+          : null,
     };
   }
 }

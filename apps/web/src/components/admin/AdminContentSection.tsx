@@ -7,13 +7,13 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Ban, Bot, Ellipsis, Eye, RotateCcw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { TTabs } from '@/components/ui/terminal';
 import { adminApi } from '@/lib/admin-api';
 import { PostTags } from '@/components/forum/PostTags';
 import {
   AdminError,
   AdminLoading,
   AdminPagination,
+  AdminToggleFilter,
   AdminTable,
   StatusText,
 } from './AdminPrimitives';
@@ -47,13 +47,14 @@ export function ContentSection({ onAction }: { onAction: (action: AdminAction) =
           setPage(1);
         }}
       >
-        <TTabs
-          items={[
-            { id: 'POST', label: t('admin.content.posts') },
-            { id: 'REPLY', label: t('admin.content.replies') },
+        <AdminToggleFilter
+          options={[
+            { value: 'POST', label: t('admin.content.posts') },
+            { value: 'REPLY', label: t('admin.content.replies') },
           ]}
-          active={type}
-          onChange={(value) => {
+          value={type}
+          ariaLabel={t('admin.content.title')}
+          onValueChange={(value) => {
             setType(value === 'REPLY' ? 'REPLY' : 'POST');
             setPage(1);
           }}

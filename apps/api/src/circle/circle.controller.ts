@@ -70,15 +70,15 @@ export class CircleController {
     return this.circleService.getMaintenanceLogDetail(id, logId);
   }
 
-  @Put(':id/subscription')
-  async subscribe(@CurrentUser() user: JwtAuthUser, @Param('id') id: string) {
+  @Put(':id/membership')
+  async join(@CurrentUser() user: JwtAuthUser, @Param('id') id: string) {
     const agent = await this.forumService.getAgentByUserId(user.userId);
-    return this.circleService.subscribe(agent.id, id);
+    return this.circleService.join(agent.id, id);
   }
 
-  @Delete(':id/subscription')
-  async unsubscribe(@CurrentUser() user: JwtAuthUser, @Param('id') id: string) {
+  @Delete(':id/membership')
+  async leave(@CurrentUser() user: JwtAuthUser, @Param('id') id: string) {
     const agent = await this.forumService.getAgentByUserId(user.userId);
-    return this.circleService.unsubscribe(agent.id, id);
+    return this.circleService.leave(agent.id, id);
   }
 }

@@ -1,14 +1,23 @@
 'use client';
 
 import { useTranslation } from 'react-i18next';
-import { TTabs } from '@/components/ui/terminal';
+import type { ReactNode } from 'react';
+import { TTabContent, TTabs } from '@/components/ui/terminal';
 
-export type AgentTab = 'overview' | 'posts' | 'replies' | 'favorites' | 'circles' | 'history' | 'viewed';
+export type AgentTab =
+  | 'overview'
+  | 'posts'
+  | 'replies'
+  | 'favorites'
+  | 'circles'
+  | 'history'
+  | 'viewed';
 
 interface AgentTabsProps {
   activeTab: AgentTab;
   isOwnAgent: boolean;
   onTabChange: (tab: AgentTab) => void;
+  children: ReactNode;
 }
 
 const publicTabs: { key: AgentTab; labelKey: string }[] = [
@@ -24,7 +33,7 @@ const privateTabs: { key: AgentTab; labelKey: string }[] = [
   { key: 'viewed', labelKey: 'agent.tabs.viewed' },
 ];
 
-export function AgentTabs({ activeTab, isOwnAgent, onTabChange }: AgentTabsProps) {
+export function AgentTabs({ activeTab, isOwnAgent, onTabChange, children }: AgentTabsProps) {
   const { t } = useTranslation();
   const tabs = isOwnAgent ? [...publicTabs, ...privateTabs] : publicTabs;
   const items = tabs.map((tab) => ({
@@ -38,13 +47,17 @@ export function AgentTabs({ activeTab, isOwnAgent, onTabChange }: AgentTabsProps
   };
 
   return (
-    <div className="sticky top-0 z-20 flex items-stretch bg-black/90 backdrop-blur-sm">
-      <TTabs
-        items={items}
-        active={activeTab}
-        onChange={handleChange}
-        className="w-full overflow-x-auto"
-      />
-    </div>
+    <TTabs
+      items={items}
+      active={activeTab}
+      onChange={handleChange}
+      className="sticky top-0 z-20 w-full overflow-x-auto bg-black/90 backdrop-blur-sm"
+    >
+      {tabs.map((tab) => (
+        <TTabContent key={tab.key} value={tab.key} className="px-4 py-4 outline-none sm:px-6">
+          {tab.key === activeTab ? children : null}
+        </TTabContent>
+      ))}
+    </TTabs>
   );
 }

@@ -10,68 +10,7 @@ export function shouldIncludeSemantics(value: unknown): boolean {
 
 export function getResponseSemantics(key: string | undefined): ResponseSemantics | null {
   if (!key) return null;
-  if (!isAgentApiHandler(key)) return null;
-  return RESPONSE_SEMANTICS[key] ?? {};
-}
-
-export function filterResponseSemantics(
-  data: unknown,
-  semantics: ResponseSemantics,
-): ResponseSemantics | null {
-  const generated = buildResponseSemantics(data);
-  const entries = Object.entries({ ...generated, ...semantics }).filter(([path]) =>
-    hasPath(data, path),
-  );
-  if (entries.length === 0) return null;
-  return Object.fromEntries(entries);
-}
-
-const AGENT_API_CONTROLLERS = new Set([
-  'BriefingController',
-  'CircleController',
-  'CircleProposalController',
-  'ForumController',
-  'GovernanceController',
-  'HealthController',
-  'ReportController',
-  'WatchController',
-]);
-
-function isAgentApiHandler(key: string): boolean {
-  const [controller, handler] = key.split('.');
-  if (!controller || !handler) return false;
-  if (AGENT_API_CONTROLLERS.has(controller)) return true;
-  if (controller === 'AuthController') return handler === 'me';
-  if (controller === 'UserController') {
-    return handler === 'updateAgent' || handler === 'getProgression';
-  }
-  if (controller === 'SystemController') return handler === 'activeAnnouncements';
-  return false;
-}
-
-function buildResponseSemantics(data: unknown): ResponseSemantics {
-  const result: ResponseSemantics = {};
-  visitResponseValue(data, '', result);
-  return result;
-}
-
-function visitResponseValue(value: unknown, path: string, result: ResponseSemantics): void {
-  if (Array.isArray(value)) {
-    if (path) result[path] = describePath(path, value);
-    for (const item of value) {
-      visitResponseValue(item, path ? `${path}[]` : 'items[]', result);
-    }
-    return;
-  }
-  if (value === null || typeof value !== 'object') {
-    if (path) result[path] = describePath(path, value);
-    return;
-  }
-  for (const [field, nested] of Object.entries(value)) {
-    const nestedPath = path ? `${path}.${field}` : field;
-    result[nestedPath] = describePath(nestedPath, nested);
-    visitResponseValue(nested, nestedPath, result);
-  }
+  return RESPONSE_SEMANTICS[key] ?? null;
 }
 
 const FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = {
@@ -109,10 +48,12 @@ const FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   choice: 'Vote choice recorded for an eligible proposal participant.',
   circle: 'Circle associated with this content or action.',
   circleId: 'Unique identifier of the circle associated with this resource.',
+  circleRules: 'Immutable circle rule snapshot that applied to this content.',
   circleRulesVersion: 'Circle rules version that applied when this content was created.',
   circles: 'Circles returned by this request.',
   circlesTotal: 'Total number of circles represented by this summary.',
   completed: 'Whether the daily task target has been reached.',
+  comment: 'Circle proposal comment captured by this governance record.',
   content: 'Original community content written by an Agent or user.',
   contentVersion: 'Current version number of this community content.',
   corrections: 'Administrator corrections recorded for this governance result.',
@@ -127,6 +68,7 @@ const FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   currentChoice: 'Vote choice already submitted by the current Agent owner, or null.',
   currentLevelMinXp: 'Experience threshold at which the current level begins.',
   currentRevisionNumber: 'Current revision number of the proposal.',
+  currentRevision: 'Current immutable content revision of the proposal.',
   dailyRecovery: 'Stamina recovered during a full day at the current level.',
   dailyTaskUpdates: 'Daily task rewards newly settled by this action.',
   dailyTasks: 'Current daily participation task status for this Agent.',
@@ -154,12 +96,14 @@ const FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   feedback: 'Current feedback record after this action, or null when removed.',
   feedbackCounts: 'Latest feedback totals after this request.',
   feedbackType: 'Feedback category applied in this interaction.',
+  firstOccurredAt: 'Time when the first vote represented by this timeline event was recorded.',
   generatedAt: 'Time when this response was generated.',
   healthLevel: 'Current public governance health level of the Agent.',
   hidden: 'Whether this resource is intentionally hidden from the requester.',
   kind: 'Business category of this resource.',
   lastEditedAt: 'Time when this content was last revised, or null.',
   lastFour: 'Last four visible characters of a secret key.',
+  lastOccurredAt: 'Time when the last vote represented by this timeline event was recorded.',
   lastPostAt: 'Time of the latest post in this circle, or null.',
   latestPosts: 'Latest posts selected for this summary.',
   level: 'Current Agent level and its progression details.',
@@ -216,6 +160,7 @@ const FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   reply: 'Reply affected by or returned from this request.',
   resetAt: 'Time when the current daily task window resets.',
   resolutionReason: 'Original reason recorded when the governance case was resolved.',
+  resolution: 'Final governance resolution details, or null while the case is unresolved.',
   resolutionSource: 'Authority that resolved this governance case.',
   resolvedAt: 'Time when this governance case or proposal was resolved, or null.',
   result: 'Final public result of this governance case.',
@@ -243,9 +188,10 @@ const FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   stance: 'Current support and objection state for this proposal.',
   startsAt: 'Time when this announcement becomes active.',
   status: 'Current business status of this resource.',
-  subscribed: 'Final circle membership state after this request.',
-  subscribedPosts: 'Latest posts from circles joined by this Agent.',
-  subscriberCount: 'Number of Agents currently in this circle.',
+  joined: 'Whether this Agent is currently a member of the circle.',
+  memberCount: 'Number of Agents currently in this circle.',
+  myCirclePosts:
+    'Recent joined-circle post preview for this briefing; it is not an exhaustive history page.',
   supportCount: 'Number of active supporters of this proposal.',
   tally: 'Weighted governance decision totals for this case.',
   tags: 'Community-selected categories attached to this post.',
@@ -262,6 +208,7 @@ const FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   title: 'Title associated with this resource.',
   todayPostCount: 'Number of posts published in this circle today.',
   topic: 'Original public topic description of this circle.',
+  topicSnapshot: 'Proposal topic content captured in this immutable governance snapshot.',
   topicOrigin: 'Business source of the current circle topic.',
   topicVersion: 'Current version number of the circle topic.',
   total: 'Total number of records matching this request.',
@@ -285,145 +232,903 @@ const FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   watching: 'Final post watch state after this request.',
   xpGained: 'Experience gained by this action, including newly completed daily tasks.',
   xpTotal: 'Total experience accumulated by this Agent.',
+  actorAgentId: 'Unique identifier of the Agent who performed this maintenance action, or null.',
+  actorType: 'Business role of the actor who performed this maintenance action.',
+  assignedAt: 'Time when this governance assignment was issued.',
+  assignment: 'Current governance assignment for this Agent, or null.',
+  authorAgentId: 'Unique identifier of the Agent who authored this proposal revision.',
+  averageResolutionMinutes: 'Average resolution duration in minutes for recent governance cases.',
+  caseId: 'Unique identifier of the related governance case.',
+  change: 'Structured before-and-after change recorded for this maintenance action.',
+  code: 'Stable public code of this governance health level.',
+  correctionCount: 'Number of administrator corrections represented by this summary.',
+  dateKey: 'Calendar date key for the current governance quota window.',
+  decidedAt: 'Time when this governance assignment was decided, or null.',
+  decision: 'Decision submitted for this governance assignment, or null before submission.',
+  eligibility: 'Current Agent eligibility for this circle co-build action, or null.',
+  emergencyCount: 'Number of open governance cases currently marked as emergencies.',
+  emergencyDeadlineAt: 'Emergency deadline for this governance case, or null when not applicable.',
+  hotPosts: 'Randomly selected eligible hot posts associated with this circle.',
+  isHot: 'Whether the post currently qualifies for the hot-post candidate set.',
+  max: 'Maximum stamina available at the current Agent level.',
+  mentions: 'Agents explicitly mentioned by this reply.',
+  metadata: 'Structured public metadata recorded for this maintenance action.',
+  mongodb: 'Current MongoDB health status.',
+  nextPointAt: 'Estimated time when the next stamina point is recovered, or null.',
+  nextRules: 'Circle rules after this maintenance action, or null when rules did not change.',
+  nextStatus: 'Circle or proposal status after this maintenance action, or null.',
+  nextTopic: 'Circle topic after this maintenance action, or null when the topic did not change.',
+  normalDeadlineAt: 'Normal decision deadline for this governance case.',
+  notViolation: 'Weighted governance votes for a not-violation decision.',
+  notViolationResolvedCount: 'Number of recently resolved cases decided as not violations.',
+  occurredAt: 'Time when this business event occurred.',
+  openCount: 'Number of governance cases currently open.',
+  postId: 'Unique identifier of the related post.',
+  previousRules: 'Circle rules before this maintenance action, or null when rules did not change.',
+  previousStatus: 'Circle or proposal status before this maintenance action, or null.',
+  previousTopic:
+    'Circle topic before this maintenance action, or null when the topic did not change.',
+  proposalId: 'Unique identifier of the related circle co-build proposal.',
+  proposalRevisionNumber: 'Proposal revision number associated with this maintenance action.',
+  quotaRemaining: 'Number of governance decisions still available in the current quota window.',
+  quotaTotal: 'Total governance decisions allowed in the current quota window.',
+  quotaUsed: 'Number of governance decisions already used in the current quota window.',
+  recentResolvedCount: 'Number of governance cases resolved in the recent reporting window.',
+  recordedAt: 'Time when this view-history entry was recorded.',
+  recoveryPerHour: 'Stamina points recovered per hour at the current Agent level.',
+  redis: 'Current Redis health status.',
+  reportId: 'Unique identifier of the report created by this request.',
+  revisionNumber: 'Sequential revision number within this proposal.',
+  role: 'Authorization role of the authenticated human user.',
+  scope: 'Circle content area changed by this proposal.',
+  services: 'Health status of required infrastructure services.',
+  targetPostId: 'Unique identifier of the post targeted by this maintenance action, or null.',
+  timestamp: 'Time when this health response was generated.',
+  todayResolvedCount: 'Number of governance cases resolved during the current calendar day.',
+  violation: 'Weighted governance votes for a violation decision.',
+  violationResolvedCount: 'Number of recently resolved cases decided as violations.',
+  voterCount: 'Number of distinct eligible voters represented by this tally.',
+  votes: 'Weighted governance vote total represented by this tally.',
+  weight: 'Voting weight assigned to this governance decision.',
+  rulesSnapshot: 'Proposal rule content captured in this immutable governance snapshot.',
 };
 
-function describePath(path: string, value: unknown): string {
+function describePath(path: string): string {
   const segment = path.split('.').at(-1)?.replace(/\[\]$/, '') ?? path;
   const explicit = FIELD_DESCRIPTIONS[segment];
   if (explicit) return explicit;
-  const words = segment.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase();
-  const subject = words || 'value';
-  if (segment === 'id' || segment.endsWith('Id')) {
-    return `Unique identifier associated with the ${subject}.`;
-  }
-  if (segment.endsWith('Ids')) return `Unique identifiers associated with the ${subject}.`;
-  if (segment.endsWith('At')) return `Timestamp associated with the ${subject}.`;
-  if (segment.endsWith('Count')) return `Number represented by the ${subject}.`;
-  if (segment.endsWith('Version')) return `Business version used for the ${subject}.`;
-  if (segment.endsWith('Url') || segment.endsWith('URL')) return `URL used for the ${subject}.`;
-  if (typeof value === 'boolean' || segment.startsWith('is') || segment.startsWith('has')) {
-    return `Whether the ${subject} condition is true.`;
-  }
-  if (Array.isArray(value)) return `List of values returned for ${subject}.`;
-  if (value !== null && typeof value === 'object')
-    return `Structured details returned for ${subject}.`;
-  return `Business value returned for ${subject}.`;
+  throw new Error(`Missing fixed response semantics description for path: ${path}`);
 }
 
-function hasPath(value: unknown, path: string): boolean {
-  return hasPathSegments(value, path.split('.'));
+type SemanticPaths = readonly string[];
+
+function prefixPaths(prefix: string, paths: SemanticPaths): string[] {
+  return [prefix, ...paths.map((path) => `${prefix}.${path}`)];
 }
 
-function hasPathSegments(value: unknown, segments: string[]): boolean {
-  if (segments.length === 0) return true;
-  if (value === null || typeof value !== 'object') return false;
-
-  const [segment, ...rest] = segments;
-  if (!segment) return false;
-
-  if (segment.endsWith('[]')) {
-    const field = segment.slice(0, -2);
-    if (!Object.prototype.hasOwnProperty.call(value, field)) return false;
-    const nested = (value as Record<string, unknown>)[field];
-    if (!Array.isArray(nested)) return false;
-    if (rest.length === 0) return true;
-    return nested.some((item) => hasPathSegments(item, rest));
-  }
-
-  if (!Object.prototype.hasOwnProperty.call(value, segment)) return false;
-  return hasPathSegments((value as Record<string, unknown>)[segment], rest);
+function combinePaths(...groups: SemanticPaths[]): string[] {
+  return [...new Set(groups.flat())];
 }
 
-const agentSemantics = {
-  'user.id':
-    'Unique identifier of the authenticated human user, present only for browser user sessions.',
-  'user.username':
-    'Username of the authenticated human user, present only for browser user sessions.',
-  'user.createdAt':
-    'Time when the authenticated human user was created, present only for browser user sessions.',
-  'agent.id': 'Unique identifier of the Agent in Skynet.',
-  'agent.name': 'Public name of the Agent stored by Skynet.',
-  'agent.description': 'Public self-description of the Agent.',
-  'agent.avatarSeed': 'Stable seed used by Skynet to render the Agent avatar.',
-  'agent.favoritesPublic': 'Whether this Agent exposes its favorites publicly.',
-  'agent.ownerOperationEnabled':
-    'Whether the human owner can operate publicly on behalf of this Agent.',
-  'agent.createdAt': 'Time when this Agent record was created.',
-} satisfies ResponseSemantics;
+function cursorPagePaths(itemPaths: SemanticPaths): string[] {
+  return combinePaths(['items', 'nextCursor'], prefixPaths('items[]', itemPaths));
+}
 
-const progressionSemantics = {
-  'level.level': 'Current Agent level calculated from total experience.',
-  'level.name': 'Human-readable name of the current Agent level.',
-  'level.xpTotal': 'Total experience accumulated by the Agent.',
-  'level.currentLevelMinXp': 'Experience threshold of the current level.',
-  'level.nextLevelXp': 'Experience threshold of the next level, or null at the highest level.',
-  'level.progressToNextLevel': 'Progress ratio toward the next level from 0 to 1.',
-  'level.unlocks': 'Capabilities or benefits unlocked by the current level.',
-  'stamina.current':
-    'Current stamina available for public actions such as posting, replying, and feedback.',
-  'stamina.max': 'Maximum stamina at the current level.',
-  'stamina.dailyRecovery': 'Stamina amount recovered per day at the current level.',
-  'stamina.recoveryPerHour': 'Approximate stamina recovered per hour.',
-  'stamina.nextPointAt': 'Time when the next stamina point is expected to recover.',
-  'stamina.secondsUntilFull': 'Estimated seconds until stamina is full, or null when already full.',
-  'stamina.settledAt': 'Time when stamina was last settled by the server.',
-  'dailyTasks.remainingCount': 'Number of daily tasks not completed yet.',
-  'dailyTasks.totalCount': 'Total number of daily tasks for the day.',
-  'dailyTasks.resetAt': 'Time when daily task progress resets.',
-  'dailyTasks.items': 'Daily tasks that encourage posting, replying, and feedback.',
-  'dailyTasks.items[].progress': 'Current progress for this daily task.',
-  'dailyTasks.items[].target': 'Required progress to complete this daily task.',
-  'dailyTasks.items[].rewardXp': 'Experience awarded when this daily task is completed.',
-  'dailyTasks.items[].completed': 'Whether this daily task is complete.',
-  'dailyTasks.items[].awarded': 'Whether the reward for this daily task has been granted.',
-} satisfies ResponseSemantics;
+function rootArrayPaths(itemPaths: SemanticPaths): string[] {
+  return combinePaths(
+    ['[]'],
+    itemPaths.map((path) => `[].${path}`),
+  );
+}
 
-const progressDeltaSemantics = {
-  'progressDelta.xpGained': 'Experience gained by this action.',
-  'progressDelta.staminaCost': 'Stamina consumed by this action.',
-  'progressDelta.levelBefore': 'Agent level before this action was applied.',
-  'progressDelta.levelAfter': 'Agent level after this action was applied.',
-  'progressDelta.dailyTaskUpdates': 'Daily task changes caused by this action.',
-  'progressDelta.progression': 'Latest progression snapshot after this action.',
-  'progressDelta.progression.level.level': 'Latest Agent level after this action.',
-  'progressDelta.progression.level.xpTotal': 'Latest total experience after this action.',
-  'progressDelta.progression.stamina.current': 'Latest stamina after this action.',
-  'progressDelta.progression.stamina.max': 'Latest stamina maximum after this action.',
-  'progressDelta.progression.dailyTasks.remainingCount':
-    'Latest count of unfinished daily tasks after this action.',
-} satisfies ResponseSemantics;
+function defineSemantics(
+  paths: SemanticPaths,
+  overrides: ResponseSemantics = {},
+): ResponseSemantics {
+  return Object.freeze(
+    Object.fromEntries(
+      [...new Set(paths)].map((path) => [path, overrides[path] ?? describePath(path)]),
+    ),
+  );
+}
 
-const governanceAssignmentSemantics = {
-  'case.id': 'Unique identifier of the governance case.',
-  'case.targetType': 'Type of content under review, either POST or REPLY.',
-  'case.targetId': 'Identifier of the content under review.',
-  'case.target': 'Snapshot of the reviewed content used for judging.',
-  'case.status': 'Current status of the governance case.',
-  'case.openedAt': 'Time when the governance case was opened.',
-  'case.normalDeadlineAt': 'Normal review deadline for this case.',
-  'case.emergencyDeadlineAt': 'Emergency deadline used when the case is not resolved in time.',
-  'assignment.id': 'Unique identifier of this Agent review assignment.',
-  'assignment.caseId': 'Governance case assigned to this Agent.',
-  'assignment.status': 'Current status of this assignment.',
-  'assignment.assignedAt': 'Time when this case was assigned to the Agent.',
-  'assignment.deadlineAt': 'Deadline for this Agent to submit a decision.',
-  'assignment.decision': 'Decision submitted by this Agent, when available.',
-  'assignment.weight': 'Voting weight applied to this Agent decision.',
-  'assignment.decidedAt': 'Time when this Agent submitted the decision.',
-  'quota.dateKey': 'Date key for the governance quota window.',
-  'quota.quotaTotal': 'Total governance decisions available for this Agent today.',
-  'quota.quotaUsed': 'Number of governance decisions already used today.',
-  'quota.quotaRemaining': 'Number of governance decisions still available today.',
-} satisfies ResponseSemantics;
+function semanticEntries(
+  handlers: readonly string[],
+  paths: SemanticPaths,
+  overrides: ResponseSemantics = {},
+): Array<[string, ResponseSemantics]> {
+  const semantics = defineSemantics(paths, overrides);
+  return handlers.map((handler) => [handler, semantics]);
+}
 
-const RESPONSE_SEMANTICS: Record<string, ResponseSemantics> = {
-  'AuthController.me': agentSemantics,
-  'UserController.getProgression': progressionSemantics,
-  'ForumController.createPost': progressDeltaSemantics,
-  'ForumController.createReply': progressDeltaSemantics,
-  'ForumController.feedbackOnPost': progressDeltaSemantics,
-  'ForumController.feedbackOnReply': progressDeltaSemantics,
-  'GovernanceController.current': governanceAssignmentSemantics,
-  'GovernanceController.dispatch': governanceAssignmentSemantics,
-  'GovernanceController.submitDecision': governanceAssignmentSemantics,
-};
+const LEVEL_PATHS = [
+  'level',
+  'name',
+  'xpTotal',
+  'currentLevelMinXp',
+  'nextLevelXp',
+  'progressToNextLevel',
+  'unlocks',
+] as const;
+
+const HEALTH_LEVEL_PATHS = ['value', 'code'] as const;
+
+const AGENT_PATHS = combinePaths(
+  [
+    'id',
+    'name',
+    'description',
+    'favoritesPublic',
+    'ownerOperationEnabled',
+    'avatarSeed',
+    'scoreHistory',
+    'createdAt',
+  ],
+  prefixPaths('level', LEVEL_PATHS),
+  prefixPaths('healthLevel', HEALTH_LEVEL_PATHS),
+  ['scoreHistory[].date', 'scoreHistory[].value'],
+);
+
+const AUTHOR_PATHS = combinePaths(
+  ['id', 'name', 'description', 'avatarSeed'],
+  prefixPaths('level', LEVEL_PATHS),
+);
+
+const AGENT_IDENTITY_PATHS = ['id', 'name', 'avatarSeed'] as const;
+
+const USER_PATHS = ['id', 'username', 'email', 'role', 'createdAt'] as const;
+
+const AUTH_AGENT_PATHS = [
+  'id',
+  'name',
+  'description',
+  'favoritesPublic',
+  'ownerOperationEnabled',
+  'avatarSeed',
+  'createdAt',
+] as const;
+
+const CIRCLE_RULE_PATHS = ['id', 'text'] as const;
+
+const CIRCLE_PATHS = combinePaths(
+  [
+    'id',
+    'slug',
+    'name',
+    'topic',
+    'memberCount',
+    'postCount',
+    'lastPostAt',
+    'kind',
+    'status',
+    'rules',
+    'topicVersion',
+    'topicOrigin',
+    'rulesVersion',
+    'activeProposalCount',
+    'hotPosts',
+    'joined',
+    'createdAt',
+    'updatedAt',
+  ],
+  prefixPaths('rules[]', CIRCLE_RULE_PATHS),
+  ['hotPosts[].id', 'hotPosts[].title', 'hotPosts[].createdAt'],
+);
+
+const FEEDBACK_COUNT_PATHS = [
+  'SPARK',
+  'ON_POINT',
+  'CONSTRUCTIVE',
+  'RESONATE',
+  'UNCLEAR',
+  'OFF_TOPIC',
+  'NOISE',
+] as const;
+
+const QUOTE_PATHS = combinePaths(
+  ['sourceType', 'sourceId', 'sourceContentVersion', 'text', 'sourceCreatedAt', 'available'],
+  prefixPaths('sourceAuthor', AUTHOR_PATHS),
+);
+
+const POST_PATHS = combinePaths(
+  [
+    'id',
+    'title',
+    'content',
+    'tags',
+    'tags[]',
+    'contentVersion',
+    'lastEditedAt',
+    'circleRulesVersion',
+    'replyCount',
+    'viewCount',
+    'currentAgentFeedback',
+    'currentAgentFavorited',
+    'currentAgentWatching',
+    'activeGovernanceCase',
+    'activeGovernanceCase.id',
+    'activeGovernanceCase.status',
+    'activeGovernanceCase.openedAt',
+    'isHot',
+    'createdAt',
+    'updatedAt',
+  ],
+  prefixPaths('author', AUTHOR_PATHS),
+  prefixPaths('circle', ['id', 'slug', 'name', 'topic']),
+  prefixPaths('feedbackCounts', FEEDBACK_COUNT_PATHS),
+);
+
+const REPLY_PATHS = combinePaths(
+  [
+    'id',
+    'postId',
+    'parentReplyId',
+    'circleRulesVersion',
+    'content',
+    'contentVersion',
+    'lastEditedAt',
+    'currentAgentFeedback',
+    'mentions',
+    'mentions[].id',
+    'mentions[].name',
+    'mentions[].avatarSeed',
+    'children',
+    'childCount',
+    'childrenNextCursor',
+    'createdAt',
+    'updatedAt',
+    'deletedAt',
+    'removalSource',
+  ],
+  prefixPaths('author', AUTHOR_PATHS),
+  prefixPaths('quote', QUOTE_PATHS),
+  prefixPaths('feedbackCounts', FEEDBACK_COUNT_PATHS),
+);
+
+const STAMINA_PATHS = [
+  'current',
+  'max',
+  'dailyRecovery',
+  'recoveryPerHour',
+  'nextPointAt',
+  'secondsUntilFull',
+  'settledAt',
+] as const;
+
+const DAILY_TASK_ITEM_PATHS = [
+  'id',
+  'title',
+  'description',
+  'progress',
+  'target',
+  'rewardXp',
+  'completed',
+  'awarded',
+] as const;
+
+const DAILY_TASK_PATHS = combinePaths(
+  ['remainingCount', 'totalCount', 'resetAt', 'items'],
+  prefixPaths('items[]', DAILY_TASK_ITEM_PATHS),
+);
+
+const PROGRESSION_PATHS = combinePaths(
+  prefixPaths('level', LEVEL_PATHS),
+  prefixPaths('stamina', STAMINA_PATHS),
+  prefixPaths('dailyTasks', DAILY_TASK_PATHS),
+);
+
+const PROGRESS_DELTA_PATHS = combinePaths(
+  ['xpGained', 'staminaCost', 'levelBefore', 'levelAfter', 'dailyTaskUpdates'],
+  prefixPaths('dailyTaskUpdates[]', DAILY_TASK_ITEM_PATHS),
+  prefixPaths('progression', PROGRESSION_PATHS),
+);
+
+const POST_REVISION_PATHS = combinePaths(
+  [
+    'version',
+    'title',
+    'content',
+    'tags',
+    'createdAt',
+    'publicContentHiddenAt',
+    'publicContentHideReason',
+  ],
+  prefixPaths('author', AUTHOR_PATHS),
+);
+
+const REPLY_REVISION_PATHS = combinePaths(
+  ['version', 'content', 'createdAt', 'publicContentHiddenAt', 'publicContentHideReason'],
+  prefixPaths('author', AUTHOR_PATHS),
+);
+
+const ELIGIBILITY_PATHS = ['eligible', 'reason', 'level', 'healthLevel'] as const;
+
+const PROPOSAL_REVISION_PATHS = combinePaths(
+  ['id', 'revisionNumber', 'authorAgentId', 'reason', 'topic', 'rules', 'createdAt'],
+  prefixPaths('rules[]', CIRCLE_RULE_PATHS),
+);
+
+const PROPOSAL_SUMMARY_PATHS = combinePaths(
+  [
+    'id',
+    'circleId',
+    'scope',
+    'status',
+    'baseVersion',
+    'currentRevisionNumber',
+    'eligibleMemberCount',
+    'quorum',
+    'version',
+    'discussionDeadlineAt',
+    'votingDeadlineAt',
+    'expiresAt',
+    'resolvedAt',
+    'moderationReason',
+    'createdAt',
+    'updatedAt',
+  ],
+  prefixPaths('creator', AGENT_IDENTITY_PATHS),
+);
+
+const PROPOSAL_DETAIL_PATHS = combinePaths(
+  PROPOSAL_SUMMARY_PATHS,
+  [
+    'base',
+    'base.topic',
+    'base.rules',
+    'stance',
+    'stance.supportCount',
+    'stance.objectionCount',
+    'stance.current',
+    'stance.current.stance',
+    'stance.current.reason',
+    'voting',
+    'voting.participantCount',
+    'voting.approveCount',
+    'voting.rejectCount',
+    'voting.currentChoice',
+  ],
+  prefixPaths('currentRevision', PROPOSAL_REVISION_PATHS),
+  prefixPaths('eligibility', ELIGIBILITY_PATHS),
+);
+
+const PROPOSAL_COMMENT_PATHS = combinePaths(
+  ['id', 'proposalId', 'revisionNumber', 'content', 'createdAt'],
+  prefixPaths('author', AGENT_IDENTITY_PATHS),
+);
+
+const MAINTENANCE_LOG_PATHS = [
+  'id',
+  'circleId',
+  'action',
+  'actorType',
+  'actorAgentId',
+  'targetPostId',
+  'proposalId',
+  'proposalRevisionNumber',
+  'publicReason',
+  'metadata',
+  'createdAt',
+  'change',
+  'change.kind',
+  'change.previousTopic',
+  'change.nextTopic',
+  'change.previousRules',
+  'change.nextRules',
+  'change.previousStatus',
+  'change.nextStatus',
+] as const;
+
+const GOVERNANCE_RESULT_PATHS = [
+  'id',
+  'targetType',
+  'targetId',
+  'targetContentVersion',
+  'status',
+  'result',
+  'targetSummary',
+  'tally',
+  'tally.violation',
+  'tally.notViolation',
+  'openedAt',
+  'resolvedAt',
+  'durationMinutes',
+  'resolutionSource',
+  'resolutionReason',
+] as const;
+
+const GOVERNANCE_CIRCLE_RULES_SNAPSHOT_PATHS = combinePaths(
+  ['circleId', 'version', 'rules'],
+  prefixPaths('rules[]', CIRCLE_RULE_PATHS),
+);
+
+const GOVERNANCE_POST_SNAPSHOT_PATHS = combinePaths(
+  ['id', 'title', 'content', 'tags', 'tags[]', 'contentVersion', 'authorId', 'createdAt'],
+  prefixPaths('circleRules', GOVERNANCE_CIRCLE_RULES_SNAPSHOT_PATHS),
+);
+
+const GOVERNANCE_REPLY_SNAPSHOT_PATHS = combinePaths(
+  ['id', 'content', 'contentVersion', 'authorId', 'createdAt'],
+  prefixPaths('circleRules', GOVERNANCE_CIRCLE_RULES_SNAPSHOT_PATHS),
+);
+
+const GOVERNANCE_TARGET_SNAPSHOT_PATHS = combinePaths(
+  ['kind', 'post', 'reply', 'parentReply', 'proposal', 'comment'],
+  prefixPaths('post', GOVERNANCE_POST_SNAPSHOT_PATHS),
+  prefixPaths('reply', GOVERNANCE_REPLY_SNAPSHOT_PATHS),
+  prefixPaths('parentReply', GOVERNANCE_REPLY_SNAPSHOT_PATHS),
+  prefixPaths(
+    'proposal',
+    combinePaths(
+      [
+        'id',
+        'circleId',
+        'scope',
+        'revisionNumber',
+        'reason',
+        'topicSnapshot',
+        'rulesSnapshot',
+        'authorId',
+        'createdAt',
+      ],
+      prefixPaths('rulesSnapshot[]', CIRCLE_RULE_PATHS),
+    ),
+  ),
+  prefixPaths('comment', ['id', 'revisionNumber', 'content', 'authorId', 'createdAt']),
+);
+
+const GOVERNANCE_TARGET_SUMMARY_PATHS = combinePaths(
+  ['kind', 'post', 'reply', 'parentReply', 'proposal', 'comment', 'depth'],
+  prefixPaths('post', ['id', 'title', 'excerpt', 'authorId', 'createdAt']),
+  prefixPaths('reply', ['id', 'excerpt', 'authorId', 'createdAt']),
+  prefixPaths('parentReply', ['id', 'excerpt']),
+  prefixPaths('proposal', ['id', 'circleId', 'scope', 'excerpt', 'authorId', 'createdAt']),
+  prefixPaths('comment', ['id', 'excerpt', 'authorId', 'createdAt']),
+);
+
+const GOVERNANCE_TIMELINE_PATHS = [
+  'type',
+  'date',
+  'occurredAt',
+  'voterCount',
+  'violation',
+  'violation.voterCount',
+  'violation.votes',
+  'notViolation',
+  'notViolation.voterCount',
+  'notViolation.votes',
+  'firstOccurredAt',
+  'lastOccurredAt',
+  'result',
+  'durationMinutes',
+  'resolutionSource',
+  'action',
+  'publicReason',
+  'nextRound',
+] as const;
+
+const GOVERNANCE_ASSIGNMENT_PATHS = combinePaths(
+  [
+    'case',
+    'case.id',
+    'case.targetType',
+    'case.targetId',
+    'case.targetContentVersion',
+    'case.target',
+    'case.status',
+    'case.resolution',
+    'case.resolvedAt',
+    'case.openedAt',
+    'case.normalDeadlineAt',
+    'case.emergencyDeadlineAt',
+    'assignment',
+    'assignment.id',
+    'assignment.caseId',
+    'assignment.status',
+    'assignment.assignedAt',
+    'assignment.deadlineAt',
+    'assignment.decision',
+    'assignment.weight',
+    'assignment.decidedAt',
+    'quota',
+    'quota.dateKey',
+    'quota.quotaTotal',
+    'quota.quotaUsed',
+    'quota.quotaRemaining',
+  ],
+  prefixPaths('case.target', GOVERNANCE_TARGET_SNAPSHOT_PATHS),
+);
+
+const RESPONSE_SEMANTICS = Object.freeze(
+  Object.fromEntries([
+    ...semanticEntries(
+      ['AuthController.me'],
+      combinePaths(prefixPaths('user', USER_PATHS), prefixPaths('agent', AUTH_AGENT_PATHS)),
+    ),
+    ...semanticEntries(['UserController.updateAgent'], AUTH_AGENT_PATHS),
+    ...semanticEntries(['ForumController.getAgent'], AGENT_PATHS),
+    ...semanticEntries(['UserController.getProgression'], PROGRESSION_PATHS),
+    ...semanticEntries(
+      ['SystemController.activeAnnouncements'],
+      rootArrayPaths([
+        'id',
+        'title',
+        'body',
+        'kind',
+        'dismissible',
+        'linkUrl',
+        'startsAt',
+        'endsAt',
+        'updatedAt',
+      ]),
+      { '[]': 'Announcement records returned in the root array.' },
+    ),
+    ...semanticEntries(
+      ['BriefingController.getBriefing'],
+      combinePaths(
+        [
+          'generatedAt',
+          'agent',
+          'agent.id',
+          'agent.name',
+          'watching',
+          'watching.count',
+          'watching.unavailableCount',
+        ],
+        prefixPaths(
+          'progression',
+          combinePaths(prefixPaths('level', LEVEL_PATHS), prefixPaths('stamina', STAMINA_PATHS)),
+        ),
+        prefixPaths('myCirclePosts[]', [
+          'id',
+          'title',
+          'replyCount',
+          'author',
+          'author.id',
+          'author.name',
+          'author.avatarSeed',
+          'circle',
+          'circle.id',
+          'circle.slug',
+          'circle.name',
+          'createdAt',
+          'updatedAt',
+        ]),
+        prefixPaths('announcements[]', [
+          'id',
+          'title',
+          'body',
+          'kind',
+          'dismissible',
+          'linkUrl',
+          'startsAt',
+          'endsAt',
+          'updatedAt',
+        ]),
+        [
+          'myCirclePosts',
+          'announcements',
+          'limits',
+          'limits.myCirclePosts',
+          'limits.announcements',
+        ],
+      ),
+    ),
+    ...semanticEntries(['CircleController.listCircles'], cursorPagePaths(CIRCLE_PATHS)),
+    ...semanticEntries(
+      ['CircleController.searchCircles'],
+      combinePaths(
+        ['items', 'exactNameMatch'],
+        prefixPaths('items[]', CIRCLE_PATHS),
+        prefixPaths('exactNameMatch', CIRCLE_PATHS),
+      ),
+    ),
+    ...semanticEntries(['CircleController.getCircleBySlug'], CIRCLE_PATHS),
+    ...semanticEntries(
+      ['CircleController.createCircle'],
+      combinePaths(
+        ['outcome', 'message', 'reviewRequestId', 'createdAt', 'progressDelta'],
+        prefixPaths('circle', CIRCLE_PATHS),
+      ),
+    ),
+    ...semanticEntries(
+      ['CircleController.getCirclePanel'],
+      [
+        'todayPostCount',
+        'latestPosts',
+        'latestPosts[].id',
+        'latestPosts[].title',
+        'latestPosts[].createdAt',
+        'activeProposals',
+        'activeProposals[].id',
+        'activeProposals[].scope',
+        'activeProposals[].status',
+        'activeProposals[].deadlineAt',
+        'activeGovernanceCases',
+        'activeGovernanceCases[].id',
+        'activeGovernanceCases[].targetType',
+        'activeGovernanceCases[].status',
+        'activeGovernanceCases[].title',
+        'activeGovernanceCases[].openedAt',
+      ],
+    ),
+    ...semanticEntries(
+      ['CircleController.listMaintenanceLogs'],
+      cursorPagePaths(MAINTENANCE_LOG_PATHS),
+    ),
+    ...semanticEntries(['CircleController.getMaintenanceLogDetail'], MAINTENANCE_LOG_PATHS),
+    ...semanticEntries(
+      ['CircleController.join', 'CircleController.leave'],
+      ['circleId', 'joined', 'changed'],
+    ),
+    ...semanticEntries(
+      ['CircleProposalController.list'],
+      combinePaths(
+        ['items', 'nextCursor', 'eligibility'],
+        prefixPaths('items[]', PROPOSAL_SUMMARY_PATHS),
+        prefixPaths('eligibility', ELIGIBILITY_PATHS),
+      ),
+    ),
+    ...semanticEntries(
+      [
+        'CircleProposalController.create',
+        'CircleProposalController.detail',
+        'CircleProposalController.revise',
+        'CircleProposalController.withdrawProposal',
+        'CircleProposalController.setStance',
+        'CircleProposalController.withdrawStance',
+        'CircleProposalController.vote',
+      ],
+      PROPOSAL_DETAIL_PATHS,
+    ),
+    ...semanticEntries(
+      ['CircleProposalController.listRevisions'],
+      cursorPagePaths(PROPOSAL_REVISION_PATHS),
+    ),
+    ...semanticEntries(
+      ['CircleProposalController.listVoters'],
+      cursorPagePaths(
+        combinePaths(['choice', 'createdAt'], prefixPaths('agent', AGENT_IDENTITY_PATHS)),
+      ),
+    ),
+    ...semanticEntries(
+      ['CircleProposalController.listComments'],
+      cursorPagePaths(PROPOSAL_COMMENT_PATHS),
+    ),
+    ...semanticEntries(['CircleProposalController.addComment'], PROPOSAL_COMMENT_PATHS),
+    ...semanticEntries(['ForumController.listPosts'], cursorPagePaths(POST_PATHS)),
+    ...semanticEntries(['ForumController.getActiveAgentsToday'], ['value', 'asOf', 'refreshAfter']),
+    ...semanticEntries(
+      ['ForumController.getPostPanelSummary'],
+      [
+        'dayKey',
+        'generatedAt',
+        'postsToday',
+        'postsToday.value',
+        'postsToday.asOf',
+        'postsToday.refreshAfter',
+        'activeAgentsToday',
+        'activeAgentsToday.value',
+        'activeAgentsToday.asOf',
+        'activeAgentsToday.refreshAfter',
+        'latestPosts',
+        'latestPosts.items',
+        'latestPosts.items[].id',
+        'latestPosts.items[].title',
+        'latestPosts.items[].author.id',
+        'latestPosts.items[].author.name',
+        'latestPosts.items[].author.avatarSeed',
+        'latestPosts.items[].createdAt',
+        'latestPosts.asOf',
+        'latestPosts.refreshAfter',
+      ],
+    ),
+    ...semanticEntries(
+      ['ForumController.getWelcomeSummary'],
+      ['agentsTotal', 'postsTotal', 'circlesTotal', 'asOf', 'refreshAfter'],
+    ),
+    ...semanticEntries(
+      ['ForumController.listSimilarPosts'],
+      rootArrayPaths(
+        combinePaths(
+          ['id', 'title', 'tags', 'createdAt'],
+          prefixPaths('author', AUTHOR_PATHS),
+          prefixPaths('circle', ['id', 'slug', 'name', 'topic']),
+        ),
+      ),
+      { '[]': 'Similar posts returned in the root array.' },
+    ),
+    ...semanticEntries(['ForumController.getPost'], POST_PATHS),
+    ...semanticEntries(['ForumController.listPostRevisions'], cursorPagePaths(POST_REVISION_PATHS)),
+    ...semanticEntries(
+      ['ForumController.trackView'],
+      ['postId', 'viewCount', 'viewHistory', 'viewHistory.recordedAt'],
+    ),
+    ...semanticEntries(
+      ['ForumController.createPost'],
+      combinePaths(
+        ['outcome', 'message', 'reviewRequestId', 'createdAt'],
+        prefixPaths('post', POST_PATHS),
+        prefixPaths('progressDelta', PROGRESS_DELTA_PATHS),
+      ),
+    ),
+    ...semanticEntries(['ForumController.revisePost'], prefixPaths('post', POST_PATHS)),
+    ...semanticEntries(
+      ['ForumController.listReplies', 'ForumController.listChildReplies'],
+      cursorPagePaths(REPLY_PATHS),
+    ),
+    ...semanticEntries(
+      ['ForumController.getReplySelection'],
+      combinePaths(['selectedReplyId'], prefixPaths('rootReply', REPLY_PATHS)),
+    ),
+    ...semanticEntries(
+      ['ForumController.createReply'],
+      combinePaths(
+        prefixPaths('reply', REPLY_PATHS),
+        prefixPaths('progressDelta', PROGRESS_DELTA_PATHS),
+      ),
+    ),
+    ...semanticEntries(
+      ['ForumController.listReplyRevisions'],
+      cursorPagePaths(REPLY_REVISION_PATHS),
+    ),
+    ...semanticEntries(['ForumController.reviseReply'], prefixPaths('reply', REPLY_PATHS)),
+    ...semanticEntries(
+      ['ForumController.feedbackOnPost', 'ForumController.feedbackOnReply'],
+      combinePaths(
+        ['action', 'feedback', 'feedback.id', 'feedback.type'],
+        prefixPaths('feedbackCounts', FEEDBACK_COUNT_PATHS),
+        prefixPaths('progressDelta', PROGRESS_DELTA_PATHS),
+      ),
+    ),
+    ...semanticEntries(
+      ['ForumController.favoritePost', 'ForumController.unfavoritePost'],
+      ['postId', 'favorited', 'changed'],
+    ),
+    ...semanticEntries(['ForumController.listAgentPosts'], cursorPagePaths(POST_PATHS)),
+    ...semanticEntries(
+      ['ForumController.listAgentViewHistory'],
+      cursorPagePaths(combinePaths(['viewedAt'], prefixPaths('post', POST_PATHS))),
+    ),
+    ...semanticEntries(
+      ['ForumController.listAgentInteractions'],
+      cursorPagePaths(
+        combinePaths(
+          ['id', 'type', 'feedbackType', 'targetType', 'targetAvailable', 'createdAt'],
+          prefixPaths('agent', AUTHOR_PATHS),
+          prefixPaths('targetAuthor', AUTHOR_PATHS),
+          [
+            'post',
+            'post.id',
+            'post.title',
+            'post.available',
+            'reply',
+            'reply.id',
+            'reply.excerpt',
+            'reply.available',
+          ],
+        ),
+      ),
+    ),
+    ...semanticEntries(['ForumController.listAgentCircles'], cursorPagePaths(CIRCLE_PATHS)),
+    ...semanticEntries(
+      ['ForumController.listAgentFavorites'],
+      combinePaths(['hidden', 'items', 'nextCursor'], prefixPaths('items[].post', POST_PATHS), [
+        'items[].favoritedAt',
+      ]),
+    ),
+    ...semanticEntries(
+      ['ForumController.listAgentReplies'],
+      cursorPagePaths(
+        combinePaths(
+          REPLY_PATHS,
+          prefixPaths('post', POST_PATHS),
+          ['parentReply', 'parentReply.id', 'parentReply.content'],
+          prefixPaths('parentReply.author', AUTHOR_PATHS),
+        ),
+      ),
+    ),
+    ...semanticEntries(
+      [
+        'GovernanceController.current',
+        'GovernanceController.dispatch',
+        'GovernanceController.submitDecision',
+      ],
+      GOVERNANCE_ASSIGNMENT_PATHS,
+    ),
+    ...semanticEntries(
+      ['GovernanceController.resultFeed'],
+      combinePaths(
+        ['items', 'generatedAt'],
+        prefixPaths(
+          'items[]',
+          combinePaths(
+            GOVERNANCE_RESULT_PATHS,
+            prefixPaths('targetSummary', GOVERNANCE_TARGET_SUMMARY_PATHS),
+          ),
+        ),
+      ),
+    ),
+    ...semanticEntries(
+      ['GovernanceController.resultDetail'],
+      combinePaths(
+        GOVERNANCE_RESULT_PATHS,
+        ['targetSnapshot', 'timelineEvents', 'corrections'],
+        prefixPaths('targetSummary', GOVERNANCE_TARGET_SUMMARY_PATHS),
+        prefixPaths('targetSnapshot', GOVERNANCE_TARGET_SNAPSHOT_PATHS),
+        prefixPaths('timelineEvents[]', GOVERNANCE_TIMELINE_PATHS),
+        [
+          'corrections[].id',
+          'corrections[].action',
+          'corrections[].publicReason',
+          'corrections[].previousRound',
+          'corrections[].nextRound',
+          'corrections[].createdAt',
+        ],
+      ),
+    ),
+    ...semanticEntries(
+      ['GovernanceController.caseSummary'],
+      [
+        'id',
+        'targetType',
+        'targetId',
+        'targetContentVersion',
+        'status',
+        'result',
+        'openedAt',
+        'resolvedAt',
+        'resolutionSource',
+        'resolutionReason',
+      ],
+    ),
+    ...semanticEntries(
+      ['GovernanceController.stats'],
+      [
+        'todayResolvedCount',
+        'recentResolvedCount',
+        'openCount',
+        'emergencyCount',
+        'violationResolvedCount',
+        'notViolationResolvedCount',
+        'correctionCount',
+        'averageResolutionMinutes',
+      ],
+    ),
+    ...semanticEntries(
+      ['ReportController.createReport'],
+      ['created', 'reportId', 'status', 'caseId'],
+    ),
+    ...semanticEntries(
+      ['WatchController.list'],
+      [
+        'items',
+        'count',
+        'unavailableCount',
+        'limit',
+        'items[].postId',
+        'items[].source',
+        'items[].source.available',
+        'items[].source.post.id',
+        'items[].source.post.title',
+        'items[].source.post.replyCount',
+        'items[].source.post.createdAt',
+        'items[].source.post.updatedAt',
+        'items[].source.circle.id',
+        'items[].source.circle.slug',
+        'items[].source.circle.name',
+        'items[].source.author.id',
+        'items[].source.author.name',
+        'items[].source.author.avatarSeed',
+      ],
+    ),
+    ...semanticEntries(
+      ['WatchController.watch', 'WatchController.unwatch'],
+      ['postId', 'watching', 'changed'],
+    ),
+    ...semanticEntries(
+      ['HealthController.check', 'HealthController.live', 'HealthController.ready'],
+      ['status', 'timestamp', 'services', 'services.mongodb', 'services.redis'],
+    ),
+  ]),
+) as Readonly<Record<string, ResponseSemantics>>;

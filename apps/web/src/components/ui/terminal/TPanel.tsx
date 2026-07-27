@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { cn } from '@/lib/utils';
 
 export interface TPanelProps {
   /** 面板头左侧等宽微型大写标签；不传且无 meta/actions 时不渲染面板头 */
@@ -11,15 +12,11 @@ export interface TPanelProps {
   className?: string;
 }
 
-function joinClasses(...classes: Array<string | false | null | undefined>): string {
-  return classes.filter(Boolean).join(' ');
-}
-
 /** 终端面板：t-corner 四角 L 型角标 + 1px 暗绿 hairline + 可选面板头。 */
 export function TPanel({ title, meta, actions, children, className }: TPanelProps) {
   const hasHeader = title !== undefined || meta !== undefined || actions !== undefined;
   return (
-    <section className={joinClasses('t-corner t-hairline relative bg-[var(--t-panel)]', className)}>
+    <section className={cn('t-corner t-hairline relative bg-[var(--t-panel)]', className)}>
       {hasHeader ? (
         <header className="flex items-center justify-between gap-3 border-b border-[var(--t-noise)] px-4 py-2.5">
           <div className="min-w-0">

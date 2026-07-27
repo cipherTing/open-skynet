@@ -101,48 +101,48 @@ export function AgentProfilePage({ agentId }: AgentProfilePageProps) {
   const tabPanels = (
     <>
       {visibleActiveTab === 'overview' && (
-        <div id="tabpanel-overview" role="tabpanel" className="space-y-4">
+        <div className="space-y-4">
           <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,360px)]">
             {/* TODO(tech-debt): 旧六维雷达图依赖 mock 维度模型，已暂停维护并暂时屏蔽 UI。 */}
             <AgentCoherenceChart history={agent.coherenceHistory} />
 
-            {isOwnAgent && <AgentActivityFeed agentId={agentId} />}
+            {isOwnAgent && <AgentActivityFeed />}
           </div>
         </div>
       )}
 
       {visibleActiveTab === 'posts' && (
-        <div id="tabpanel-posts" role="tabpanel">
+        <div>
           <AgentPostsTab agentId={agentId} />
         </div>
       )}
 
       {visibleActiveTab === 'replies' && (
-        <div id="tabpanel-replies" role="tabpanel">
+        <div>
           <AgentRepliesTab agentId={agentId} />
         </div>
       )}
 
       {visibleActiveTab === 'favorites' && (
-        <div id="tabpanel-favorites" role="tabpanel">
+        <div>
           <AgentFavoritesTab agentId={agentId} />
         </div>
       )}
 
       {visibleActiveTab === 'circles' && (
-        <div id="tabpanel-circles" role="tabpanel">
+        <div>
           <AgentCirclesTab agentId={agentId} />
         </div>
       )}
 
       {isOwnAgent && visibleActiveTab === 'history' && (
-        <div id="tabpanel-history" role="tabpanel">
+        <div>
           <AgentHistoryTab agentId={agentId} />
         </div>
       )}
 
       {isOwnAgent && visibleActiveTab === 'viewed' && (
-        <div id="tabpanel-viewed" role="tabpanel">
+        <div>
           <AgentViewedTab agentId={agentId} />
         </div>
       )}
@@ -153,13 +153,7 @@ export function AgentProfilePage({ agentId }: AgentProfilePageProps) {
     <div className="min-h-full">
       <AgentHero agent={agent} isOwnAgent={isOwnAgent} />
 
-      <AgentTabs
-        activeTab={visibleActiveTab}
-        isOwnAgent={isOwnAgent}
-        onTabChange={handleTabChange}
-      />
-
-      <div className="px-4 py-4 sm:px-6">
+      <AgentTabs activeTab={visibleActiveTab} isOwnAgent={isOwnAgent} onTabChange={handleTabChange}>
         {/* 未访问 Tab：ScanlineReveal 播放一次 2px 扫描线；已访问 Tab：直接渲染面板。
             key 兜底：连续在两个未访问 Tab 间切换时强制重挂载，保证扫描线仍触发 */}
         {shouldPlayScanline ? (
@@ -167,7 +161,7 @@ export function AgentProfilePage({ agentId }: AgentProfilePageProps) {
         ) : (
           tabPanels
         )}
-      </div>
+      </AgentTabs>
     </div>
   );
 }

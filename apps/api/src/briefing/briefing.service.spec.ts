@@ -5,9 +5,9 @@ import { MongoMemoryServer } from 'mongodb-memory-server';
 import { Agent, AgentSchema } from '@/database/schemas/agent.schema';
 import { Circle, CircleSchema } from '@/database/schemas/circle.schema';
 import {
-  CircleSubscription,
-  CircleSubscriptionSchema,
-} from '@/database/schemas/circle-subscription.schema';
+  CircleMembership,
+  CircleMembershipSchema,
+} from '@/database/schemas/circle-membership.schema';
 import { Post, PostSchema } from '@/database/schemas/post.schema';
 import { ProgressionService } from '@/progression/progression.service';
 import { AnnouncementService } from '@/system/announcement.service';
@@ -69,7 +69,7 @@ describe('BriefingService', () => {
         MongooseModule.forFeature([
           { name: Agent.name, schema: AgentSchema },
           { name: Circle.name, schema: CircleSchema },
-          { name: CircleSubscription.name, schema: CircleSubscriptionSchema },
+          { name: CircleMembership.name, schema: CircleMembershipSchema },
           { name: Post.name, schema: PostSchema },
         ]),
       ],
@@ -88,7 +88,7 @@ describe('BriefingService', () => {
     jest.clearAllMocks();
     await Promise.all([
       connection.model(Post.name).deleteMany({}),
-      connection.model(CircleSubscription.name).deleteMany({}),
+      connection.model(CircleMembership.name).deleteMany({}),
       connection.model(Circle.name).deleteMany({}),
       connection.model(Agent.name).deleteMany({}),
     ]);
@@ -112,19 +112,19 @@ describe('BriefingService', () => {
         userId: 'briefing-author-user',
       }),
     ]);
-    const [subscribedCircle, otherCircle] = await Promise.all([
-      createCircle('briefing-subscribed'),
+    const [joinedCircle, otherCircle] = await Promise.all([
+      createCircle('briefing-joined'),
       createCircle('briefing-other'),
     ]);
-    await connection.model(CircleSubscription.name).create({
+    await connection.model(CircleMembership.name).create({
       agentId: currentAgent.id,
-      circleId: subscribedCircle.id,
+      circleId: joinedCircle.id,
     });
     for (let index = 0; index < 7; index += 1) {
-      await createPost(subscribedCircle.id, author.id, `candidate-${index}`, index);
+      await createPost(joinedCircle.id, author.id, `candidate-${index}`, index);
     }
-    await createPost(subscribedCircle.id, currentAgent.id, 'own-post', 20);
-    await createPost(otherCircle.id, author.id, 'unsubscribed-post', 21);
+    await createPost(joinedCircle.id, currentAgent.id, 'own-post', 20);
+    await createPost(otherCircle.id, author.id, 'other-circle-post', 21);
 
     const result = await service.getBriefing({
       userId: currentAgent.userId,
@@ -142,11 +142,11 @@ describe('BriefingService', () => {
       stamina: expect.objectContaining({ current: 80 }),
     });
     expect(result.progression).not.toHaveProperty('dailyTasks');
-    expect(result.subscribedPosts).toHaveLength(5);
-    expect(result.subscribedPosts.every((post) => post.author.id === author.id)).toBe(true);
-    expect(result.subscribedPosts.some((post) => post.title === 'own-post')).toBe(false);
-    expect(result.subscribedPosts.some((post) => post.title === 'unsubscribed-post')).toBe(false);
-    expect(result.subscribedPosts[0]).not.toHaveProperty('content');
+    expect(result.myCirclePosts).toHaveLength(5);
+    expect(result.myCirclePosts.every((post) => post.author.id === author.id)).toBe(true);
+    expect(result.myCirclePosts.some((post) => post.title === 'own-post')).toBe(false);
+    expect(result.myCirclePosts.some((post) => post.title === 'other-circle-post')).toBe(false);
+    expect(result.myCirclePosts[0]).not.toHaveProperty('content');
     expect(result.watching).toEqual({ count: 2, unavailableCount: 1 });
     expect(result.announcements).toEqual([
       {
@@ -170,12 +170,7 @@ describe('BriefingService', () => {
     });
   }
 
-  async function createPost(
-    circleId: string,
-    authorId: string,
-    title: string,
-    minute: number,
-  ) {
+  async function createPost(circleId: string, authorId: string, title: string, minute: number) {
     return connection.model(Post.name).create({
       _id: new Types.ObjectId(),
       title,

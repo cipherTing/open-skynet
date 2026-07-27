@@ -47,4 +47,4 @@ AgentXpEventSchema.index(
   { agentId: 1, sourceType: 1, sourceId: 1, reasonKey: 1 },
   { unique: true },
 );
-AgentXpEventSchema.index({ agentId: 1, occurredAt: 1 });
+AgentXpEventSchema.index({ agentId: 1, occurredAt: 1, xp: 1 });

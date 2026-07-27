@@ -1,27 +1,50 @@
 'use client';
 
-import { useState } from 'react';
-import { ArrowDown, ArrowUp, Loader2, Pencil, Plus, Trash2 } from 'lucide-react';
+import { useId, useRef, useState } from 'react';
+import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { useMutation } from '@tanstack/react-query';
+import { z } from 'zod';
 import type {
   Circle,
   CircleProposalDetail,
   CircleProposalScope,
   CircleRuleItem,
 } from '@skynet/shared';
-import { circleApi } from '@/lib/api';
+import { useAppForm } from '@/components/forms/skynet-form';
 import { useToast } from '@/components/ui/SignalToast';
 import { TerminalDialog } from '@/components/ui/TerminalDialog';
-import { TButton, TInput, TRadarNode } from '@/components/ui/terminal';
+import { TButton, TInput } from '@/components/ui/terminal';
+import { circleApi } from '@/lib/api';
+import { RuleChangeDiff, TopicChangeDiff } from './CircleChangeDiff';
 import { CoBuildMarkdownComposer } from './CoBuildMarkdownComposer';
-import { TopicChangeDiff } from './CircleChangeDiff';
+
+const PROPOSAL_SCOPES = ['TOPIC', 'RULES'] as const;
+const TOPIC_MAX_LENGTH = 160;
+const RULE_MAX_COUNT = 10;
+const RULE_MAX_LENGTH = 280;
+const REASON_MAX_LENGTH = 4_000;
+
+interface ProposalFormValues {
+  scope: CircleProposalScope;
+  topic: string;
+  rules: CircleRuleItem[];
+  reason: string;
+}
 
 interface CreateCircleProposalModalProps {
   circle: Circle;
   proposal?: CircleProposalDetail;
   onClose: () => void;
   onCreated: (proposal: CircleProposalDetail) => Promise<void>;
+}
+
+function serializeProposal(values: ProposalFormValues): string {
+  return JSON.stringify({
+    scope: values.scope,
+    topic: values.topic.trim(),
+    rules: values.rules.map((rule) => ({ id: rule.id, text: rule.text.trim() })),
+    reason: values.reason.trim(),
+  });
 }
 
 export function CreateCircleProposalModal({
@@ -32,155 +55,273 @@ export function CreateCircleProposalModal({
 }: CreateCircleProposalModalProps) {
   const { t } = useTranslation();
   const toast = useToast();
-  const currentRevision = proposal?.revisions.at(-1);
-  const [scope, setScope] = useState<CircleProposalScope>(proposal?.scope ?? 'TOPIC');
-  const [topic, setTopic] = useState(currentRevision?.topic ?? circle.topic);
-  const [rules, setRules] = useState<CircleRuleItem[]>(
-    currentRevision?.rules?.map((rule) => ({ ...rule })) ??
+  const formId = useId();
+  const idempotencyRef = useRef<{ fingerprint: string; key: string } | null>(null);
+  const [formError, setFormError] = useState('');
+  const currentRevision = proposal?.currentRevision;
+  const initialValues: ProposalFormValues = {
+    scope: proposal?.scope ?? 'TOPIC',
+    topic: currentRevision?.topic ?? circle.topic,
+    rules:
+      currentRevision?.rules?.map((rule) => ({ ...rule })) ??
       circle.rules.map((rule) => ({ ...rule })),
-  );
-  const [removedRules, setRemovedRules] = useState<CircleRuleItem[]>(() =>
-    circle.rules.filter((rule) => !currentRevision?.rules?.some((item) => item.id === rule.id)),
-  );
-  const [reason, setReason] = useState('');
-  const mutation = useMutation({
-    mutationFn: () =>
-      proposal
-        ? circleApi.reviseProposal(
-            circle.id,
-            proposal.id,
-            {
-              expectedVersion: proposal.version,
-              reason: reason.trim(),
-              ...(scope === 'TOPIC' ? { topic: topic.trim() } : { rules }),
-            },
-            crypto.randomUUID(),
-          )
-        : circleApi.createProposal(
-            circle.id,
-            {
-              scope,
-              expectedVersion: scope === 'TOPIC' ? circle.topicVersion : circle.rulesVersion,
-              reason: reason.trim(),
-              ...(scope === 'TOPIC' ? { topic: topic.trim() } : { rules }),
-            },
-            crypto.randomUUID(),
-          ),
-    onSuccess: async (proposal) => {
-      toast.success(t(proposal ? 'circles.coBuild.revised' : 'circles.coBuild.created'));
-      await onCreated(proposal);
-      onClose();
+    reason: '',
+  };
+  const baselineTopic = currentRevision?.topic ?? circle.topic;
+  const baselineRules = currentRevision?.rules ?? circle.rules;
+  const form = useAppForm({
+    defaultValues: initialValues,
+    validators: {
+      onSubmit: z
+        .object({
+          scope: z.enum(PROPOSAL_SCOPES),
+          topic: z.string().max(TOPIC_MAX_LENGTH),
+          rules: z
+            .array(
+              z.object({
+                id: z.string().uuid(),
+                text: z.string().trim().min(1).max(RULE_MAX_LENGTH),
+              }),
+            )
+            .max(RULE_MAX_COUNT),
+          reason: z
+            .string()
+            .trim()
+            .min(1, t('circles.coBuild.reasonRequired'))
+            .max(REASON_MAX_LENGTH),
+        })
+        .superRefine((value, context) => {
+          if (value.scope === 'TOPIC') {
+            if (!value.topic.trim()) {
+              context.addIssue({
+                code: 'custom',
+                path: ['topic'],
+                message: t('circles.topicRequired'),
+              });
+            } else if (value.topic.trim() === baselineTopic) {
+              context.addIssue({
+                code: 'custom',
+                path: ['topic'],
+                message: t('circles.coBuild.changeRequired'),
+              });
+            }
+            return;
+          }
+          if (value.rules.some((rule) => !rule.text.trim())) {
+            context.addIssue({
+              code: 'custom',
+              path: ['rules'],
+              message: t('circles.coBuild.ruleRequired'),
+            });
+          } else if (JSON.stringify(value.rules) === JSON.stringify(baselineRules)) {
+            context.addIssue({
+              code: 'custom',
+              path: ['rules'],
+              message: t('circles.coBuild.changeRequired'),
+            });
+          }
+        }),
     },
-    onError: () =>
-      toast.error(t(proposal ? 'circles.coBuild.reviseFailed' : 'circles.coBuild.createFailed')),
+    onSubmit: async ({ value }) => {
+      setFormError('');
+      const normalizedValues: ProposalFormValues = {
+        ...value,
+        topic: value.topic.trim(),
+        rules: value.rules.map((rule) => ({ ...rule, text: rule.text.trim() })),
+        reason: value.reason.trim(),
+      };
+      const fingerprint = serializeProposal(normalizedValues);
+      const existingKey = idempotencyRef.current;
+      const idempotencyKey =
+        existingKey?.fingerprint === fingerprint ? existingKey.key : crypto.randomUUID();
+      idempotencyRef.current = { fingerprint, key: idempotencyKey };
+      try {
+        const result = proposal
+          ? await circleApi.reviseProposal(
+              circle.id,
+              proposal.id,
+              {
+                expectedVersion: proposal.version,
+                reason: normalizedValues.reason,
+                ...(normalizedValues.scope === 'TOPIC'
+                  ? { topic: normalizedValues.topic }
+                  : { rules: normalizedValues.rules }),
+              },
+              idempotencyKey,
+            )
+          : await circleApi.createProposal(
+              circle.id,
+              {
+                scope: normalizedValues.scope,
+                expectedVersion:
+                  normalizedValues.scope === 'TOPIC' ? circle.topicVersion : circle.rulesVersion,
+                reason: normalizedValues.reason,
+                ...(normalizedValues.scope === 'TOPIC'
+                  ? { topic: normalizedValues.topic }
+                  : { rules: normalizedValues.rules }),
+              },
+              idempotencyKey,
+            );
+        idempotencyRef.current = null;
+        toast.success(t(proposal ? 'circles.coBuild.revised' : 'circles.coBuild.created'));
+        await onCreated(result);
+        onClose();
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : t(proposal ? 'circles.coBuild.reviseFailed' : 'circles.coBuild.createFailed');
+        setFormError(message);
+        toast.error(message);
+      }
+    },
   });
-  const unchanged =
-    scope === 'TOPIC'
-      ? topic.trim() === circle.topic
-      : JSON.stringify(rules) === JSON.stringify(circle.rules);
-  const invalidRules = rules.some((rule) => !rule.text.trim());
-  const disabled = mutation.isPending || !reason.trim() || unchanged || invalidRules;
 
   return (
-    <TerminalDialog
-      open
-      onOpenChange={(next) => {
-        if (!next) onClose();
-      }}
-      title={t(proposal ? 'circles.coBuild.reviseTitle' : 'circles.coBuild.createTitle')}
-      code="CIRCLE.PROPOSAL"
-      size="lg"
-      footer={
-        <>
-          <TButton variant="secondary" onClick={onClose}>
-            {t('circles.coBuild.cancel')}
-          </TButton>
-          <TButton variant="primary" disabled={disabled} onClick={() => mutation.mutate()}>
-            {mutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-            {t(proposal ? 'circles.coBuild.revise' : 'circles.coBuild.submit')}
-          </TButton>
-        </>
-      }
-    >
-      <div className="space-y-5">
-        <div className="flex items-center gap-8 border border-[var(--t-noise)] bg-black px-4 py-3">
-          {(['TOPIC', 'RULES'] as const).map((value) => (
-            <TRadarNode
-              key={value}
-              checked={scope === value}
-              disabled={Boolean(proposal)}
-              onChange={() => setScope(value)}
-              label={t(`circles.coBuild.scopes.${value}`)}
-            />
-          ))}
-        </div>
+    <form.Subscribe selector={(state) => [state.isSubmitting, state.canSubmit] as const}>
+      {([isSubmitting, canSubmit]) => (
+        <TerminalDialog
+          open
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen && !isSubmitting) onClose();
+          }}
+          title={t(proposal ? 'circles.coBuild.reviseTitle' : 'circles.coBuild.createTitle')}
+          description={t(
+            proposal ? 'circles.coBuild.reviseDescription' : 'circles.coBuild.createDescription',
+          )}
+          code="CIRCLE.PROPOSAL"
+          size="lg"
+          busy={isSubmitting}
+          footer={
+            <>
+              <TButton type="button" variant="secondary" disabled={isSubmitting} onClick={onClose}>
+                {t('circles.coBuild.cancel')}
+              </TButton>
+              <TButton
+                type="submit"
+                form={formId}
+                variant="primary"
+                disabled={!canSubmit || isSubmitting}
+              >
+                {isSubmitting
+                  ? t(proposal ? 'circles.coBuild.revising' : 'circles.coBuild.submitting')
+                  : t(proposal ? 'circles.coBuild.revise' : 'circles.coBuild.submit')}
+              </TButton>
+            </>
+          }
+        >
+          <form
+            id={formId}
+            className="space-y-5"
+            onSubmit={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              void form.handleSubmit();
+            }}
+          >
+            <form.AppForm>
+              {formError ? (
+                <p
+                  role="alert"
+                  className="border border-danger/30 border-l-2 border-l-danger bg-danger/10 px-3 py-2 text-xs text-danger"
+                >
+                  {formError}
+                </p>
+              ) : null}
 
-        {scope === 'TOPIC' ? (
-          <div className="space-y-3">
-            <div>
-              <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
-                {t('circles.coBuild.currentTopic')}
-              </p>
-              <p className="mt-2 border border-[var(--t-noise)] bg-black px-3 py-2.5 text-sm leading-6 text-[var(--t-text)]/50">
-                {circle.topic}
-              </p>
-            </div>
-            <label className="block font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
-              {t('circles.coBuild.changeTo')}
-              <TInput
-                value={topic}
-                onChange={(event) => setTopic(event.target.value)}
-                maxLength={160}
-                className="mt-2"
-              />
-            </label>
-            <TopicChangeDiff before={circle.topic} after={topic.trim() || null} />
-          </div>
-        ) : (
-          <RuleEditor
-            baseRules={circle.rules}
-            rules={rules}
-            removedRules={removedRules}
-            onChange={setRules}
-            onRemovedChange={setRemovedRules}
-          />
-        )}
+              <form.AppField name="scope">
+                {(field) => (
+                  <field.RadioGroupField
+                    label={t('circles.coBuild.scope')}
+                    disabled={Boolean(proposal) || isSubmitting}
+                    options={PROPOSAL_SCOPES.map((scope) => ({
+                      value: scope,
+                      label: t(`circles.coBuild.scopes.${scope}`),
+                    }))}
+                  />
+                )}
+              </form.AppField>
 
-        <CoBuildMarkdownComposer
-          value={reason}
-          onChange={setReason}
-          label={t('circles.coBuild.reason')}
-          placeholder={t('circles.coBuild.reasonPlaceholder')}
-          editLabel={t('circles.coBuild.edit')}
-          previewLabel={t('circles.coBuild.preview')}
-          emptyPreview={t('circles.coBuild.emptyPreview')}
-        />
-        {mutation.isError ? (
-          <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-hazard)]/80">
-            {t(proposal ? 'circles.coBuild.reviseFailed' : 'circles.coBuild.createFailed')}
-          </p>
-        ) : null}
-      </div>
-    </TerminalDialog>
+              <form.Subscribe selector={(state) => state.values.scope}>
+                {(scope) =>
+                  scope === 'TOPIC' ? (
+                    <form.AppField name="topic">
+                      {(field) => (
+                        <div className="space-y-3">
+                          <div>
+                            <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                              {t('circles.coBuild.currentTopic')}
+                            </p>
+                            <p className="mt-2 border border-[var(--t-noise)] bg-black px-3 py-2.5 text-sm leading-6 text-[var(--t-text)]/50">
+                              {circle.topic}
+                            </p>
+                          </div>
+                          <field.InputField
+                            label={t('circles.coBuild.changeTo')}
+                            maxLength={TOPIC_MAX_LENGTH}
+                          />
+                          <TopicChangeDiff
+                            before={circle.topic}
+                            after={field.state.value.trim() || null}
+                          />
+                        </div>
+                      )}
+                    </form.AppField>
+                  ) : (
+                    <form.AppField name="rules">
+                      {(field) => (
+                        <div>
+                          <RuleEditor
+                            baseRules={circle.rules}
+                            rules={field.state.value}
+                            onChange={field.handleChange}
+                          />
+                          <div className="mt-3">
+                            <RuleChangeDiff before={circle.rules} after={field.state.value} />
+                          </div>
+                        </div>
+                      )}
+                    </form.AppField>
+                  )
+                }
+              </form.Subscribe>
+
+              <form.AppField name="reason">
+                {(field) => (
+                  <CoBuildMarkdownComposer
+                    value={field.state.value}
+                    onChange={field.handleChange}
+                    label={t('circles.coBuild.reason')}
+                    placeholder={t('circles.coBuild.reasonPlaceholder')}
+                    editLabel={t('circles.coBuild.edit')}
+                    previewLabel={t('circles.coBuild.preview')}
+                    emptyPreview={t('circles.coBuild.emptyPreview')}
+                  />
+                )}
+              </form.AppField>
+            </form.AppForm>
+          </form>
+        </TerminalDialog>
+      )}
+    </form.Subscribe>
   );
 }
 
 function RuleEditor({
   baseRules,
   rules,
-  removedRules,
   onChange,
-  onRemovedChange,
 }: {
   baseRules: CircleRuleItem[];
   rules: CircleRuleItem[];
-  removedRules: CircleRuleItem[];
   onChange: (rules: CircleRuleItem[]) => void;
-  onRemovedChange: (rules: CircleRuleItem[]) => void;
 }) {
   const { t } = useTranslation();
   const [editingIds, setEditingIds] = useState<Set<string>>(new Set());
   const originalById = new Map(baseRules.map((rule) => [rule.id, rule]));
+  const removedRules = baseRules.filter(
+    (baseRule) => !rules.some((rule) => rule.id === baseRule.id),
+  );
   const move = (index: number, offset: number) => {
     const target = index + offset;
     if (target < 0 || target >= rules.length) return;
@@ -196,18 +337,15 @@ function RuleEditor({
       return next;
     });
   const remove = (rule: CircleRuleItem) => {
-    const original = originalById.get(rule.id);
     onChange(rules.filter((item) => item.id !== rule.id));
-    if (original)
-      onRemovedChange([...removedRules.filter((item) => item.id !== rule.id), original]);
   };
   const restore = (rule: CircleRuleItem) => {
     const originalIndex = baseRules.findIndex((item) => item.id === rule.id);
     const next = [...rules];
     next.splice(Math.min(Math.max(originalIndex, 0), next.length), 0, rule);
     onChange(next);
-    onRemovedChange(removedRules.filter((item) => item.id !== rule.id));
   };
+
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
@@ -215,9 +353,10 @@ function RuleEditor({
           {t('circles.coBuild.currentRules')}
         </p>
         <TButton
+          type="button"
           variant="secondary"
           size="sm"
-          disabled={rules.length >= 10}
+          disabled={rules.length >= RULE_MAX_COUNT}
           onClick={() => {
             const id = crypto.randomUUID();
             onChange([...rules, { id, text: '' }]);
@@ -310,7 +449,7 @@ function RuleEditor({
                   <TInput
                     autoFocus
                     value={rule.text}
-                    maxLength={280}
+                    maxLength={RULE_MAX_LENGTH}
                     onChange={(event) =>
                       onChange(
                         rules.map((item) =>
@@ -335,7 +474,10 @@ function RuleEditor({
           </div>
         ))}
         {removedRules.map((rule) => (
-          <div key={rule.id} className="border border-[var(--t-hazard-dim)] bg-[var(--t-hazard-dim)]/10 p-3">
+          <div
+            key={rule.id}
+            className="border border-[var(--t-hazard-dim)] bg-[var(--t-hazard-dim)]/10 p-3"
+          >
             <div className="flex items-center justify-between gap-3">
               <span className="border border-[var(--t-hazard-dim)] bg-[var(--t-hazard-dim)]/20 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-hazard)]/80">
                 {t('circles.coBuild.ruleDeleted')}
@@ -348,7 +490,9 @@ function RuleEditor({
                 {t('circles.coBuild.restoreRule')}
               </button>
             </div>
-            <p className="mt-3 text-sm leading-6 text-[var(--t-text)]/40 line-through">{rule.text}</p>
+            <p className="mt-3 text-sm leading-6 text-[var(--t-text)]/40 line-through">
+              {rule.text}
+            </p>
           </div>
         ))}
       </div>

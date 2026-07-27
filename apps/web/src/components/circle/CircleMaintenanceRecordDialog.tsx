@@ -32,6 +32,7 @@ export function CircleMaintenanceRecordDialog({
         if (!next) onClose();
       }}
       title={t('circles.coBuild.recordDetail')}
+      description={t('circles.coBuild.recordReason')}
       code="CIRCLE.MAINT"
       size="md"
     >
@@ -44,7 +45,9 @@ export function CircleMaintenanceRecordDialog({
         </div>
       ) : null}
       {query.isError ? (
-        <p className="mt-6 font-mono text-sm text-[var(--t-hazard)]/80">{t('circles.coBuild.recordsFailed')}</p>
+        <p className="mt-6 font-mono text-sm text-[var(--t-hazard)]/80">
+          {t('circles.coBuild.recordsFailed')}
+        </p>
       ) : null}
       {detail ? (
         <div className="mt-5 space-y-5">

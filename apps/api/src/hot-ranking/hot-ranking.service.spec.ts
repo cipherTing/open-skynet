@@ -30,6 +30,10 @@ import { PostHotState, PostHotStateSchema } from '@/database/schemas/post-hot-st
 import { Post, PostSchema } from '@/database/schemas/post.schema';
 import { Reply, ReplySchema } from '@/database/schemas/reply.schema';
 import { Circle, CircleSchema } from '@/database/schemas/circle.schema';
+import {
+  CircleMembership,
+  CircleMembershipSchema,
+} from '@/database/schemas/circle-membership.schema';
 import { DatabaseService } from '@/database/database.service';
 import { RedisService } from '@/redis/redis.service';
 import { FEEDBACK_TARGET_TYPES } from '@/forum/feedback.constants';
@@ -42,8 +46,8 @@ import {
   HOT_PAGE_SCAN_SIZE,
   HOT_REPLY_BRANCH_FANOUT_BATCH_SIZE,
   HOT_REPLY_FEEDBACK_FANOUT_BATCH_SIZE,
-  HOT_SNAPSHOT_SAMPLE_SIZE,
 } from '@/hot-ranking/hot-ranking.constants';
+import { candidateMember } from '@/hot-ranking/hot-candidate-keys';
 import { HotRankingProjectionService } from '@/hot-ranking/hot-ranking-projection.service';
 import { HotCandidateIndexService } from '@/hot-ranking/hot-candidate-index.service';
 import { HotRankingQueryService } from '@/hot-ranking/hot-ranking-query.service';
@@ -58,17 +62,40 @@ function createRedisDouble() {
   const sets: RedisSetStore = new Map();
   const hashes = new Map<string, Map<string, string>>();
   const createPipeline = () => {
-    const commands: Array<{ key: string; count: number }> = [];
+    const commands: Array<
+      | { kind: 'zrandmember'; key: string; count: number }
+      | { kind: 'eval'; script: string; keyCount: number; args: string[] }
+    > = [];
     const pipeline = {
-      srandmember: jest.fn((key: string, count: number) => {
-        commands.push({ key, count });
-      }),
-      exec: jest.fn(async () =>
-        commands.map(({ key, count }) => [
-          null,
-          [...(sets.get(key) ?? new Set<string>())].slice(0, count),
-        ]),
-      ),
+      zrandmember(key: string, count: number) {
+        commands.push({ kind: 'zrandmember', key, count });
+        return pipeline;
+      },
+      eval(script: string, keyCount: number, ...args: string[]) {
+        commands.push({ kind: 'eval', script, keyCount, args });
+        return pipeline;
+      },
+      async exec() {
+        const results: Array<[Error | null, unknown]> = [];
+        for (const command of commands) {
+          if (command.kind === 'zrandmember') {
+            results.push([
+              null,
+              [...(sets.get(command.key) ?? new Set<string>())].slice(0, command.count),
+            ]);
+            continue;
+          }
+          try {
+            results.push([
+              null,
+              await client.eval(command.script, command.keyCount, ...command.args),
+            ]);
+          } catch (error) {
+            results.push([error instanceof Error ? error : new Error(String(error)), null]);
+          }
+        }
+        return results;
+      },
     };
     return pipeline;
   };
@@ -114,6 +141,53 @@ function createRedisDouble() {
     srandmember: jest.fn(async (key: string, count: number) =>
       [...(sets.get(key) ?? new Set<string>())].slice(0, count),
     ),
+    zcard: jest.fn(async (key: string) => sets.get(key)?.size ?? 0),
+    zadd: jest.fn(async (key: string, _score: number, ...members: string[]) => {
+      const set = sets.get(key) ?? new Set<string>();
+      const before = set.size;
+      members.forEach((member) => set.add(member));
+      sets.set(key, set);
+      return set.size - before;
+    }),
+    zrem: jest.fn(async (key: string, ...members: string[]) => {
+      const set = sets.get(key);
+      if (!set) return 0;
+      const before = set.size;
+      members.forEach((member) => set.delete(member));
+      return before - set.size;
+    }),
+    zrange: jest.fn(async (key: string, start: number, stop: number) => {
+      const rows = [...(sets.get(key) ?? new Set<string>())].sort();
+      return rows.slice(start, stop + 1);
+    }),
+    zrangebylex: jest.fn(
+      async (
+        key: string,
+        minimum: string,
+        maximum: string,
+        _limitKeyword: 'LIMIT',
+        offset: number,
+        count: number,
+      ) => {
+        const rows = [...(sets.get(key) ?? new Set<string>())].sort();
+        const lowerInclusive = minimum.startsWith('[');
+        const lowerValue = minimum === '-' ? null : minimum.slice(1);
+        const upperInclusive = maximum.startsWith('[');
+        const upperValue = maximum === '+' ? null : maximum.slice(1);
+        return rows
+          .filter((member) => {
+            const aboveLower =
+              lowerValue === null || (lowerInclusive ? member >= lowerValue : member > lowerValue);
+            const belowUpper =
+              upperValue === null || (upperInclusive ? member <= upperValue : member < upperValue);
+            return aboveLower && belowUpper;
+          })
+          .slice(offset, offset + count);
+      },
+    ),
+    zrandmember: jest.fn(async (key: string, count: number) =>
+      [...(sets.get(key) ?? new Set<string>())].slice(0, count),
+    ),
     pipeline: jest.fn(createPipeline),
     eval: jest.fn(async (_script: string, keyCount: number, ...args: string[]): Promise<number> => {
       if (keyCount === 4 && args.length === 5) {
@@ -132,21 +206,23 @@ function createRedisDouble() {
         return 1;
       }
       const [metadataKey, globalKey, manifestKey, readyKey, buildMarkerKey] = args;
-      const [postId, versionValue, eligibleValue, circleId, circlePrefix, generationId] =
+      const [postId, versionValue, eligibleValue, circleId, circlePrefix, generationId, member] =
         args.slice(5);
       if (values.get(readyKey) !== '1' && values.get(buildMarkerKey) !== generationId) return -1;
       const metadata = hashes.get(metadataKey) ?? new Map<string, string>();
       const current = metadata.get(postId);
       if (current) {
-        const [currentVersionValue, previousCircleId] = current.split('|');
+        const [currentVersionValue, previousCircleId, previousMember] = current.split('|');
         if (Number(currentVersionValue) > Number(versionValue)) return 0;
         if (previousCircleId !== circleId) {
-          sets.get(`${circlePrefix}${previousCircleId}`)?.delete(postId);
+          sets.get(`${circlePrefix}${previousCircleId}`)?.delete(previousMember ?? '');
         }
+        sets.get(globalKey)?.delete(previousMember ?? '');
+        sets.get(`${circlePrefix}${previousCircleId}`)?.delete(previousMember ?? '');
       } else if (eligibleValue === '0' && Number(versionValue) === 0) {
         return 0;
       }
-      metadata.set(postId, `${versionValue}|${circleId}`);
+      metadata.set(postId, `${versionValue}|${circleId}|${member}`);
       hashes.set(metadataKey, metadata);
       const manifest = sets.get(manifestKey) ?? new Set<string>();
       manifest.add(metadataKey);
@@ -157,11 +233,11 @@ function createRedisDouble() {
       const circleKey = `${circlePrefix}${circleId}`;
       const circleSet = sets.get(circleKey) ?? new Set<string>();
       if (eligibleValue === '1') {
-        globalSet.add(postId);
-        circleSet.add(postId);
+        globalSet.add(member);
+        circleSet.add(member);
       } else {
-        globalSet.delete(postId);
-        circleSet.delete(postId);
+        globalSet.delete(member);
+        circleSet.delete(member);
       }
       sets.set(globalKey, globalSet);
       sets.set(circleKey, circleSet);
@@ -205,6 +281,7 @@ describe('Hot ranking projection and candidates', () => {
           { name: Post.name, schema: PostSchema },
           { name: Reply.name, schema: ReplySchema },
           { name: Circle.name, schema: CircleSchema },
+          { name: CircleMembership.name, schema: CircleMembershipSchema },
           { name: PostHotState.name, schema: PostHotStateSchema },
           { name: PostHotParticipant.name, schema: PostHotParticipantSchema },
           { name: HotProjectionWorkItem.name, schema: HotProjectionWorkItemSchema },
@@ -266,6 +343,7 @@ describe('Hot ranking projection and candidates', () => {
         'hot_reply_feedback_fanouts',
         'hot_candidate_generations',
         'circles',
+        'circle_memberships',
       ].map((collection) => connection.collection(collection).deleteMany({})),
     );
     redis.values.clear();
@@ -290,8 +368,8 @@ describe('Hot ranking projection and candidates', () => {
       claimedUntil: null,
       activatedAt: new Date(),
     });
-    redis.values.set('skynet:v2:hot-posts:active-generation', generationId);
-    redis.values.set(`skynet:v2:hot-posts:generation:${generationId}:ready`, '1');
+    redis.values.set('skynet:v3:hot-posts:active-generation', generationId);
+    redis.values.set(`skynet:v3:hot-posts:generation:${generationId}:ready`, '1');
   }
 
   async function createPost(author: Agent, title = '热度投影测试'): Promise<Post> {
@@ -767,7 +845,10 @@ describe('Hot ranking projection and candidates', () => {
   it('returns an empty hot feed without rebuilding when no generation is ready', async () => {
     const stateFindSpy = jest.spyOn(stateModel, 'find');
     await expect(
-      service.listRandomHotPosts({ deletedAt: null }, { filterKey: 'empty', limit: 20 }),
+      service.listRandomHotPosts(
+        { deletedAt: null },
+        { cursorContext: { sortBy: 'hot' }, limit: 20 },
+      ),
     ).resolves.toMatchObject({ posts: [], nextCursor: null });
     expect(candidateQueue.add).not.toHaveBeenCalled();
     expect(stateFindSpy).not.toHaveBeenCalled();
@@ -776,14 +857,17 @@ describe('Hot ranking projection and candidates', () => {
 
   it('rejects a Redis active pointer without its ready marker on the query path', async () => {
     const generationId = 'query-missing-ready-marker';
-    redis.values.set('skynet:v2:hot-posts:active-generation', generationId);
+    redis.values.set('skynet:v3:hot-posts:active-generation', generationId);
 
     await expect(
-      service.listRandomHotPosts({ deletedAt: null }, { filterKey: 'missing-ready', limit: 20 }),
+      service.listRandomHotPosts(
+        { deletedAt: null },
+        { cursorContext: { sortBy: 'hot' }, limit: 20 },
+      ),
     ).rejects.toThrow(`活跃代际缺少 Redis 就绪标记 ${generationId}`);
   });
 
-  it('rejects an active Mongo generation without a Redis pointer on the query path', async () => {
+  it('returns an empty page without querying MongoDB when no Redis generation is ready', async () => {
     await generationModel.create({
       generationId: 'query-missing-active-pointer',
       status: HOT_CANDIDATE_GENERATION_STATUSES.ACTIVE,
@@ -792,10 +876,16 @@ describe('Hot ranking projection and candidates', () => {
       claimedUntil: null,
       activatedAt: new Date(),
     });
+    const generationExistsSpy = jest.spyOn(generationModel, 'exists');
 
     await expect(
-      service.listRandomHotPosts({ deletedAt: null }, { filterKey: 'missing-pointer', limit: 20 }),
-    ).rejects.toThrow('活跃代际缺少 Redis 指针');
+      service.listRandomHotPosts(
+        { deletedAt: null },
+        { cursorContext: { sortBy: 'hot' }, limit: 20 },
+      ),
+    ).resolves.toMatchObject({ posts: [], nextCursor: null });
+    expect(generationExistsSpy).not.toHaveBeenCalled();
+    generationExistsSpy.mockRestore();
   });
 
   it('does not store Redis metadata for a post that has never been hot', async () => {
@@ -817,38 +907,42 @@ describe('Hot ranking projection and candidates', () => {
     await candidateService.syncCandidate(post.id);
 
     expect(
-      redis.hashes.get(`skynet:v2:hot-posts:generation:${generationId}:members`)?.has(post.id) ??
+      redis.hashes.get(`skynet:v3:hot-posts:generation:${generationId}:members`)?.has(post.id) ??
         false,
     ).toBe(false);
   });
 
-  it('scans one bounded hot snapshot completely before declaring it exhausted', async () => {
+  it('scans at most one bounded candidate window per page', async () => {
     const generationId = 'bounded-query-generation';
-    redis.values.set('skynet:v2:hot-posts:active-generation', generationId);
-    redis.values.set(`skynet:v2:hot-posts:generation:${generationId}:ready`, '1');
+    redis.values.set('skynet:v3:hot-posts:active-generation', generationId);
+    redis.values.set(`skynet:v3:hot-posts:generation:${generationId}:ready`, '1');
     redis.sets.set(
-      `skynet:v2:hot-posts:generation:${generationId}:all`,
-      new Set(Array.from({ length: 1_000 }, () => new Types.ObjectId().toString())),
+      `skynet:v3:hot-posts:generation:${generationId}:all`,
+      new Set(
+        Array.from({ length: 1_000 }, () => candidateMember(new Types.ObjectId().toString())),
+      ),
     );
     const stateFindSpy = jest.spyOn(stateModel, 'find');
     const postFindSpy = jest.spyOn(postModel, 'find');
 
-    await expect(
-      service.listRandomHotPosts({ deletedAt: null }, { filterKey: 'bounded', limit: 20 }),
-    ).resolves.toMatchObject({ posts: [], nextCursor: null });
-
-    const expectedQueryCount = Math.ceil(HOT_SNAPSHOT_SAMPLE_SIZE / HOT_PAGE_SCAN_SIZE);
-    expect(stateFindSpy).toHaveBeenCalledTimes(expectedQueryCount);
-    expect(postFindSpy).toHaveBeenCalledTimes(expectedQueryCount);
-    expect(redis.client.srandmember).toHaveBeenCalledTimes(1);
+    const result = await service.listRandomHotPosts(
+      { deletedAt: null },
+      { cursorContext: { sortBy: 'hot' }, limit: 20 },
+    );
+    expect(result.posts).toEqual([]);
+    expect(result.nextCursor).not.toBeNull();
+    expect(stateFindSpy).toHaveBeenCalledTimes(1);
+    expect(postFindSpy).toHaveBeenCalledTimes(1);
+    expect(redis.client.zcard).toHaveBeenCalledTimes(1);
+    expect(redis.client.zrange).toHaveBeenCalledTimes(1);
     stateFindSpy.mockRestore();
     postFindSpy.mockRestore();
   });
 
-  it('finds a valid post near the end of the same random snapshot', async () => {
-    const author = await createAgent('late-snapshot-author');
-    const post = await createPost(author, '快照尾部仍可发现');
-    const generationId = 'late-snapshot-generation';
+  it('finds a valid post near the end of the same random traversal', async () => {
+    const author = await createAgent('late-traversal-author');
+    const post = await createPost(author, '遍历尾部仍可发现');
+    const generationId = 'late-traversal-generation';
     await createReadyGeneration(generationId);
     await stateModel.updateOne(
       { postId: post.id },
@@ -860,31 +954,42 @@ describe('Hot ranking projection and candidates', () => {
         },
       },
     );
-    const invalidIds = Array.from({ length: HOT_PAGE_SCAN_SIZE * 2 }, () =>
+    const invalidIds = Array.from({ length: HOT_PAGE_SCAN_SIZE - 1 }, () =>
       new Types.ObjectId().toString(),
     );
     redis.sets.set(
-      `skynet:v2:hot-posts:generation:${generationId}:all`,
-      new Set([...invalidIds, post.id]),
+      `skynet:v3:hot-posts:generation:${generationId}:all`,
+      new Set([...invalidIds, post.id].map(candidateMember)),
     );
 
-    await expect(
-      service.listRandomHotPosts({ deletedAt: null }, { filterKey: 'late-valid', limit: 1 }),
-    ).resolves.toMatchObject({
-      posts: [expect.objectContaining({ id: post.id })],
-      nextCursor: null,
-    });
-    expect(redis.client.srandmember).toHaveBeenCalledTimes(1);
+    const page = await service.listRandomHotPosts(
+      { deletedAt: null },
+      { cursorContext: { sortBy: 'hot' }, limit: 1 },
+    );
+    expect(page.posts).toEqual([expect.objectContaining({ id: post.id })]);
+    if (page.nextCursor) {
+      await expect(
+        service.listRandomHotPosts(
+          { deletedAt: null },
+          {
+            cursorContext: { sortBy: 'hot' },
+            limit: 1,
+            cursor: page.nextCursor,
+          },
+        ),
+      ).resolves.toEqual({ posts: [], nextCursor: null });
+    }
+    expect(redis.client.zrange).toHaveBeenCalledTimes(1);
   });
 
-  it('paginates within one snapshot and creates a new sample for a fresh first page', async () => {
-    const author = await createAgent('snapshot-pagination-author');
+  it('paginates within one traversal and creates a new sample for a fresh first page', async () => {
+    const author = await createAgent('traversal-pagination-author');
     const posts = await Promise.all([
-      createPost(author, '快照分页一'),
-      createPost(author, '快照分页二'),
-      createPost(author, '快照分页三'),
+      createPost(author, '遍历分页一'),
+      createPost(author, '遍历分页二'),
+      createPost(author, '遍历分页三'),
     ]);
-    const generationId = 'snapshot-pagination-generation';
+    const generationId = 'traversal-pagination-generation';
     await createReadyGeneration(generationId);
     await stateModel.updateMany(
       { postId: { $in: posts.map((post) => post.id) } },
@@ -897,40 +1002,52 @@ describe('Hot ranking projection and candidates', () => {
       },
     );
     redis.sets.set(
-      `skynet:v2:hot-posts:generation:${generationId}:all`,
-      new Set(posts.map((post) => post.id)),
+      `skynet:v3:hot-posts:generation:${generationId}:all`,
+      new Set(posts.map((post) => candidateMember(post.id))),
     );
 
     const firstPage = await service.listRandomHotPosts(
       { deletedAt: null },
-      { filterKey: 'snapshot-pages', limit: 2 },
+      { cursorContext: { sortBy: 'hot' }, limit: 2 },
     );
-    expect(firstPage.posts.map((post) => post.id)).toEqual(
-      posts.slice(0, 2).map((post) => post.id),
-    );
+    expect(firstPage.posts).toHaveLength(2);
     expect(firstPage.nextCursor).not.toBeNull();
-    if (!firstPage.nextCursor) throw new Error('热门第一页缺少快照游标');
+    if (!firstPage.nextCursor) throw new Error('热门第一页缺少遍历游标');
 
     const secondPage = await service.listRandomHotPosts(
       { deletedAt: null },
-      { filterKey: 'snapshot-pages', limit: 2, cursor: firstPage.nextCursor },
+      { cursorContext: { sortBy: 'hot' }, limit: 2, cursor: firstPage.nextCursor },
     );
-    expect(secondPage.posts.map((post) => post.id)).toEqual([posts[2].id]);
-    expect(secondPage.nextCursor).toBeNull();
-    expect(redis.client.srandmember).toHaveBeenCalledTimes(1);
+    expect(secondPage.posts).toHaveLength(1);
+    expect(new Set([...firstPage.posts, ...secondPage.posts].map((post) => post.id))).toEqual(
+      new Set(posts.map((post) => post.id)),
+    );
+    if (secondPage.nextCursor) {
+      await expect(
+        service.listRandomHotPosts(
+          { deletedAt: null },
+          {
+            cursorContext: { sortBy: 'hot' },
+            limit: 1,
+            cursor: secondPage.nextCursor,
+          },
+        ),
+      ).resolves.toEqual({ posts: [], nextCursor: null });
+    }
+    expect(redis.client.zrange).toHaveBeenCalledTimes(1);
 
     await service.listRandomHotPosts(
       { deletedAt: null },
-      { filterKey: 'snapshot-pages', limit: 2 },
+      { cursorContext: { sortBy: 'hot' }, limit: 2 },
     );
-    expect(redis.client.srandmember).toHaveBeenCalledTimes(2);
+    expect(redis.client.zrange).toHaveBeenCalledTimes(2);
   });
 
   it('continues from the exact consumed offset when a scan batch mixes invalid and valid ids', async () => {
-    const author = await createAgent('mixed-snapshot-author');
-    const firstPost = await createPost(author, '混合快照第一页');
-    const secondPost = await createPost(author, '混合快照第二页');
-    const generationId = 'mixed-snapshot-generation';
+    const author = await createAgent('mixed-traversal-author');
+    const firstPost = await createPost(author, '混合遍历第一页');
+    const secondPost = await createPost(author, '混合遍历第二页');
+    const generationId = 'mixed-traversal-generation';
     await createReadyGeneration(generationId);
     await stateModel.updateMany(
       { postId: { $in: [firstPost.id, secondPost.id] } },
@@ -942,30 +1059,41 @@ describe('Hot ranking projection and candidates', () => {
         },
       },
     );
-    const firstInvalidBatch = Array.from({ length: HOT_PAGE_SCAN_SIZE - 1 }, () =>
-      new Types.ObjectId().toString(),
-    );
-    const secondInvalidBatch = Array.from({ length: HOT_PAGE_SCAN_SIZE - 1 }, () =>
+    const invalidIds = Array.from({ length: HOT_PAGE_SCAN_SIZE - 2 }, () =>
       new Types.ObjectId().toString(),
     );
     redis.sets.set(
-      `skynet:v2:hot-posts:generation:${generationId}:all`,
-      new Set([...firstInvalidBatch, firstPost.id, ...secondInvalidBatch, secondPost.id]),
+      `skynet:v3:hot-posts:generation:${generationId}:all`,
+      new Set([...invalidIds, firstPost.id, secondPost.id].map(candidateMember)),
     );
 
     const firstPage = await service.listRandomHotPosts(
       { deletedAt: null },
-      { filterKey: 'mixed-snapshot', limit: 1 },
+      { cursorContext: { sortBy: 'hot' }, limit: 1 },
     );
-    expect(firstPage.posts.map((post) => post.id)).toEqual([firstPost.id]);
-    if (!firstPage.nextCursor) throw new Error('混合快照第一页缺少游标');
+    expect(firstPage.posts).toHaveLength(1);
+    if (!firstPage.nextCursor) throw new Error('混合遍历第一页缺少游标');
 
     const secondPage = await service.listRandomHotPosts(
       { deletedAt: null },
-      { filterKey: 'mixed-snapshot', limit: 1, cursor: firstPage.nextCursor },
+      { cursorContext: { sortBy: 'hot' }, limit: 1, cursor: firstPage.nextCursor },
     );
-    expect(secondPage.posts.map((post) => post.id)).toEqual([secondPost.id]);
-    expect(secondPage.nextCursor).toBeNull();
+    expect(secondPage.posts).toHaveLength(1);
+    expect(new Set([firstPage.posts[0]?.id, secondPage.posts[0]?.id])).toEqual(
+      new Set([firstPost.id, secondPost.id]),
+    );
+    if (secondPage.nextCursor) {
+      await expect(
+        service.listRandomHotPosts(
+          { deletedAt: null },
+          {
+            cursorContext: { sortBy: 'hot' },
+            limit: 1,
+            cursor: secondPage.nextCursor,
+          },
+        ),
+      ).resolves.toEqual({ posts: [], nextCursor: null });
+    }
   });
 
   it('reads multiple circle candidate sets through one Redis pipeline', async () => {
@@ -973,8 +1101,8 @@ describe('Hot ranking projection and candidates', () => {
     const firstPost = await createPost(author, '圈子候选一');
     const secondPost = await createPost(author, '圈子候选二');
     const generationId = 'circle-pipeline-generation';
-    redis.values.set('skynet:v2:hot-posts:active-generation', generationId);
-    redis.values.set(`skynet:v2:hot-posts:generation:${generationId}:ready`, '1');
+    redis.values.set('skynet:v3:hot-posts:active-generation', generationId);
+    redis.values.set(`skynet:v3:hot-posts:generation:${generationId}:ready`, '1');
     for (const post of [firstPost, secondPost]) {
       await stateModel.updateOne(
         { postId: post.id },
@@ -987,8 +1115,8 @@ describe('Hot ranking projection and candidates', () => {
         },
       );
       redis.sets.set(
-        `skynet:v2:hot-posts:generation:${generationId}:circle:${post.circleId}`,
-        new Set([post.id]),
+        `skynet:v3:hot-posts:generation:${generationId}:circle:${post.circleId}`,
+        new Set([candidateMember(post.id)]),
       );
     }
 
@@ -1038,8 +1166,8 @@ describe('Hot ranking projection and candidates', () => {
     );
     await candidateService.syncCandidate(post.id);
     expect(
-      redis.sets.get('skynet:v2:hot-posts:generation:candidate-version-generation:all'),
-    ).toContain(post.id);
+      redis.sets.get('skynet:v3:hot-posts:generation:candidate-version-generation:all'),
+    ).toContain(candidateMember(post.id));
   });
 
   it('limits candidate dispatch to one bounded batch', async () => {
@@ -1076,7 +1204,7 @@ describe('Hot ranking projection and candidates', () => {
 
   it('rejects candidate dispatch when the active Redis generation is not ready', async () => {
     const generationId = 'dispatch-missing-ready-marker';
-    redis.values.set('skynet:v2:hot-posts:active-generation', generationId);
+    redis.values.set('skynet:v3:hot-posts:active-generation', generationId);
 
     await expect(candidateService.dispatchDirtyCandidates()).rejects.toThrow(
       `活跃代际缺少 Redis 就绪标记 ${generationId}`,
@@ -1285,7 +1413,7 @@ describe('Hot ranking projection and candidates', () => {
 
     expect(redis.client.eval).toHaveBeenCalledTimes(HOT_CANDIDATE_REBUILD_BATCH_SIZE);
     expect(
-      redis.sets.get(`skynet:v2:hot-posts:generation:${data.generationId}:all`)?.size ?? 0,
+      redis.sets.get(`skynet:v3:hot-posts:generation:${data.generationId}:all`)?.size ?? 0,
     ).toBe(0);
     await expect(
       generationModel.findOne({ generationId: data.generationId }).lean(),
@@ -1324,8 +1452,8 @@ describe('Hot ranking projection and candidates', () => {
       claimedUntil: null,
       activatedAt: null,
     });
-    redis.values.set('skynet:v2:hot-posts:building-generation', generationId);
-    redis.values.set(`skynet:v2:hot-posts:generation:${generationId}:building`, generationId);
+    redis.values.set('skynet:v3:hot-posts:building-generation', generationId);
+    redis.values.set(`skynet:v3:hot-posts:generation:${generationId}:building`, generationId);
 
     await candidateService.dispatchDirtyCandidates();
     expect(candidateQueue.add).toHaveBeenCalledWith(
@@ -1335,12 +1463,14 @@ describe('Hot ranking projection and candidates', () => {
     );
     await candidateService.syncCandidate(post.id);
 
-    expect(redis.sets.get(`skynet:v2:hot-posts:generation:${generationId}:all`)).toContain(post.id);
+    expect(redis.sets.get(`skynet:v3:hot-posts:generation:${generationId}:all`)).toContain(
+      candidateMember(post.id),
+    );
   });
 
   it('cleans a superseded generation in bounded continuation batches', async () => {
     const generationId = 'large-cleanup-generation';
-    const manifestKey = `skynet:v2:hot-posts:generation:${generationId}:manifest`;
+    const manifestKey = `skynet:v3:hot-posts:generation:${generationId}:manifest`;
     const keys = Array.from({ length: 205 }, (_, index) => `cleanup-key-${index}`);
     await generationModel.create({
       generationId,
@@ -1398,8 +1528,8 @@ describe('Hot ranking projection and candidates', () => {
 
     await candidateService.rebuildCandidateBatch(data.generationId, data.generationVersion);
 
-    expect(redis.sets.get(`skynet:v2:hot-posts:generation:${data.generationId}:all`)).toContain(
-      post.id,
+    expect(redis.sets.get(`skynet:v3:hot-posts:generation:${data.generationId}:all`)).toContain(
+      candidateMember(post.id),
     );
     await expect(service.getHotPostIds([post.id])).resolves.toEqual(new Set());
   });
@@ -1446,8 +1576,8 @@ describe('Hot ranking projection and candidates', () => {
       claimedUntil: null,
       activatedAt: null,
     });
-    redis.values.set('skynet:v2:hot-posts:active-generation', generationId);
-    redis.values.set(`skynet:v2:hot-posts:generation:${generationId}:ready`, '1');
+    redis.values.set('skynet:v3:hot-posts:active-generation', generationId);
+    redis.values.set(`skynet:v3:hot-posts:generation:${generationId}:ready`, '1');
 
     await candidateService.ensureCandidateGeneration();
 
@@ -1477,11 +1607,11 @@ describe('Hot ranking projection and candidates', () => {
         activatedAt: null,
       },
     ]);
-    redis.values.set('skynet:v2:hot-posts:active-generation', activeGenerationId);
-    redis.values.set(`skynet:v2:hot-posts:generation:${activeGenerationId}:ready`, '1');
-    redis.values.set('skynet:v2:hot-posts:building-generation', buildingGenerationId);
+    redis.values.set('skynet:v3:hot-posts:active-generation', activeGenerationId);
+    redis.values.set(`skynet:v3:hot-posts:generation:${activeGenerationId}:ready`, '1');
+    redis.values.set('skynet:v3:hot-posts:building-generation', buildingGenerationId);
     redis.values.set(
-      `skynet:v2:hot-posts:generation:${buildingGenerationId}:building`,
+      `skynet:v3:hot-posts:generation:${buildingGenerationId}:building`,
       buildingGenerationId,
     );
 
@@ -1519,16 +1649,16 @@ describe('Hot ranking projection and candidates', () => {
         activatedAt: new Date(),
       },
     ]);
-    redis.values.set('skynet:v2:hot-posts:active-generation', activeGenerationId);
-    redis.values.set(`skynet:v2:hot-posts:generation:${activeGenerationId}:ready`, '1');
-    redis.values.set(`skynet:v2:hot-posts:generation:${obsoleteGenerationId}:ready`, '1');
+    redis.values.set('skynet:v3:hot-posts:active-generation', activeGenerationId);
+    redis.values.set(`skynet:v3:hot-posts:generation:${activeGenerationId}:ready`, '1');
+    redis.values.set(`skynet:v3:hot-posts:generation:${obsoleteGenerationId}:ready`, '1');
 
     await candidateService.ensureCandidateGeneration();
 
     await expect(
       generationModel.findOne({ generationId: obsoleteGenerationId }).lean(),
     ).resolves.toMatchObject({ status: HOT_CANDIDATE_GENERATION_STATUSES.SUPERSEDED });
-    expect(redis.values.has(`skynet:v2:hot-posts:generation:${obsoleteGenerationId}:ready`)).toBe(
+    expect(redis.values.has(`skynet:v3:hot-posts:generation:${obsoleteGenerationId}:ready`)).toBe(
       false,
     );
     expect(candidateMaintenanceQueue.add).toHaveBeenCalledWith(
@@ -1548,7 +1678,7 @@ describe('Hot ranking projection and candidates', () => {
       status: HOT_CANDIDATE_GENERATION_STATUSES.BUILDING,
     });
     if (!first) throw new Error('首个候选代际未创建');
-    redis.values.delete(`skynet:v2:hot-posts:generation:${first.generationId}:building`);
+    redis.values.delete(`skynet:v3:hot-posts:generation:${first.generationId}:building`);
 
     await expect(candidateService.ensureCandidateGeneration()).rejects.toThrow(
       `构建代际缺少 Redis 标记 ${first.generationId}`,

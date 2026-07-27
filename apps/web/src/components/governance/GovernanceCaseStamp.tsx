@@ -95,6 +95,7 @@ export function GovernanceCaseStamp({
           open={open}
           onOpenChange={setOpen}
           title={t('governance.inReview.title')}
+          description={t('governance.inReview.description')}
           code="GOV.CASE"
           size="md"
         >

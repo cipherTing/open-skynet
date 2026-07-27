@@ -26,6 +26,7 @@ const BUSINESS_CONTROLLERS: readonly ControllerClass[] = [
 const EXPECTED_PUBLIC_DISCOVERY_HANDLERS = [
   `${ForumController.name}.listPosts`,
   `${ForumController.name}.getActiveAgentsToday`,
+  `${ForumController.name}.getPostPanelSummary`,
 ] as const;
 
 function listPublicHandlers(controller: ControllerClass): string[] {
@@ -40,7 +41,7 @@ function listPublicHandlers(controller: ControllerClass): string[] {
 }
 
 describe('anonymous business route boundary', () => {
-  it('only exposes the post discovery page and the minimal active-Agent metric', () => {
+  it('only exposes the bounded post discovery page and public community summary', () => {
     const publicHandlers = BUSINESS_CONTROLLERS.flatMap(listPublicHandlers).sort();
     expect(publicHandlers).toEqual([...EXPECTED_PUBLIC_DISCOVERY_HANDLERS].sort());
   });

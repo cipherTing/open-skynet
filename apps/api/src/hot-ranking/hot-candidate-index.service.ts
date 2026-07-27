@@ -39,13 +39,11 @@ import {
   candidateMetadataKey,
   candidateReadyKey,
   circleCandidateKeyPrefix,
+  candidateMember,
   globalCandidateKey,
   readReadyCandidateGenerationId,
 } from '@/hot-ranking/hot-candidate-keys';
-import type {
-  HotCandidateJob,
-  HotCandidateMaintenanceJob,
-} from '@/hot-ranking/hot-ranking.types';
+import type { HotCandidateJob, HotCandidateMaintenanceJob } from '@/hot-ranking/hot-ranking.types';
 
 const APPLY_CANDIDATE_MEMBER_SCRIPT = `
 if redis.call('get', KEYS[4]) ~= '1' and redis.call('get', KEYS[5]) ~= ARGV[6] then
@@ -58,22 +56,26 @@ if current then
   if currentVersion > tonumber(ARGV[2]) then
     return 0
   end
-  local oldCircle = string.sub(current, separator + 1)
+  local secondSeparator = string.find(current, '|', separator + 1, true)
+  local oldCircle = string.sub(current, separator + 1, secondSeparator - 1)
+  local oldMember = string.sub(current, secondSeparator + 1)
   if oldCircle ~= ARGV[4] then
-    redis.call('srem', ARGV[5] .. oldCircle, ARGV[1])
+    redis.call('zrem', ARGV[5] .. oldCircle, oldMember)
   end
+  redis.call('zrem', KEYS[2], oldMember)
+  redis.call('zrem', ARGV[5] .. oldCircle, oldMember)
 elseif ARGV[3] == '0' and tonumber(ARGV[2]) == 0 then
   return 0
 end
 local circleKey = ARGV[5] .. ARGV[4]
-redis.call('hset', KEYS[1], ARGV[1], ARGV[2] .. '|' .. ARGV[4])
+redis.call('hset', KEYS[1], ARGV[1], ARGV[2] .. '|' .. ARGV[4] .. '|' .. ARGV[7])
 redis.call('sadd', KEYS[3], KEYS[1], KEYS[2], circleKey)
 if ARGV[3] == '1' then
-  redis.call('sadd', KEYS[2], ARGV[1])
-  redis.call('sadd', circleKey, ARGV[1])
+  redis.call('zadd', KEYS[2], 0, ARGV[7])
+  redis.call('zadd', circleKey, 0, ARGV[7])
 else
-  redis.call('srem', KEYS[2], ARGV[1])
-  redis.call('srem', circleKey, ARGV[1])
+  redis.call('zrem', KEYS[2], ARGV[7])
+  redis.call('zrem', circleKey, ARGV[7])
 end
 return 1
 `;
@@ -107,6 +109,17 @@ interface CandidateStateSource {
   expiresAt: Date | null;
   candidateVersion: number;
 }
+
+type CandidateStateForSync = Pick<
+  PostHotState,
+  | 'postId'
+  | 'circleId'
+  | 'postVisible'
+  | 'circleVisible'
+  | 'eligible'
+  | 'expiresAt'
+  | 'candidateVersion'
+>;
 
 function retryAt(attempts: number, now: Date): Date {
   const delay = Math.min(
@@ -341,11 +354,9 @@ export class HotCandidateIndexService {
       })
       .sort({ _id: 1 })
       .limit(HOT_CANDIDATE_REBUILD_BATCH_SIZE)
-      .select(
-        '_id postId circleId postVisible circleVisible eligible expiresAt candidateVersion',
-      )
+      .select('_id postId circleId postVisible circleVisible eligible expiresAt candidateVersion')
       .lean<CandidateStateSource[]>();
-    for (const state of states) await this.applyCandidateMember(generationId, state);
+    await this.applyCandidateMembers(generationId, states);
 
     if (states.length < HOT_CANDIDATE_REBUILD_BATCH_SIZE) {
       await this.finalizeGeneration(generation);
@@ -429,9 +440,7 @@ export class HotCandidateIndexService {
       buildingGeneration &&
       (await redis.get(candidateBuildMarkerKey(buildingGeneration))) !== buildingGeneration
     ) {
-      throw new Error(
-        `热帖候选索引状态不一致：构建代际缺少 Redis 标记 ${buildingGeneration}`,
-      );
+      throw new Error(`热帖候选索引状态不一致：构建代际缺少 Redis 标记 ${buildingGeneration}`);
     }
 
     const generationIds = [
@@ -503,42 +512,74 @@ export class HotCandidateIndexService {
 
   private async applyCandidateMember(
     generationId: string,
-    state: Pick<
-      PostHotState,
-      | 'postId'
-      | 'circleId'
-      | 'postVisible'
-      | 'circleVisible'
-      | 'eligible'
-      | 'expiresAt'
-      | 'candidateVersion'
-    >,
+    state: CandidateStateForSync,
   ): Promise<void> {
+    const command = this.buildCandidateMemberCommand(generationId, state);
+    const applied = await this.redisService
+      .getClient()
+      .eval(APPLY_CANDIDATE_MEMBER_SCRIPT, command.keys.length, ...command.keys, ...command.args);
+    this.assertCandidateMemberResult(applied, generationId);
+  }
+
+  private async applyCandidateMembers(
+    generationId: string,
+    states: CandidateStateForSync[],
+  ): Promise<void> {
+    if (states.length === 0) return;
+    const pipeline = this.redisService.getClient().pipeline();
+    for (const state of states) {
+      const command = this.buildCandidateMemberCommand(generationId, state);
+      pipeline.eval(
+        APPLY_CANDIDATE_MEMBER_SCRIPT,
+        command.keys.length,
+        ...command.keys,
+        ...command.args,
+      );
+    }
+    const responses = await pipeline.exec();
+    if (!responses || responses.length !== states.length) {
+      throw new Error(`热帖候选批量同步结果不完整: ${generationId}`);
+    }
+    for (const [error, result] of responses) {
+      if (error) throw error;
+      this.assertCandidateMemberResult(result, generationId);
+    }
+  }
+
+  private buildCandidateMemberCommand(
+    generationId: string,
+    state: CandidateStateForSync,
+  ): { keys: string[]; args: string[] } {
     const eligible =
       state.postVisible &&
       state.circleVisible &&
       state.eligible &&
       state.expiresAt !== null &&
       state.expiresAt.getTime() > Date.now();
-    const applied = await this.redisService
-      .getClient()
-      .eval(
-        APPLY_CANDIDATE_MEMBER_SCRIPT,
-        5,
+    return {
+      keys: [
         candidateMetadataKey(generationId),
         globalCandidateKey(generationId),
         candidateManifestKey(generationId),
         candidateReadyKey(generationId),
         candidateBuildMarkerKey(generationId),
+      ],
+      args: [
         state.postId,
         state.candidateVersion.toString(),
         eligible ? '1' : '0',
         state.circleId,
         circleCandidateKeyPrefix(generationId),
         generationId,
-      );
-    if (applied === -1) {
-      throw new Error(`候选代际已失效: ${generationId}`);
+        candidateMember(state.postId),
+      ],
+    };
+  }
+
+  private assertCandidateMemberResult(result: unknown, generationId: string): void {
+    if (result === -1) throw new Error(`候选代际已失效: ${generationId}`);
+    if (result !== 0 && result !== 1) {
+      throw new Error(`热帖候选同步返回值无效: ${generationId}`);
     }
   }
 
@@ -710,5 +751,4 @@ export class HotCandidateIndexService {
       await this.retireGeneration(generation);
     }
   }
-
 }

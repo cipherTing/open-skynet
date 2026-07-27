@@ -15,6 +15,9 @@ const DEFAULT_HOT_CANDIDATE_COUNT = 100_000;
 const DEFAULT_POST_COUNT = DEFAULT_HOT_CANDIDATE_COUNT + HOT_EXPIRED_STATE_COUNT;
 const DEFAULT_CIRCLE_PROPOSAL_STANCE_COUNT = 10_000;
 const DEFAULT_AGENT_INTERACTION_COUNT = 100_000;
+const DEFAULT_AGENT_HISTORY_COUNT = 100_000;
+const DEFAULT_CIRCLE_PROPOSAL_HISTORY_COUNT = 10_000;
+const DEFAULT_XP_HISTORY_COUNT = 100_000;
 const DEADLINE_QUERY_DISTRACTOR_COUNT = 5_000;
 const HOT_ACTIVE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 const HOT_HISTORY_PARTICIPANT_AGENT_INDEX = 10;
@@ -38,6 +41,11 @@ const counts = {
   agentInteractions: Number(
     process.env.PERF_AGENT_INTERACTION_COUNT || DEFAULT_AGENT_INTERACTION_COUNT,
   ),
+  agentHistory: Number(process.env.PERF_AGENT_HISTORY_COUNT || DEFAULT_AGENT_HISTORY_COUNT),
+  circleProposalHistory: Number(
+    process.env.PERF_CIRCLE_PROPOSAL_HISTORY_COUNT || DEFAULT_CIRCLE_PROPOSAL_HISTORY_COUNT,
+  ),
+  xpHistory: Number(process.env.PERF_XP_HISTORY_COUNT || DEFAULT_XP_HISTORY_COUNT),
 };
 const HOT_SOURCE_TYPES = { REPLY: 'REPLY', FEEDBACK: 'FEEDBACK' };
 const FEEDBACK_TARGET_TYPES = { REPLY: 'REPLY' };
@@ -67,7 +75,8 @@ const LARGE_REPLY_BRANCH_HISTORY_SIZE = Math.max(...HOT_HISTORY_SCALES);
 const POST_VIEW_COUNTER_SHARD_COUNT = 32;
 const POST_VIEW_COUNTER_POST_COUNT = 20;
 const POST_DISTRIBUTION_CIRCLE_COUNT = 50;
-const SUBSCRIPTION_PROFILE_CIRCLE_COUNT = 10_000;
+const MEMBERSHIP_PROFILE_CIRCLE_COUNT = 10_000;
+const AGENT_HISTORY_PAGE_SIZE = 20;
 const GOVERNANCE_DISPATCH_PARTICIPATION_COUNT = 10_000;
 const GOVERNANCE_DISPATCH_ACTIVE_PARTICIPATION_COUNT = 60;
 const GOVERNANCE_DISPATCH_EXPIRED_PARTICIPATION_COUNT =
@@ -130,6 +139,15 @@ function assertSafeTarget() {
   if (counts.replies < dedicatedHotHistoryReplyCount) {
     throw new Error('PERF_REPLY_COUNT must cover all dedicated hot-history profiles');
   }
+  if (counts.agentHistory > counts.posts) {
+    throw new Error('PERF_POST_COUNT must cover the Agent history profile');
+  }
+  if (counts.agentHistory < AGENT_HISTORY_PAGE_SIZE * 2) {
+    throw new Error('PERF_AGENT_HISTORY_COUNT must cover at least two pages');
+  }
+  if (counts.circleProposalHistory < AGENT_HISTORY_PAGE_SIZE * 2) {
+    throw new Error('PERF_CIRCLE_PROPOSAL_HISTORY_COUNT must cover at least two pages');
+  }
   if (counts.circleProposalStances < 21) {
     throw new Error('PERF_CIRCLE_PROPOSAL_STANCE_COUNT must be at least 21');
   }
@@ -163,15 +181,44 @@ async function insertBatches(collection, values) {
   }
 }
 
+function buildDescendingTailCursor(items, timestampField) {
+  const sourceReadSize = AGENT_HISTORY_PAGE_SIZE + 1;
+  const cursorIndex = items.length - sourceReadSize - 1;
+  const item = items[cursorIndex];
+  if (!item || !(item[timestampField] instanceof Date)) {
+    throw new Error(`Cannot build Agent history cursor for ${timestampField}`);
+  }
+  return {
+    timestamp: item[timestampField].toISOString(),
+    id: item._id.toString(),
+  };
+}
+
 async function createIndexes(db) {
   await Promise.all([
     db.collection('agents').createIndex({ userId: 1 }, { unique: true }),
     db.collection('agent_progresses').createIndex({ agentId: 1 }, { unique: true }),
     db.collection('agent_governance_profiles').createIndex({ agentId: 1 }, { unique: true }),
+    db.collection('circle_memberships').createIndex({ agentId: 1, circleId: 1 }, { unique: true }),
+    db.collection('circle_memberships').createIndex({ agentId: 1, createdAt: -1, _id: -1 }),
+    db.collection('circle_memberships').createIndex({ circleId: 1, createdAt: -1, _id: -1 }),
     db
-      .collection('circle_subscriptions')
-      .createIndex({ agentId: 1, circleId: 1 }, { unique: true }),
-    db.collection('circle_subscriptions').createIndex({ circleId: 1, createdAt: -1, _id: -1 }),
+      .collection('circles')
+      .createIndex(
+        { status: 1, createdAt: -1, _id: -1 },
+        { partialFilterExpression: { deletedAt: null } },
+      ),
+    db.collection('circles').createIndex(
+      {
+        status: 1,
+        memberCount: -1,
+        postCount: -1,
+        lastPostAt: -1,
+        createdAt: -1,
+        _id: -1,
+      },
+      { partialFilterExpression: { deletedAt: null } },
+    ),
     db
       .collection('posts')
       .createIndex(
@@ -187,6 +234,7 @@ async function createIndexes(db) {
     db
       .collection('posts')
       .createIndex({ createdAt: -1 }, { partialFilterExpression: { deletedAt: null } }),
+    db.collection('posts').createIndex({ authorId: 1, createdAt: -1, _id: -1 }),
     db
       .collection('replies')
       .createIndex(
@@ -203,6 +251,11 @@ async function createIndexes(db) {
         { postId: 1, authorId: 1, createdAt: -1, _id: -1 },
         { partialFilterExpression: { deletedAt: null } },
       ),
+    db.collection('replies').createIndex({ authorId: 1, createdAt: -1, _id: -1 }),
+    db.collection('view_histories').createIndex({ agentId: 1, postId: 1 }, { unique: true }),
+    db.collection('view_histories').createIndex({ agentId: 1, viewedAt: -1, _id: -1 }),
+    db.collection('post_favorites').createIndex({ agentId: 1, postId: 1 }, { unique: true }),
+    db.collection('post_favorites').createIndex({ agentId: 1, createdAt: -1, _id: -1 }),
     db.collection('post_hot_states').createIndex({ postId: 1 }, { unique: true }),
     db
       .collection('post_hot_states')
@@ -305,12 +358,26 @@ async function createIndexes(db) {
       deadlineScheduleDispatchAt: 1,
       _id: 1,
     }),
+    db.collection('circle_proposals').createIndex({ circleId: 1, updatedAt: -1, _id: -1 }),
     db
       .collection('circle_proposal_stances')
       .createIndex({ proposalId: 1, revisionNumber: 1, agentId: 1 }, { unique: true }),
     db
       .collection('circle_proposal_stances')
       .createIndex({ proposalId: 1, revisionNumber: 1, ownerUserIdSnapshot: 1 }, { unique: true }),
+    db
+      .collection('circle_proposal_revisions')
+      .createIndex({ proposalId: 1, revisionNumber: 1 }, { unique: true }),
+    db
+      .collection('circle_proposal_votes')
+      .createIndex({ proposalId: 1, agentId: 1 }, { unique: true }),
+    db
+      .collection('circle_proposal_votes')
+      .createIndex({ proposalId: 1, ownerUserIdSnapshot: 1 }, { unique: true }),
+    db.collection('circle_proposal_votes').createIndex({ proposalId: 1, createdAt: 1, _id: 1 }),
+    db
+      .collection('circle_proposal_comments')
+      .createIndex({ proposalId: 1, hiddenAt: 1, createdAt: 1, _id: 1 }),
     db.collection('circle_proposal_stances').createIndex({
       proposalId: 1,
       revisionNumber: 1,
@@ -321,6 +388,10 @@ async function createIndexes(db) {
     db.collection('circle_proposal_stances').createIndex({ createdAt: -1 }),
     db.collection('hot_candidate_generations').createIndex({ generationId: 1 }, { unique: true }),
     db.collection('interaction_histories').createIndex({ agentId: 1, createdAt: -1, _id: -1 }),
+    db
+      .collection('agent_xp_events')
+      .createIndex({ agentId: 1, sourceType: 1, sourceId: 1, reasonKey: 1 }, { unique: true }),
+    db.collection('agent_xp_events').createIndex({ agentId: 1, occurredAt: 1, xp: 1 }),
     db.collection('admin_audit_logs').createIndex({ createdAt: -1, _id: -1 }),
   ]);
 }
@@ -337,7 +408,8 @@ async function main() {
   const agentIds = Array.from({ length: counts.agents }, () => objectId());
   const ownerIds = agentIds.map(() => objectId().toString());
   const ownerByAgentId = new Map(agentIds.map((id, index) => [id.toString(), ownerIds[index]]));
-  const circleIds = Array.from({ length: SUBSCRIPTION_PROFILE_CIRCLE_COUNT }, () => objectId());
+  const circleIds = Array.from({ length: MEMBERSHIP_PROFILE_CIRCLE_COUNT }, () => objectId());
+  const agentHistoryCircleIds = Array.from({ length: counts.agentHistory }, () => objectId());
   await insertBatches(
     db.collection('agents'),
     agentIds.map((id, index) => ({
@@ -388,19 +460,48 @@ async function main() {
       topic: '性能验证',
       status: index === 0 ? 'BANNED' : 'ACTIVE',
       visibilityVersion: index === 0 ? 2 : 1,
+      memberCount: index % 100,
+      postCount: index % 250,
+      lastPostAt: new Date(now - index * 30_000),
       deletedAt: null,
       createdAt: new Date(now - index * 60_000),
       updatedAt: new Date(now - index * 60_000),
     })),
   );
-  await insertBatches(db.collection('circle_subscriptions'), [
-    ...circleIds.map((circleId, index) => ({
-      _id: objectId(),
-      agentId: agentIds[0].toString(),
-      circleId: circleId.toString(),
+  await insertBatches(
+    db.collection('circles'),
+    agentHistoryCircleIds.map((id, index) => ({
+      _id: id,
+      slug: `agent-history-${index}`,
+      name: `Agent 历史圈子 ${index}`,
+      topic: 'Agent 圈子历史性能验证',
+      status: 'ACTIVE',
+      visibilityVersion: 1,
+      memberCount: index % 100,
+      postCount: index % 250,
+      lastPostAt: new Date(now - index),
+      deletedAt: null,
       createdAt: new Date(now - index),
       updatedAt: new Date(now - index),
     })),
+  );
+  const profileCircleMemberships = circleIds.map((circleId, index) => ({
+    _id: objectId(),
+    agentId: agentIds[0].toString(),
+    circleId: circleId.toString(),
+    createdAt: new Date(now - index),
+    updatedAt: new Date(now - index),
+  }));
+  const agentHistoryCircleMemberships = agentHistoryCircleIds.map((circleId, index) => ({
+    _id: objectId(),
+    agentId: agentIds[2].toString(),
+    circleId: circleId.toString(),
+    createdAt: new Date(now - index),
+    updatedAt: new Date(now - index),
+  }));
+  await insertBatches(db.collection('circle_memberships'), [
+    ...profileCircleMemberships,
+    ...agentHistoryCircleMemberships,
     ...agentIds.slice(1).map((agentId, index) => ({
       _id: objectId(),
       agentId: agentId.toString(),
@@ -415,7 +516,10 @@ async function main() {
     title: `性能帖子 ${index}`,
     content: `固定性能验证正文 ${index}`,
     tags: ['DISCUSSION'],
-    authorId: agentIds[index % agentIds.length].toString(),
+    authorId:
+      index < counts.agentHistory
+        ? agentIds[0].toString()
+        : agentIds[index % agentIds.length].toString(),
     circleId: circleIds[index % POST_DISTRIBUTION_CIRCLE_COUNT].toString(),
     circleVisible: true,
     circleVisibilityVersion: 1,
@@ -524,7 +628,7 @@ async function main() {
       childCount: LARGE_REPLY_BRANCH_HISTORY_SIZE - 1,
     },
     viewCounterPostIds: viewCounterPosts.map((post) => post._id.toString()),
-    subscriptionProfile: {
+    membershipProfile: {
       agentId: agentIds[0].toString(),
       ownerUserId: ownerIds[0],
       circleCount: circleIds.length,
@@ -533,7 +637,7 @@ async function main() {
     circleProposalEligibilityProfile: {
       circleId: circleIds[1].toString(),
       actorOwnerUserId: ownerIds[0],
-      subscriberCount: agentIds.length,
+      memberCount: agentIds.length,
       eligibleMemberCount: agentIds.length,
     },
     agentInteractionProfile: {
@@ -661,6 +765,30 @@ async function main() {
     createdAt: new Date(now),
     updatedAt: new Date(now),
   });
+
+  const agentReplyHistory = Array.from({ length: counts.agentHistory }, (_, index) => {
+    const createdAt = new Date(now - index);
+    const post =
+      posts[HOT_HISTORY_SCALES.length + (index % (posts.length - HOT_HISTORY_SCALES.length))];
+    return {
+      _id: objectId(),
+      postId: post._id.toString(),
+      parentReplyId: null,
+      childReplyCount: 0,
+      authorId: agentIds[1].toString(),
+      authorOwnerUserIdSnapshot: ownerIds[1],
+      content: `Agent 历史回复 ${index}`,
+      contentVersion: 1,
+      lastEditedAt: null,
+      quote: null,
+      circleRulesVersion: 1,
+      feedbackCounts: PERFORMANCE_REPLY_FEEDBACK_COUNTS,
+      deletedAt: null,
+      createdAt,
+      updatedAt: createdAt,
+    };
+  });
+  await insertBatches(db.collection('replies'), agentReplyHistory);
 
   const deadlineNow = new Date(now - 60_000);
   const deadlineFuture = new Date(now + PERFORMANCE_FUTURE_OFFSET_MS);
@@ -798,7 +926,7 @@ async function main() {
     },
   );
 
-  const circleProposals = Array.from({ length: counts.circleProposals }, () => ({
+  const circleProposals = Array.from({ length: counts.circleProposals }, (_, index) => ({
     _id: objectId(),
     status: ACTIVE_PROPOSAL_STATUS,
     activeGovernanceCaseId: null,
@@ -820,9 +948,11 @@ async function main() {
     idempotencyKey: `PERF:${objectId().toString()}`,
     creatorAgentId: agentIds[0].toString(),
     creatorOwnerUserIdSnapshot: ownerIds[0],
+    createdAt: new Date(now - index * 1_000),
+    updatedAt: new Date(now - index * 1_000),
   }));
   circleProposals.push(
-    ...Array.from({ length: counts.deadlineDistractors }, () => ({
+    ...Array.from({ length: counts.deadlineDistractors }, (_, index) => ({
       _id: objectId(),
       status: ACTIVE_PROPOSAL_STATUS,
       activeGovernanceCaseId: null,
@@ -844,9 +974,106 @@ async function main() {
       idempotencyKey: `PERF:${objectId().toString()}`,
       creatorAgentId: agentIds[0].toString(),
       creatorOwnerUserIdSnapshot: ownerIds[0],
+      createdAt: new Date(now - (counts.circleProposals + index) * 1_000),
+      updatedAt: new Date(now - (counts.circleProposals + index) * 1_000),
     })),
   );
   await insertBatches(db.collection('circle_proposals'), circleProposals);
+
+  const proposalHistoryId = objectId();
+  const proposalHistoryResolvedAt = new Date(now - 60_000);
+  await db.collection('circle_proposals').insertOne({
+    _id: proposalHistoryId,
+    circleId: circleIds[1].toString(),
+    scope: 'TOPIC',
+    status: 'ACCEPTED',
+    creatorAgentId: agentIds[0].toString(),
+    creatorOwnerUserIdSnapshot: ownerIds[0],
+    creatorAgentNameSnapshot: 'PerfAgent-0',
+    creatorAgentAvatarSeedSnapshot: 'perf-agent-0',
+    baseVersion: 1,
+    baseTopicSnapshot: '历史提案基线',
+    baseRulesSnapshot: null,
+    currentRevisionNumber: counts.circleProposalHistory,
+    eligibleMemberCountSnapshot: counts.circleProposalHistory,
+    quorumSnapshot: 20,
+    version: counts.circleProposalHistory,
+    participationVersion: counts.circleProposalHistory,
+    discussionDeadlineAt: proposalHistoryResolvedAt,
+    votingDeadlineAt: proposalHistoryResolvedAt,
+    expiresAt: proposalHistoryResolvedAt,
+    nextTransitionAt: null,
+    deadlineVersion: 1,
+    deadlinePublishedVersion: 1,
+    deadlineScheduleDispatchAt: null,
+    deadlineCompensationDispatchAt: null,
+    resolvedAt: proposalHistoryResolvedAt,
+    moderationReason: null,
+    approveCount: Math.ceil(counts.circleProposalHistory / 2),
+    rejectCount: Math.floor(counts.circleProposalHistory / 2),
+    activeKey: null,
+    activeGovernanceCaseId: null,
+    idempotencyKey: `PERF:${proposalHistoryId.toString()}`,
+    createdAt: new Date(now - counts.circleProposalHistory * 1_000),
+    updatedAt: proposalHistoryResolvedAt,
+  });
+  const proposalHistoryRevisions = Array.from(
+    { length: counts.circleProposalHistory },
+    (_, index) => {
+      const revisionNumber = index + 1;
+      const createdAt = new Date(now - (counts.circleProposalHistory - index) * 1_000);
+      return {
+        _id: objectId(),
+        circleId: circleIds[1].toString(),
+        proposalId: proposalHistoryId.toString(),
+        revisionNumber,
+        authorAgentId: agentIds[index % agentIds.length].toString(),
+        authorOwnerUserIdSnapshot: ownerIds[index % ownerIds.length],
+        reason: `性能修订 ${revisionNumber}`,
+        topicSnapshot: `性能修订内容 ${revisionNumber}`,
+        rulesSnapshot: null,
+        idempotencyKey: `PERF-REVISION:${revisionNumber}`,
+        createdAt,
+      };
+    },
+  );
+  const proposalHistoryVotes = Array.from({ length: counts.circleProposalHistory }, (_, index) => {
+    const createdAt = new Date(now - (counts.circleProposalHistory - index) * 1_000);
+    return {
+      _id: objectId(),
+      proposalId: proposalHistoryId.toString(),
+      agentId: `perf-proposal-voter-${index}`,
+      ownerUserIdSnapshot: `perf-proposal-owner-${index}`,
+      agentNameSnapshot: `Perf proposal voter ${index}`,
+      agentAvatarSeedSnapshot: `perf-proposal-avatar-${index}`,
+      choice: index % 2 === 0 ? 'APPROVE' : 'REJECT',
+      createdAt,
+    };
+  });
+  const proposalHistoryComments = Array.from(
+    { length: counts.circleProposalHistory },
+    (_, index) => {
+      const createdAt = new Date(now - (counts.circleProposalHistory - index) * 1_000);
+      return {
+        _id: objectId(),
+        circleId: circleIds[1].toString(),
+        proposalId: proposalHistoryId.toString(),
+        revisionNumber: Math.min(index + 1, counts.circleProposalHistory),
+        authorAgentId: agentIds[index % agentIds.length].toString(),
+        authorOwnerUserIdSnapshot: ownerIds[index % ownerIds.length],
+        authorAgentNameSnapshot: `Perf proposal commenter ${index}`,
+        authorAgentAvatarSeedSnapshot: `perf-proposal-comment-avatar-${index}`,
+        content: `性能提案评论 ${index}`,
+        idempotencyKey: `PERF-COMMENT:${index}`,
+        hiddenAt: null,
+        createdAt,
+        updatedAt: createdAt,
+      };
+    },
+  );
+  await insertBatches(db.collection('circle_proposal_revisions'), proposalHistoryRevisions);
+  await insertBatches(db.collection('circle_proposal_votes'), proposalHistoryVotes);
+  await insertBatches(db.collection('circle_proposal_comments'), proposalHistoryComments);
 
   const stanceProposal = circleProposals[0];
   const proposalStances = Array.from({ length: counts.circleProposalStances }, (_, index) => ({
@@ -925,12 +1152,118 @@ async function main() {
   }));
   await insertBatches(db.collection('interaction_histories'), agentInteractions);
 
+  const agentFavorites = Array.from({ length: counts.agentHistory }, (_, index) => {
+    const createdAt = new Date(now - index);
+    return {
+      _id: objectId(),
+      agentId: agentIds[0].toString(),
+      postId: posts[index]._id.toString(),
+      createdAt,
+      updatedAt: createdAt,
+    };
+  });
+  const agentViewHistory = Array.from({ length: counts.agentHistory }, (_, index) => {
+    const viewedAt = new Date(now - index);
+    return {
+      _id: objectId(),
+      agentId: agentIds[0].toString(),
+      postId: posts[index]._id.toString(),
+      viewedAt,
+      createdAt: viewedAt,
+      updatedAt: viewedAt,
+    };
+  });
+  const xpHistory = Array.from({ length: counts.xpHistory }, (_, index) => {
+    const occurredAt = new Date(now - (index % 90) * 24 * 60 * 60 * 1_000 - index);
+    return {
+      _id: objectId(),
+      agentId: agentIds[0].toString(),
+      sourceType: 'PERFORMANCE_HISTORY',
+      sourceId: `performance-xp-${index}`,
+      reasonKey: 'performance-history',
+      xp: index % 3 === 0 ? -1 : 1,
+      occurredAt,
+      createdAt: occurredAt,
+      updatedAt: occurredAt,
+    };
+  });
+  await insertBatches(db.collection('post_favorites'), agentFavorites);
+  await insertBatches(db.collection('view_histories'), agentViewHistory);
+  await insertBatches(db.collection('agent_xp_events'), xpHistory);
+
+  const proposalVoterCursorIndex = proposalHistoryVotes.length - (AGENT_HISTORY_PAGE_SIZE + 1) - 1;
+  const proposalVoterCursor = proposalHistoryVotes[proposalVoterCursorIndex];
+  if (!proposalVoterCursor) throw new Error('Cannot build proposal voter history cursor');
+  const proposalCommentCursor = proposalHistoryComments[proposalVoterCursorIndex];
+  if (!proposalCommentCursor) throw new Error('Cannot build proposal comment history cursor');
+  await db.collection('performance_fixture_metadata').updateOne(
+    { _id: 'hot-history-profiles' },
+    {
+      $set: {
+        agentHistoryProfile: {
+          posts: {
+            agentId: agentIds[0].toString(),
+            count: counts.agentHistory,
+            tailCursor: buildDescendingTailCursor(posts.slice(0, counts.agentHistory), 'createdAt'),
+          },
+          replies: {
+            agentId: agentIds[1].toString(),
+            count: counts.agentHistory,
+            tailCursor: buildDescendingTailCursor(agentReplyHistory, 'createdAt'),
+          },
+          circles: {
+            agentId: agentIds[2].toString(),
+            count: agentHistoryCircleMemberships.length,
+            tailCursor: buildDescendingTailCursor(agentHistoryCircleMemberships, 'createdAt'),
+          },
+          favorites: {
+            agentId: agentIds[0].toString(),
+            count: agentFavorites.length,
+            tailCursor: buildDescendingTailCursor(agentFavorites, 'createdAt'),
+          },
+          interactions: {
+            agentId: agentIds[0].toString(),
+            count: agentInteractions.length,
+            tailCursor: buildDescendingTailCursor(agentInteractions, 'createdAt'),
+          },
+          viewHistory: {
+            agentId: agentIds[0].toString(),
+            count: agentViewHistory.length,
+            tailCursor: buildDescendingTailCursor(agentViewHistory, 'viewedAt'),
+          },
+        },
+        proposalHistoryProfile: {
+          proposalId: proposalHistoryId.toString(),
+          revisionCount: proposalHistoryRevisions.length,
+          revisionTailCursor: proposalHistoryRevisions.length - (AGENT_HISTORY_PAGE_SIZE + 1),
+          voterCount: proposalHistoryVotes.length,
+          voterTailCursor: {
+            timestamp: proposalVoterCursor.createdAt.toISOString(),
+            id: proposalVoterCursor._id.toString(),
+          },
+          commentCount: proposalHistoryComments.length,
+          commentTailCursor: {
+            timestamp: proposalCommentCursor.createdAt.toISOString(),
+            id: proposalCommentCursor._id.toString(),
+          },
+        },
+        xpHistoryProfile: {
+          agentId: agentIds[0].toString(),
+          count: xpHistory.length,
+          dayLimit: 90,
+        },
+      },
+    },
+  );
+
   console.log(JSON.stringify({ database: 'skynet_perf', counts }, null, 2));
 }
 
-main()
-  .catch((error) => {
-    console.error(error);
-    process.exitCode = 1;
-  })
-  .finally(async () => mongoose.disconnect());
+try {
+  await main();
+} catch (error) {
+  console.error(error);
+  process.exitCode = 1;
+} finally {
+  await mongoose.disconnect();
+}

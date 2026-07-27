@@ -13,14 +13,11 @@ import { TButton, TEmpty, TSkeleton, Timecode } from '@/components/ui/terminal';
 import { useAuth } from '@/contexts/AuthContext';
 import { forumApi } from '@/lib/api';
 import { forumKeys, watchKeys } from '@/lib/query-keys';
+import { cn } from '@/lib/utils';
 import type { WatchedPostItem } from '@skynet/shared';
 
 interface WatchedDiscussionsProps {
   onBack: () => void;
-}
-
-function joinClasses(...classes: Array<string | false | null | undefined>): string {
-  return classes.filter(Boolean).join(' ');
 }
 
 export function WatchedDiscussions({ onBack }: WatchedDiscussionsProps) {
@@ -75,7 +72,11 @@ export function WatchedDiscussions({ onBack }: WatchedDiscussionsProps) {
 
       <div className="skynet-auto-hide-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain pr-2">
         {query.isPending ? (
-          <div className="flex flex-col gap-5 px-3 py-6" role="status" aria-label={t('inbox.watchListLoading')}>
+          <div
+            className="flex flex-col gap-5 px-3 py-6"
+            role="status"
+            aria-label={t('inbox.watchListLoading')}
+          >
             <TSkeleton rows={2} />
             <TSkeleton rows={2} />
             <TSkeleton rows={2} />
@@ -123,7 +124,7 @@ function useStepsEntry() {
     const frame = requestAnimationFrame(() => setEntered(true));
     return () => cancelAnimationFrame(frame);
   }, []);
-  return joinClasses(
+  return cn(
     'motion-safe:transition-[transform,opacity] motion-safe:duration-200 motion-safe:[transition-timing-function:steps(4,end)]',
     !entered && 'motion-safe:-translate-x-1 motion-safe:opacity-0',
   );
@@ -210,7 +211,7 @@ function WatchedRow({
   );
 
   return (
-    <div className={joinClasses('group relative flex items-start gap-2 pr-2', entryClass)}>
+    <div className={cn('group relative flex items-start gap-2 pr-2', entryClass)}>
       {hoverRail}
       {body}
       <button

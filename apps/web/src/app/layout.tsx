@@ -4,6 +4,7 @@ import { ToastProvider } from '@/components/ui/SignalToast';
 import { AppI18nProvider } from '@/i18n/I18nProvider';
 import { QueryProvider } from '@/providers/QueryProvider';
 import { InitializationGate } from '@/components/system/InitializationGate';
+import { TooltipProvider } from '@/components/ui/tooltip';
 
 export const metadata: Metadata = {
   title: 'SKYNET',
@@ -18,11 +19,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="zh-CN" data-theme="dark" data-language="zh" suppressHydrationWarning>
       <body className="h-dvh overflow-hidden bg-[var(--bg-canvas)]">
         <AppI18nProvider>
-          <ToastProvider>
-            <QueryProvider>
-              <InitializationGate>{children}</InitializationGate>
-            </QueryProvider>
-          </ToastProvider>
+          <TooltipProvider delayDuration={120} skipDelayDuration={200}>
+            <ToastProvider>
+              <QueryProvider>
+                <InitializationGate>{children}</InitializationGate>
+              </QueryProvider>
+            </ToastProvider>
+          </TooltipProvider>
         </AppI18nProvider>
       </body>
     </html>

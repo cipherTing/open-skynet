@@ -1,12 +1,8 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomInt } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types, type FilterQuery } from 'mongoose';
-import { forumErrors } from '@/common/errors/business-errors';
-import {
-  HOT_CANDIDATE_GENERATION_STATUSES,
-  HotCandidateGeneration,
-} from '@/database/schemas/hot-candidate-generation.schema';
+import { CircleMembership } from '@/database/schemas/circle-membership.schema';
 import { PostHotState } from '@/database/schemas/post-hot-state.schema';
 import { Post, type PostDocument } from '@/database/schemas/post.schema';
 import { Circle } from '@/database/schemas/circle.schema';
@@ -15,104 +11,40 @@ import {
   HOT_CANDIDATE_OVERSAMPLE_MULTIPLIER,
   HOT_PAGE_SCAN_SIZE,
   HOT_POST_MAX_PAGE_SIZE,
-  HOT_SNAPSHOT_KEY_PREFIX,
-  HOT_SNAPSHOT_SAMPLE_SIZE,
-  HOT_SNAPSHOT_TTL_SECONDS,
   MAX_CIRCLE_HOT_POSTS,
 } from '@/hot-ranking/hot-ranking.constants';
 import {
+  candidatePostId,
   circleCandidateKey,
   globalCandidateKey,
   readReadyCandidateGenerationId,
 } from '@/hot-ranking/hot-candidate-keys';
 import type { HotPostPage, HotPostQueryOptions } from '@/hot-ranking/hot-ranking.types';
-import { REDIS_SET_EXPIRATION_UNITS } from '@/redis/redis.constants';
+import { decodeHotCursor, encodeHotCursor } from '@/common/pagination/pagination-cursor';
 import { RedisService } from '@/redis/redis.service';
-
-interface HotSnapshot {
-  filterHash: string;
-  ids: string[];
-}
-
-interface HotSnapshotCursor {
-  snapshotId: string;
-  offset: number;
-  filterHash: string;
-}
 
 interface CandidateReadState {
   postId: string;
   circleId: string;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
+interface CandidatePostReference {
+  _id: Types.ObjectId;
+  circleId: string;
 }
 
-function parseJson(value: string): unknown | null {
-  try {
-    return JSON.parse(value) as unknown;
-  } catch {
-    return null;
-  }
+interface ScannedCandidate {
+  member: string;
+  wrapped: boolean;
 }
 
-function parseHotSnapshot(value: string): HotSnapshot | null {
-  const parsed = parseJson(value);
-  if (
-    !isRecord(parsed) ||
-    typeof parsed.filterHash !== 'string' ||
-    !Array.isArray(parsed.ids) ||
-    parsed.ids.length > HOT_SNAPSHOT_SAMPLE_SIZE ||
-    !parsed.ids.every((id) => typeof id === 'string' && Types.ObjectId.isValid(id)) ||
-    new Set(parsed.ids).size !== parsed.ids.length
-  ) {
-    return null;
-  }
-  return { filterHash: parsed.filterHash, ids: parsed.ids };
-}
-
-function encodeCursor(cursor: HotSnapshotCursor): string {
-  return Buffer.from(JSON.stringify(cursor)).toString('base64url');
-}
-
-function decodeCursor(cursor: string): HotSnapshotCursor | null {
-  const parsed = parseJson(Buffer.from(cursor, 'base64url').toString('utf8'));
-  if (
-    !isRecord(parsed) ||
-    typeof parsed.snapshotId !== 'string' ||
-    typeof parsed.filterHash !== 'string' ||
-    typeof parsed.offset !== 'number' ||
-    !Number.isInteger(parsed.offset) ||
-    parsed.offset < 0
-  ) {
-    return null;
-  }
-  return {
-    snapshotId: parsed.snapshotId,
-    offset: parsed.offset,
-    filterHash: parsed.filterHash,
-  };
-}
-
-function hashFilterKey(filterKey: string): string {
-  return createHash('sha256').update(filterKey).digest('hex');
+interface CandidateScanResult {
+  candidates: ScannedCandidate[];
+  exhausted: boolean;
 }
 
 function toObjectIds(ids: string[]): Types.ObjectId[] {
   return ids.filter((id) => Types.ObjectId.isValid(id)).map((id) => new Types.ObjectId(id));
-}
-
-function interleaveCandidateIds(candidatePages: string[][]): string[] {
-  const uniqueIds = new Set<string>();
-  const maxPageLength = Math.max(0, ...candidatePages.map((page) => page.length));
-  for (let index = 0; index < maxPageLength; index += 1) {
-    for (const page of candidatePages) {
-      const id = page[index];
-      if (id) uniqueIds.add(id);
-    }
-  }
-  return [...uniqueIds];
 }
 
 @Injectable()
@@ -121,8 +53,8 @@ export class HotRankingQueryService {
     @InjectModel(Post.name) private readonly postModel: Model<Post>,
     @InjectModel(PostHotState.name) private readonly stateModel: Model<PostHotState>,
     @InjectModel(Circle.name) private readonly circleModel: Model<Circle>,
-    @InjectModel(HotCandidateGeneration.name)
-    private readonly generationModel: Model<HotCandidateGeneration>,
+    @InjectModel(CircleMembership.name)
+    private readonly circleMembershipModel: Model<CircleMembership>,
     private readonly redisService: RedisService,
   ) {}
 
@@ -131,79 +63,109 @@ export class HotRankingQueryService {
     options: HotPostQueryOptions,
   ): Promise<HotPostPage> {
     const limit = Math.min(HOT_POST_MAX_PAGE_SIZE, Math.max(1, Math.trunc(options.limit)));
-    const filterHash = hashFilterKey(options.filterKey);
-    let snapshotId: string;
-    let ids: string[];
-    let offset: number;
+    const generationId = await this.findReadyGeneration();
+    if (!generationId) return { posts: [], nextCursor: null };
+    const key = options.circleId
+      ? circleCandidateKey(generationId, options.circleId)
+      : globalCandidateKey(generationId);
+    const initialPosition = options.cursor
+      ? decodeHotCursor(options.cursor, {
+          context: options.cursorContext,
+          subjectId: options.cursorSubjectId,
+        })
+      : await this.createInitialPosition(key);
+    if (!initialPosition) return { posts: [], nextCursor: null };
 
-    if (options.cursor) {
-      const decoded = decodeCursor(options.cursor);
-      if (!decoded || decoded.filterHash !== filterHash) throw forumErrors.hotCursorInvalid();
-      const snapshotRaw = await this.redisService
-        .getClient()
-        .get(`${HOT_SNAPSHOT_KEY_PREFIX}${decoded.snapshotId}`);
-      if (!snapshotRaw) throw forumErrors.hotCursorExpired();
-      const snapshot = parseHotSnapshot(snapshotRaw);
-      if (!snapshot || snapshot.filterHash !== filterHash || decoded.offset > snapshot.ids.length) {
-        throw forumErrors.hotCursorInvalid();
-      }
-      snapshotId = decoded.snapshotId;
-      ids = snapshot.ids;
-      offset = decoded.offset;
-    } else {
-      snapshotId = randomUUID();
-      ids = await this.sampleCandidateIds(
-        options.circleId,
-        HOT_SNAPSHOT_SAMPLE_SIZE,
-        options.circleIds,
-      );
-      await this.writeSnapshot(snapshotId, { filterHash, ids });
-      offset = 0;
-    }
-
-    const posts: PostDocument[] = [];
-    while (posts.length < limit && offset < ids.length) {
-      const scanStart = offset;
-      const scanIds = ids.slice(scanStart, scanStart + HOT_PAGE_SCAN_SIZE);
-      const [validIds, rows] = await Promise.all([
-        this.filterEligibleCandidateIds(scanIds, options.circleId),
-        this.postModel.find({
+    const scan = await this.scanCandidateMembers(key, initialPosition);
+    if (scan.candidates.length === 0) return { posts: [], nextCursor: null };
+    const candidateIds = scan.candidates.map((candidate) => candidatePostId(candidate.member));
+    const [validIds, rows] = await Promise.all([
+      this.filterEligibleCandidateIds(candidateIds, options.circleId),
+      this.postModel
+        .find({
           ...where,
           ...(options.candidateFilter ?? {}),
-          _id: { $in: toObjectIds(scanIds) },
+          _id: { $in: toObjectIds(candidateIds) },
           deletedAt: null,
-        }),
-      ]);
-      const validIdSet = new Set(validIds);
-      const activeCircleIds = new Set(
-        (
-          await this.circleModel
-            .find({
-              _id: { $in: [...new Set(rows.map((row) => row.circleId))] },
-              deletedAt: null,
-              status: CIRCLE_STATUSES.ACTIVE,
-            })
-            .select('_id')
-        ).map((circle) => circle.id),
-      );
-      const rowById = new Map(
-        rows
-          .filter((row) => validIdSet.has(row.id) && activeCircleIds.has(row.circleId))
-          .map((row) => [row.id, row]),
-      );
-      let consumed = 0;
-      for (const id of scanIds) {
-        consumed += 1;
-        const post = rowById.get(id);
-        if (post) posts.push(post);
-        if (posts.length >= limit) break;
-      }
-      offset = scanStart + consumed;
-    }
+        })
+        .select('_id circleId')
+        .lean<CandidatePostReference[]>(),
+    ]);
+    const activeCircleIds = new Set(
+      (
+        await this.circleModel
+          .find({
+            _id: { $in: [...new Set(rows.map((row) => row.circleId))] },
+            deletedAt: null,
+            status: CIRCLE_STATUSES.ACTIVE,
+          })
+          .select('_id')
+      ).map((circle) => circle.id),
+    );
+    const memberCircleIds = options.membershipAgentId
+      ? new Set(
+          (
+            await this.circleMembershipModel
+              .find({
+                agentId: options.membershipAgentId,
+                circleId: { $in: [...new Set(rows.map((row) => row.circleId))] },
+              })
+              .select('circleId')
+              .lean<Array<Pick<CircleMembership, 'circleId'>>>()
+          ).map((membership) => membership.circleId),
+        )
+      : null;
+    const validIdSet = new Set(validIds);
+    const rowById = new Map(
+      rows
+        .filter(
+          (row) =>
+            validIdSet.has(row._id.toString()) &&
+            activeCircleIds.has(row.circleId) &&
+            (memberCircleIds === null || memberCircleIds.has(row.circleId)),
+        )
+        .map((row) => [row._id.toString(), row]),
+    );
 
+    const selectedPostIds: string[] = [];
+    let lastConsumed: ScannedCandidate | null = null;
+    let consumedCount = 0;
+    for (const candidate of scan.candidates) {
+      consumedCount += 1;
+      lastConsumed = candidate;
+      const postId = candidatePostId(candidate.member);
+      if (rowById.has(postId)) selectedPostIds.push(postId);
+      if (selectedPostIds.length >= limit) break;
+    }
+    const traversalExhausted = scan.exhausted && consumedCount === scan.candidates.length;
+    const selectedPosts =
+      selectedPostIds.length === 0
+        ? []
+        : await this.postModel.find({
+            _id: { $in: toObjectIds(selectedPostIds) },
+            deletedAt: null,
+          });
+    const selectedPostById = new Map(selectedPosts.map((post) => [post.id, post]));
+    const posts: PostDocument[] = selectedPostIds.flatMap((postId) => {
+      const post = selectedPostById.get(postId);
+      return post ? [post] : [];
+    });
     return {
       posts,
-      nextCursor: offset < ids.length ? encodeCursor({ snapshotId, offset, filterHash }) : null,
+      nextCursor:
+        traversalExhausted || !lastConsumed
+          ? null
+          : encodeHotCursor(
+              {
+                start: initialPosition.start,
+                current: lastConsumed.member,
+                wrapped: lastConsumed.wrapped,
+              },
+              {
+                context: options.cursorContext,
+                subjectId: options.cursorSubjectId,
+              },
+            ),
     };
   }
 
@@ -259,8 +221,47 @@ export class HotRankingQueryService {
     return new Set(states.map((state) => state.postId));
   }
 
+  private async createInitialPosition(
+    key: string,
+  ): Promise<{ start: string; current: null; wrapped: false } | null> {
+    const count = await this.redisService.getClient().zcard(key);
+    if (count === 0) return null;
+    const startRank = randomInt(count);
+    const [start] = await this.redisService.getClient().zrange(key, startRank, startRank);
+    if (!start) throw new Error('热帖候选索引随机起点读取失败');
+    return { start, current: null, wrapped: false };
+  }
+
+  private async scanCandidateMembers(
+    key: string,
+    initial: { start: string; current: string | null; wrapped: boolean },
+  ): Promise<CandidateScanResult> {
+    const candidates: ScannedCandidate[] = [];
+    let current = initial.current;
+    let wrapped = initial.wrapped;
+    let exhausted = false;
+    while (candidates.length < HOT_PAGE_SCAN_SIZE) {
+      const remaining = HOT_PAGE_SCAN_SIZE - candidates.length;
+      const minimum = current ? `(${current}` : wrapped ? '-' : `[${initial.start}`;
+      const maximum = wrapped ? `(${initial.start}` : '+';
+      const rows = await this.redisService
+        .getClient()
+        .zrangebylex(key, minimum, maximum, 'LIMIT', 0, remaining + 1);
+      const selected = rows.slice(0, remaining);
+      candidates.push(...selected.map((member) => ({ member, wrapped })));
+      if (rows.length > remaining) break;
+      if (wrapped) {
+        exhausted = true;
+        break;
+      }
+      wrapped = true;
+      current = null;
+    }
+    return { candidates, exhausted };
+  }
+
   private async filterEligibleCandidateIds(ids: string[], circleId?: string): Promise<string[]> {
-    const uniqueIds = [...new Set(ids)];
+    const uniqueIds = [...new Set(ids.filter((id) => Types.ObjectId.isValid(id)))];
     if (uniqueIds.length === 0) return [];
     const states = await this.stateModel
       .find({
@@ -278,36 +279,6 @@ export class HotRankingQueryService {
     return uniqueIds.filter((id) => validIds.has(id));
   }
 
-  private async sampleCandidateIds(
-    circleId: string | undefined,
-    count: number,
-    circleIds: string[] | undefined,
-  ): Promise<string[]> {
-    const generationId = await this.findReadyGeneration();
-    if (!generationId) return [];
-    const requestedCircleIds = circleId
-      ? [circleId]
-      : [...new Set((circleIds ?? []).filter((id) => id.length > 0))];
-    if (requestedCircleIds.length === 0) {
-      return [
-        ...new Set(
-          await this.redisService.getClient().srandmember(globalCandidateKey(generationId), count),
-        ),
-      ];
-    }
-    const candidatesByCircle = await this.sampleCircleCandidateIds(
-      generationId,
-      requestedCircleIds,
-      Math.max(
-        1,
-        Math.ceil(count / requestedCircleIds.length) * HOT_CANDIDATE_OVERSAMPLE_MULTIPLIER,
-      ),
-    );
-    return interleaveCandidateIds(
-      requestedCircleIds.map((circleIdValue) => candidatesByCircle.get(circleIdValue) ?? []),
-    ).slice(0, count);
-  }
-
   private async sampleCircleCandidateIds(
     generationId: string,
     circleIds: string[],
@@ -315,7 +286,7 @@ export class HotRankingQueryService {
   ): Promise<Map<string, string[]>> {
     const pipeline = this.redisService.getClient().pipeline();
     for (const circleId of circleIds) {
-      pipeline.srandmember(circleCandidateKey(generationId, circleId), count);
+      pipeline.zrandmember(circleCandidateKey(generationId, circleId), count);
     }
     const responses = await pipeline.exec();
     if (!responses || responses.length !== circleIds.length) {
@@ -328,31 +299,14 @@ export class HotRankingQueryService {
       if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) {
         throw new Error(`热帖圈子候选返回类型无效: ${circleIds[index]}`);
       }
-      result.set(circleIds[index], [...new Set(value)]);
+      result.set(circleIds[index], [
+        ...new Set(value.map(candidatePostId).filter((id) => Types.ObjectId.isValid(id))),
+      ]);
     }
     return result;
   }
 
-  private async writeSnapshot(snapshotId: string, snapshot: HotSnapshot): Promise<void> {
-    await this.redisService
-      .getClient()
-      .set(
-        `${HOT_SNAPSHOT_KEY_PREFIX}${snapshotId}`,
-        JSON.stringify(snapshot),
-        REDIS_SET_EXPIRATION_UNITS.SECONDS,
-        HOT_SNAPSHOT_TTL_SECONDS,
-      );
-  }
-
   private async findReadyGeneration(): Promise<string | null> {
-    const generationId = await readReadyCandidateGenerationId(this.redisService.getClient());
-    if (generationId) return generationId;
-    const activeGenerationExists = await this.generationModel.exists({
-      status: HOT_CANDIDATE_GENERATION_STATUSES.ACTIVE,
-    });
-    if (activeGenerationExists) {
-      throw new Error('热帖候选索引状态不一致：活跃代际缺少 Redis 指针');
-    }
-    return null;
+    return readReadyCandidateGenerationId(this.redisService.getClient());
   }
 }

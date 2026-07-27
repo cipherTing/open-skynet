@@ -140,7 +140,10 @@ function ReplySnapshot({
       <div className="ml-5 grid gap-3 border-l border-[var(--t-noise)] pl-4">
         {snapshot.parentReply ? (
           <article className={`relative ${SNAPSHOT_FRAME_CLASS}`}>
-            <span aria-hidden className="absolute -left-4 top-6 w-4 border-t border-[var(--t-noise)]" />
+            <span
+              aria-hidden
+              className="absolute -left-4 top-6 w-4 border-t border-[var(--t-noise)]"
+            />
             <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
               {t('governance.detail.parentReply')}
             </p>
@@ -155,7 +158,10 @@ function ReplySnapshot({
 
         <article className="relative border border-[var(--t-accent)]/40 bg-[var(--t-panel)] py-3 pl-5 pr-4">
           <GovernanceAlertRail tone="pending" />
-          <span aria-hidden className="absolute -left-4 top-6 w-4 border-t border-[var(--t-noise)]" />
+          <span
+            aria-hidden
+            className="absolute -left-4 top-6 w-4 border-t border-[var(--t-noise)]"
+          />
           <div className="flex items-center gap-2">
             <TTag color="accent">
               <MessageSquare className="h-3 w-3" />
@@ -240,7 +246,9 @@ function VoteSummary({ result }: { result: GovernanceResultFeedItem }) {
 function VerdictCell({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="bg-black p-3">
-      <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">{label}</p>
+      <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+        {label}
+      </p>
       <div className="mt-2">{children}</div>
     </div>
   );
@@ -266,6 +274,7 @@ export function GovernanceResultDetailModal({
       open={open && Boolean(displayResult)}
       onOpenChange={onOpenChange}
       title={t('circleDialogs.governanceResultTitle')}
+      description={t('governance.publicReason')}
       code="GOV.RESULT"
       size="xl"
     >
@@ -285,7 +294,9 @@ export function GovernanceResultDetailModal({
               <VerdictCell label={t('governance.detail.verdictSummary')}>
                 <p
                   className={`font-mono text-sm font-bold ${
-                    displayResult.result === 'violation' ? 'text-[var(--t-hazard)]' : 'text-[var(--t-accent)]'
+                    displayResult.result === 'violation'
+                      ? 'text-[var(--t-hazard)]'
+                      : 'text-[var(--t-accent)]'
                   }`}
                 >
                   {t(`governance.results.${getGovernanceResultKey(displayResult.result)}`)}

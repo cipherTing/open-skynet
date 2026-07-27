@@ -64,6 +64,24 @@
   }
 }
 
+@keyframes skynet-sheet-in {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes skynet-sheet-out {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+
 /* TerminalDialog（ui/TerminalDialog.tsx）专用步进动画 */
 @keyframes t-dialog-in {
   from {
@@ -357,6 +375,15 @@
     opacity: 0.6;
   }
 
+  .skynet-input:-webkit-autofill,
+  .skynet-input:-webkit-autofill:hover,
+  .skynet-input:-webkit-autofill:focus,
+  .skynet-input:autofill {
+    caret-color: var(--accent);
+    -webkit-text-fill-color: var(--text-primary);
+    box-shadow: 0 0 0 1000px var(--surface-3) inset;
+  }
+
   .skynet-input-icon {
     color: var(--text-tertiary);
     transition: color 100ms steps(2);
@@ -375,16 +402,21 @@
   }
 
   .selected-reply-pulse {
-    animation: selected-reply-pulse 600ms steps(2) 1;
+    animation: selected-reply-pulse 2s ease-in-out 1;
   }
 
   @keyframes selected-reply-pulse {
     0%,
+    16.67%,
+    50%,
+    83.33%,
     100% {
       background: var(--selected-reply-rest);
       border-color: var(--border-accent);
     }
-    50% {
+    8.33%,
+    33.33%,
+    66.67% {
       background: var(--selected-reply-flash);
       border-color: var(--accent);
     }
@@ -405,8 +437,11 @@
   }
 
   .feed-overlay-scroll {
+    width: 100%;
     min-height: 0;
+    min-width: 0;
     flex: 1 1 auto;
+    overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior: contain;
     padding: 8px 0 24px;
@@ -729,13 +764,7 @@
 /* 等宽微型遥测文本 */
 .t-mono {
   font-family:
-    'SF Mono',
-    'SFMono-Regular',
-    'Cascadia Code',
-    'Menlo',
-    'Monaco',
-    'Fira Code',
-    'Courier New',
+    'SF Mono', 'SFMono-Regular', 'Cascadia Code', 'Menlo', 'Monaco', 'Fira Code', 'Courier New',
     monospace;
   font-size: 11px;
   letter-spacing: 0.15em;
@@ -746,12 +775,7 @@
 /* 巨型标题 */
 .t-display {
   font-family:
-    'Arial Black',
-    'Helvetica Neue',
-    Impact,
-    'Source Han Sans SC',
-    'PingFang SC',
-    sans-serif;
+    'Arial Black', 'Helvetica Neue', Impact, 'Source Han Sans SC', 'PingFang SC', sans-serif;
   font-weight: 900;
   letter-spacing: -0.04em;
   line-height: 0.85;
@@ -760,12 +784,7 @@
 
 /* 衬线斜体点缀句 */
 .t-serif-accent {
-  font-family:
-    Georgia,
-    'Times New Roman',
-    'Songti SC',
-    'SimSun',
-    serif;
+  font-family: Georgia, 'Times New Roman', 'Songti SC', 'SimSun', serif;
   font-style: italic;
   color: var(--t-accent);
 }
@@ -1027,11 +1046,7 @@ html {
 
 /* 暗角氛围层（边缘 85% 黑） */
 .t-vignette {
-  background: radial-gradient(
-    ellipse at center,
-    transparent 0%,
-    rgb(0 0 0 / 0.85) 100%
-  );
+  background: radial-gradient(ellipse at center, transparent 0%, rgb(0 0 0 / 0.85) 100%);
 }
 
 /* 磁带滚动：连续 linear 运动属规范豁免项；内容需双份拼接，滚动 -50% 循环 */

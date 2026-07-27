@@ -4,6 +4,7 @@ import { useDeferredValue, useEffect, useRef, useState } from 'react';
 import { Turnstile } from '@marsidev/react-turnstile';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { z } from 'zod';
 import {
   Archive,
   CalendarClock,
@@ -11,8 +12,6 @@ import {
   Plus,
   Send,
   ShieldAlert,
-  ToggleLeft,
-  ToggleRight,
   Trash2,
   X,
   Check,
@@ -21,16 +20,12 @@ import {
   Mail,
 } from 'lucide-react';
 import { AnnouncementMarkdown } from '@/components/system/AnnouncementMarkdown';
+import { useAppForm } from '@/components/forms/skynet-form';
 import { ComposerTextarea } from '@/components/ui/ComposerTextarea';
 import { TerminalDialog } from '@/components/ui/TerminalDialog';
-import {
-  TButton,
-  TInput,
-  TRadarNode,
-  TTag,
-  Timecode,
-  formatTimecode,
-} from '@/components/ui/terminal';
+import { TButton, TInput, TTag, Timecode, formatTimecode } from '@/components/ui/terminal';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/components/ui/SignalToast';
 import { ApiError } from '@/lib/api';
@@ -265,7 +260,10 @@ export function AnnouncementsSection() {
                             {t('admin.announcements.publish')}
                           </span>
                         </ActionButton>
-                        <ActionButton variant="danger" onClick={() => setAction({ item, kind: 'delete' })}>
+                        <ActionButton
+                          variant="danger"
+                          onClick={() => setAction({ item, kind: 'delete' })}
+                        >
                           <span className="inline-flex items-center gap-1">
                             <Trash2 className="h-3 w-3" />
                             {t('admin.announcements.delete')}
@@ -315,144 +313,182 @@ function AnnouncementEditor({
   const { t } = useTranslation();
   const toast = useToast();
   const queryClient = useQueryClient();
-  const [title, setTitle] = useState(item?.title ?? '');
-  const [body, setBody] = useState(item?.body ?? '');
-  const [kind, setKind] = useState<AdminAnnouncementKind>(item?.kind ?? 'INFO');
-  const [startsAt, setStartsAt] = useState(
-    toLocalDateTime(item?.startsAt ?? new Date().toISOString()),
-  );
-  const [endsAt, setEndsAt] = useState(toLocalDateTime(item?.endsAt ?? null));
-  const [dismissible, setDismissible] = useState(item?.dismissible ?? true);
-  const [linkUrl, setLinkUrl] = useState(item?.linkUrl ?? '');
-  const mutation = useMutation({
-    mutationFn: () => {
+  const form = useAppForm({
+    defaultValues: {
+      title: item?.title ?? '',
+      body: item?.body ?? '',
+      kind: item?.kind ?? ('INFO' as AdminAnnouncementKind),
+      startsAt: toLocalDateTime(item?.startsAt ?? new Date().toISOString()),
+      endsAt: toLocalDateTime(item?.endsAt ?? null),
+      dismissible: item?.dismissible ?? true,
+      linkUrl: item?.linkUrl ?? '',
+    },
+    validators: {
+      onSubmit: z.object({
+        title: z.string().trim().min(1).max(120),
+        body: z.string().trim().min(1).max(1_000),
+        kind: z.enum(ANNOUNCEMENT_KINDS),
+        startsAt: z.string().min(1),
+        endsAt: z.string(),
+        dismissible: z.boolean(),
+        linkUrl: z.string().max(500),
+      }),
+    },
+    onSubmit: async ({ value }) => {
       const payload = {
-        title,
-        body,
-        kind,
-        startsAt: toIsoDateTime(startsAt),
-        endsAt: endsAt ? toIsoDateTime(endsAt) : null,
-        dismissible,
-        linkUrl: linkUrl || null,
+        title: value.title.trim(),
+        body: value.body.trim(),
+        kind: value.kind,
+        startsAt: toIsoDateTime(value.startsAt),
+        endsAt: value.endsAt ? toIsoDateTime(value.endsAt) : null,
+        dismissible: value.dismissible,
+        linkUrl: value.linkUrl.trim() || null,
       };
-      return item
-        ? adminApi.updateAnnouncement(item.id, {
+      try {
+        if (item) {
+          await adminApi.updateAnnouncement(item.id, {
             ...payload,
             expectedUpdatedAt: item.updatedAt,
-          })
-        : adminApi.createAnnouncement(payload);
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['admin', 'announcements'] });
-      await queryClient.invalidateQueries({ queryKey: ['system', 'activeAnnouncements'] });
-      toast.success(t('admin.announcements.saveSuccess'));
-      onClose();
+          });
+        } else {
+          await adminApi.createAnnouncement(payload);
+        }
+        await queryClient.invalidateQueries({ queryKey: ['admin', 'announcements'] });
+        await queryClient.invalidateQueries({ queryKey: ['system', 'activeAnnouncements'] });
+        toast.success(t('admin.announcements.saveSuccess'));
+        onClose();
+      } catch (error) {
+        toast.error(error instanceof ApiError ? error.message : t('admin.action.failed'));
+      }
     },
   });
-  const valid = Boolean(title.trim() && body.trim() && startsAt);
 
   return (
-    <TerminalDialog
-      open
-      onOpenChange={(open) => {
-        if (!open && !mutation.isPending) onClose();
-      }}
-      title={item ? t('admin.announcements.editTitle') : t('admin.announcements.createTitle')}
-      code="ADMIN.ANNOUNCE"
-      size="xl"
-      contentClassName="t-corner"
-    >
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (valid) mutation.mutate();
-        }}
-      >
-        <div className="space-y-5">
-          <AdminField label={t('admin.announcements.titleLabel')}>
-            <TInput
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              maxLength={120}
-            />
-          </AdminField>
+    <form.Subscribe selector={(state) => state.isSubmitting}>
+      {(isSubmitting) => (
+        <TerminalDialog
+          open
+          onOpenChange={(open) => {
+            if (!open && !isSubmitting) onClose();
+          }}
+          title={item ? t('admin.announcements.editTitle') : t('admin.announcements.createTitle')}
+          description={t('admin.announcements.editorDescription')}
+          code="ADMIN.ANNOUNCE"
+          size="xl"
+          busy={isSubmitting}
+          contentClassName="t-corner"
+        >
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              void form.handleSubmit();
+            }}
+          >
+            <form.AppForm>
+              <div className="space-y-5">
+                <form.AppField name="title">
+                  {(field) => (
+                    <field.InputField label={t('admin.announcements.titleLabel')} maxLength={120} />
+                  )}
+                </form.AppField>
 
-          <div className="grid min-h-[320px] gap-4 lg:grid-cols-2">
-            <AdminField label={t('admin.announcements.bodyLabel')}>
-              <ComposerTextarea
-                value={body}
-                onChange={(event) => setBody(event.target.value)}
-                maxLength={1000}
-                rows={14}
-                className="min-h-[300px] max-h-none"
-              />
-            </AdminField>
-            <section aria-label={t('admin.announcements.preview')}>
-              <div className="text-xs font-medium text-white/60">
-                {t('admin.announcements.preview')}
+                <form.AppField name="body">
+                  {(field) => (
+                    <div className="grid min-h-[320px] gap-4 lg:grid-cols-2">
+                      <AdminField label={t('admin.announcements.bodyLabel')}>
+                        <ComposerTextarea
+                          value={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(event) => field.handleChange(event.target.value)}
+                          maxLength={1000}
+                          rows={14}
+                          className="min-h-[300px] max-h-none"
+                        />
+                      </AdminField>
+                      <section aria-label={t('admin.announcements.preview')}>
+                        <div className="text-xs font-medium text-white/60">
+                          {t('admin.announcements.preview')}
+                        </div>
+                        <div className="mt-2 min-h-[300px] overflow-auto border border-[var(--t-noise)] bg-[var(--t-panel)] px-4 py-3 text-sm text-white/60">
+                          {field.state.value.trim() ? (
+                            <AnnouncementMarkdown content={field.state.value} />
+                          ) : (
+                            <p className="text-[var(--t-sub)]">
+                              {t('admin.announcements.emptyPreview')}
+                            </p>
+                          )}
+                        </div>
+                      </section>
+                    </div>
+                  )}
+                </form.AppField>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <form.AppField name="kind">
+                    {(field) => (
+                      <AdminField label={t('admin.announcements.kindLabel')}>
+                        <AdminSelect
+                          value={field.state.value}
+                          ariaLabel={t('admin.announcements.kindLabel')}
+                          className="w-full text-sm"
+                          options={ANNOUNCEMENT_KINDS.map((value) => ({
+                            value,
+                            label: t(`admin.announcements.kind.${value}`),
+                          }))}
+                          onValueChange={(value) =>
+                            field.handleChange(value as AdminAnnouncementKind)
+                          }
+                        />
+                      </AdminField>
+                    )}
+                  </form.AppField>
+                  <form.AppField name="linkUrl">
+                    {(field) => (
+                      <field.InputField
+                        label={t('admin.announcements.link')}
+                        placeholder={t('admin.announcements.linkPlaceholder')}
+                        maxLength={500}
+                      />
+                    )}
+                  </form.AppField>
+                  <form.AppField name="startsAt">
+                    {(field) => (
+                      <AnnouncementDateTimeField
+                        label={t('admin.announcements.startsAt')}
+                        value={field.state.value}
+                        onChange={field.handleChange}
+                      />
+                    )}
+                  </form.AppField>
+                  <form.AppField name="endsAt">
+                    {(field) => (
+                      <AnnouncementDateTimeField
+                        label={t('admin.announcements.endsAt')}
+                        value={field.state.value}
+                        onChange={field.handleChange}
+                        clearable
+                      />
+                    )}
+                  </form.AppField>
+                </div>
+
+                <div className="flex flex-col gap-4 border-t border-[var(--t-noise)] pt-4 sm:flex-row sm:items-center sm:justify-between">
+                  <form.AppField name="dismissible">
+                    {(field) => (
+                      <field.CheckboxField label={t('admin.announcements.dismissible')} />
+                    )}
+                  </form.AppField>
+                  <form.SubmitButton submittingContent={t('admin.action.running')}>
+                    {t('admin.announcements.saveDraft')}
+                  </form.SubmitButton>
+                </div>
               </div>
-              <div className="mt-2 min-h-[300px] overflow-auto border border-[var(--t-noise)] bg-[var(--t-panel)] px-4 py-3 text-sm text-white/60">
-                {body.trim() ? (
-                  <AnnouncementMarkdown content={body} />
-                ) : (
-                  <p className="text-[var(--t-sub)]">{t('admin.announcements.emptyPreview')}</p>
-                )}
-              </div>
-            </section>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <AdminField label={t('admin.announcements.kindLabel')}>
-              <AdminSelect
-                value={kind}
-                ariaLabel={t('admin.announcements.kindLabel')}
-                className="w-full text-sm"
-                options={ANNOUNCEMENT_KINDS.map((value) => ({
-                  value,
-                  label: t(`admin.announcements.kind.${value}`),
-                }))}
-                onValueChange={(value) => setKind(value as AdminAnnouncementKind)}
-              />
-            </AdminField>
-            <AdminField label={t('admin.announcements.link')}>
-              <TInput
-                value={linkUrl}
-                onChange={(event) => setLinkUrl(event.target.value)}
-                placeholder={t('admin.announcements.linkPlaceholder')}
-                maxLength={500}
-              />
-            </AdminField>
-            <AnnouncementDateTimeField
-              label={t('admin.announcements.startsAt')}
-              value={startsAt}
-              onChange={setStartsAt}
-            />
-            <AnnouncementDateTimeField
-              label={t('admin.announcements.endsAt')}
-              value={endsAt}
-              onChange={setEndsAt}
-              clearable
-            />
-          </div>
-
-          <div className="flex flex-col gap-4 border-t border-[var(--t-noise)] pt-4 sm:flex-row sm:items-center sm:justify-between">
-            <TRadarNode
-              checked={dismissible}
-              onChange={setDismissible}
-              label={t('admin.announcements.dismissible')}
-            />
-            <button
-              type="submit"
-              disabled={!valid || mutation.isPending}
-              className="t-btn t-btn--primary"
-            >
-              {mutation.isPending ? t('admin.action.running') : t('admin.announcements.saveDraft')}
-            </button>
-          </div>
-          {mutation.isError && <p className="text-xs text-[var(--t-hazard)]">{t('admin.action.failed')}</p>}
-        </div>
-      </form>
-    </TerminalDialog>
+            </form.AppForm>
+          </form>
+        </TerminalDialog>
+      )}
+    </form.Subscribe>
   );
 }
 
@@ -526,6 +562,7 @@ function AnnouncementActionDialog({
       open={open}
       onOpenChange={onOpenChange}
       title={title}
+      description={title}
       code="ADMIN.ANNOUNCE"
       size="sm"
       variant="alert"
@@ -566,90 +603,128 @@ function PublicAccessEditor({ config }: { config: AdminPublicAccessConfig }) {
   const { t } = useTranslation();
   const toast = useToast();
   const queryClient = useQueryClient();
-  const [siteOrigin, setSiteOrigin] = useState(config.siteOrigin);
-  const [apiBaseUrl, setApiBaseUrl] = useState(config.apiBaseUrl);
-
-  const mutation = useMutation({
-    mutationFn: () =>
-      adminApi.updatePublicAccessConfig({
-        siteOrigin: siteOrigin.trim(),
-        apiBaseUrl: apiBaseUrl.trim(),
-        expectedVersion: config.version,
-      }),
-    onSuccess: async (updated) => {
-      queryClient.setQueryData(['admin', 'publicAccess'], updated);
-      await queryClient.invalidateQueries({ queryKey: ['system', 'public-access-config'] });
-      toast.success(t('admin.publicAccess.saved'));
+  const form = useAppForm({
+    defaultValues: {
+      siteOrigin: config.siteOrigin,
+      apiBaseUrl: config.apiBaseUrl,
     },
-    onError: (error) => {
-      toast.error(error instanceof ApiError ? error.message : t('admin.publicAccess.saveFailed'));
+    validators: {
+      onSubmit: z.object({
+        siteOrigin: z.url(),
+        apiBaseUrl: z.url(),
+      }),
+    },
+    onSubmit: async ({ value }) => {
+      try {
+        const updated = await adminApi.updatePublicAccessConfig({
+          siteOrigin: value.siteOrigin.trim(),
+          apiBaseUrl: value.apiBaseUrl.trim(),
+          expectedVersion: config.version,
+        });
+        queryClient.setQueryData(['admin', 'publicAccess'], updated);
+        await queryClient.invalidateQueries({ queryKey: ['system', 'public-access-config'] });
+        form.reset({
+          siteOrigin: updated.siteOrigin,
+          apiBaseUrl: updated.apiBaseUrl,
+        });
+        toast.success(t('admin.publicAccess.saved'));
+      } catch (error) {
+        toast.error(error instanceof ApiError ? error.message : t('admin.publicAccess.saveFailed'));
+      }
     },
   });
-
-  const changed =
-    siteOrigin.trim() !== config.siteOrigin || apiBaseUrl.trim() !== config.apiBaseUrl;
-  const previewGuideUrl = `${siteOrigin.trim().replace(/\/+$/u, '')}/guide.md`;
 
   return (
     <section className="max-w-4xl">
       <AdminSectionTitle>{t('admin.publicAccess.title')}</AdminSectionTitle>
-      <p className="mt-1 text-xs leading-5 text-[var(--t-sub)]">{t('admin.publicAccess.description')}</p>
-      <div className="t-corner mt-5 space-y-5 rounded-none border border-[var(--t-noise)] bg-black/25 p-5">
-        <AdminField label={t('admin.publicAccess.siteOrigin')}>
-          <TInput
-            value={siteOrigin}
-            onChange={(event) => setSiteOrigin(event.target.value)}
-            placeholder={t('admin.publicAccess.siteOriginPlaceholder')}
-          />
-        </AdminField>
-        <AdminField label={t('admin.publicAccess.apiBaseUrl')}>
-          <TInput
-            value={apiBaseUrl}
-            onChange={(event) => setApiBaseUrl(event.target.value)}
-            placeholder={t('admin.publicAccess.apiBaseUrlPlaceholder')}
-          />
-        </AdminField>
-        <div>
-          <h3 className="text-xs font-bold text-white/60">
-            {t('admin.publicAccess.preview')}
-          </h3>
-          <div className="mt-2 space-y-2 rounded-none border border-[var(--t-noise)] bg-[var(--t-panel)] p-3 font-mono text-[11px] leading-5 text-[var(--t-sub)]">
-            <p>curl -s {previewGuideUrl}</p>
-            <p>export SKYNET_ORIGIN=&quot;{siteOrigin.trim()}&quot;</p>
-            <p>export SKYNET_API_BASE=&quot;{apiBaseUrl.trim()}&quot;</p>
+      <p className="mt-1 text-xs leading-5 text-[var(--t-sub)]">
+        {t('admin.publicAccess.description')}
+      </p>
+      <form
+        className="t-corner mt-5 space-y-5 rounded-none border border-[var(--t-noise)] bg-black/25 p-5"
+        onSubmit={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          void form.handleSubmit();
+        }}
+      >
+        <form.AppForm>
+          <form.AppField name="siteOrigin">
+            {(field) => (
+              <field.InputField
+                label={t('admin.publicAccess.siteOrigin')}
+                placeholder={t('admin.publicAccess.siteOriginPlaceholder')}
+              />
+            )}
+          </form.AppField>
+          <form.AppField name="apiBaseUrl">
+            {(field) => (
+              <field.InputField
+                label={t('admin.publicAccess.apiBaseUrl')}
+                placeholder={t('admin.publicAccess.apiBaseUrlPlaceholder')}
+              />
+            )}
+          </form.AppField>
+          <form.Subscribe selector={(state) => state.values}>
+            {(values) => {
+              const siteOrigin = values.siteOrigin.trim();
+              const apiBaseUrl = values.apiBaseUrl.trim();
+              const previewGuideUrl = `${siteOrigin.replace(/\/+$/u, '')}/guide.md`;
+              const siteChanged = siteOrigin !== config.siteOrigin;
+              const apiChanged = apiBaseUrl !== config.apiBaseUrl;
+              return (
+                <>
+                  <div>
+                    <h3 className="text-xs font-bold text-white/60">
+                      {t('admin.publicAccess.preview')}
+                    </h3>
+                    <div className="mt-2 space-y-2 rounded-none border border-[var(--t-noise)] bg-[var(--t-panel)] p-3 font-mono text-[11px] leading-5 text-[var(--t-sub)]">
+                      <p>curl -s {previewGuideUrl}</p>
+                      <p>export SKYNET_ORIGIN=&quot;{siteOrigin}&quot;</p>
+                      <p>export SKYNET_API_BASE=&quot;{apiBaseUrl}&quot;</p>
+                    </div>
+                  </div>
+                  {siteChanged || apiChanged ? (
+                    <div className="rounded-none border border-[var(--t-accent-dim)] bg-[var(--t-accent-wash)] px-3 py-2 text-xs text-white/60">
+                      <p className="font-bold text-[var(--t-accent)]">
+                        {t('admin.publicAccess.changes')}
+                      </p>
+                      {siteChanged ? (
+                        <p className="mt-1 break-all">
+                          {config.siteOrigin} → {siteOrigin}
+                        </p>
+                      ) : null}
+                      {apiChanged ? (
+                        <p className="mt-1 break-all">
+                          {config.apiBaseUrl} → {apiBaseUrl}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </>
+              );
+            }}
+          </form.Subscribe>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-[11px] text-[var(--t-sub)]">
+              {config.updatedAt
+                ? t('admin.publicAccess.updatedAt', { time: formatAdminTime(config.updatedAt) })
+                : t('admin.publicAccess.defaultValue')}
+            </span>
+            <form.Subscribe selector={(state) => !state.isDefaultValue}>
+              {(hasUnsavedChanges) => (
+                <form.SubmitButton
+                  variant="primary"
+                  disabled={!hasUnsavedChanges}
+                  submittingContent={t('admin.action.running')}
+                >
+                  {t('admin.publicAccess.save')}
+                </form.SubmitButton>
+              )}
+            </form.Subscribe>
           </div>
-        </div>
-        {changed ? (
-          <div className="rounded-none border border-[var(--t-accent-dim)] bg-[var(--t-accent-wash)] px-3 py-2 text-xs text-white/60">
-            <p className="font-bold text-[var(--t-accent)]">{t('admin.publicAccess.changes')}</p>
-            {siteOrigin.trim() !== config.siteOrigin ? (
-              <p className="mt-1 break-all">
-                {config.siteOrigin} → {siteOrigin.trim()}
-              </p>
-            ) : null}
-            {apiBaseUrl.trim() !== config.apiBaseUrl ? (
-              <p className="mt-1 break-all">
-                {config.apiBaseUrl} → {apiBaseUrl.trim()}
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-[11px] text-[var(--t-sub)]">
-            {config.updatedAt
-              ? t('admin.publicAccess.updatedAt', { time: formatAdminTime(config.updatedAt) })
-              : t('admin.publicAccess.defaultValue')}
-          </span>
-          <TButton
-            type="button"
-            variant="primary"
-            disabled={!changed || mutation.isPending || !siteOrigin.trim() || !apiBaseUrl.trim()}
-            onClick={() => mutation.mutate()}
-          >
-            {mutation.isPending ? t('admin.action.running') : t('admin.publicAccess.save')}
-          </TButton>
-        </div>
-      </div>
+        </form.AppForm>
+      </form>
     </section>
   );
 }
@@ -715,26 +790,19 @@ export function FeatureFlagsSection() {
                     })
                   : t('admin.featureFlags.notChanged')}
               </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={flag.enabled}
-                aria-label={t(`admin.featureFlags.items.${flag.key}.title`)}
-                disabled={mutation.isPending}
-                onClick={() => mutation.mutate(flag)}
-                className={`inline-flex h-8 items-center gap-2 rounded-none border px-3 font-mono text-[11px] font-semibold uppercase tracking-[0.15em] transition-colors duration-100 [transition-timing-function:steps(2,end)] disabled:cursor-not-allowed disabled:opacity-45 ${
-                  flag.enabled
-                    ? 'border-[var(--t-accent)] text-[var(--t-accent)] hover:bg-[var(--t-accent-wash)]'
-                    : 'border-[var(--t-signal-dim)] text-[var(--t-signal)] hover:bg-[var(--t-signal-dim)]'
-                }`}
-              >
-                {flag.enabled ? (
-                  <ToggleRight className="h-4 w-4" />
-                ) : (
-                  <ToggleLeft className="h-4 w-4" />
-                )}
-                {flag.enabled ? t('admin.featureFlags.enabled') : t('admin.featureFlags.disabled')}
-              </button>
+              <div className="flex items-center gap-2">
+                <Switch
+                  aria-label={t(`admin.featureFlags.items.${flag.key}.title`)}
+                  checked={flag.enabled}
+                  disabled={mutation.isPending}
+                  onCheckedChange={() => mutation.mutate(flag)}
+                />
+                <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-[var(--t-sub)]">
+                  {flag.enabled
+                    ? t('admin.featureFlags.enabled')
+                    : t('admin.featureFlags.disabled')}
+                </span>
+              </div>
             </div>
           ))}
         </div>
@@ -859,10 +927,10 @@ export function SecurityEventsSection() {
                   </div>
                 </td>
                 <td className="px-3 py-3 font-mono text-xs text-white/60">{event.route}</td>
-                <td className="px-3 py-3 font-mono text-xs text-[var(--t-sub)]">{event.fingerprint}</td>
-                <td className="px-3 py-3 font-mono text-sm text-white/60">
-                  {event.sampleCount}
+                <td className="px-3 py-3 font-mono text-xs text-[var(--t-sub)]">
+                  {event.fingerprint}
                 </td>
+                <td className="px-3 py-3 font-mono text-sm text-white/60">{event.sampleCount}</td>
                 <td className="px-3 py-3 text-xs text-[var(--t-sub)]">
                   <Timecode date={event.lastSeenAt} withDate />
                 </td>
@@ -877,241 +945,315 @@ export function SecurityEventsSection() {
 }
 
 export function AuthPolicySection() {
+  const query = useQuery({ queryKey: ['admin', 'authPolicy'], queryFn: adminApi.authPolicy });
+  if (query.isPending) return <AdminLoading />;
+  if (query.isError || !query.data) return <AdminError retry={() => void query.refetch()} />;
+  return (
+    <AuthPolicyEditor
+      key={`${query.data.version}:${query.data.smtpVerifiedAt ?? ''}:${query.data.turnstileVerifiedAt ?? ''}`}
+      policy={query.data}
+    />
+  );
+}
+
+function AuthPolicyEditor({ policy }: { policy: AdminAuthPolicy }) {
   const { t } = useTranslation();
   const toast = useToast();
   const queryClient = useQueryClient();
-  const query = useQuery({ queryKey: ['admin', 'authPolicy'], queryFn: adminApi.authPolicy });
-  const [overrides, setOverrides] = useState<Partial<AdminAuthPolicy>>({});
-  const [turnstileSecret, setTurnstileSecret] = useState('');
-  const [smtpPassword, setSmtpPassword] = useState('');
   const [testEmail, setTestEmail] = useState('');
   const [turnstileToken, setTurnstileToken] = useState('');
-  const form = query.data ? { ...query.data, ...overrides } : null;
-  const save = useMutation({
-    mutationFn: async () => {
-      if (!form) throw new Error('missing form');
-      return adminApi.updateAuthPolicy({
-        expectedVersion: form.version,
-        inviteRequired: form.inviteRequired,
-        turnstileEnabled: form.turnstileEnabled,
-        turnstileSiteKey: form.turnstileSiteKey,
-        turnstileSecret: turnstileSecret || undefined,
-        smtpHost: form.smtpHost,
-        smtpPort: form.smtpPort,
-        smtpSecurity: form.smtpSecurity,
-        smtpSkipTlsVerify: form.smtpSkipTlsVerify,
-        smtpForceAuthLogin: form.smtpForceAuthLogin,
-        smtpUsername: form.smtpUsername,
-        smtpFromAddress: form.smtpFromAddress,
-        smtpPassword: smtpPassword || undefined,
-      });
+  const form = useAppForm({
+    defaultValues: {
+      inviteRequired: policy.inviteRequired,
+      turnstileEnabled: policy.turnstileEnabled,
+      turnstileSiteKey: policy.turnstileSiteKey,
+      turnstileSecret: '',
+      smtpHost: policy.smtpHost,
+      smtpPort: policy.smtpPort,
+      smtpSecurity: policy.smtpSecurity,
+      smtpSkipTlsVerify: policy.smtpSkipTlsVerify,
+      smtpForceAuthLogin: policy.smtpForceAuthLogin,
+      smtpUsername: policy.smtpUsername,
+      smtpFromAddress: policy.smtpFromAddress,
+      smtpPassword: '',
     },
-    onSuccess: (data) => {
-      queryClient.setQueryData(['admin', 'authPolicy'], data);
-      setOverrides({});
-      setTurnstileSecret('');
-      setSmtpPassword('');
-      toast.success(t('admin.authPolicy.saved'));
+    validators: {
+      onSubmit: z.object({
+        inviteRequired: z.boolean(),
+        turnstileEnabled: z.boolean(),
+        turnstileSiteKey: z.string(),
+        turnstileSecret: z.string(),
+        smtpHost: z.string(),
+        smtpPort: z.number().int().min(1).max(65_535),
+        smtpSecurity: z.enum(['NONE', 'SSL_TLS', 'STARTTLS']),
+        smtpSkipTlsVerify: z.boolean(),
+        smtpForceAuthLogin: z.boolean(),
+        smtpUsername: z.string(),
+        smtpFromAddress: z.string(),
+        smtpPassword: z.string(),
+      }),
     },
-    onError: (error) =>
-      toast.error(error instanceof ApiError ? error.message : t('admin.authPolicy.saveFailed')),
+    onSubmit: async ({ value }) => {
+      try {
+        const updated = await adminApi.updateAuthPolicy({
+          expectedVersion: policy.version,
+          inviteRequired: value.inviteRequired,
+          turnstileEnabled: value.turnstileEnabled,
+          turnstileSiteKey: value.turnstileSiteKey.trim(),
+          ...(value.turnstileSecret ? { turnstileSecret: value.turnstileSecret } : {}),
+          smtpHost: value.smtpHost.trim(),
+          smtpPort: value.smtpPort,
+          smtpSecurity: value.smtpSecurity,
+          smtpSkipTlsVerify: value.smtpSkipTlsVerify,
+          smtpForceAuthLogin: value.smtpForceAuthLogin,
+          smtpUsername: value.smtpUsername.trim(),
+          smtpFromAddress: value.smtpFromAddress.trim(),
+          ...(value.smtpPassword ? { smtpPassword: value.smtpPassword } : {}),
+        });
+        queryClient.setQueryData(['admin', 'authPolicy'], updated);
+        form.reset({
+          inviteRequired: updated.inviteRequired,
+          turnstileEnabled: updated.turnstileEnabled,
+          turnstileSiteKey: updated.turnstileSiteKey,
+          turnstileSecret: '',
+          smtpHost: updated.smtpHost,
+          smtpPort: updated.smtpPort,
+          smtpSecurity: updated.smtpSecurity,
+          smtpSkipTlsVerify: updated.smtpSkipTlsVerify,
+          smtpForceAuthLogin: updated.smtpForceAuthLogin,
+          smtpUsername: updated.smtpUsername,
+          smtpFromAddress: updated.smtpFromAddress,
+          smtpPassword: '',
+        });
+        toast.success(t('admin.authPolicy.saved'));
+      } catch (error) {
+        toast.error(error instanceof ApiError ? error.message : t('admin.authPolicy.saveFailed'));
+      }
+    },
   });
   const testSmtp = useMutation({
     mutationFn: () => adminApi.testSmtp(testEmail),
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success(t('admin.authPolicy.smtpTested'));
-      void query.refetch();
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'authPolicy'] });
     },
     onError: (error) =>
       toast.error(error instanceof ApiError ? error.message : t('admin.authPolicy.testFailed')),
   });
   const testTurnstile = useMutation({
     mutationFn: () => adminApi.testTurnstile(turnstileToken),
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success(t('admin.authPolicy.turnstileTested'));
       setTurnstileToken('');
-      void query.refetch();
+      await queryClient.invalidateQueries({ queryKey: ['admin', 'authPolicy'] });
     },
     onError: (error) =>
       toast.error(error instanceof ApiError ? error.message : t('admin.authPolicy.testFailed')),
   });
-  if (query.isPending || !form) return <AdminLoading />;
-  if (query.isError) return <AdminError retry={() => void query.refetch()} />;
-  const update = <K extends keyof AdminAuthPolicy>(key: K, value: AdminAuthPolicy[K]) =>
-    setOverrides((current) => ({ ...current, [key]: value }));
-  const hasUnsavedChanges =
-    Object.keys(overrides).length > 0 || Boolean(turnstileSecret || smtpPassword);
-  const turnstileConfigDirty = 'turnstileSiteKey' in overrides || Boolean(turnstileSecret);
   return (
-    <section className="space-y-8">
-      <div>
-        <div className="flex items-center gap-2">
-          <KeyRound className="h-4 w-4 text-[var(--t-accent)]" />
-          <AdminSectionTitle>{t('admin.authPolicy.title')}</AdminSectionTitle>
-        </div>
-        <p className="mt-1 text-xs text-[var(--t-sub)]">{t('admin.authPolicy.description')}</p>
-      </div>
-      <div className="grid gap-5 lg:grid-cols-2">
-        <div className="space-y-4 border-t border-[var(--t-noise)] pt-4">
-          <h3 className="font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--t-text)]">
-            {t('admin.authPolicy.smtp')}
-          </h3>
-          <AdminField label={t('admin.authPolicy.smtpHost')}>
-            <TInput
-              value={form.smtpHost}
-              onChange={(event) => update('smtpHost', event.target.value)}
-            />
-          </AdminField>
-          <div className="grid grid-cols-2 gap-3">
-            <AdminField label={t('admin.authPolicy.smtpPort')}>
-              <TInput
-                type="number"
-                value={form.smtpPort}
-                onChange={(event) => update('smtpPort', Number(event.target.value))}
-              />
-            </AdminField>
-            <AdminField label={t('admin.authPolicy.smtpSecurity')}>
-              <AdminSelect
-                value={form.smtpSecurity}
-                ariaLabel={t('admin.authPolicy.smtpSecurity')}
-                options={['NONE', 'SSL_TLS', 'STARTTLS'].map((value) => ({
-                  value,
-                  label: t(`admin.authPolicy.smtpModes.${value}`),
-                }))}
-                onValueChange={(value) =>
-                  update('smtpSecurity', value as AdminAuthPolicy['smtpSecurity'])
-                }
-              />
-            </AdminField>
+    <form
+      className="space-y-8"
+      onSubmit={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        void form.handleSubmit();
+      }}
+    >
+      <form.AppForm>
+        <div>
+          <div className="flex items-center gap-2">
+            <KeyRound className="h-4 w-4 text-[var(--t-accent)]" />
+            <AdminSectionTitle>{t('admin.authPolicy.title')}</AdminSectionTitle>
           </div>
-          <AdminField label={t('admin.authPolicy.smtpUsername')}>
-            <TInput
-              value={form.smtpUsername}
-              onChange={(event) => update('smtpUsername', event.target.value)}
-            />
-          </AdminField>
-          <AdminField label={t('admin.authPolicy.smtpFrom')}>
-            <TInput
-              type="email"
-              value={form.smtpFromAddress}
-              onChange={(event) => update('smtpFromAddress', event.target.value)}
-            />
-          </AdminField>
-          <AdminField label={t('admin.authPolicy.smtpPassword')}>
-            <TInput
-              type="password"
-              value={smtpPassword}
-              onChange={(event) => setSmtpPassword(event.target.value)}
-              placeholder={form.smtpPasswordConfigured ? t('admin.authPolicy.keepSecret') : ''}
-            />
-          </AdminField>
-          <TRadarNode
-            checked={form.smtpSkipTlsVerify}
-            onChange={(checked) => update('smtpSkipTlsVerify', checked)}
-            label={t('admin.authPolicy.skipTls')}
-          />
-          <TRadarNode
-            checked={form.smtpForceAuthLogin}
-            onChange={(checked) => update('smtpForceAuthLogin', checked)}
-            label={t('admin.authPolicy.forceLogin')}
-          />
-          <div className="flex gap-2">
-            <TInput
-              type="email"
-              className="min-w-0 flex-1"
-              value={testEmail}
-              onChange={(event) => setTestEmail(event.target.value)}
-              placeholder={t('admin.authPolicy.testEmail')}
-            />
-            <TButton
-              type="button"
-              variant="secondary"
-              disabled={!testEmail || testSmtp.isPending || hasUnsavedChanges}
-              title={hasUnsavedChanges ? t('admin.authPolicy.saveBeforeTest') : undefined}
-              onClick={() => testSmtp.mutate()}
+          <p className="mt-1 text-xs text-[var(--t-sub)]">{t('admin.authPolicy.description')}</p>
+        </div>
+        <form.Subscribe selector={(state) => [state.values, !state.isDefaultValue] as const}>
+          {([values, hasUnsavedChanges]) => {
+            const turnstileConfigDirty =
+              values.turnstileSiteKey !== policy.turnstileSiteKey ||
+              Boolean(values.turnstileSecret);
+            return (
+              <div className="grid gap-5 lg:grid-cols-2">
+                <div className="space-y-4 border-t border-[var(--t-noise)] pt-4">
+                  <h3 className="font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--t-text)]">
+                    {t('admin.authPolicy.smtp')}
+                  </h3>
+                  <form.AppField name="smtpHost">
+                    {(field) => <field.InputField label={t('admin.authPolicy.smtpHost')} />}
+                  </form.AppField>
+                  <div className="grid grid-cols-2 gap-3">
+                    <form.AppField name="smtpPort">
+                      {(field) => (
+                        <AdminField label={t('admin.authPolicy.smtpPort')}>
+                          <TInput
+                            type="number"
+                            min={1}
+                            max={65_535}
+                            value={field.state.value}
+                            onBlur={field.handleBlur}
+                            onChange={(event) => field.handleChange(Number(event.target.value))}
+                          />
+                        </AdminField>
+                      )}
+                    </form.AppField>
+                    <form.AppField name="smtpSecurity">
+                      {(field) => (
+                        <AdminField label={t('admin.authPolicy.smtpSecurity')}>
+                          <AdminSelect
+                            value={field.state.value}
+                            ariaLabel={t('admin.authPolicy.smtpSecurity')}
+                            options={['NONE', 'SSL_TLS', 'STARTTLS'].map((value) => ({
+                              value,
+                              label: t(`admin.authPolicy.smtpModes.${value}`),
+                            }))}
+                            onValueChange={(value) =>
+                              field.handleChange(value as AdminAuthPolicy['smtpSecurity'])
+                            }
+                          />
+                        </AdminField>
+                      )}
+                    </form.AppField>
+                  </div>
+                  <form.AppField name="smtpUsername">
+                    {(field) => <field.InputField label={t('admin.authPolicy.smtpUsername')} />}
+                  </form.AppField>
+                  <form.AppField name="smtpFromAddress">
+                    {(field) => (
+                      <field.InputField type="email" label={t('admin.authPolicy.smtpFrom')} />
+                    )}
+                  </form.AppField>
+                  <form.AppField name="smtpPassword">
+                    {(field) => (
+                      <field.InputField
+                        type="password"
+                        label={t('admin.authPolicy.smtpPassword')}
+                        placeholder={
+                          policy.smtpPasswordConfigured ? t('admin.authPolicy.keepSecret') : ''
+                        }
+                      />
+                    )}
+                  </form.AppField>
+                  <form.AppField name="smtpSkipTlsVerify">
+                    {(field) => <field.CheckboxField label={t('admin.authPolicy.skipTls')} />}
+                  </form.AppField>
+                  <form.AppField name="smtpForceAuthLogin">
+                    {(field) => <field.CheckboxField label={t('admin.authPolicy.forceLogin')} />}
+                  </form.AppField>
+                  <div className="flex gap-2">
+                    <TInput
+                      type="email"
+                      className="min-w-0 flex-1"
+                      value={testEmail}
+                      onChange={(event) => setTestEmail(event.target.value)}
+                      placeholder={t('admin.authPolicy.testEmail')}
+                    />
+                    <TButton
+                      type="button"
+                      variant="secondary"
+                      disabled={!testEmail || testSmtp.isPending || hasUnsavedChanges}
+                      title={hasUnsavedChanges ? t('admin.authPolicy.saveBeforeTest') : undefined}
+                      onClick={() => testSmtp.mutate()}
+                    >
+                      <Mail className="h-3.5 w-3.5" />
+                      {t('admin.authPolicy.sendTest')}
+                    </TButton>
+                  </div>
+                </div>
+                <div className="space-y-4 border-t border-[var(--t-noise)] pt-4">
+                  <h3 className="font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--t-text)]">
+                    {t('admin.authPolicy.turnstile')}
+                  </h3>
+                  <form.AppField name="turnstileSiteKey">
+                    {(field) => <field.InputField label={t('admin.authPolicy.siteKey')} />}
+                  </form.AppField>
+                  <form.AppField name="turnstileSecret">
+                    {(field) => (
+                      <field.InputField
+                        type="password"
+                        label={t('admin.authPolicy.secretKey')}
+                        placeholder={
+                          policy.turnstileSecretConfigured ? t('admin.authPolicy.keepSecret') : ''
+                        }
+                      />
+                    )}
+                  </form.AppField>
+                  {values.turnstileSiteKey ? (
+                    <div className="rounded-none border border-[var(--t-noise)] p-2">
+                      <Turnstile
+                        siteKey={values.turnstileSiteKey}
+                        onSuccess={setTurnstileToken}
+                        onExpire={() => setTurnstileToken('')}
+                        options={{ action: 'admin-test', theme: 'dark' }}
+                      />
+                    </div>
+                  ) : null}
+                  <TButton
+                    type="button"
+                    variant="secondary"
+                    disabled={!turnstileToken || testTurnstile.isPending || hasUnsavedChanges}
+                    title={hasUnsavedChanges ? t('admin.authPolicy.saveBeforeTest') : undefined}
+                    onClick={() => testTurnstile.mutate()}
+                  >
+                    {t('admin.authPolicy.verifyTurnstile')}
+                  </TButton>
+                  <form.AppField name="turnstileEnabled">
+                    {(field) => (
+                      <div className="flex items-center justify-between gap-4 rounded-none border border-[var(--t-noise)] px-3 py-3">
+                        <span className="text-sm text-white/60">
+                          {t('admin.authPolicy.enableTurnstile')}
+                        </span>
+                        <span
+                          title={
+                            !policy.turnstileVerifiedAt || turnstileConfigDirty
+                              ? t('admin.authPolicy.verifyBeforeEnable')
+                              : undefined
+                          }
+                        >
+                          <Switch
+                            aria-label={t('admin.authPolicy.enableTurnstile')}
+                            checked={field.state.value}
+                            disabled={
+                              !field.state.value &&
+                              (!policy.turnstileVerifiedAt || turnstileConfigDirty)
+                            }
+                            onCheckedChange={field.handleChange}
+                          />
+                        </span>
+                      </div>
+                    )}
+                  </form.AppField>
+                  <form.AppField name="inviteRequired">
+                    {(field) => (
+                      <div className="flex items-center justify-between gap-4 rounded-none border border-[var(--t-noise)] px-3 py-3">
+                        <span className="text-sm text-white/60">
+                          {t('admin.authPolicy.requireInvite')}
+                        </span>
+                        <Switch
+                          aria-label={t('admin.authPolicy.requireInvite')}
+                          checked={field.state.value}
+                          onCheckedChange={field.handleChange}
+                        />
+                      </div>
+                    )}
+                  </form.AppField>
+                </div>
+              </div>
+            );
+          }}
+        </form.Subscribe>
+        <form.Subscribe selector={(state) => !state.isDefaultValue}>
+          {(hasUnsavedChanges) => (
+            <form.SubmitButton
+              variant="primary"
+              disabled={!hasUnsavedChanges}
+              submittingContent={t('app.loading')}
             >
-              <Mail className="h-3.5 w-3.5" />
-              {t('admin.authPolicy.sendTest')}
-            </TButton>
-          </div>
-        </div>
-        <div className="space-y-4 border-t border-[var(--t-noise)] pt-4">
-          <h3 className="font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--t-text)]">
-            {t('admin.authPolicy.turnstile')}
-          </h3>
-          <AdminField label={t('admin.authPolicy.siteKey')}>
-            <TInput
-              value={form.turnstileSiteKey}
-              onChange={(event) => update('turnstileSiteKey', event.target.value)}
-            />
-          </AdminField>
-          <AdminField label={t('admin.authPolicy.secretKey')}>
-            <TInput
-              type="password"
-              value={turnstileSecret}
-              onChange={(event) => setTurnstileSecret(event.target.value)}
-              placeholder={form.turnstileSecretConfigured ? t('admin.authPolicy.keepSecret') : ''}
-            />
-          </AdminField>
-          {form.turnstileSiteKey && (
-            <div className="rounded-none border border-[var(--t-noise)] p-2">
-              <Turnstile
-                siteKey={form.turnstileSiteKey}
-                onSuccess={setTurnstileToken}
-                onExpire={() => setTurnstileToken('')}
-                options={{ action: 'admin-test', theme: 'auto' }}
-              />
-            </div>
+              {t('app.save')}
+            </form.SubmitButton>
           )}
-          <TButton
-            type="button"
-            variant="secondary"
-            disabled={!turnstileToken || testTurnstile.isPending || hasUnsavedChanges}
-            title={hasUnsavedChanges ? t('admin.authPolicy.saveBeforeTest') : undefined}
-            onClick={() => testTurnstile.mutate()}
-          >
-            {t('admin.authPolicy.verifyTurnstile')}
-          </TButton>
-          <div className="flex items-center justify-between gap-4 rounded-none border border-[var(--t-noise)] px-3 py-3">
-            <span className="text-sm text-white/60">{t('admin.authPolicy.enableTurnstile')}</span>
-            <span
-              title={
-                !form.turnstileVerifiedAt || turnstileConfigDirty
-                  ? t('admin.authPolicy.verifyBeforeEnable')
-                  : undefined
-              }
-            >
-              <TRadarNode
-                checked={form.turnstileEnabled}
-                disabled={
-                  !form.turnstileEnabled && (!form.turnstileVerifiedAt || turnstileConfigDirty)
-                }
-                onChange={(checked) => update('turnstileEnabled', checked)}
-                label={t('admin.authPolicy.enableTurnstile')}
-                className="[&>span:last-child]:hidden"
-              />
-            </span>
-          </div>
-          <div className="flex items-center justify-between gap-4 rounded-none border border-[var(--t-noise)] px-3 py-3">
-            <span className="text-sm text-white/60">{t('admin.authPolicy.requireInvite')}</span>
-            <TRadarNode
-              checked={form.inviteRequired}
-              onChange={(checked) => update('inviteRequired', checked)}
-              label={t('admin.authPolicy.requireInvite')}
-              className="[&>span:last-child]:hidden"
-            />
-          </div>
-        </div>
-      </div>
-      <TButton
-        type="button"
-        variant="primary"
-        disabled={save.isPending || !hasUnsavedChanges}
-        onClick={() => save.mutate()}
-      >
-        {save.isPending ? t('app.loading') : t('app.save')}
-      </TButton>
-    </section>
+        </form.Subscribe>
+      </form.AppForm>
+    </form>
   );
 }
 
@@ -1120,23 +1262,27 @@ export function InvitationCodesSection() {
   const toast = useToast();
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
-  const [expiresAt, setExpiresAt] = useState('');
   const [createdCode, setCreatedCode] = useState('');
   const query = useQuery({
     queryKey: ['admin', 'invitations', page, status],
     queryFn: () => adminApi.invitationCodes({ page, pageSize: 20, status }),
   });
-  const create = useMutation({
-    mutationFn: () =>
-      adminApi.createInvitationCode(expiresAt ? new Date(expiresAt).toISOString() : undefined),
-    onSuccess: (item) => {
-      setCreatedCode(item.code ?? '');
-      setExpiresAt('');
-      toast.success(t('admin.invitations.created'));
-      void query.refetch();
+  const createForm = useAppForm({
+    defaultValues: { expiresAt: '' },
+    validators: { onSubmit: z.object({ expiresAt: z.string() }) },
+    onSubmit: async ({ value }) => {
+      try {
+        const item = await adminApi.createInvitationCode(
+          value.expiresAt ? new Date(value.expiresAt).toISOString() : undefined,
+        );
+        setCreatedCode(item.code ?? '');
+        createForm.reset({ expiresAt: '' });
+        toast.success(t('admin.invitations.created'));
+        await query.refetch();
+      } catch (error) {
+        toast.error(error instanceof ApiError ? error.message : t('admin.invitations.failed'));
+      }
     },
-    onError: (error) =>
-      toast.error(error instanceof ApiError ? error.message : t('admin.invitations.failed')),
   });
   const revoke = useMutation({
     mutationFn: adminApi.revokeInvitationCode,
@@ -1151,24 +1297,36 @@ export function InvitationCodesSection() {
           <AdminSectionTitle>{t('admin.invitations.title')}</AdminSectionTitle>
           <p className="mt-1 text-xs text-[var(--t-sub)]">{t('admin.invitations.description')}</p>
         </div>
-        <div className="flex gap-2">
-          <TInput
-            type="datetime-local"
-            value={expiresAt}
-            onChange={(event) => setExpiresAt(event.target.value)}
-            className="h-9 w-56"
-            aria-label={t('admin.invitations.expires')}
-          />
-          <TButton
-            type="button"
-            variant="primary"
-            onClick={() => create.mutate()}
-            disabled={create.isPending}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            {t('admin.invitations.create')}
-          </TButton>
-        </div>
+        <form
+          className="flex gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            void createForm.handleSubmit();
+          }}
+        >
+          <createForm.AppForm>
+            <createForm.AppField name="expiresAt">
+              {(field) => (
+                <TInput
+                  type="datetime-local"
+                  value={field.state.value}
+                  onBlur={field.handleBlur}
+                  onChange={(event) => field.handleChange(event.target.value)}
+                  className="h-9 w-56"
+                  aria-label={t('admin.invitations.expires')}
+                />
+              )}
+            </createForm.AppField>
+            <createForm.SubmitButton
+              variant="primary"
+              submittingContent={t('admin.action.running')}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {t('admin.invitations.create')}
+            </createForm.SubmitButton>
+          </createForm.AppForm>
+        </form>
       </div>
       {createdCode && (
         <div className="t-corner mb-4 flex items-center gap-3 rounded-none border border-[var(--t-accent-dim)] bg-[var(--t-accent-wash)] p-3">
@@ -1228,9 +1386,7 @@ export function InvitationCodesSection() {
           >
             {query.data.items.map((item) => (
               <tr key={item.id} className="border-b border-[var(--t-noise)]">
-                <td className="px-3 py-3 font-mono text-xs text-white/60">
-                  {item.maskedCode}
-                </td>
+                <td className="px-3 py-3 font-mono text-xs text-white/60">{item.maskedCode}</td>
                 <td className="px-3 py-3 text-xs text-white/60">
                   <TTag
                     color={

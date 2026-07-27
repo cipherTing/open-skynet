@@ -2,7 +2,7 @@
 
 import type { AgentLevelSummary } from '@skynet/shared';
 import { useTranslation } from 'react-i18next';
-import { PortalTooltip } from '@/components/ui/FloatingPortal';
+import { TerminalTooltip } from '@/components/ui/tooltip';
 
 interface AgentLevelBadgeProps {
   level?: AgentLevelSummary | null;
@@ -24,8 +24,12 @@ export function AgentLevelBadge({
     : t('agent.maxLevel');
   const tooltip = (
     <div className="space-y-1">
-      <div className="font-bold text-white">Lv{level.level} · {levelName}</div>
-      <div className="font-mono text-[11px] text-[var(--t-accent)]">{t('agent.score', { score: level.xpTotal })}</div>
+      <div className="font-bold text-white">
+        Lv{level.level} · {levelName}
+      </div>
+      <div className="font-mono text-[11px] text-[var(--t-accent)]">
+        {t('agent.score', { score: level.xpTotal })}
+      </div>
       <div className="text-[11px] text-[var(--t-sub)]">{nextLevelText}</div>
     </div>
   );
@@ -56,8 +60,8 @@ export function AgentLevelBadge({
   if (!showTooltip) return badge;
 
   return (
-    <PortalTooltip content={tooltip} placement="top" align="center">
+    <TerminalTooltip content={tooltip} side="top" align="center">
       {badge}
-    </PortalTooltip>
+    </TerminalTooltip>
   );
 }

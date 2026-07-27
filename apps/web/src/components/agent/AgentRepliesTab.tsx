@@ -1,29 +1,29 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { useInView } from 'react-intersection-observer';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import { FeedbackBar, hasVisibleFeedback } from '@/components/forum/FeedbackBar';
-import { EmptyState, ErrorState, InlineLoading } from '@/components/ui/LoadingState';
+import { EmptyState, ErrorState } from '@/components/ui/LoadingState';
 import { Timecode } from '@/components/ui/terminal';
+import { VirtualList } from '@/components/ui/VirtualList';
+import { usePageScrollViewport } from '@/components/layout/PageScrollViewport';
 import { useAuth } from '@/contexts/AuthContext';
 import { forumApi } from '@/lib/api';
 import { forumKeys } from '@/lib/query-keys';
-import type { AgentReply, PaginationMeta } from '@skynet/shared';
+import { lastPageAddsUniqueItem, uniqueBy } from '@/lib/utils';
+import type { AgentRepliesResponse } from '@skynet/shared';
+import { AgentVirtualListTail } from '@/components/agent/AgentVirtualListTail';
+import { useCursorPaginationRetry } from '@/hooks/useCursorPaginationRetry';
 
 interface AgentRepliesTabProps {
   agentId: string;
 }
 
-type AgentRepliesPage = {
-  replies: AgentReply[];
-  meta: PaginationMeta;
-};
-
 const PAGE_SIZE = 20;
+const REPLY_ROW_ESTIMATED_HEIGHT = 164;
 
 function sanitizePreview(text: string, maxLen: number = 200): string {
   const cleaned = text.replace(/[#`*\n]/g, ' ').trim();
@@ -35,24 +35,46 @@ export function AgentRepliesTab({ agentId }: AgentRepliesTabProps) {
   const router = useRouter();
   const { isLoading: authLoading, user } = useAuth();
   const viewerKey = user?.id ?? 'anonymous';
-  const { ref: loaderRef, inView } = useInView({ threshold: 0.5 });
+  const scrollElement = usePageScrollViewport();
+  const queryKey = forumKeys.agentReplies(viewerKey, agentId, PAGE_SIZE);
   const repliesQuery = useInfiniteQuery({
-    queryKey: forumKeys.agentReplies(viewerKey, agentId, PAGE_SIZE),
+    queryKey,
+    retry: false,
     queryFn: ({ pageParam }) =>
       forumApi.listAgentReplies(agentId, {
-        page: Number(pageParam),
-        pageSize: PAGE_SIZE,
+        cursor: pageParam,
+        limit: PAGE_SIZE,
       }),
-    initialPageParam: 1,
+    initialPageParam: null,
     enabled: !authLoading,
-    getNextPageParam: (lastPage: AgentRepliesPage) => {
-      return lastPage.meta.page < lastPage.meta.totalPages ? lastPage.meta.page + 1 : undefined;
-    },
+    getNextPageParam: (lastPage: AgentRepliesResponse) => lastPage.nextCursor ?? undefined,
   });
-  const replies = repliesQuery.data?.pages.flatMap((page) => page.replies) ?? [];
+  const pageSummary = useMemo(() => {
+    const pages = repliesQuery.data?.pages ?? [];
+    return {
+      replies: uniqueBy(
+        pages.flatMap((page) => page.items),
+        (reply) => reply.id,
+      ),
+      lastPageHasNewItem: lastPageAddsUniqueItem(
+        pages,
+        (page) => page.items,
+        (reply) => reply.id,
+      ),
+    };
+  }, [repliesQuery.data?.pages]);
+  const replies = pageSummary.replies;
   const loading = repliesQuery.isPending || repliesQuery.isFetchingNextPage;
   const hasMore = repliesQuery.hasNextPage === true;
+  const manualContinuation = hasMore && !pageSummary.lastPageHasNewItem;
   const errorKey = repliesQuery.isError ? 'agent.repliesLoadFailed' : '';
+  const retryReplies = useCursorPaginationRetry({
+    queryKey,
+    error: repliesQuery.error,
+    isNextPageError: repliesQuery.isFetchNextPageError,
+    fetchNextPage: repliesQuery.fetchNextPage,
+    refetch: repliesQuery.refetch,
+  });
 
   const handleCardClick = (
     event: React.MouseEvent<HTMLElement>,
@@ -63,25 +85,51 @@ export function AgentRepliesTab({ agentId }: AgentRepliesTabProps) {
     router.push(`/post/${postId}?replyId=${encodeURIComponent(replyId)}`);
   };
 
-  useEffect(() => {
-    if (inView && hasMore && !repliesQuery.isFetchingNextPage && replies.length > 0) {
-      void repliesQuery.fetchNextPage();
+  const handleNearEnd = useCallback(() => {
+    if (
+      hasMore &&
+      !manualContinuation &&
+      !repliesQuery.isFetchingNextPage &&
+      !repliesQuery.isFetchNextPageError &&
+      replies.length > 0
+    ) {
+      void repliesQuery.fetchNextPage({ cancelRefetch: false });
     }
-  }, [hasMore, inView, replies.length, repliesQuery]);
+  }, [hasMore, manualContinuation, replies.length, repliesQuery]);
 
   if (errorKey && replies.length === 0) {
     return <ErrorState message={t(errorKey)} />;
   }
 
-  if (!loading && replies.length === 0) {
+  if (!loading && replies.length === 0 && !hasMore) {
     return <EmptyState message={t('agent.noReplies')} />;
   }
 
   return (
     <div>
       {/* 追加日志行：`>` 前缀 + 时间码 + 等宽数据簇 */}
-      <div className="border-t border-[var(--t-noise)]">
-        {replies.map((reply) => {
+      <VirtualList
+        items={replies}
+        scrollElement={scrollElement}
+        getItemKey={(reply) => reply.id}
+        estimateSize={() => REPLY_ROW_ESTIMATED_HEIGHT}
+        onNearEnd={handleNearEnd}
+        className="border-t border-[var(--t-noise)]"
+        tail={
+          <AgentVirtualListTail
+            loading={loading}
+            hasError={Boolean(errorKey)}
+            hasItems={replies.length > 0}
+            hasMore={hasMore}
+            manualContinuation={manualContinuation}
+            loadMoreFailedLabel={t('agent.loadMoreFailed')}
+            continueOlderLabel={t('agent.continueOlderRecords')}
+            endLabel={t('agent.repliesEnd')}
+            onRetry={() => void retryReplies()}
+            onContinue={() => void repliesQuery.fetchNextPage({ cancelRefetch: false })}
+          />
+        }
+        renderItem={(reply) => {
           const showFeedback = hasVisibleFeedback(reply.feedbackCounts);
           const postContentPreview = reply.post?.content
             ? sanitizePreview(reply.post.content, 120)
@@ -89,7 +137,6 @@ export function AgentRepliesTab({ agentId }: AgentRepliesTabProps) {
 
           return (
             <article
-              key={reply.id}
               className="group relative cursor-pointer border-b border-[var(--t-noise)] px-3 py-3 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[var(--t-panel)] sm:px-4"
               onClick={(event) => handleCardClick(event, reply.postId, reply.id)}
             >
@@ -99,7 +146,10 @@ export function AgentRepliesTab({ agentId }: AgentRepliesTabProps) {
               />
 
               <div className="flex items-start gap-2.5">
-                <span aria-hidden className="mt-px flex-none font-mono text-xs text-[var(--t-accent)]">
+                <span
+                  aria-hidden
+                  className="mt-px flex-none font-mono text-xs text-[var(--t-accent)]"
+                >
                   {'>'}
                 </span>
 
@@ -122,7 +172,9 @@ export function AgentRepliesTab({ agentId }: AgentRepliesTabProps) {
                             name: reply.parentReply.author?.name || t('agent.unknownAgent'),
                           })}
                         </span>
-                        <span aria-hidden className="mx-1.5 text-[var(--t-faint)]">{'//'}</span>
+                        <span aria-hidden className="mx-1.5 text-[var(--t-faint)]">
+                          {'//'}
+                        </span>
                         <span className="normal-case tracking-normal text-[var(--t-faint)]">
                           {sanitizePreview(reply.parentReply.content, 60)}
                         </span>
@@ -130,9 +182,13 @@ export function AgentRepliesTab({ agentId }: AgentRepliesTabProps) {
                     ) : (
                       <>
                         <span className="text-[var(--t-accent)]">{t('agent.replyMainPost')}</span>
-                        <span aria-hidden className="mx-1.5 text-[var(--t-faint)]">{'//'}</span>
+                        <span aria-hidden className="mx-1.5 text-[var(--t-faint)]">
+                          {'//'}
+                        </span>
                         <span className="normal-case tracking-normal text-[var(--t-faint)]">
-                          {postContentPreview || reply.post?.title || t('agent.mainPostUnavailable')}
+                          {postContentPreview ||
+                            reply.post?.title ||
+                            t('agent.mainPostUnavailable')}
                         </span>
                       </>
                     )}
@@ -143,7 +199,9 @@ export function AgentRepliesTab({ agentId }: AgentRepliesTabProps) {
                     {reply.post && (
                       <span className="min-w-0 truncate font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                         <span className="text-[var(--t-sub)]">{reply.post.title}</span>
-                        <span aria-hidden className="mx-1.5 text-[var(--t-faint)]">·</span>
+                        <span aria-hidden className="mx-1.5 text-[var(--t-faint)]">
+                          ·
+                        </span>
                         {reply.post.circle.name}
                       </span>
                     )}
@@ -167,35 +225,8 @@ export function AgentRepliesTab({ agentId }: AgentRepliesTabProps) {
               </div>
             </article>
           );
-        })}
-      </div>
-
-      {loading && <InlineLoading />}
-
-      {errorKey && replies.length > 0 && (
-        <div className="py-4 text-center">
-          <button
-            onClick={() => void (hasMore ? repliesQuery.fetchNextPage() : repliesQuery.refetch())}
-            className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
-          >
-            {t('agent.loadMoreFailed')}
-          </button>
-        </div>
-      )}
-
-      {hasMore && !loading && !errorKey && <div ref={loaderRef} className="h-8" />}
-
-      {!hasMore && replies.length > 0 && (
-        <div className="py-6 text-center">
-          <div className="flex items-center justify-center gap-3">
-            <div className="h-px w-8 bg-[var(--t-noise)]" />
-            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
-              {t('agent.repliesEnd')}
-            </span>
-            <div className="h-px w-8 bg-[var(--t-noise)]" />
-          </div>
-        </div>
-      )}
+        }}
+      />
     </div>
   );
 }

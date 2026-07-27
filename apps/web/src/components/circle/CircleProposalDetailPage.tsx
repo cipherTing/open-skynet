@@ -1,9 +1,17 @@
 'use client';
 
-import { useState, type ReactNode } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import {
+  skipToken,
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import {
   Check,
+  ChevronDown,
+  ChevronUp,
   Loader2,
   MessageSquare,
   Pencil,
@@ -12,6 +20,7 @@ import {
   ThumbsUp,
   Vote,
 } from 'lucide-react';
+import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
 import rehypeSanitize from 'rehype-sanitize';
 import remarkGfm from 'remark-gfm';
@@ -23,14 +32,26 @@ import { circleKeys } from '@/lib/query-keys';
 import { ErrorState, InlineLoading } from '@/components/ui/LoadingState';
 import { AuthRequiredDialog, AuthRequiredState } from '@/components/ui/AuthRequiredDialog';
 import { TButton, TPanel, Timecode } from '@/components/ui/terminal';
+import { VirtualList } from '@/components/ui/VirtualList';
 import { CoBuildMarkdownComposer } from './CoBuildMarkdownComposer';
 import { RuleChangeDiff, TopicChangeDiff } from './CircleChangeDiff';
 import { CreateCircleProposalModal } from './CreateCircleProposalModal';
 import { ReportDialog } from '@/components/forum/ReportDialog';
 import { PageHeader } from '@/components/layout/PageHeader';
-import type { CircleProposalStatus } from '@skynet/shared';
+import { useCursorPaginationRetry } from '@/hooks/useCursorPaginationRetry';
+import type {
+  CircleProposalCommentResponse,
+  CircleProposalRevisionPage,
+  CircleProposalStatus,
+  CircleProposalVoterPage,
+} from '@skynet/shared';
 
 const PROGRESS_BLOCKS = 24;
+const PROPOSAL_HISTORY_PAGE_SIZE = 20;
+const PROPOSAL_COMMENT_PAGE_SIZE = 20;
+const REVISION_ROW_ESTIMATED_HEIGHT = 56;
+const VOTER_ROW_ESTIMATED_HEIGHT = 48;
+const COMMENT_ROW_ESTIMATED_HEIGHT = 160;
 
 /** 左色条：讨论/表决中=荧光绿（有异议转琥珀），被否决/终止=琥珀，已结=暗绿。 */
 function proposalRailClass(status: CircleProposalStatus, hasObjection: boolean): string {
@@ -57,34 +78,126 @@ export function CircleProposalDetailPage({
   const [objection, setObjection] = useState('');
   const [comment, setComment] = useState('');
   const [revisionOpen, setRevisionOpen] = useState(false);
+  const [votersOpen, setVotersOpen] = useState(false);
   const [authPromptOpen, setAuthPromptOpen] = useState(false);
+  const [scrollElement, setScrollElement] = useState<HTMLElement | null>(null);
   const circleQuery = useQuery({
     queryKey: circleKeys.detail(viewerKey, slug),
     queryFn: () => circleApi.getCircleBySlug(slug),
     enabled: !authLoading && isAuthenticated,
   });
   const circle = circleQuery.data;
+  const circleId = circle?.id ?? null;
   const proposalQuery = useQuery({
-    queryKey: circle ? circleKeys.proposal(circle.id, proposalId) : ['proposal', proposalId],
-    queryFn: () => circleApi.proposal(circle!.id, proposalId),
-    enabled: isAuthenticated && Boolean(circle),
+    queryKey: circleId
+      ? circleKeys.proposal(viewerKey, circleId, proposalId)
+      : ['proposal', viewerKey, proposalId],
+    queryFn: circleId ? () => circleApi.proposal(circleId, proposalId) : skipToken,
+    enabled: isAuthenticated,
   });
   const proposal = proposalQuery.data;
-  const commentsQuery = useQuery({
-    queryKey: circle
-      ? circleKeys.proposalComments(circle.id, proposalId, 1)
-      : ['proposal-comments', proposalId],
-    queryFn: () => circleApi.proposalComments(circle!.id, proposalId),
-    enabled: isAuthenticated && Boolean(circle),
+  const revisionsQueryKey = circleId
+    ? circleKeys.proposalRevisions(viewerKey, circleId, proposalId, PROPOSAL_HISTORY_PAGE_SIZE)
+    : (['proposal-revisions', viewerKey, proposalId] as const);
+  const revisionsQuery = useInfiniteQuery({
+    queryKey: revisionsQueryKey,
+    retry: false,
+    queryFn: circleId
+      ? ({ pageParam }) =>
+          circleApi.proposalRevisions(circleId, proposalId, {
+            cursor: pageParam,
+            limit: PROPOSAL_HISTORY_PAGE_SIZE,
+          })
+      : skipToken,
+    initialPageParam: null,
+    getNextPageParam: (lastPage: CircleProposalRevisionPage) => lastPage.nextCursor ?? undefined,
+    enabled: isAuthenticated,
+  });
+  const votersQueryKey = circleId
+    ? circleKeys.proposalVoters(viewerKey, circleId, proposalId, PROPOSAL_HISTORY_PAGE_SIZE)
+    : (['proposal-voters', viewerKey, proposalId] as const);
+  const votersQuery = useInfiniteQuery({
+    queryKey: votersQueryKey,
+    retry: false,
+    queryFn: circleId
+      ? ({ pageParam }) =>
+          circleApi.proposalVoters(circleId, proposalId, {
+            cursor: pageParam,
+            limit: PROPOSAL_HISTORY_PAGE_SIZE,
+          })
+      : skipToken,
+    initialPageParam: null,
+    getNextPageParam: (lastPage: CircleProposalVoterPage) => lastPage.nextCursor ?? undefined,
+    enabled: votersOpen && isAuthenticated && Boolean(proposal?.resolvedAt),
+  });
+  const commentsQueryKey = circleId
+    ? circleKeys.proposalComments(viewerKey, circleId, proposalId, PROPOSAL_COMMENT_PAGE_SIZE)
+    : (['proposal-comments', viewerKey, proposalId] as const);
+  const commentsQuery = useInfiniteQuery({
+    queryKey: commentsQueryKey,
+    queryFn: circleId
+      ? ({ pageParam }) =>
+          circleApi.proposalComments(circleId, proposalId, {
+            cursor: pageParam,
+            limit: PROPOSAL_COMMENT_PAGE_SIZE,
+          })
+      : skipToken,
+    initialPageParam: null,
+    getNextPageParam: (lastPage: CircleProposalCommentResponse) => lastPage.nextCursor ?? undefined,
+    enabled: isAuthenticated,
+  });
+  const retryRevisions = useCursorPaginationRetry({
+    queryKey: revisionsQueryKey,
+    error: revisionsQuery.error,
+    isNextPageError: revisionsQuery.isFetchNextPageError,
+    fetchNextPage: revisionsQuery.fetchNextPage,
+    refetch: revisionsQuery.refetch,
+  });
+  const retryVoters = useCursorPaginationRetry({
+    queryKey: votersQueryKey,
+    error: votersQuery.error,
+    isNextPageError: votersQuery.isFetchNextPageError,
+    fetchNextPage: votersQuery.fetchNextPage,
+    refetch: votersQuery.refetch,
+  });
+  const retryComments = useCursorPaginationRetry({
+    queryKey: commentsQueryKey,
+    error: commentsQuery.error,
+    isNextPageError: commentsQuery.isFetchNextPageError,
+    fetchNextPage: commentsQuery.fetchNextPage,
+    refetch: commentsQuery.refetch,
   });
   const refresh = async () => {
     if (!circle) return;
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: circleKeys.proposal(circle.id, proposalId) }),
-      queryClient.invalidateQueries({ queryKey: circleKeys.proposals(circle.id) }),
+      queryClient.invalidateQueries({
+        queryKey: circleKeys.proposal(viewerKey, circle.id, proposalId),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: circleKeys.proposalRevisions(
+          viewerKey,
+          circle.id,
+          proposalId,
+          PROPOSAL_HISTORY_PAGE_SIZE,
+        ),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: circleKeys.proposalVoters(
+          viewerKey,
+          circle.id,
+          proposalId,
+          PROPOSAL_HISTORY_PAGE_SIZE,
+        ),
+      }),
+      queryClient.invalidateQueries({ queryKey: circleKeys.proposals(viewerKey, circle.id) }),
       queryClient.invalidateQueries({ queryKey: circleKeys.detail(viewerKey, slug) }),
       queryClient.invalidateQueries({
-        queryKey: circleKeys.proposalComments(circle.id, proposalId, 1),
+        queryKey: circleKeys.proposalComments(
+          viewerKey,
+          circle.id,
+          proposalId,
+          PROPOSAL_COMMENT_PAGE_SIZE,
+        ),
       }),
     ]);
   };
@@ -126,14 +239,51 @@ export function CircleProposalDetailPage({
     onError: () => toast.error(t('circles.coBuild.actionFailed')),
   });
   const commentMutation = useMutation({
-    mutationFn: () =>
-      circleApi.addProposalComment(circle!.id, proposal!.id, comment.trim(), crypto.randomUUID()),
+    mutationFn: () => {
+      if (!circle || !proposal) throw new Error('Proposal is unavailable');
+      return circleApi.addProposalComment(
+        circle.id,
+        proposal.id,
+        comment.trim(),
+        crypto.randomUUID(),
+      );
+    },
     onSuccess: async () => {
       setComment('');
       await refresh();
     },
     onError: () => toast.error(t('circles.coBuild.commentFailed')),
   });
+  const handleRevisionsNearEnd = useCallback(() => {
+    if (
+      revisionsQuery.hasNextPage &&
+      !revisionsQuery.isFetchingNextPage &&
+      !revisionsQuery.isFetchNextPageError
+    ) {
+      void revisionsQuery.fetchNextPage({ cancelRefetch: false });
+    }
+  }, [revisionsQuery]);
+  const handleVotersNearEnd = useCallback(() => {
+    if (
+      votersQuery.hasNextPage &&
+      !votersQuery.isFetchingNextPage &&
+      !votersQuery.isFetchNextPageError
+    ) {
+      void votersQuery.fetchNextPage({ cancelRefetch: false });
+    }
+  }, [votersQuery]);
+  const revisions = useMemo(
+    () => revisionsQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [revisionsQuery.data?.pages],
+  );
+  const voters = useMemo(
+    () => votersQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [votersQuery.data?.pages],
+  );
+  const comments = useMemo(
+    () => commentsQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [commentsQuery.data?.pages],
+  );
 
   if (!authLoading && !isAuthenticated) {
     return (
@@ -161,7 +311,7 @@ export function CircleProposalDetailPage({
         />
       </PageState>
     );
-  const currentRevision = proposal.revisions.at(-1);
+  const currentRevision = proposal.currentRevision;
   const canFormal = proposal.eligibility?.eligible === true;
   const canRevise = proposal.status === 'DISCUSSION' && agent?.id === proposal.creator.id;
   const canWithdraw = canRevise;
@@ -171,7 +321,10 @@ export function CircleProposalDetailPage({
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <PageHeader titleKey="circles.coBuild.proposalDetail" />
-      <main className="skynet-auto-hide-scrollbar min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-10">
+      <main
+        ref={setScrollElement}
+        className="skynet-auto-hide-scrollbar min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-10"
+      >
         <div className="mx-auto max-w-4xl">
           <header className="t-corner relative border border-[var(--t-noise)] bg-[var(--t-panel)]">
             <span
@@ -260,20 +413,14 @@ export function CircleProposalDetailPage({
             <TPanel title={t('circles.coBuild.proposalContent')}>
               <div className="text-sm leading-7 text-[var(--t-text)]/85">
                 <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
-                  {currentRevision?.reason ?? ''}
+                  {currentRevision.reason}
                 </ReactMarkdown>
               </div>
               <div className="mt-5 border-t border-[var(--t-noise2)] pt-4">
                 {proposal.scope === 'TOPIC' ? (
-                  <TopicChangeDiff
-                    before={proposal.base.topic}
-                    after={currentRevision?.topic ?? null}
-                  />
+                  <TopicChangeDiff before={proposal.base.topic} after={currentRevision.topic} />
                 ) : (
-                  <RuleChangeDiff
-                    before={proposal.base.rules}
-                    after={currentRevision?.rules ?? null}
-                  />
+                  <RuleChangeDiff before={proposal.base.rules} after={currentRevision.rules} />
                 )}
               </div>
             </TPanel>
@@ -375,16 +522,51 @@ export function CircleProposalDetailPage({
               <Scale className="h-3.5 w-3.5 text-[var(--t-faint)]" />
               {t('circles.coBuild.revisions')}
             </h2>
-            <ol className="mt-3 space-y-3">
-              {proposal.revisions.map((revision) => (
-                <li key={revision.id} className="border-l border-[var(--t-noise)] pl-3">
-                  <p className="text-xs font-semibold text-[var(--t-text)]/80">
-                    {t('circles.coBuild.revision', { number: revision.revisionNumber })}
-                  </p>
-                  <Timecode date={revision.createdAt} withDate className="mt-1 block" />
-                </li>
-              ))}
-            </ol>
+            {revisions.length > 0 ? (
+              <VirtualList
+                items={revisions}
+                scrollElement={scrollElement}
+                getItemKey={(revision) => revision.id}
+                estimateSize={() => REVISION_ROW_ESTIMATED_HEIGHT}
+                onNearEnd={handleRevisionsNearEnd}
+                className="mt-3"
+                tail={
+                  revisionsQuery.isFetchingNextPage ? (
+                    <InlineLoading />
+                  ) : revisionsQuery.isError ? (
+                    <button
+                      type="button"
+                      onClick={() => void retryRevisions()}
+                      className="mt-3 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-signal)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
+                    >
+                      {t('circles.coBuild.revisionsLoadFailed')}
+                    </button>
+                  ) : !revisionsQuery.hasNextPage ? (
+                    <p className="py-3 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                      {t('circles.coBuild.revisionsEnd')}
+                    </p>
+                  ) : null
+                }
+                renderItem={(revision) => (
+                  <div className="border-l border-[var(--t-noise)] pb-3 pl-3">
+                    <p className="text-xs font-semibold text-[var(--t-text)]/80">
+                      {t('circles.coBuild.revision', { number: revision.revisionNumber })}
+                    </p>
+                    <Timecode date={revision.createdAt} withDate className="mt-1 block" />
+                  </div>
+                )}
+              />
+            ) : null}
+            {revisionsQuery.isPending && revisions.length === 0 ? <InlineLoading /> : null}
+            {revisionsQuery.isError && revisions.length === 0 ? (
+              <button
+                type="button"
+                onClick={() => void revisionsQuery.refetch()}
+                className="mt-3 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-signal)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
+              >
+                {t('circles.coBuild.revisionsLoadFailed')}
+              </button>
+            ) : null}
           </section>
 
           {!isVotingPhase ? (
@@ -406,6 +588,88 @@ export function CircleProposalDetailPage({
                   {proposal.moderationReason}
                 </p>
               ) : null}
+              <div className="mt-5 border-t border-[var(--t-noise)] pt-4">
+                <button
+                  type="button"
+                  aria-expanded={votersOpen}
+                  onClick={() => setVotersOpen((value) => !value)}
+                  className="flex w-full items-center justify-between gap-3 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
+                >
+                  <span>
+                    {t('circles.coBuild.publicVoters', {
+                      count: proposal.voting.participantCount,
+                    })}
+                  </span>
+                  {votersOpen ? (
+                    <ChevronUp className="h-3.5 w-3.5" />
+                  ) : (
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  )}
+                </button>
+                {votersOpen ? (
+                  <div className="mt-4">
+                    {votersQuery.isPending && voters.length === 0 ? <InlineLoading /> : null}
+                    {votersQuery.isError && voters.length === 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => void votersQuery.refetch()}
+                        className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-signal)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
+                      >
+                        {t('circles.coBuild.votersLoadFailed')}
+                      </button>
+                    ) : null}
+                    {voters.length > 0 ? (
+                      <VirtualList
+                        items={voters}
+                        scrollElement={scrollElement}
+                        getItemKey={(voter) => `${voter.agent.id}:${voter.createdAt}`}
+                        estimateSize={() => VOTER_ROW_ESTIMATED_HEIGHT}
+                        onNearEnd={handleVotersNearEnd}
+                        layoutVersion={votersOpen}
+                        tail={
+                          votersQuery.isFetchingNextPage ? (
+                            <InlineLoading />
+                          ) : votersQuery.isError ? (
+                            <button
+                              type="button"
+                              onClick={() => void retryVoters()}
+                              className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-signal)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
+                            >
+                              {t('circles.coBuild.votersLoadFailed')}
+                            </button>
+                          ) : !votersQuery.hasNextPage ? (
+                            <p className="py-3 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                              {t('circles.coBuild.votersEnd')}
+                            </p>
+                          ) : null
+                        }
+                        renderItem={(voter) => (
+                          <div className="flex min-h-10 items-center justify-between gap-3 border-l border-[var(--t-noise)] pb-2 pl-3">
+                            <Link
+                              href={`/agent/${voter.agent.id}`}
+                              className="truncate text-xs font-semibold text-[var(--t-text)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)]"
+                            >
+                              {voter.agent.name}
+                            </Link>
+                            <span className="flex shrink-0 items-center gap-3">
+                              <span
+                                className={
+                                  voter.choice === 'APPROVE'
+                                    ? 'font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)]'
+                                    : 'font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-signal)]'
+                                }
+                              >
+                                {t(`circles.coBuild.voteChoices.${voter.choice}`)}
+                              </span>
+                              <Timecode date={voter.createdAt} withDate />
+                            </span>
+                          </div>
+                        )}
+                      />
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
             </section>
           ) : null}
 
@@ -414,37 +678,64 @@ export function CircleProposalDetailPage({
               <MessageSquare className="h-3.5 w-3.5 text-[var(--t-faint)]" />
               {t('circles.coBuild.comments')}
             </h2>
-            <div className="mt-4 space-y-4">
-              {commentsQuery.data?.items.map((item) => (
-                <article key={item.id} className="border-l border-[var(--t-noise)] pl-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs font-semibold text-white">
-                      <span aria-hidden className="mr-1.5 font-mono text-[var(--t-accent)]">
-                        &gt;
-                      </span>
-                      {item.author.name}
-                    </p>
-                    <div className="flex shrink-0 items-center gap-3">
-                      <Timecode date={item.createdAt} withDate />
-                      {agent && agent.id !== item.author.id ? (
-                        <ReportDialog
-                          targetType="CIRCLE_PROPOSAL_COMMENT"
-                          targetId={item.id}
-                          targetContentVersion={1}
-                          density="compact"
-                          unavailableReason={!user ? t('report.loginRequired') : undefined}
-                        />
-                      ) : null}
+            {comments.length > 0 ? (
+              <VirtualList
+                items={comments}
+                scrollElement={scrollElement}
+                getItemKey={(item) => item.id}
+                estimateSize={() => COMMENT_ROW_ESTIMATED_HEIGHT}
+                className="mt-4"
+                renderItem={(item) => (
+                  <article className="border-l border-[var(--t-noise)] pb-4 pl-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs font-semibold text-white">
+                        <span aria-hidden className="mr-1.5 font-mono text-[var(--t-accent)]">
+                          &gt;
+                        </span>
+                        {item.author.name}
+                      </p>
+                      <div className="flex shrink-0 items-center gap-3">
+                        <Timecode date={item.createdAt} withDate />
+                        {agent && agent.id !== item.author.id ? (
+                          <ReportDialog
+                            targetType="CIRCLE_PROPOSAL_COMMENT"
+                            targetId={item.id}
+                            targetContentVersion={1}
+                            density="compact"
+                            unavailableReason={!user ? t('report.loginRequired') : undefined}
+                          />
+                        ) : null}
+                      </div>
                     </div>
-                  </div>
-                  <div className="prose prose-sm mt-2 max-w-none text-[var(--t-text)]/75 prose-headings:text-white prose-strong:text-white">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
-                      {item.content}
-                    </ReactMarkdown>
-                  </div>
-                </article>
-              ))}
-            </div>
+                    <div className="prose prose-sm mt-2 max-w-none text-[var(--t-text)]/75 prose-headings:text-white prose-strong:text-white">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
+                        {item.content}
+                      </ReactMarkdown>
+                    </div>
+                  </article>
+                )}
+              />
+            ) : null}
+            {commentsQuery.isFetchNextPageError ? (
+              <button
+                type="button"
+                onClick={() => void retryComments()}
+                className="mt-4 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-signal)] hover:text-white"
+              >
+                {t('circles.coBuild.commentsLoadFailed')}
+              </button>
+            ) : commentsQuery.hasNextPage ? (
+              <TButton
+                variant="secondary"
+                disabled={commentsQuery.isFetchingNextPage}
+                onClick={() => void commentsQuery.fetchNextPage({ cancelRefetch: false })}
+                className="mt-4"
+              >
+                {commentsQuery.isFetchingNextPage
+                  ? t('circles.coBuild.loadingMore')
+                  : t('circles.coBuild.loadMoreComments')}
+              </TButton>
+            ) : null}
             {isVotingPhase ? (
               <div className="mt-5">
                 <CoBuildMarkdownComposer

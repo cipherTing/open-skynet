@@ -1,4 +1,4 @@
-import { ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { getQueueToken } from '@nestjs/bullmq';
 import { getConnectionToken, MongooseModule } from '@nestjs/mongoose';
 import { Test, type TestingModule } from '@nestjs/testing';
@@ -38,9 +38,9 @@ import {
   CircleRuleRevisionSchema,
 } from '@/database/schemas/circle-rule-revision.schema';
 import {
-  CircleSubscription,
-  CircleSubscriptionSchema,
-} from '@/database/schemas/circle-subscription.schema';
+  CircleMembership,
+  CircleMembershipSchema,
+} from '@/database/schemas/circle-membership.schema';
 import { DatabaseService } from '@/database/database.service';
 import { FeatureFlagService } from '@/system/feature-flag.service';
 import {
@@ -110,7 +110,7 @@ describe('CircleProposalService write boundaries', () => {
           { name: CircleProposalStanceRecord.name, schema: CircleProposalStanceSchema },
           { name: CircleProposalVote.name, schema: CircleProposalVoteSchema },
           { name: CircleRuleRevision.name, schema: CircleRuleRevisionSchema },
-          { name: CircleSubscription.name, schema: CircleSubscriptionSchema },
+          { name: CircleMembership.name, schema: CircleMembershipSchema },
         ]),
       ],
       providers: [
@@ -135,7 +135,7 @@ describe('CircleProposalService write boundaries', () => {
       connection.model(CircleProposal.name).init(),
       connection.model(CircleProposalStanceRecord.name).init(),
       connection.model(CircleProposalVote.name).init(),
-      connection.model(CircleSubscription.name).init(),
+      connection.model(CircleMembership.name).init(),
     ]);
   });
 
@@ -155,7 +155,7 @@ describe('CircleProposalService write boundaries', () => {
       connection.model(CircleProposalStanceRecord.name).deleteMany({}),
       connection.model(CircleProposalVote.name).deleteMany({}),
       connection.model(CircleProposal.name).deleteMany({}),
-      connection.model(CircleSubscription.name).deleteMany({}),
+      connection.model(CircleMembership.name).deleteMany({}),
     ]);
   });
 
@@ -181,7 +181,7 @@ describe('CircleProposalService write boundaries', () => {
       kind: 'NORMAL',
       status,
       bannedAt: status === CIRCLE_STATUSES.BANNED ? new Date() : null,
-      subscriberCount: 0,
+      memberCount: 0,
       postCount: 0,
       lastPostAt: null,
       deletedAt: null,
@@ -213,7 +213,7 @@ describe('CircleProposalService write boundaries', () => {
         agentId: agent.id,
         healthLevel: options.healthLevel,
       }),
-      connection.model(CircleSubscription.name).create({
+      connection.model(CircleMembership.name).create({
         agentId: agent.id,
         circleId,
       }),
@@ -230,7 +230,7 @@ describe('CircleProposalService write boundaries', () => {
 
   async function createVotingProposal(circleId: string, creatorAgentId: string) {
     const votingDeadlineAt = new Date(Date.now() + 60_000);
-    return connection.model(CircleProposal.name).create({
+    const proposal = await connection.model(CircleProposal.name).create({
       circleId,
       scope: CIRCLE_PROPOSAL_SCOPES.TOPIC,
       status: CIRCLE_PROPOSAL_STATUSES.VOTING,
@@ -269,6 +269,18 @@ describe('CircleProposalService write boundaries', () => {
       activeKey: `${circleId}:${CIRCLE_PROPOSAL_SCOPES.TOPIC}`,
       idempotencyKey: crypto.randomUUID(),
     });
+    await connection.model(CircleProposalRevision.name).create({
+      circleId,
+      proposalId: proposal.id,
+      revisionNumber: 1,
+      authorAgentId: creatorAgentId,
+      authorOwnerUserIdSnapshot: 'creator-owner',
+      reason: 'Initial proposal revision',
+      topicSnapshot: 'Initial topic revision',
+      rulesSnapshot: null,
+      idempotencyKey: crypto.randomUUID(),
+    });
+    return proposal;
   }
 
   it('rejects new proposals and votes while the circle is banned', async () => {
@@ -310,10 +322,10 @@ describe('CircleProposalService write boundaries', () => {
     });
 
     expect(detail.base).toEqual({ topic: '当前圈子简介', rules: null });
-    expect(detail.revisions.at(-1)).toMatchObject({ topic: '更新后的圈子简介' });
+    expect(detail.currentRevision).toMatchObject({ topic: '更新后的圈子简介' });
   });
 
-  it('freezes only eligible subscribed owners in the proposal quorum snapshot', async () => {
+  it('freezes only eligible joined owners in the proposal quorum snapshot', async () => {
     const circle = await createCircle(CIRCLE_STATUSES.ACTIVE);
     const [creator] = await Promise.all([
       createEligibleAgent(circle.id, 'eligibility-creator'),
@@ -371,6 +383,106 @@ describe('CircleProposalService write boundaries', () => {
         choice: CIRCLE_PROPOSAL_VOTES.REJECT,
       }),
     ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('keeps proposal detail bounded and paginates revisions and public voters independently', async () => {
+    const circle = await createCircle(CIRCLE_STATUSES.ACTIVE);
+    const [creator, voterA, voterB] = await Promise.all([
+      createEligibleAgent(circle.id, 'history-creator'),
+      createEligibleAgent(circle.id, 'history-voter-a'),
+      createEligibleAgent(circle.id, 'history-voter-b'),
+    ]);
+    const proposal = await createVotingProposal(circle.id, creator.id);
+    await connection.model(CircleProposalRevision.name).create([
+      {
+        circleId: circle.id,
+        proposalId: proposal.id,
+        revisionNumber: 2,
+        authorAgentId: creator.id,
+        authorOwnerUserIdSnapshot: creator.userId,
+        reason: 'Second revision',
+        topicSnapshot: 'Second topic',
+        rulesSnapshot: null,
+        idempotencyKey: crypto.randomUUID(),
+      },
+      {
+        circleId: circle.id,
+        proposalId: proposal.id,
+        revisionNumber: 3,
+        authorAgentId: creator.id,
+        authorOwnerUserIdSnapshot: creator.userId,
+        reason: 'Third revision',
+        topicSnapshot: 'Third topic',
+        rulesSnapshot: null,
+        idempotencyKey: crypto.randomUUID(),
+      },
+    ]);
+    await connection
+      .model(CircleProposal.name)
+      .updateOne({ _id: proposal.id }, { $set: { currentRevisionNumber: 3 } });
+
+    const firstRevisions = await service.listRevisions(circle.id, proposal.id, { limit: 2 });
+    expect(firstRevisions.items.map((revision) => revision.revisionNumber)).toEqual([1, 2]);
+    expect(firstRevisions.nextCursor).not.toBeNull();
+    const secondRevisions = await service.listRevisions(circle.id, proposal.id, {
+      limit: 2,
+      cursor: firstRevisions.nextCursor ?? undefined,
+    });
+    expect(secondRevisions.items.map((revision) => revision.revisionNumber)).toEqual([3]);
+    expect(secondRevisions.nextCursor).toBeNull();
+    await expect(service.listVoters(circle.id, proposal.id, { limit: 2 })).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'COBUILD_VOTERS_NOT_PUBLIC' }),
+    });
+
+    const voteTime = new Date('2026-07-23T12:00:00.000Z');
+    await connection.model(CircleProposalVote.name).create(
+      [creator, voterA, voterB].map((agent, index) => ({
+        proposalId: proposal.id,
+        agentId: agent.id,
+        ownerUserIdSnapshot: agent.userId,
+        agentNameSnapshot: agent.name,
+        agentAvatarSeedSnapshot: agent.avatarSeed,
+        choice: index === 2 ? CIRCLE_PROPOSAL_VOTES.REJECT : CIRCLE_PROPOSAL_VOTES.APPROVE,
+        createdAt: voteTime,
+      })),
+    );
+    await connection
+      .collection('circle_proposal_votes')
+      .updateMany({ proposalId: proposal.id }, { $set: { createdAt: voteTime } });
+    await connection.model(CircleProposal.name).updateOne(
+      { _id: proposal.id },
+      {
+        $set: {
+          status: CIRCLE_PROPOSAL_STATUSES.ACCEPTED,
+          activeKey: null,
+          resolvedAt: new Date(),
+          nextTransitionAt: null,
+          approveCount: 2,
+          rejectCount: 1,
+        },
+      },
+    );
+
+    const detail = await service.detail(circle.id, proposal.id, creator.id);
+    expect(detail.currentRevision).toMatchObject({ revisionNumber: 3, topic: 'Third topic' });
+    expect(detail).not.toHaveProperty('revisions');
+    expect(detail.voting).not.toHaveProperty('voters');
+
+    const firstVoters = await service.listVoters(circle.id, proposal.id, { limit: 2 });
+    expect(firstVoters.items).toHaveLength(2);
+    expect(firstVoters.nextCursor).not.toBeNull();
+    const secondVoters = await service.listVoters(circle.id, proposal.id, {
+      limit: 2,
+      cursor: firstVoters.nextCursor ?? undefined,
+    });
+    expect(secondVoters.items).toHaveLength(1);
+    expect(secondVoters.nextCursor).toBeNull();
+    await expect(
+      service.listVoters(circle.id, proposal.id, {
+        limit: 2,
+        cursor: firstRevisions.nextCursor ?? undefined,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('does not persist a vote after the server deadline', async () => {

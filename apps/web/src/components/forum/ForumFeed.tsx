@@ -3,20 +3,32 @@
 import { useState, useCallback, useEffect, useRef, type UIEvent } from 'react';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
-import { useInView } from 'react-intersection-observer';
-import { Bell, Clock, Flame, Globe2, Plus, RefreshCw } from 'lucide-react';
+import {
+  Bell,
+  Clock,
+  Columns2,
+  Columns3,
+  Flame,
+  Globe2,
+  List,
+  Plus,
+  RefreshCw,
+} from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { PostCard } from './PostCard';
 import { ForumFeedContextProvider } from './ForumFeedContext';
 import { FORUM_FEED_PAGE_SIZE, feedBandItemClass } from './forum-feed-constants';
 import { ErrorState } from '@/components/ui/LoadingState';
 import { TEmpty, TSkeleton } from '@/components/ui/terminal';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { VirtualList } from '@/components/ui/VirtualList';
 import { AuthRequiredDialog, AuthRequiredState } from '@/components/ui/AuthRequiredDialog';
-import { forumApi } from '@/lib/api';
+import { ApiError, forumApi } from '@/lib/api';
 import { forumKeys } from '@/lib/query-keys';
 import { useOwnerOperation } from '@/contexts/OwnerOperationContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAutoHideScrollbar } from '@/hooks/useAutoHideScrollbar';
+import { isPaginationCursorError } from '@/hooks/useCursorPaginationRetry';
 import { useToast } from '@/components/ui/SignalToast';
 import {
   SORT_OPTIONS,
@@ -32,6 +44,7 @@ import {
   useForumFeedStore,
 } from '@/stores/forum-feed-store';
 import { useHomeNavigationStore } from '@/stores/home-navigation-store';
+import { useForumLayoutStore, type ForumLayoutMode } from '@/stores/forum-layout-store';
 import { PostTagFilter } from './PostTagFilter';
 
 const CreatePostModal = dynamic(
@@ -41,6 +54,19 @@ const CreatePostModal = dynamic(
   },
 );
 const OVERLAY_BAR_SCROLL_THRESHOLD = 8;
+const POST_ROW_ESTIMATED_HEIGHT = 248;
+const POST_MASONRY_ESTIMATED_HEIGHT = 360;
+const POST_MASONRY_GAP_PX = 12;
+const POST_MASONRY_MIN_COLUMN_WIDTH_PX = 300;
+const FORUM_LAYOUT_OPTIONS = [
+  { value: 1, icon: List, labelKey: 'forum.layoutList' },
+  { value: 2, icon: Columns2, labelKey: 'forum.layoutTwo' },
+  { value: 3, icon: Columns3, labelKey: 'forum.layoutThree' },
+] as const satisfies ReadonlyArray<{
+  value: ForumLayoutMode;
+  icon: typeof List;
+  labelKey: string;
+}>;
 
 interface ForumFeedProps {
   circle?: Circle;
@@ -60,6 +86,7 @@ export function ForumFeed({
   const { t } = useTranslation();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [scrollRoot, setScrollRoot] = useState<HTMLDivElement | null>(null);
+  const [feedWidth, setFeedWidth] = useState<number | null>(null);
   const scrollRootRef = useRef<HTMLDivElement | null>(null);
   const lastRestoredKeyRef = useRef('');
   const scrollReadyFeedKeyRef = useRef<string | null>(null);
@@ -89,7 +116,12 @@ export function ForumFeed({
   const tagsByScope = useForumFeedStore((state) => state.tagsByScope);
   const selectedTags = tagsByScope[scopeKey] ?? [];
   const setTags = useForumFeedStore((state) => state.setTags);
-  const feedKey = `${scopeKey}:${sortMode}:${selectedTags.join(',') || 'all-tags'}:${FORUM_FEED_PAGE_SIZE}:search:${encodeURIComponent(search)}:${searchRevision}`;
+  const layout = useForumLayoutStore((state) => state.layout);
+  const setLayout = useForumLayoutStore((state) => state.setLayout);
+  const maximumSupportedLayout = getMaximumSupportedLayout(feedWidth);
+  const effectiveLayout = getEffectiveLayout(layout, maximumSupportedLayout);
+  const layoutReady = feedWidth !== null;
+  const feedKey = `${scopeKey}:${sortMode}:${selectedTags.join(',') || 'all-tags'}:layout:${layout}:${FORUM_FEED_PAGE_SIZE}:search:${encodeURIComponent(search)}:${searchRevision}`;
   const setSortMode = useForumFeedStore((state) => state.setSortMode);
   const setScrollTop = useForumFeedStore((state) => state.setScrollTop);
   const resetScrollTop = useForumFeedStore((state) => state.resetScrollTop);
@@ -97,7 +129,7 @@ export function ForumFeed({
   const toolbarVisible = getForumFeedToolbarVisible(toolbarVisibleByFeedKey, feedKey);
   const setToolbarVisible = useForumFeedStore((state) => state.setToolbarVisible);
   const queryKey = forumKeys.posts(viewerKey, {
-    pageSize: FORUM_FEED_PAGE_SIZE,
+    limit: FORUM_FEED_PAGE_SIZE,
     sortBy: sortMode,
     circleId: circle?.id,
     scope: effectiveScope,
@@ -106,12 +138,12 @@ export function ForumFeed({
   });
   const postsQuery = useInfiniteQuery({
     queryKey,
+    retry: false,
     queryFn: ({ pageParam, signal }) =>
       forumApi.listPosts(
         {
-          page: pageParam ? undefined : 1,
           cursor: pageParam || undefined,
-          pageSize: FORUM_FEED_PAGE_SIZE,
+          limit: FORUM_FEED_PAGE_SIZE,
           sortBy: sortMode,
           search: search || undefined,
           circleId: circle?.id,
@@ -127,7 +159,7 @@ export function ForumFeed({
       return lastPage.nextCursor ?? undefined;
     },
   });
-  const posts = postsQuery.data?.pages.flatMap((page) => page.posts) ?? [];
+  const posts = postsQuery.data?.pages.flatMap((page) => page.items) ?? [];
   const firstPostId = posts[0]?.id ?? 'empty';
   const {
     fetchNextPage,
@@ -137,15 +169,19 @@ export function ForumFeed({
     isFetching,
     isFetchingNextPage,
     isPending,
-    refetch,
   } = postsQuery;
   const loading = isPending || isFetchingNextPage;
   const showingRefreshLoading = refreshingFeed && isFetching;
   const hasMore = hasNextPage === true;
-  const errorKey = isError ? loadFailedKey : '';
+  const resetRequired = isPaginationCursorError(postsQuery.error);
+  const errorMessage = isError
+    ? postsQuery.error instanceof ApiError
+      ? postsQuery.error.message
+      : t(loadFailedKey)
+    : '';
   const resolvedEmptyMessageKey = search
     ? 'forum.emptySearchResults'
-    : !circle && effectiveScope === 'subscribed'
+    : !circle && effectiveScope === 'my-circles'
       ? 'forum.emptySubscribedPosts'
       : emptyMessageKey;
 
@@ -158,28 +194,41 @@ export function ForumFeed({
     }
   }, [feedKey, isAuthenticated, t, toast]);
 
-  const { ref: loaderRef, inView } = useInView({
-    root: scrollRoot,
-    rootMargin: '320px 0px',
-    threshold: 0,
-    onChange: (visible) => {
-      if (visible && !isAuthenticated && posts.length > 0) openAuthPrompt();
-    },
-  });
-
   const bindScrollRoot = useCallback((node: HTMLDivElement | null) => {
     scrollRootRef.current = node;
     lastRestoredKeyRef.current = '';
     scrollReadyFeedKeyRef.current = null;
     lastScrollTopRef.current = 0;
     setScrollRoot(node);
+    const width = node?.clientWidth ?? 0;
+    setFeedWidth(width > 0 ? width : null);
   }, []);
 
   useEffect(() => {
-    if (isAuthenticated && inView && hasMore && !isFetchingNextPage && posts.length > 0) {
-      void fetchNextPage();
+    if (!scrollRoot) return undefined;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry?.contentRect.width && entry.contentRect.width > 0) {
+        setFeedWidth(entry.contentRect.width);
+      }
+    });
+    observer.observe(scrollRoot);
+    return () => observer.disconnect();
+  }, [scrollRoot]);
+
+  const handleNearEnd = useCallback(() => {
+    if (posts.length === 0) return;
+    if (!isAuthenticated) return;
+    if (hasMore && !isFetchingNextPage && !isFetchNextPageError) {
+      void fetchNextPage({ cancelRefetch: false });
     }
-  }, [fetchNextPage, hasMore, inView, isAuthenticated, isFetchingNextPage, posts.length]);
+  }, [
+    fetchNextPage,
+    hasMore,
+    isAuthenticated,
+    isFetchingNextPage,
+    isFetchNextPageError,
+    posts.length,
+  ]);
 
   useEffect(() => {
     currentFeedKeyRef.current = feedKey;
@@ -253,6 +302,12 @@ export function ForumFeed({
     setTags(scopeKey, tags);
   };
 
+  const handleLayoutChange = (nextLayout: ForumLayoutMode) => {
+    if (nextLayout === layout) return;
+    lastRestoredKeyRef.current = '';
+    setLayout(nextLayout);
+  };
+
   const handleFeedScroll = useCallback(
     (event: UIEvent<HTMLDivElement>) => {
       handleScroll();
@@ -273,12 +328,13 @@ export function ForumFeed({
 
   const handleRefresh = useCallback(() => {
     setRefreshingFeed(true);
+    lastRestoredKeyRef.current = '';
     resetScrollTop(feedKey);
     scrollRootRef.current?.scrollTo({ top: 0, behavior: 'auto' });
-    void refetch().finally(() => {
+    void queryClient.resetQueries({ queryKey, exact: true }).finally(() => {
       setRefreshingFeed(false);
     });
-  }, [feedKey, refetch, resetScrollTop]);
+  }, [feedKey, queryClient, queryKey, resetScrollTop]);
 
   const handlePostCreated = (created: ForumPost) => {
     setShowCreateModal(false);
@@ -311,8 +367,8 @@ export function ForumFeed({
     setShowCreateModal(true);
   };
 
-  const hasInitialError = Boolean(errorKey && !loading && posts.length === 0);
-  const isEmpty = !loading && posts.length === 0 && !errorKey;
+  const hasInitialError = Boolean(errorMessage && !loading && posts.length === 0);
+  const isEmpty = !loading && posts.length === 0 && !errorMessage;
 
   if (!authLoading && circle && !isAuthenticated) {
     return (
@@ -342,24 +398,32 @@ export function ForumFeed({
               >
                 {t('feed.freqLabel')}
               </span>
-              <button
-                type="button"
-                aria-pressed={sortMode === SORT_OPTIONS.HOT}
-                onClick={() => handleSortChange(SORT_OPTIONS.HOT)}
-                className={feedBandItemClass(sortMode === SORT_OPTIONS.HOT)}
+              <ToggleGroup
+                type="single"
+                value={sortMode}
+                onValueChange={(value) => {
+                  if (value === SORT_OPTIONS.HOT || value === SORT_OPTIONS.LATEST) {
+                    handleSortChange(value);
+                  }
+                }}
+                aria-label={t('feed.freqLabel')}
+                className="border-0 bg-transparent"
               >
-                <Flame className="h-3 w-3" />
-                {t('forum.hot')}
-              </button>
-              <button
-                type="button"
-                aria-pressed={sortMode === SORT_OPTIONS.LATEST}
-                onClick={() => handleSortChange(SORT_OPTIONS.LATEST)}
-                className={feedBandItemClass(sortMode === SORT_OPTIONS.LATEST)}
-              >
-                <Clock className="h-3 w-3" />
-                {t('forum.latest')}
-              </button>
+                <ToggleGroupItem
+                  value={SORT_OPTIONS.HOT}
+                  className={feedBandItemClass(sortMode === SORT_OPTIONS.HOT)}
+                >
+                  <Flame className="h-3 w-3" />
+                  {t('forum.hot')}
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value={SORT_OPTIONS.LATEST}
+                  className={feedBandItemClass(sortMode === SORT_OPTIONS.LATEST)}
+                >
+                  <Clock className="h-3 w-3" />
+                  {t('forum.latest')}
+                </ToggleGroupItem>
+              </ToggleGroup>
               <PostTagFilter value={selectedTags} onConfirm={handleTagChange} />
               <button
                 type="button"
@@ -375,31 +439,56 @@ export function ForumFeed({
             </div>
 
             {!circle && isAuthenticated && (
-              <div
-                role="group"
+              <ToggleGroup
+                type="single"
+                value={effectiveScope}
+                onValueChange={(value) => {
+                  if (value === 'all' || value === 'my-circles') setFeedScope(value);
+                }}
                 aria-label={t('feed.scopeLabel')}
-                className="flex max-w-full items-stretch divide-x divide-[var(--t-noise)] border border-[var(--t-noise)]"
+                className="max-w-full"
               >
-                <button
-                  type="button"
-                  aria-pressed={effectiveScope === 'all'}
-                  onClick={() => setFeedScope('all')}
+                <ToggleGroupItem
+                  value="all"
                   className={feedBandItemClass(effectiveScope === 'all')}
                 >
                   <Globe2 className="h-3 w-3" />
                   {t('forum.scopeAll')}
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={effectiveScope === 'subscribed'}
-                  onClick={() => setFeedScope('subscribed')}
-                  className={feedBandItemClass(effectiveScope === 'subscribed')}
+                </ToggleGroupItem>
+                <ToggleGroupItem
+                  value="my-circles"
+                  className={feedBandItemClass(effectiveScope === 'my-circles')}
                 >
                   <Bell className="h-3 w-3" />
                   {t('forum.scopeSubscribed')}
-                </button>
-              </div>
+                </ToggleGroupItem>
+              </ToggleGroup>
             )}
+
+            <ToggleGroup
+              type="single"
+              value={String(effectiveLayout)}
+              onValueChange={(value) => {
+                if (value === '1') handleLayoutChange(1);
+                if (value === '2') handleLayoutChange(2);
+                if (value === '3') handleLayoutChange(3);
+              }}
+              aria-label={t('forum.layoutLabel')}
+              className="max-w-full"
+            >
+              {FORUM_LAYOUT_OPTIONS.map(({ value, icon: Icon, labelKey }) => (
+                <ToggleGroupItem
+                  key={value}
+                  value={String(value)}
+                  aria-label={t(labelKey)}
+                  title={t(labelKey)}
+                  disabled={value > maximumSupportedLayout}
+                  className={feedBandItemClass(effectiveLayout === value)}
+                >
+                  <Icon className="h-3 w-3" />
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
 
             <button
               type="button"
@@ -413,26 +502,6 @@ export function ForumFeed({
             </button>
           </div>
         </div>
-        {errorKey && posts.length > 0 && (
-          <div className="mb-4 flex flex-none items-center justify-between border border-danger/30 border-l-2 border-l-danger bg-danger/10 px-4 py-3 font-mono text-[11px] tracking-deck-tight text-danger">
-            <span>
-              {t(receiveErrorTitleKey)}: {t(errorKey)}
-            </span>
-            <button
-              onClick={() => {
-                if (!isAuthenticated) {
-                  openAuthPrompt();
-                  return;
-                }
-                void (hasMore ? fetchNextPage() : refetch());
-              }}
-              className="ml-3 text-accent hover:text-accent-dim"
-            >
-              {t('app.retry')}
-            </button>
-          </div>
-        )}
-
         {/* 帖子档案行 */}
         <div
           ref={bindScrollRoot}
@@ -445,7 +514,7 @@ export function ForumFeed({
             <div className="flex min-h-full items-center justify-center py-16">
               <ErrorState
                 title={t(receiveErrorTitleKey)}
-                message={t(errorKey)}
+                message={errorMessage}
                 actionLabel={t('forum.rescan')}
                 onAction={handleRefresh}
               />
@@ -454,7 +523,7 @@ export function ForumFeed({
 
           {showingRefreshLoading && <FeedLoadingState label={t(loadingLabelKey)} />}
 
-          {!showingRefreshLoading && posts.length > 0 && (
+          {!showingRefreshLoading && posts.length > 0 && layoutReady && (
             <>
               <div className="mb-2 flex items-center gap-3 px-1">
                 <span className="font-mono text-[11px] tracking-[0.2em] text-[var(--t-accent)]">
@@ -471,43 +540,55 @@ export function ForumFeed({
                   {t('feed.recordCount', { count: posts.length })}
                 </span>
               </div>
-              <div className="border-t border-[var(--t-noise)]">
-                {posts.map((post) => (
+              <VirtualList
+                key={feedKey}
+                items={posts}
+                scrollElement={scrollRoot}
+                getItemKey={(post) => post.id}
+                estimateSize={() =>
+                  effectiveLayout === 1 ? POST_ROW_ESTIMATED_HEIGHT : POST_MASONRY_ESTIMATED_HEIGHT
+                }
+                onNearEnd={isAuthenticated ? handleNearEnd : undefined}
+                initialOffset={() => useForumFeedStore.getState().scrollTopByFeedKey[feedKey] ?? 0}
+                layoutVersion={`${feedKey}:${effectiveLayout}`}
+                lanes={effectiveLayout}
+                gap={effectiveLayout > 1 ? POST_MASONRY_GAP_PX : 0}
+                className={effectiveLayout === 1 ? 'border-t border-[var(--t-noise)]' : undefined}
+                tail={
+                  <ForumFeedTail
+                    loading={loading}
+                    errorMessage={errorMessage ? `${t(receiveErrorTitleKey)}: ${errorMessage}` : ''}
+                    hasMore={hasMore}
+                    isAuthenticated={isAuthenticated}
+                    loadingLabel={t(loadingLabelKey)}
+                    endLabel={t('forum.postsEnd')}
+                    authLabel={t('feed.moreRequiresLogin')}
+                    retryLabel={resetRequired ? t('forum.refreshPosts') : t('app.retry')}
+                    onRetry={() => {
+                      if (!isAuthenticated) {
+                        openAuthPrompt();
+                        return;
+                      }
+                      if (resetRequired) {
+                        handleRefresh();
+                        return;
+                      }
+                      void (isFetchNextPageError
+                        ? fetchNextPage({ cancelRefetch: false })
+                        : handleRefresh());
+                    }}
+                    onRequireAuth={openAuthPrompt}
+                  />
+                }
+                renderItem={(post) => (
                   <PostCard
-                    key={post.id}
                     post={post}
+                    layout={effectiveLayout}
                     onRequireAuth={!isAuthenticated ? openAuthPrompt : undefined}
                   />
-                ))}
-              </div>
+                )}
+              />
             </>
-          )}
-
-          {!showingRefreshLoading && loading && <FeedLoadingState label={t(loadingLabelKey)} />}
-
-          {(hasMore || (!isAuthenticated && posts.length > 0)) &&
-            !showingRefreshLoading &&
-            !loading &&
-            !errorKey && <div ref={loaderRef} className="h-8" />}
-
-          {!showingRefreshLoading && !hasMore && posts.length > 0 && isAuthenticated && (
-            <div className="py-8 text-center font-mono text-[11px] tracking-deck-normal text-text-tertiary">
-              <div className="flex items-center justify-center gap-3">
-                <div className="h-px w-8 bg-[var(--t-noise)]" aria-hidden />
-                <span>{t('forum.postsEnd')}</span>
-                <div className="h-px w-8 bg-[var(--t-noise)]" aria-hidden />
-              </div>
-            </div>
-          )}
-
-          {!showingRefreshLoading && !hasMore && posts.length > 0 && !isAuthenticated && (
-            <button
-              type="button"
-              onClick={openAuthPrompt}
-              className="flex w-full items-center justify-center py-8 text-center font-mono text-[11px] tracking-deck-normal text-[var(--t-accent)] transition-colors hover:text-white"
-            >
-              {t('feed.moreRequiresLogin')}
-            </button>
           )}
 
           {!showingRefreshLoading && isEmpty && (
@@ -530,6 +611,28 @@ export function ForumFeed({
   );
 }
 
+function getMaximumSupportedLayout(width: number | null): ForumLayoutMode {
+  if (width === null) return 1;
+  const supportedColumns = Math.max(
+    1,
+    Math.floor(
+      (width + POST_MASONRY_GAP_PX) / (POST_MASONRY_MIN_COLUMN_WIDTH_PX + POST_MASONRY_GAP_PX),
+    ),
+  );
+  if (supportedColumns === 1) return 1;
+  if (supportedColumns === 2) return 2;
+  return 3;
+}
+
+function getEffectiveLayout(
+  requestedLayout: ForumLayoutMode,
+  maximumSupportedLayout: ForumLayoutMode,
+): ForumLayoutMode {
+  if (requestedLayout === 1 || maximumSupportedLayout === 1) return 1;
+  if (requestedLayout === 2 || maximumSupportedLayout === 2) return 2;
+  return 3;
+}
+
 function FeedLoadingState({ label }: { label: string }) {
   return (
     <div role="status" aria-label={label} className="flex min-h-full flex-col py-2">
@@ -546,6 +649,73 @@ function FeedEmptyState({ message }: { message: string }) {
   return (
     <div className="flex min-h-full items-center justify-center py-16">
       <TEmpty message={message} className="w-full" />
+    </div>
+  );
+}
+
+function ForumFeedTail({
+  loading,
+  errorMessage,
+  hasMore,
+  isAuthenticated,
+  loadingLabel,
+  endLabel,
+  authLabel,
+  retryLabel,
+  onRetry,
+  onRequireAuth,
+}: {
+  loading: boolean;
+  errorMessage: string;
+  hasMore: boolean;
+  isAuthenticated: boolean;
+  loadingLabel: string;
+  endLabel: string;
+  authLabel: string;
+  retryLabel: string;
+  onRetry: () => void;
+  onRequireAuth: () => void;
+}) {
+  if (loading) {
+    return (
+      <div
+        role="status"
+        aria-label={loadingLabel}
+        className="border-b border-[var(--t-noise)] px-4 py-4"
+      >
+        <TSkeleton rows={2} />
+      </div>
+    );
+  }
+  if (errorMessage) {
+    return (
+      <div className="flex items-center justify-between border border-danger/30 border-l-2 border-l-danger bg-danger/10 px-4 py-3 font-mono text-[11px] tracking-deck-tight text-danger">
+        <span>{errorMessage}</span>
+        <button type="button" onClick={onRetry} className="ml-3 text-accent hover:text-accent-dim">
+          {retryLabel}
+        </button>
+      </div>
+    );
+  }
+  if (hasMore) return null;
+  if (!isAuthenticated) {
+    return (
+      <button
+        type="button"
+        onClick={onRequireAuth}
+        className="flex w-full items-center justify-center py-8 text-center font-mono text-[11px] tracking-deck-normal text-[var(--t-accent)] transition-colors hover:text-white"
+      >
+        {authLabel}
+      </button>
+    );
+  }
+  return (
+    <div className="py-8 text-center font-mono text-[11px] tracking-deck-normal text-text-tertiary">
+      <div className="flex items-center justify-center gap-3">
+        <div className="h-px w-8 bg-[var(--t-noise)]" aria-hidden />
+        <span>{endLabel}</span>
+        <div className="h-px w-8 bg-[var(--t-noise)]" aria-hidden />
+      </div>
     </div>
   );
 }

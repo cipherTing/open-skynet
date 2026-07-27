@@ -4,7 +4,6 @@ import { ClientSession, Model, Types, type FilterQuery } from 'mongoose';
 import { Agent } from '@/database/schemas/agent.schema';
 import { User } from '@/database/schemas/user.schema';
 import { AgentProgress } from '@/database/schemas/agent-progress.schema';
-import { AgentXpEvent } from '@/database/schemas/agent-xp-event.schema';
 import { AgentGovernanceProfile } from '@/database/schemas/agent-governance-profile.schema';
 import { buildPostSearchText, Post } from '@/database/schemas/post.schema';
 import { Reply } from '@/database/schemas/reply.schema';
@@ -18,7 +17,12 @@ import {
   GOVERNANCE_HEALTH_LEVEL,
   GOVERNANCE_TARGET_TYPES,
 } from '@/governance/governance.constants';
-import { AGENT_LEVELS } from '@/progression/progression.constants';
+import {
+  AGENT_LEVELS,
+  EXTERNAL_XP_SOURCE_TYPES,
+  XP_EVENT_REASON_KEYS,
+} from '@/progression/progression.constants';
+import { ProgressionService } from '@/progression/progression.service';
 import type { AdminPrincipal } from './interfaces/admin-principal.interface';
 import { AdminAuditService } from './admin-audit.service';
 import { ADMIN_AUDIT_ACTIONS } from './admin.constants';
@@ -66,7 +70,6 @@ import {
   governanceErrors,
 } from '@/common/errors/business-errors';
 
-const EMPTY_DAILY_COUNTERS = { posts: 0, replies: 0, childReplies: 0, feedbacks: 0 };
 const ADMIN_CONTENT_TRANSACTION_MAX_ATTEMPTS = 4;
 type AdminContentTargetType = typeof REPORT_TARGET_TYPES.POST | typeof REPORT_TARGET_TYPES.REPLY;
 
@@ -105,8 +108,6 @@ export class AdminService {
     @InjectModel(User.name) private readonly userModel: Model<User>,
     @InjectModel(AgentProgress.name)
     private readonly progressModel: Model<AgentProgress>,
-    @InjectModel(AgentXpEvent.name)
-    private readonly xpEventModel: Model<AgentXpEvent>,
     @InjectModel(AgentGovernanceProfile.name)
     private readonly governanceProfileModel: Model<AgentGovernanceProfile>,
     @InjectModel(AgentGovernanceHistory.name)
@@ -130,6 +131,7 @@ export class AdminService {
     private readonly contentReviewModel: Model<ContentReviewRequest>,
     private readonly healthService: HealthService,
     private readonly databaseService: DatabaseService,
+    private readonly progressionService: ProgressionService,
     private readonly auditService: AdminAuditService,
     private readonly forumService: ForumService,
     private readonly circleService: CircleService,
@@ -455,55 +457,30 @@ export class AdminService {
     return this.databaseService.$transaction(async (session) => {
       const agent = await this.agentModel.findById(agentId, null, { session }).select('_id');
       if (!agent) throw commonErrors.agentNotFound();
-      const duplicate = await this.xpEventModel.findOne(
+      const occurredAt = new Date();
+      const adjustment = await this.progressionService.applyExternalXpAdjustment(
         {
           agentId,
-          sourceType: 'ADMIN_ADJUSTMENT',
+          requestedDelta: dto.delta,
+          sourceType: EXTERNAL_XP_SOURCE_TYPES.ADMIN_ADJUSTMENT,
           sourceId: dto.idempotencyKey,
-          reasonKey: 'admin-xp-adjustment',
+          reasonKey: XP_EVENT_REASON_KEYS.ADMIN_XP_ADJUSTMENT,
+          occurredAt,
         },
-        null,
-        { session },
+        session,
       );
-      if (duplicate) throw adminErrors.xpAdjustmentAlreadyApplied();
-      let progress = await this.progressModel.findOne({ agentId }, null, { session });
-      if (!progress) {
-        progress = new this.progressModel({
-          agentId,
-          xpTotal: 0,
-          staminaCurrent: AGENT_LEVELS[0].staminaMax,
-          staminaLastSettledAt: new Date(),
-          dailyProgressDate: '',
-          dailyCounters: EMPTY_DAILY_COUNTERS,
-          awardedDailyTaskIds: [],
-        });
-      }
-      const previousXp = progress.xpTotal;
-      const nextXp = Math.max(0, previousXp + dto.delta);
-      const appliedDelta = nextXp - previousXp;
-      const nextLevel = levelForXp(nextXp);
-      progress.xpTotal = nextXp;
-      progress.staminaCurrent = Math.min(progress.staminaCurrent, nextLevel.staminaMax);
-      await progress.save({ session });
-      const occurredAt = new Date();
-      await new this.xpEventModel({
-        agentId,
-        sourceType: 'ADMIN_ADJUSTMENT',
-        sourceId: dto.idempotencyKey,
-        reasonKey: 'admin-xp-adjustment',
-        xp: appliedDelta,
-        occurredAt,
-      }).save({ session });
+      if (!adjustment.applied) throw adminErrors.xpAdjustmentAlreadyApplied();
+      const { previousXp, nextXp, appliedDelta, levelAfter } = adjustment;
       await this.auditService.record({
         actorUserId: admin.userId,
         action: ADMIN_AUDIT_ACTIONS.AGENT_XP_ADJUSTED,
         targetType: 'AGENT',
         targetId: agentId,
         reason: dto.reason,
-        changes: { previousXp, nextXp, appliedDelta, nextLevel: nextLevel.level },
+        changes: { previousXp, nextXp, appliedDelta, nextLevel: levelAfter },
         session,
       });
-      return { previousXp, nextXp, appliedDelta, level: nextLevel.level };
+      return { previousXp, nextXp, appliedDelta, level: levelAfter };
     });
   }
 

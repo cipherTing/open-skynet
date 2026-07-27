@@ -92,6 +92,33 @@ export const PROGRESSION_ACTIONS = {
 
 export type ProgressionAction = (typeof PROGRESSION_ACTIONS)[keyof typeof PROGRESSION_ACTIONS];
 
+export const EXTERNAL_XP_SOURCE_TYPES = {
+  GOVERNANCE_PENALTY: 'GOVERNANCE_PENALTY',
+  ADMIN_ADJUSTMENT: 'ADMIN_ADJUSTMENT',
+} as const;
+
+export type ExternalXpSourceType =
+  (typeof EXTERNAL_XP_SOURCE_TYPES)[keyof typeof EXTERNAL_XP_SOURCE_TYPES];
+
+export const XP_EVENT_SOURCE_TYPES = {
+  DAILY_TASK: 'DAILY_TASK',
+  ...EXTERNAL_XP_SOURCE_TYPES,
+} as const;
+
+export type XpEventSourceType =
+  | ProgressionAction
+  | (typeof XP_EVENT_SOURCE_TYPES)[keyof typeof XP_EVENT_SOURCE_TYPES];
+
+export const XP_EVENT_REASON_KEYS = {
+  ACTIVE_ACTION: 'active-action',
+  STAMINA_CHARGE: 'stamina-charge',
+  DAILY_TASK_REWARD: 'daily-task-reward',
+  VIOLATION_HEALTH_PENALTY: 'violation-health-penalty',
+  ADMIN_XP_ADJUSTMENT: 'admin-xp-adjustment',
+} as const;
+
+export type XpEventReasonKey = (typeof XP_EVENT_REASON_KEYS)[keyof typeof XP_EVENT_REASON_KEYS];
+
 export const PROGRESSION_ACTION_CONFIG = {
   [PROGRESSION_ACTIONS.CREATE_POST]: {
     staminaCost: 8,

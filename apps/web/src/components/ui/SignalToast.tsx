@@ -1,23 +1,19 @@
 'use client';
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from 'react';
-import dynamic from 'next/dynamic';
+import { AlertTriangle, CheckCircle2, Info, X } from 'lucide-react';
+import Link from 'next/link';
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import { toast, Toaster } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import {
   DEFAULT_TOAST_DURATION_MS,
   type SignalToastTone,
   type ToastAction,
-  type ToastState,
 } from '@/components/ui/signal-toast-types';
+import { UI_LAYER_CLASS } from '@/components/ui/layers';
+import { cn } from '@/lib/utils';
 
-export type { SignalToastTone, ToastAction, ToastState } from '@/components/ui/signal-toast-types';
+export type { SignalToastTone, ToastAction } from '@/components/ui/signal-toast-types';
 
 type ToastInput = {
   message: string;
@@ -29,55 +25,113 @@ type ToastInput = {
 type ToastOptions = Omit<ToastInput, 'message' | 'tone'>;
 
 type ToastContextValue = {
-  show: (toast: ToastInput) => void;
+  show: (input: ToastInput) => void;
   success: (message: string, options?: ToastOptions) => void;
   error: (message: string, options?: ToastOptions) => void;
   info: (message: string, options?: ToastOptions) => void;
 };
 
-interface SignalToastProps {
-  message: string;
-  tone?: SignalToastTone;
-}
-
-const ToastPortal = dynamic(() => import('@/components/ui/SignalToastPortal').then((mod) => mod.ToastPortal), {
-  ssr: false,
-});
-const StandaloneSignalToast = dynamic(
-  () => import('@/components/ui/SignalToastPortal').then((mod) => mod.StandaloneSignalToast),
-  { ssr: false },
-);
-
 const ToastContext = createContext<ToastContextValue | null>(null);
 
+const TONE_CLASS: Record<SignalToastTone, string> = {
+  success: 'border-accent/40 text-accent',
+  error: 'border-danger/50 text-danger',
+  info: 'border-info/50 text-info',
+};
+
+function ToastFrame({
+  message,
+  tone,
+  action,
+  dismiss,
+}: {
+  message: string;
+  tone: SignalToastTone;
+  action?: ToastAction;
+  dismiss?: () => void;
+}) {
+  const { t } = useTranslation();
+  const [actionRunning, setActionRunning] = useState(false);
+  const Icon = tone === 'success' ? CheckCircle2 : tone === 'error' ? AlertTriangle : Info;
+
+  return (
+    <div
+      className={cn(
+        'flex max-w-[calc(100vw-32px)] items-center gap-2 border bg-surface-2 px-4 py-3',
+        'font-mono text-[12px] shadow-none',
+        TONE_CLASS[tone],
+      )}
+      role="status"
+      aria-live="polite"
+    >
+      <Icon className="h-4 w-4 shrink-0" />
+      <span className="min-w-0 flex-1 break-words text-text-primary">{message}</span>
+      {action?.kind === 'link' ? (
+        <Link
+          href={action.href}
+          onClick={dismiss}
+          className="shrink-0 border border-current/25 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.12em] transition-colors hover:bg-current/10"
+        >
+          {action.label}
+        </Link>
+      ) : action?.kind === 'button' ? (
+        <button
+          type="button"
+          disabled={actionRunning}
+          onClick={() => {
+            if (actionRunning) return;
+            setActionRunning(true);
+            void Promise.resolve(action.onClick())
+              .then(dismiss)
+              .catch((error: unknown) => {
+                console.error('Toast action failed:', error);
+                setActionRunning(false);
+              });
+          }}
+          className="shrink-0 border border-current/25 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.12em] transition-colors hover:bg-current/10 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {action.label}
+        </button>
+      ) : null}
+      {dismiss ? (
+        <button
+          type="button"
+          aria-label={t('termUi.toast.close')}
+          onClick={dismiss}
+          className="shrink-0 p-1 text-text-tertiary transition-colors hover:text-text-primary"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 export function ToastProvider({ children }: { children: ReactNode }) {
-  const [toast, setToast] = useState<ToastState | null>(null);
-  const toastIdRef = useRef(0);
-
-  const dismissToast = useCallback(() => {
-    setToast(null);
-  }, []);
-
-  const show = useCallback((nextToast: ToastInput) => {
-    toastIdRef.current += 1;
-    setToast({
-      id: toastIdRef.current,
-      message: nextToast.message,
-      tone: nextToast.tone ?? 'info',
-      action: nextToast.action,
-      durationMs: nextToast.durationMs ?? DEFAULT_TOAST_DURATION_MS,
-    });
+  const show = useCallback((input: ToastInput) => {
+    const tone = input.tone ?? 'info';
+    const id = toast.custom(
+      () => (
+        <ToastFrame
+          message={input.message}
+          tone={tone}
+          action={input.action}
+          dismiss={() => toast.dismiss(id)}
+        />
+      ),
+      {
+        duration: input.durationMs ?? DEFAULT_TOAST_DURATION_MS,
+        position: 'bottom-center',
+      },
+    );
   }, []);
 
   const value = useMemo<ToastContextValue>(
     () => ({
       show,
-      success: (message: string, options?: ToastOptions) =>
-        show({ message, tone: 'success', ...options }),
-      error: (message: string, options?: ToastOptions) =>
-        show({ message, tone: 'error', ...options }),
-      info: (message: string, options?: ToastOptions) =>
-        show({ message, tone: 'info', ...options }),
+      success: (message, options) => show({ message, tone: 'success', ...options }),
+      error: (message, options) => show({ message, tone: 'error', ...options }),
+      info: (message, options) => show({ message, tone: 'info', ...options }),
     }),
     [show],
   );
@@ -85,18 +139,35 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      {toast && <ToastPortal toast={toast} onDismiss={dismissToast} />}
+      <Toaster
+        position="bottom-center"
+        duration={DEFAULT_TOAST_DURATION_MS}
+        visibleToasts={3}
+        gap={8}
+        toastOptions={{
+          unstyled: true,
+          classNames: {
+            toast: cn('font-mono', UI_LAYER_CLASS.toast),
+          },
+        }}
+      />
     </ToastContext.Provider>
   );
 }
 
-export function useToast() {
+export function useToast(): ToastContextValue {
   const context = useContext(ToastContext);
   if (!context) throw new Error('useToast must be used within ToastProvider');
   return context;
 }
 
-export function SignalToast({ message, tone = 'success' }: SignalToastProps) {
+export function SignalToast({
+  message,
+  tone = 'success',
+}: {
+  message: string;
+  tone?: SignalToastTone;
+}) {
   if (!message) return null;
-  return <StandaloneSignalToast message={message} tone={tone} />;
+  return <ToastFrame message={message} tone={tone} />;
 }

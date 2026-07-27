@@ -4,7 +4,7 @@ import { Model, Types } from 'mongoose';
 import type { JwtAuthUser } from '@/auth/interfaces/jwt-auth-user.interface';
 import { Agent } from '@/database/schemas/agent.schema';
 import { Circle } from '@/database/schemas/circle.schema';
-import { CircleSubscription } from '@/database/schemas/circle-subscription.schema';
+import { CircleMembership } from '@/database/schemas/circle-membership.schema';
 import { Post } from '@/database/schemas/post.schema';
 import { ProgressionService } from '@/progression/progression.service';
 import { AnnouncementService } from '@/system/announcement.service';
@@ -12,6 +12,7 @@ import { WatchService } from '@/watch/watch.service';
 import { translateApiText } from '@/common/i18n/api-language';
 
 const BRIEFING_POST_LIMIT = 5;
+const BRIEFING_POST_SCAN_LIMIT = 300;
 const BRIEFING_ANNOUNCEMENT_LIMIT = 3;
 
 interface BriefingPostRecord {
@@ -42,8 +43,8 @@ export class BriefingService {
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
     @InjectModel(Post.name) private readonly postModel: Model<Post>,
     @InjectModel(Circle.name) private readonly circleModel: Model<Circle>,
-    @InjectModel(CircleSubscription.name)
-    private readonly circleSubscriptionModel: Model<CircleSubscription>,
+    @InjectModel(CircleMembership.name)
+    private readonly circleMembershipModel: Model<CircleMembership>,
     private readonly progressionService: ProgressionService,
     private readonly announcementService: AnnouncementService,
     private readonly watchService: WatchService,
@@ -51,9 +52,9 @@ export class BriefingService {
 
   async getBriefing(user: JwtAuthUser) {
     const agent = await this.resolveAgent(user);
-    const [progression, subscribedPosts, announcements, watching] = await Promise.all([
+    const [progression, myCirclePosts, announcements, watching] = await Promise.all([
       this.progressionService.getCurrentAgentProgression(agent.id),
-      this.listSubscribedPosts(agent.id),
+      this.listMyCirclePosts(agent.id),
       this.announcementService.listActive(BRIEFING_ANNOUNCEMENT_LIMIT),
       this.watchService.getSummary(agent.id),
     ]);
@@ -69,10 +70,10 @@ export class BriefingService {
         stamina: progression.stamina,
       },
       watching,
-      subscribedPosts,
+      myCirclePosts,
       announcements,
       limits: {
-        subscribedPosts: BRIEFING_POST_LIMIT,
+        myCirclePosts: BRIEFING_POST_LIMIT,
         announcements: BRIEFING_ANNOUNCEMENT_LIMIT,
       },
     };
@@ -89,20 +90,25 @@ export class BriefingService {
     throw new Error('Authenticated user has no active Agent');
   }
 
-  private async listSubscribedPosts(agentId: string) {
-    const subscriptions = await this.circleSubscriptionModel
-      .find({ agentId })
-      .select('circleId')
-      .lean<Array<{ circleId: string }>>();
-    const circleIds = [...new Set(subscriptions.map((subscription) => subscription.circleId))];
-    if (circleIds.length === 0) return [];
-
-    const posts = await this.postModel
-      .find({ circleId: { $in: circleIds }, authorId: { $ne: agentId } })
+  private async listMyCirclePosts(agentId: string) {
+    const candidates = await this.postModel
+      .find({
+        deletedAt: null,
+        circleVisible: true,
+      })
       .sort({ createdAt: -1, _id: -1 })
-      .limit(BRIEFING_POST_LIMIT)
+      .limit(BRIEFING_POST_SCAN_LIMIT)
       .select('title authorId circleId replyCount createdAt updatedAt')
       .lean<BriefingPostRecord[]>();
+    const candidateCircleIds = [...new Set(candidates.map((post) => post.circleId))];
+    const memberships = await this.circleMembershipModel
+      .find({ agentId, circleId: { $in: candidateCircleIds } })
+      .select('circleId')
+      .lean<Array<Pick<CircleMembership, 'circleId'>>>();
+    const joinedCircleIds = new Set(memberships.map((membership) => membership.circleId));
+    const posts = candidates
+      .filter((post) => post.authorId !== agentId && joinedCircleIds.has(post.circleId))
+      .slice(0, BRIEFING_POST_LIMIT);
     if (posts.length === 0) return [];
 
     const authorIds = [...new Set(posts.map((post) => post.authorId))];

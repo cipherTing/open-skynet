@@ -19,9 +19,9 @@ import {
   CircleRuleRevisionSchema,
 } from '@/database/schemas/circle-rule-revision.schema';
 import {
-  CircleSubscription,
-  CircleSubscriptionSchema,
-} from '@/database/schemas/circle-subscription.schema';
+  CircleMembership,
+  CircleMembershipSchema,
+} from '@/database/schemas/circle-membership.schema';
 import {
   ContentReviewRequest,
   ContentReviewRequestSchema,
@@ -39,7 +39,7 @@ import {
 } from '@/database/schemas/circle-post-visibility-state.schema';
 import { PostVisibilityService } from '@/post-visibility/post-visibility.service';
 
-describe('CircleService creation and subscriptions', () => {
+describe('CircleService creation and memberships', () => {
   jest.setTimeout(60_000);
   let replicaSet: MongoMemoryReplSet;
   let moduleRef: TestingModule;
@@ -70,7 +70,7 @@ describe('CircleService creation and subscriptions', () => {
           { name: CircleMaintenanceLog.name, schema: CircleMaintenanceLogSchema },
           { name: CircleProposal.name, schema: CircleProposalSchema },
           { name: CircleRuleRevision.name, schema: CircleRuleRevisionSchema },
-          { name: CircleSubscription.name, schema: CircleSubscriptionSchema },
+          { name: CircleMembership.name, schema: CircleMembershipSchema },
           { name: ContentReviewRequest.name, schema: ContentReviewRequestSchema },
           { name: GovernanceCase.name, schema: GovernanceCaseSchema },
           { name: Post.name, schema: PostSchema },
@@ -91,7 +91,7 @@ describe('CircleService creation and subscriptions', () => {
     service = moduleRef.get(CircleService);
     await Promise.all([
       connection.model(Circle.name).init(),
-      connection.model(CircleSubscription.name).init(),
+      connection.model(CircleMembership.name).init(),
       connection.model(ContentReviewRequest.name).init(),
     ]);
   });
@@ -109,7 +109,7 @@ describe('CircleService creation and subscriptions', () => {
       'circle_maintenance_logs',
       'circle_proposals',
       'circle_rule_revisions',
-      'circle_subscriptions',
+      'circle_memberships',
       'content_review_requests',
       'governance_cases',
       'posts',
@@ -164,7 +164,7 @@ describe('CircleService creation and subscriptions', () => {
       ),
     );
 
-    const logs = await service.listMaintenanceLogs(created.id, { page: 1, pageSize: 10 });
+    const logs = await service.listMaintenanceLogs(created.id, { limit: 10 });
     const topicLog = logs.items.find((item) => item.action === 'CIRCLE_UPDATED');
     const rulesLog = logs.items.find((item) => item.action === 'RULES_UPDATED');
     if (!topicLog || !rulesLog) throw new Error('圈子简介或规则修改记录不存在');
@@ -196,8 +196,8 @@ describe('CircleService creation and subscriptions', () => {
     getCirclesHotPosts.mockResolvedValueOnce(new Map([[created.id, []]]));
 
     const emptyResult = await service.listCircles({ includeHotPosts: true });
-    expect(emptyResult.circles).toHaveLength(1);
-    expect(Object.hasOwn(emptyResult.circles[0] ?? {}, 'hotPosts')).toBe(false);
+    expect(emptyResult.items).toHaveLength(1);
+    expect(Object.hasOwn(emptyResult.items[0] ?? {}, 'hotPosts')).toBe(false);
 
     const hotPost = {
       id: new Types.ObjectId().toString(),
@@ -207,7 +207,7 @@ describe('CircleService creation and subscriptions', () => {
     getCirclesHotPosts.mockResolvedValueOnce(new Map([[created.id, [hotPost]]]));
 
     await expect(service.listCircles({ includeHotPosts: true })).resolves.toMatchObject({
-      circles: [expect.objectContaining({ hotPosts: [hotPost] })],
+      items: [expect.objectContaining({ hotPosts: [hotPost] })],
     });
   });
 
@@ -287,7 +287,7 @@ describe('CircleService creation and subscriptions', () => {
       service.setCircleStatusForAdmin(created.id, 'BANNED', '违反圈子使用规范。', session),
     );
 
-    const logs = await service.listMaintenanceLogs(created.id, { page: 1, pageSize: 10 });
+    const logs = await service.listMaintenanceLogs(created.id, { limit: 10 });
     const statusLog = logs.items.find((item) => item.action === 'CIRCLE_BANNED');
     if (!statusLog) throw new Error('圈子封禁记录不存在');
     await expect(service.getMaintenanceLogDetail(created.id, statusLog.id)).resolves.toMatchObject({
@@ -335,23 +335,115 @@ describe('CircleService creation and subscriptions', () => {
     });
   });
 
-  it('keeps repeat subscriptions idempotent and increments the count once', async () => {
+  it('keeps repeat memberships idempotent and increments the count once', async () => {
     const circle = await createOfficialCircle();
     const agent = await connection.model(Agent.name).create({
-      name: 'subscriber-agent',
-      description: 'subscriber agent',
-      userId: 'subscriber-owner',
+      name: 'member-agent',
+      description: 'member agent',
+      userId: 'member-owner',
     });
 
-    await service.subscribe(agent.id, circle.id);
-    await service.subscribe(agent.id, circle.id);
+    await service.join(agent.id, circle.id);
+    await service.join(agent.id, circle.id);
 
     expect(
-      await connection.model(CircleSubscription.name).countDocuments({
+      await connection.model(CircleMembership.name).countDocuments({
         agentId: agent.id,
         circleId: circle.id,
       }),
     ).toBe(1);
-    expect((await connection.model(Circle.name).findById(circle.id))?.subscriberCount).toBe(1);
+    expect((await connection.model(Circle.name).findById(circle.id))?.memberCount).toBe(1);
+  });
+
+  it('continues recommended pagination when ranking fields tie and createdAt differs', async () => {
+    const sharedLastPostAt = new Date('2026-07-23T04:00:00.000Z');
+    const circles = await connection.model(Circle.name).create(
+      [
+        ['recommended-newer', '2026-07-23T03:00:00.000Z'],
+        ['recommended-older', '2026-07-23T02:00:00.000Z'],
+      ].map(([label, createdAt]) => ({
+        slug: label,
+        name: label,
+        normalizedName: label,
+        topic: `${label} topic`,
+        createdByType: 'SYSTEM',
+        createdByAgentId: null,
+        rules: [],
+        rulesVersion: 1,
+        isDefault: false,
+        status: 'ACTIVE',
+        memberCount: 12,
+        postCount: 34,
+        lastPostAt: sharedLastPostAt,
+        createdAt: new Date(createdAt),
+      })),
+    );
+
+    const first = await service.listCircles({ limit: 1, sortBy: 'recommended' });
+    expect(first.items.map((circle) => circle.id)).toEqual([circles[0].id]);
+    expect(first.nextCursor).not.toBeNull();
+    const second = await service.listCircles({
+      limit: 1,
+      sortBy: 'recommended',
+      cursor: first.nextCursor ?? undefined,
+    });
+    expect(second.items.map((circle) => circle.id)).toEqual([circles[1].id]);
+    expect(second.nextCursor).toBeNull();
+  });
+
+  it('paginates joined circles by cursor without scanning past an inactive source record', async () => {
+    const agent = await connection.model(Agent.name).create({
+      name: 'joined-cursor-agent',
+      description: 'joined cursor agent',
+      userId: 'joined-cursor-owner',
+    });
+    const circles = await connection.model(Circle.name).create(
+      ['newest-banned', 'middle-active', 'oldest-active'].map((label, index) => ({
+        slug: label,
+        name: label,
+        normalizedName: label,
+        topic: `${label} topic`,
+        createdByType: 'SYSTEM',
+        createdByAgentId: null,
+        rules: [],
+        rulesVersion: 1,
+        isDefault: false,
+        status: index === 0 ? 'BANNED' : 'ACTIVE',
+        bannedAt: index === 0 ? new Date() : null,
+      })),
+    );
+    const timestamps = [
+      new Date('2026-07-23T03:00:00.000Z'),
+      new Date('2026-07-23T02:00:00.000Z'),
+      new Date('2026-07-23T01:00:00.000Z'),
+    ];
+    await connection.model(CircleMembership.name).create(
+      circles.map((circle, index) => ({
+        agentId: agent.id,
+        circleId: circle.id,
+        createdAt: timestamps[index],
+      })),
+    );
+    await Promise.all(
+      circles.map((circle, index) =>
+        connection
+          .collection('circle_memberships')
+          .updateOne(
+            { agentId: agent.id, circleId: circle.id },
+            { $set: { createdAt: timestamps[index] } },
+          ),
+      ),
+    );
+
+    const first = await service.listAgentCircles(agent.id, { limit: 2 }, agent.userId);
+    expect(first.items.map((circle) => circle.id)).toEqual([circles[1].id]);
+    expect(first.nextCursor).not.toBeNull();
+    const second = await service.listAgentCircles(
+      agent.id,
+      { limit: 2, cursor: first.nextCursor ?? undefined },
+      agent.userId,
+    );
+    expect(second.items.map((circle) => circle.id)).toEqual([circles[2].id]);
+    expect(second.nextCursor).toBeNull();
   });
 });

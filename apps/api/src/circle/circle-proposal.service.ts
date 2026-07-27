@@ -15,7 +15,7 @@ import { CircleProposalRevision } from '@/database/schemas/circle-proposal-revis
 import { CircleProposalStanceRecord } from '@/database/schemas/circle-proposal-stance.schema';
 import { CircleProposalVote } from '@/database/schemas/circle-proposal-vote.schema';
 import { CircleRuleRevision } from '@/database/schemas/circle-rule-revision.schema';
-import { CircleSubscription } from '@/database/schemas/circle-subscription.schema';
+import { CircleMembership } from '@/database/schemas/circle-membership.schema';
 import { DatabaseService } from '@/database/database.service';
 import { FEATURE_FLAG_KEYS } from '@/database/schemas/feature-flag.schema';
 import { GOVERNANCE_HEALTH_LEVEL } from '@/governance/governance.constants';
@@ -42,12 +42,26 @@ import type {
   CreateCircleProposalDto,
   ExpectedCircleProposalVersionDto,
   ListCircleProposalCommentsDto,
+  ListCircleProposalHistoryDto,
   ListCircleProposalsDto,
   ReviseCircleProposalDto,
   SetCircleProposalStanceDto,
 } from './dto/circle-proposal.dto';
 import { circleProposalErrors, commonErrors } from '@/common/errors/business-errors';
 import { isApiMessage } from '@/common/i18n/api-message';
+import { CURSOR_PAGINATION_DEFAULT_LIMIT } from '@/common/dto/cursor-pagination.dto';
+import {
+  decodeOrdinalCursor as decodeResourceOrdinalCursor,
+  decodeTimestampCursor as decodeResourceTimestampCursor,
+  encodeOrdinalCursor as encodeResourceOrdinalCursor,
+  encodeTimestampCursor as encodeResourceTimestampCursor,
+  RESOURCE_CURSOR_KINDS,
+} from '@/common/pagination/resource-cursor';
+import {
+  decodeTimestampCursor,
+  encodeTimestampCursor,
+  PAGINATION_CURSOR_KINDS,
+} from '@/common/pagination/pagination-cursor';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -148,8 +162,8 @@ function isDuplicateKeyError(error: unknown): boolean {
 export class CircleProposalService {
   constructor(
     @InjectModel(Circle.name) private readonly circleModel: Model<Circle>,
-    @InjectModel(CircleSubscription.name)
-    private readonly subscriptionModel: Model<CircleSubscription>,
+    @InjectModel(CircleMembership.name)
+    private readonly membershipModel: Model<CircleMembership>,
     @InjectModel(CircleProposal.name) private readonly proposalModel: Model<CircleProposal>,
     @InjectModel(CircleProposalRevision.name)
     private readonly revisionModel: Model<CircleProposalRevision>,
@@ -172,22 +186,41 @@ export class CircleProposalService {
 
   async list(circleId: string, dto: ListCircleProposalsDto, viewerAgentId?: string) {
     const circle = await this.getCircle(circleId);
-    const page = dto.page ?? 1;
-    const pageSize = dto.pageSize ?? 20;
-    const filter = { circleId: circle.id, ...(dto.status ? { status: dto.status } : {}) };
-    const [rows, total, eligibility] = await Promise.all([
+    const limit = dto.limit ?? CURSOR_PAGINATION_DEFAULT_LIMIT;
+    const filter: Record<string, unknown> = {
+      circleId: circle.id,
+      ...(dto.status ? { status: dto.status } : {}),
+    };
+    if (dto.cursor) {
+      const cursor = decodeTimestampCursor(dto.cursor, PAGINATION_CURSOR_KINDS.CIRCLE_PROPOSALS, {
+        context: { circleId: circle.id, status: dto.status ?? null },
+      });
+      filter['$or'] = [
+        { updatedAt: { $lt: cursor.timestamp } },
+        { updatedAt: cursor.timestamp, _id: { $lt: cursor.id } },
+      ];
+    }
+    const [page, eligibility] = await Promise.all([
       this.proposalModel
         .find(filter)
         .sort({ updatedAt: -1, _id: -1 })
-        .skip((page - 1) * pageSize)
-        .limit(pageSize),
-      this.proposalModel.countDocuments(filter),
+        .limit(limit + 1),
       viewerAgentId ? this.getEligibility(circle.id, viewerAgentId) : Promise.resolve(null),
     ]);
+    const hasMore = page.length > limit;
+    const rows = hasMore ? page.slice(0, limit) : page;
     return {
       items: rows.map((proposal) => this.serializeSummary(proposal)),
       eligibility,
-      meta: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) },
+      nextCursor:
+        hasMore && rows.length > 0
+          ? encodeTimestampCursor(
+              PAGINATION_CURSOR_KINDS.CIRCLE_PROPOSALS,
+              rows[rows.length - 1].updatedAt,
+              rows[rows.length - 1].id,
+              { context: { circleId: circle.id, status: dto.status ?? null } },
+            )
+          : null,
     };
   }
 
@@ -200,53 +233,39 @@ export class CircleProposalService {
       revisionNumber: proposal.currentRevisionNumber,
       withdrawnAt: null,
     };
-    const [
-      revisions,
-      supportCount,
-      objectionCount,
-      currentStance,
-      currentVote,
-      terminalVotes,
-      eligibility,
-    ] = await Promise.all([
-      this.revisionModel.find({ proposalId }).sort({ revisionNumber: 1 }),
-      this.stanceModel.countDocuments({
-        ...activeStanceFilter,
-        stance: CIRCLE_PROPOSAL_STANCES.SUPPORT,
-      }),
-      this.stanceModel.countDocuments({
-        ...activeStanceFilter,
-        stance: CIRCLE_PROPOSAL_STANCES.OBJECTION,
-      }),
-      viewerOwnerUserId
-        ? this.stanceModel.findOne({
-            ...activeStanceFilter,
-            ownerUserIdSnapshot: viewerOwnerUserId,
-          })
-        : Promise.resolve(null),
-      viewerOwnerUserId
-        ? this.voteModel.findOne({ proposalId, ownerUserIdSnapshot: viewerOwnerUserId })
-        : Promise.resolve(null),
-      terminal
-        ? this.voteModel.find({ proposalId }).sort({ createdAt: 1, _id: 1 })
-        : Promise.resolve([]),
-      viewerAgentId ? this.getEligibility(circleId, viewerAgentId) : Promise.resolve(null),
-    ]);
+    const [currentRevision, supportCount, objectionCount, currentStance, currentVote, eligibility] =
+      await Promise.all([
+        this.revisionModel.findOne({
+          proposalId,
+          revisionNumber: proposal.currentRevisionNumber,
+        }),
+        this.stanceModel.countDocuments({
+          ...activeStanceFilter,
+          stance: CIRCLE_PROPOSAL_STANCES.SUPPORT,
+        }),
+        this.stanceModel.countDocuments({
+          ...activeStanceFilter,
+          stance: CIRCLE_PROPOSAL_STANCES.OBJECTION,
+        }),
+        viewerOwnerUserId
+          ? this.stanceModel.findOne({
+              ...activeStanceFilter,
+              ownerUserIdSnapshot: viewerOwnerUserId,
+            })
+          : Promise.resolve(null),
+        viewerOwnerUserId
+          ? this.voteModel.findOne({ proposalId, ownerUserIdSnapshot: viewerOwnerUserId })
+          : Promise.resolve(null),
+        viewerAgentId ? this.getEligibility(circleId, viewerAgentId) : Promise.resolve(null),
+      ]);
+    if (!currentRevision) throw new Error('Missing current circle proposal revision');
     return {
       ...this.serializeSummary(proposal),
       base: {
         topic: proposal.baseTopicSnapshot,
         rules: proposal.baseRulesSnapshot,
       },
-      revisions: revisions.map((revision) => ({
-        id: revision.id,
-        revisionNumber: revision.revisionNumber,
-        authorAgentId: revision.authorAgentId,
-        reason: revision.reason,
-        topic: revision.topicSnapshot,
-        rules: revision.rulesSnapshot,
-        createdAt: revision.createdAt.toISOString(),
-      })),
+      currentRevision: this.serializeRevision(currentRevision),
       stance: {
         supportCount,
         objectionCount,
@@ -259,19 +278,89 @@ export class CircleProposalService {
         approveCount: terminal ? proposal.approveCount : null,
         rejectCount: terminal ? proposal.rejectCount : null,
         currentChoice: currentVote?.choice ?? null,
-        voters: terminal
-          ? terminalVotes.map((vote) => ({
-              agent: {
-                id: vote.agentId,
-                name: vote.agentNameSnapshot,
-                avatarSeed: vote.agentAvatarSeedSnapshot,
-              },
-              choice: vote.choice,
-              createdAt: vote.createdAt.toISOString(),
-            }))
-          : [],
       },
       eligibility,
+    };
+  }
+
+  async listRevisions(circleId: string, proposalId: string, dto: ListCircleProposalHistoryDto) {
+    await this.getProposal(circleId, proposalId);
+    const limit = dto.limit ?? CURSOR_PAGINATION_DEFAULT_LIMIT;
+    const cursor = dto.cursor
+      ? decodeResourceOrdinalCursor(
+          dto.cursor,
+          RESOURCE_CURSOR_KINDS.CIRCLE_PROPOSAL_REVISIONS,
+          proposalId,
+        )
+      : null;
+    const candidates = await this.revisionModel
+      .find({
+        proposalId,
+        ...(cursor ? { revisionNumber: { $gt: cursor } } : {}),
+      })
+      .sort({ revisionNumber: 1 })
+      .limit(limit + 1);
+    const hasMore = candidates.length > limit;
+    const revisions = hasMore ? candidates.slice(0, limit) : candidates;
+    return {
+      items: revisions.map((revision) => this.serializeRevision(revision)),
+      nextCursor:
+        hasMore && revisions.length > 0
+          ? encodeResourceOrdinalCursor(
+              RESOURCE_CURSOR_KINDS.CIRCLE_PROPOSAL_REVISIONS,
+              proposalId,
+              revisions[revisions.length - 1].revisionNumber,
+            )
+          : null,
+    };
+  }
+
+  async listVoters(circleId: string, proposalId: string, dto: ListCircleProposalHistoryDto) {
+    const proposal = await this.getProposal(circleId, proposalId);
+    if (ACTIVE_STATUSES.includes(proposal.status)) throw circleProposalErrors.votersNotPublic();
+    const limit = dto.limit ?? CURSOR_PAGINATION_DEFAULT_LIMIT;
+    const cursor = dto.cursor
+      ? decodeResourceTimestampCursor(
+          dto.cursor,
+          RESOURCE_CURSOR_KINDS.CIRCLE_PROPOSAL_VOTERS,
+          proposalId,
+        )
+      : null;
+    const candidates = await this.voteModel
+      .find({
+        proposalId,
+        ...(cursor
+          ? {
+              $or: [
+                { createdAt: { $gt: cursor.timestamp } },
+                { createdAt: cursor.timestamp, _id: { $gt: cursor.id } },
+              ],
+            }
+          : {}),
+      })
+      .sort({ createdAt: 1, _id: 1 })
+      .limit(limit + 1);
+    const hasMore = candidates.length > limit;
+    const voters = hasMore ? candidates.slice(0, limit) : candidates;
+    return {
+      items: voters.map((vote) => ({
+        agent: {
+          id: vote.agentId,
+          name: vote.agentNameSnapshot,
+          avatarSeed: vote.agentAvatarSeedSnapshot,
+        },
+        choice: vote.choice,
+        createdAt: vote.createdAt.toISOString(),
+      })),
+      nextCursor:
+        hasMore && voters.length > 0
+          ? encodeResourceTimestampCursor(
+              RESOURCE_CURSOR_KINDS.CIRCLE_PROPOSAL_VOTERS,
+              proposalId,
+              voters[voters.length - 1].createdAt,
+              voters[voters.length - 1].id,
+            )
+          : null,
     };
   }
 
@@ -687,20 +776,36 @@ export class CircleProposalService {
 
   async listComments(circleId: string, proposalId: string, dto: ListCircleProposalCommentsDto) {
     await this.getProposal(circleId, proposalId);
-    const page = dto.page ?? 1;
-    const pageSize = dto.pageSize ?? 20;
-    const filter = { proposalId, hiddenAt: null };
-    const [rows, total] = await Promise.all([
-      this.commentModel
-        .find(filter)
-        .sort({ createdAt: 1, _id: 1 })
-        .skip((page - 1) * pageSize)
-        .limit(pageSize),
-      this.commentModel.countDocuments(filter),
-    ]);
+    const limit = dto.limit ?? CURSOR_PAGINATION_DEFAULT_LIMIT;
+    const filter: Record<string, unknown> = { proposalId, hiddenAt: null };
+    if (dto.cursor) {
+      const cursor = decodeTimestampCursor(
+        dto.cursor,
+        PAGINATION_CURSOR_KINDS.CIRCLE_PROPOSAL_COMMENTS,
+        { context: { circleId, proposalId } },
+      );
+      filter['$or'] = [
+        { createdAt: { $gt: cursor.timestamp } },
+        { createdAt: cursor.timestamp, _id: { $gt: cursor.id } },
+      ];
+    }
+    const page = await this.commentModel
+      .find(filter)
+      .sort({ createdAt: 1, _id: 1 })
+      .limit(limit + 1);
+    const hasMore = page.length > limit;
+    const rows = hasMore ? page.slice(0, limit) : page;
     return {
       items: rows.map((comment) => this.serializeComment(comment)),
-      meta: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) },
+      nextCursor:
+        hasMore && rows.length > 0
+          ? encodeTimestampCursor(
+              PAGINATION_CURSOR_KINDS.CIRCLE_PROPOSAL_COMMENTS,
+              rows[rows.length - 1].createdAt,
+              rows[rows.length - 1].id,
+              { context: { circleId, proposalId } },
+            )
+          : null,
     };
   }
 
@@ -1500,10 +1605,10 @@ export class CircleProposalService {
     formal: boolean,
     session?: ClientSession,
   ): Promise<Participant> {
-    const subscription = await this.subscriptionModel.findOne({ circleId, agentId }, null, {
+    const membership = await this.membershipModel.findOne({ circleId, agentId }, null, {
       session,
     });
-    if (!subscription) throw circleProposalErrors.subscriptionRequired();
+    if (!membership) throw circleProposalErrors.membershipRequired();
     const agent = await this.agentModel.findOne(
       { _id: agentId, deletedAt: null },
       PUBLIC_AGENT_FIELDS,
@@ -1563,7 +1668,7 @@ export class CircleProposalService {
     actorOwnerUserId: string,
     session?: ClientSession,
   ): Promise<EligibleMemberSummary> {
-    const aggregation = this.subscriptionModel.aggregate<EligibleMemberSummary>([
+    const aggregation = this.membershipModel.aggregate<EligibleMemberSummary>([
       { $match: { circleId } },
       { $group: { _id: '$agentId' } },
       {
@@ -1675,6 +1780,18 @@ export class CircleProposalService {
       moderationReason: proposal.moderationReason,
       createdAt: proposal.createdAt.toISOString(),
       updatedAt: proposal.updatedAt.toISOString(),
+    };
+  }
+
+  private serializeRevision(revision: CircleProposalRevision) {
+    return {
+      id: revision.id,
+      revisionNumber: revision.revisionNumber,
+      authorAgentId: revision.authorAgentId,
+      reason: revision.reason,
+      topic: revision.topicSnapshot,
+      rules: revision.rulesSnapshot,
+      createdAt: revision.createdAt.toISOString(),
     };
   }
 

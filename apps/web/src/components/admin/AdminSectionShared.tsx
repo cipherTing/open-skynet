@@ -5,7 +5,9 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { Search, type LucideIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { PortalTooltip } from '@/components/ui/FloatingPortal';
+import { z } from 'zod';
+import { useAppForm } from '@/components/forms/skynet-form';
+import { TerminalTooltip } from '@/components/ui/tooltip';
 import { ComposerTextarea } from '@/components/ui/ComposerTextarea';
 import { TerminalDialog } from '@/components/ui/TerminalDialog';
 import { TInput } from '@/components/ui/terminal';
@@ -74,7 +76,7 @@ export function AgentActionIcon({
   onClick: () => void;
 }) {
   return (
-    <PortalTooltip content={label} placement="top">
+    <TerminalTooltip content={label} side="top">
       <button
         type="button"
         aria-label={label}
@@ -87,7 +89,7 @@ export function AgentActionIcon({
       >
         <Icon className="h-4 w-4" />
       </button>
-    </PortalTooltip>
+    </TerminalTooltip>
   );
 }
 
@@ -137,16 +139,25 @@ export function DecisionDialog({
   onConfirm: (reason: string) => void;
 }) {
   const { t } = useTranslation();
-  const [reason, setReason] = useState('');
-  const valid = !requireReason || reason.trim().length >= 4;
+  const form = useAppForm({
+    defaultValues: { reason: '' },
+    validators: {
+      onSubmit: z.object({
+        reason: requireReason ? z.string().trim().min(4).max(500) : z.string().max(500),
+      }),
+    },
+    onSubmit: ({ value }) => onConfirm(value.reason.trim()),
+  });
   return (
     <TerminalDialog
       open={open}
       onOpenChange={onOpenChange}
       title={title}
+      description={description}
       code="ADMIN.DECISION"
       size="sm"
       variant="alert"
+      busy={loading}
       contentClassName="t-corner"
       footer={
         <>
@@ -159,9 +170,9 @@ export function DecisionDialog({
             {t('app.cancel')}
           </button>
           <button
-            type="button"
-            disabled={loading || !valid}
-            onClick={() => onConfirm(reason.trim())}
+            type="submit"
+            form="admin-decision-form"
+            disabled={loading}
             className="t-btn t-btn--danger"
           >
             {loading ? t('admin.action.running') : t('admin.action.confirm')}
@@ -169,31 +180,46 @@ export function DecisionDialog({
         </>
       }
     >
-      <p className="text-sm leading-6 text-white/60">{description}</p>
-      {requireReason ? (
-        <div className="mt-4">
-          <label
-            htmlFor="admin-decision-reason"
-            className="mb-2 block font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]"
-          >
-            {t('admin.action.reason')}
-          </label>
-          <ComposerTextarea
-            id="admin-decision-reason"
-            value={reason}
-            onChange={(event) => setReason(event.target.value)}
-            rows={4}
-            variant="framed"
-          />
-          <div
-            aria-hidden
-            className="mt-1.5 text-right font-mono text-[9px] tracking-[0.2em] text-[var(--t-faint)]"
-          >
-            CH {String(reason.trim().length).padStart(3, '0')} / MIN 004
-          </div>
-        </div>
-      ) : null}
-      {error ? <p className="mt-3 text-xs text-[var(--t-hazard)]">{error.message}</p> : null}
+      <form
+        id="admin-decision-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          void form.handleSubmit();
+        }}
+      >
+        <form.AppForm>
+          {requireReason ? (
+            <form.AppField name="reason">
+              {(field) => (
+                <div>
+                  <label
+                    htmlFor="admin-decision-reason"
+                    className="mb-2 block font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]"
+                  >
+                    {t('admin.action.reason')}
+                  </label>
+                  <ComposerTextarea
+                    id="admin-decision-reason"
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={(event) => field.handleChange(event.target.value)}
+                    rows={4}
+                    variant="framed"
+                  />
+                  <div
+                    aria-hidden
+                    className="mt-1.5 text-right font-mono text-[9px] tracking-[0.2em] text-[var(--t-faint)]"
+                  >
+                    CH {String(field.state.value.trim().length).padStart(3, '0')} / MIN 004
+                  </div>
+                </div>
+              )}
+            </form.AppField>
+          ) : null}
+          {error ? <p className="mt-3 text-xs text-[var(--t-hazard)]">{error.message}</p> : null}
+        </form.AppForm>
+      </form>
     </TerminalDialog>
   );
 }
@@ -208,44 +234,68 @@ export function AdminActionDialog({
   const { t } = useTranslation();
   const toast = useToast();
   const queryClient = useQueryClient();
-  const [reason, setReason] = useState('');
-  const [extra, setExtra] = useState('');
   const xpRequestRef = useRef<{ signature: string; idempotencyKey: string } | null>(null);
-  const mutation = useMutation({
-    mutationFn: async () => {
-      if (action.kind === 'suspend') return adminApi.suspendAgent(action.target.id, { reason });
-      if (action.kind === 'unsuspend') return adminApi.unsuspendAgent(action.target.id, reason);
-      if (action.kind === 'revokeKey') return adminApi.revokeAgentKey(action.target.id, reason);
-      if (action.kind === 'adjustXp') {
-        const delta = Number(extra);
-        const signature = JSON.stringify([action.target.id, reason, delta]);
-        if (xpRequestRef.current?.signature !== signature) {
-          xpRequestRef.current = { signature, idempotencyKey: crypto.randomUUID() };
-        }
-        return adminApi.adjustAgentXp(action.target.id, {
-          reason,
-          delta,
-          idempotencyKey: xpRequestRef.current.idempotencyKey,
-        });
-      }
-      if (action.kind === 'removeContent')
-        return adminApi.removeContent(action.contentType, recordId(action.target), reason);
-      if (action.kind === 'restoreContent')
-        return adminApi.restoreContent(action.contentType, recordId(action.target), reason);
-      if (action.kind === 'correctContent')
-        return adminApi.correctGovernanceCase(action.caseId, reason);
-      throw new Error('Unsupported admin action');
+  const [formError, setFormError] = useState('');
+  const form = useAppForm({
+    defaultValues: { reason: '', extra: '' },
+    validators: {
+      onSubmit: z
+        .object({
+          reason: z.string().trim().min(4).max(500),
+          extra: z.string(),
+        })
+        .superRefine((value, context) => {
+          if (action.kind !== 'adjustXp') return;
+          const delta = Number(value.extra);
+          if (!Number.isInteger(delta) || delta < -100_000 || delta > 100_000) {
+            context.addIssue({
+              code: 'custom',
+              path: ['extra'],
+              message: t('admin.agents.deltaInvalid'),
+            });
+          }
+        }),
     },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['admin'] });
-      toast.success(
-        action.kind === 'removeContent' ||
-          action.kind === 'restoreContent' ||
-          action.kind === 'correctContent'
-          ? t('admin.content.success')
-          : t('admin.agents.success'),
-      );
-      onClose();
+    onSubmit: async ({ value }) => {
+      setFormError('');
+      const reason = value.reason.trim();
+      try {
+        if (action.kind === 'suspend') {
+          await adminApi.suspendAgent(action.target.id, { reason });
+        } else if (action.kind === 'unsuspend') {
+          await adminApi.unsuspendAgent(action.target.id, reason);
+        } else if (action.kind === 'revokeKey') {
+          await adminApi.revokeAgentKey(action.target.id, reason);
+        } else if (action.kind === 'adjustXp') {
+          const delta = Number(value.extra);
+          const signature = JSON.stringify([action.target.id, reason, delta]);
+          if (xpRequestRef.current?.signature !== signature) {
+            xpRequestRef.current = { signature, idempotencyKey: crypto.randomUUID() };
+          }
+          await adminApi.adjustAgentXp(action.target.id, {
+            reason,
+            delta,
+            idempotencyKey: xpRequestRef.current.idempotencyKey,
+          });
+        } else if (action.kind === 'removeContent') {
+          await adminApi.removeContent(action.contentType, recordId(action.target), reason);
+        } else if (action.kind === 'restoreContent') {
+          await adminApi.restoreContent(action.contentType, recordId(action.target), reason);
+        } else {
+          await adminApi.correctGovernanceCase(action.caseId, reason);
+        }
+        await queryClient.invalidateQueries({ queryKey: ['admin'] });
+        toast.success(
+          action.kind === 'removeContent' ||
+            action.kind === 'restoreContent' ||
+            action.kind === 'correctContent'
+            ? t('admin.content.success')
+            : t('admin.agents.success'),
+        );
+        onClose();
+      } catch (error) {
+        setFormError(error instanceof Error ? error.message : t('admin.action.failed'));
+      }
     },
   });
   const label =
@@ -262,62 +312,79 @@ export function AdminActionDialog({
               : action.kind === 'restoreContent'
                 ? t('admin.content.restore')
                 : t('admin.content.correctAndRestore');
-  const extraLabel = action.kind === 'adjustXp' ? t('admin.agents.delta') : '';
-  const needsExtra = Boolean(extraLabel);
   return (
-    <TerminalDialog
-      open
-      onOpenChange={(open) => {
-        if (!open && !mutation.isPending) onClose();
-      }}
-      title={label}
-      code="ADMIN.ACTION"
-      size="sm"
-      variant="alert"
-      contentClassName="t-corner"
-      footer={
-        <>
-          <button
-            type="button"
-            disabled={mutation.isPending}
-            onClick={onClose}
-            className="t-btn t-btn--ghost"
+    <form.Subscribe selector={(state) => state.isSubmitting}>
+      {(isSubmitting) => (
+        <TerminalDialog
+          open
+          onOpenChange={(open) => {
+            if (!open && !isSubmitting) onClose();
+          }}
+          title={label}
+          description={t('admin.action.reasonHint')}
+          code="ADMIN.ACTION"
+          size="sm"
+          variant="alert"
+          busy={isSubmitting}
+          contentClassName="t-corner"
+          footer={
+            <>
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={onClose}
+                className="t-btn t-btn--ghost"
+              >
+                {t('admin.action.cancel')}
+              </button>
+              <button
+                type="submit"
+                form="admin-action-form"
+                disabled={isSubmitting}
+                className="t-btn t-btn--danger"
+              >
+                {isSubmitting ? t('admin.action.running') : t('admin.action.confirm')}
+              </button>
+            </>
+          }
+        >
+          <form
+            id="admin-action-form"
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              void form.handleSubmit();
+            }}
           >
-            {t('admin.action.cancel')}
-          </button>
-          <button
-            type="button"
-            disabled={reason.trim().length < 4 || (needsExtra && !extra) || mutation.isPending}
-            onClick={() => mutation.mutate()}
-            className="t-btn t-btn--danger"
-          >
-            {mutation.isPending ? t('admin.action.running') : t('admin.action.confirm')}
-          </button>
-        </>
-      }
-    >
-      {extraLabel && (
-        <label className="mb-4 block font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
-          {extraLabel}
-          <TInput
-            type={action.kind === 'adjustXp' ? 'number' : 'text'}
-            value={extra}
-            onChange={(event) => setExtra(event.target.value)}
-            className="mt-2"
-          />
-        </label>
+            <form.AppForm>
+              {action.kind === 'adjustXp' ? (
+                <form.AppField name="extra">
+                  {(field) => <field.InputField type="number" label={t('admin.agents.delta')} />}
+                </form.AppField>
+              ) : null}
+              <form.AppField name="reason">
+                {(field) => (
+                  <div>
+                    <label className="block font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                      {t('admin.action.reason')}
+                    </label>
+                    <ComposerTextarea
+                      value={field.state.value}
+                      onBlur={field.handleBlur}
+                      onChange={(event) => field.handleChange(event.target.value)}
+                      placeholder={t('admin.action.reasonHint')}
+                      rows={3}
+                      variant="framed"
+                    />
+                  </div>
+                )}
+              </form.AppField>
+              {formError ? <p className="text-xs text-[var(--t-hazard)]">{formError}</p> : null}
+            </form.AppForm>
+          </form>
+        </TerminalDialog>
       )}
-      <label className="block font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
-        {t('admin.action.reason')}
-        <ComposerTextarea
-          value={reason}
-          onChange={(event) => setReason(event.target.value)}
-          placeholder={t('admin.action.reasonHint')}
-          rows={3}
-          variant="framed"
-        />
-      </label>
-      {mutation.isError && <p className="mt-3 text-xs text-[var(--t-hazard)]">{t('admin.action.failed')}</p>}
-    </TerminalDialog>
+    </form.Subscribe>
   );
 }

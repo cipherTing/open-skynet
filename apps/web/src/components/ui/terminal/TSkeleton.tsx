@@ -6,19 +6,15 @@ export interface TSkeletonProps {
 
 const ROW_WIDTHS = ['w-full', 'w-3/4', 'w-5/6', 'w-1/2'] as const;
 
-function joinClasses(...classes: Array<string | false | null | undefined>): string {
-  return classes.filter(Boolean).join(' ');
-}
-
 /** 终端骨架：暗绿条带 steps(3) 脉冲（.t-anim-skeleton，reduced-motion 自动静止）。 */
 export function TSkeleton({ rows = 3, className }: TSkeletonProps) {
   const count = Math.max(1, Math.floor(rows));
   return (
-    <div aria-hidden className={joinClasses('flex flex-col gap-2.5', className)}>
+    <div aria-hidden className={cn('flex flex-col gap-2.5', className)}>
       {Array.from({ length: count }, (_, index) => (
         <div
           key={index}
-          className={joinClasses(
+          className={cn(
             't-anim-skeleton h-3 rounded-none bg-[var(--t-noise)]',
             ROW_WIDTHS[index % ROW_WIDTHS.length],
           )}
@@ -27,3 +23,4 @@ export function TSkeleton({ rows = 3, className }: TSkeletonProps) {
     </div>
   );
 }
+import { cn } from '@/lib/utils';

@@ -16,7 +16,7 @@ import type { Circle } from '@skynet/shared';
 interface CircleInfoPanelProps {
   circle: Circle;
   compact?: boolean;
-  onSubscriptionChanged?: () => Promise<void>;
+  onMembershipChanged?: () => Promise<void>;
 }
 
 const formatTelemetryCount = (value: number) => formatNumber(Math.max(0, Math.round(value)));
@@ -24,31 +24,31 @@ const formatTelemetryCount = (value: number) => formatNumber(Math.max(0, Math.ro
 export function CircleInfoPanel({
   circle,
   compact = false,
-  onSubscriptionChanged,
+  onMembershipChanged,
 }: CircleInfoPanelProps) {
   const { t } = useTranslation();
   const toast = useToast();
   const { isAuthenticated, agent } = useAuth();
-  const [subscriptionBusy, setSubscriptionBusy] = useState(false);
-  const canSubscribe = isAuthenticated && Boolean(agent);
-  const subscriptionDisabledReason = !isAuthenticated
+  const [membershipBusy, setMembershipBusy] = useState(false);
+  const canJoin = isAuthenticated && Boolean(agent);
+  const membershipDisabledReason = !isAuthenticated
     ? t('forum.loginRequired')
     : !agent
       ? t('forum.noAgent')
       : undefined;
-  const subscriptionLabel = !isAuthenticated
-    ? t('circles.loginToSubscribe')
+  const membershipLabel = !isAuthenticated
+    ? t('circles.loginToJoin')
     : !agent
       ? t('forum.noAgent')
-      : circle.subscribed
-        ? t('circles.unsubscribe')
-        : t('circles.subscribe');
+      : circle.joined
+        ? t('circles.leave')
+        : t('circles.join');
   const panelQuery = useQuery({
     queryKey: ['circles', circle.id, 'panel'],
     queryFn: () => circleApi.getCirclePanel(circle.id),
   });
 
-  const handleSubscription = async () => {
+  const handleMembership = async () => {
     if (!isAuthenticated) {
       toast.error(t('forum.loginRequired'));
       return;
@@ -57,23 +57,23 @@ export function CircleInfoPanel({
       toast.error(t('forum.noAgent'));
       return;
     }
-    if (subscriptionBusy) return;
+    if (membershipBusy) return;
 
-    setSubscriptionBusy(true);
+    setMembershipBusy(true);
     try {
-      if (circle.subscribed) {
-        await circleApi.unsubscribe(circle.id);
-        toast.success(t('circles.unsubscribed'));
+      if (circle.joined) {
+        await circleApi.leave(circle.id);
+        toast.success(t('circles.left'));
       } else {
-        await circleApi.subscribe(circle.id);
-        toast.success(t('circles.subscribed'));
+        await circleApi.join(circle.id);
+        toast.success(t('circles.joined'));
       }
-      await onSubscriptionChanged?.();
+      await onMembershipChanged?.();
     } catch (error) {
-      console.error('Circle detail subscription failed:', error);
-      toast.error(t('circles.subscriptionFailed'));
+      console.error('Circle membership update failed:', error);
+      toast.error(t('circles.membershipFailed'));
     } finally {
-      setSubscriptionBusy(false);
+      setMembershipBusy(false);
     }
   };
 
@@ -90,33 +90,31 @@ export function CircleInfoPanel({
           <h2 className="min-w-0 truncate text-base font-black tracking-tight text-white">
             /{circle.name}
           </h2>
-          {circle.kind === 'OFFICIAL' ? (
-            <TTag color="accent">{t('circles.official')}</TTag>
-          ) : null}
+          {circle.kind === 'OFFICIAL' ? <TTag color="accent">{t('circles.official')}</TTag> : null}
         </div>
         <Timecode date={circle.createdAt} withDate className="mt-1 block" />
         <p className="mt-3 text-sm leading-relaxed text-[var(--t-text)]/70">{circle.topic}</p>
 
         <TButton
-          variant={circle.subscribed ? 'secondary' : 'primary'}
-          title={subscriptionDisabledReason}
-          disabled={subscriptionBusy || !canSubscribe}
-          onClick={handleSubscription}
+          variant={circle.joined ? 'secondary' : 'primary'}
+          title={membershipDisabledReason}
+          disabled={membershipBusy || !canJoin}
+          onClick={handleMembership}
           className="mt-4 w-full"
         >
-          {circle.subscribed ? <BellOff className="h-3 w-3" /> : <Bell className="h-3 w-3" />}
-          {subscriptionLabel}
+          {circle.joined ? <BellOff className="h-3 w-3" /> : <Bell className="h-3 w-3" />}
+          {membershipLabel}
         </TButton>
 
         <dl className="mt-4 divide-y divide-[var(--t-noise2)] border-y border-[var(--t-noise2)]">
           <div className="flex items-center justify-between gap-3 py-2">
             <dt className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
               <Users className="h-3 w-3" />
-              {t('circles.subscribers')}
+              {t('circles.members')}
             </dt>
             <dd>
               <span className="inline-block whitespace-nowrap font-mono text-sm font-semibold tabular-nums text-white">
-                {formatTelemetryCount(circle.subscriberCount)}
+                {formatTelemetryCount(circle.memberCount)}
               </span>
             </dd>
           </div>
@@ -181,7 +179,10 @@ export function CircleInfoPanel({
                   className="group flex items-center justify-between gap-3 py-2 text-xs text-[var(--t-text)]/70 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)]"
                 >
                   <span className="min-w-0 truncate">{post.title}</span>
-                  <Timecode date={post.createdAt} className="shrink-0 group-hover:text-[var(--t-accent)]" />
+                  <Timecode
+                    date={post.createdAt}
+                    className="shrink-0 group-hover:text-[var(--t-accent)]"
+                  />
                 </Link>
               ))
             ) : (

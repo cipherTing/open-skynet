@@ -2,10 +2,15 @@
 
 import Link from 'next/link';
 import { useMemo, useState, type ReactNode } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { skipToken, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FilePlus2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import type { CircleMaintenanceLogItem, CircleProposalStatus } from '@skynet/shared';
+import type {
+  CircleMaintenanceLogItem,
+  CircleMaintenanceLogResponse,
+  CircleProposalListResponse,
+  CircleProposalStatus,
+} from '@skynet/shared';
 import { useAuth } from '@/contexts/AuthContext';
 import { circleApi } from '@/lib/api';
 import { circleKeys } from '@/lib/query-keys';
@@ -15,6 +20,10 @@ import { TButton, TPanel, Timecode } from '@/components/ui/terminal';
 import { CreateCircleProposalModal } from './CreateCircleProposalModal';
 import { CircleMaintenanceRecordDialog } from './CircleMaintenanceRecordDialog';
 import { PageHeader } from '@/components/layout/PageHeader';
+import { useCursorPaginationRetry } from '@/hooks/useCursorPaginationRetry';
+
+const PROPOSAL_PAGE_SIZE = 50;
+const MAINTENANCE_LOG_PAGE_SIZE = 10;
 
 /** 告警色条：进行中=荧光绿，被否决/终止=琥珀，已结=暗绿。 */
 function proposalRailClass(status: CircleProposalStatus): string {
@@ -38,32 +47,71 @@ export function CircleCoBuildPage({ slug }: { slug: string }) {
     enabled: !authLoading && isAuthenticated,
   });
   const circle = circleQuery.data;
-  const proposalsQuery = useQuery({
-    queryKey: circle ? circleKeys.proposalList(circle.id, 'all') : ['circles', 'co-build', slug],
-    queryFn: () => circleApi.proposals(circle!.id, { pageSize: 50 }),
+  const proposalsQueryKey = circle
+    ? circleKeys.proposalList(viewerKey, circle.id, 'all')
+    : (['circles', 'co-build', viewerKey, slug] as const);
+  const proposalsQuery = useInfiniteQuery({
+    queryKey: proposalsQueryKey,
+    queryFn: circle
+      ? ({ pageParam }) =>
+          circleApi.proposals(circle.id, {
+            cursor: pageParam ?? undefined,
+            limit: PROPOSAL_PAGE_SIZE,
+          })
+      : skipToken,
+    initialPageParam: null,
+    getNextPageParam: (lastPage: CircleProposalListResponse) => lastPage.nextCursor ?? undefined,
     enabled: isAuthenticated && Boolean(circle),
   });
-  const logsQuery = useQuery({
-    queryKey: circle
-      ? circleKeys.maintenanceLogPage(circle.id, { page: 1, pageSize: 10, ...recordDateRange })
-      : ['circles', 'records', slug],
-    queryFn: () =>
-      circleApi.maintenanceLogs(circle!.id, { page: 1, pageSize: 10, ...recordDateRange }),
+  const logsQueryKey = circle
+    ? circleKeys.maintenanceLogPage(circle.id, {
+        limit: MAINTENANCE_LOG_PAGE_SIZE,
+        ...recordDateRange,
+      })
+    : (['circles', 'records', slug] as const);
+  const logsQuery = useInfiniteQuery({
+    queryKey: logsQueryKey,
+    queryFn: circle
+      ? ({ pageParam }) =>
+          circleApi.maintenanceLogs(circle.id, {
+            cursor: pageParam ?? undefined,
+            limit: MAINTENANCE_LOG_PAGE_SIZE,
+            ...recordDateRange,
+          })
+      : skipToken,
+    initialPageParam: null,
+    getNextPageParam: (lastPage: CircleMaintenanceLogResponse) => lastPage.nextCursor ?? undefined,
     enabled: isAuthenticated && Boolean(circle),
   });
+  const retryProposals = useCursorPaginationRetry({
+    queryKey: proposalsQueryKey,
+    error: proposalsQuery.error,
+    isNextPageError: proposalsQuery.isFetchNextPageError,
+    fetchNextPage: proposalsQuery.fetchNextPage,
+    refetch: proposalsQuery.refetch,
+  });
+  const retryLogs = useCursorPaginationRetry({
+    queryKey: logsQueryKey,
+    error: logsQuery.error,
+    isNextPageError: logsQuery.isFetchNextPageError,
+    fetchNextPage: logsQuery.fetchNextPage,
+    refetch: logsQuery.refetch,
+  });
+  const proposals = useMemo(
+    () => proposalsQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [proposalsQuery.data?.pages],
+  );
+  const maintenanceLogs = useMemo(
+    () => logsQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [logsQuery.data?.pages],
+  );
   const active = useMemo(
-    () =>
-      proposalsQuery.data?.items.filter(
-        (item) => item.status === 'DISCUSSION' || item.status === 'VOTING',
-      ) ?? [],
-    [proposalsQuery.data],
+    () => proposals.filter((item) => item.status === 'DISCUSSION' || item.status === 'VOTING'),
+    [proposals],
   );
   const history = useMemo(
-    () =>
-      proposalsQuery.data?.items.filter(
-        (item) => item.status !== 'DISCUSSION' && item.status !== 'VOTING',
-      ) ?? [],
-    [proposalsQuery.data],
+    () => proposals.filter((item) => item.status !== 'DISCUSSION' && item.status !== 'VOTING'),
+    [proposals],
   );
 
   if (!authLoading && !isAuthenticated) {
@@ -96,7 +144,7 @@ export function CircleCoBuildPage({ slug }: { slug: string }) {
   const refresh = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: circleKeys.detail(viewerKey, slug) }),
-      queryClient.invalidateQueries({ queryKey: circleKeys.proposals(circle.id) }),
+      queryClient.invalidateQueries({ queryKey: circleKeys.proposals(viewerKey, circle.id) }),
       queryClient.invalidateQueries({ queryKey: circleKeys.maintenanceLogs(circle.id) }),
     ]);
   };
@@ -160,21 +208,40 @@ export function CircleCoBuildPage({ slug }: { slug: string }) {
                 circleSlug={circle.slug}
                 empty={t('circles.coBuild.noHistory')}
               />
+              {proposalsQuery.hasNextPage || proposalsQuery.isFetchNextPageError ? (
+                <div className="flex justify-center">
+                  <TButton
+                    variant="secondary"
+                    disabled={proposalsQuery.isFetchingNextPage}
+                    onClick={() =>
+                      void (proposalsQuery.isFetchNextPageError
+                        ? retryProposals()
+                        : proposalsQuery.fetchNextPage({ cancelRefetch: false }))
+                    }
+                  >
+                    {proposalsQuery.isFetchNextPageError
+                      ? t('app.retry')
+                      : proposalsQuery.isFetchingNextPage
+                        ? t('circles.coBuild.loadingMore')
+                        : t('circles.coBuild.loadMore')}
+                  </TButton>
+                </div>
+              ) : null}
             </div>
             <aside className="border-l border-[var(--t-noise)] pl-0 xl:pl-5">
               <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                 LOG // {t('circles.coBuild.records')}
               </p>
-              {logsQuery.isPending ? (
+              {logsQuery.isPending && maintenanceLogs.length === 0 ? (
                 <div className="py-6">
                   <InlineLoading label={t('circles.coBuild.loading')} />
                 </div>
-              ) : logsQuery.isError ? (
+              ) : logsQuery.isError && maintenanceLogs.length === 0 ? (
                 <div className="py-5 text-xs text-[var(--t-sub)]">
                   <p>{t('circles.coBuild.recordsFailed')}</p>
                   <button
                     type="button"
-                    onClick={() => void logsQuery.refetch()}
+                    onClick={() => void retryLogs()}
                     className="mt-2 font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-accent)] hover:text-white"
                   >
                     {t('app.retry')}
@@ -182,8 +249,8 @@ export function CircleCoBuildPage({ slug }: { slug: string }) {
                 </div>
               ) : (
                 <ol className="mt-3 space-y-3">
-                  {logsQuery.data.items.length ? (
-                    logsQuery.data.items.map((log) => (
+                  {maintenanceLogs.length ? (
+                    maintenanceLogs.map((log) => (
                       <MaintenanceRecordItem
                         key={log.id}
                         log={log}
@@ -196,6 +263,26 @@ export function CircleCoBuildPage({ slug }: { slug: string }) {
                       {t('circles.coBuild.noRecords')}
                     </li>
                   )}
+                  {logsQuery.hasNextPage ? (
+                    <li>
+                      <button
+                        type="button"
+                        disabled={logsQuery.isFetchingNextPage}
+                        onClick={() =>
+                          void (logsQuery.isFetchNextPageError
+                            ? retryLogs()
+                            : logsQuery.fetchNextPage({ cancelRefetch: false }))
+                        }
+                        className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)] disabled:opacity-50"
+                      >
+                        {logsQuery.isFetchNextPageError
+                          ? t('app.retry')
+                          : logsQuery.isFetchingNextPage
+                            ? t('circles.coBuild.loadingMore')
+                            : t('circles.coBuild.loadMoreRecords')}
+                      </button>
+                    </li>
+                  ) : null}
                 </ol>
               )}
             </aside>

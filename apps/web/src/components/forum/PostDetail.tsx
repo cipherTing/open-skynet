@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useCallback, useState, useEffect, useMemo, useRef, type TransitionEvent } from 'react';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, BellRing, Bookmark, BookmarkCheck, Quote, X } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -21,14 +21,23 @@ import { ReplyInput } from './ReplyInput';
 import { ErrorState } from '@/components/ui/LoadingState';
 import { AuthRequiredDialog, AuthRequiredState } from '@/components/ui/AuthRequiredDialog';
 import { TEmpty, TSkeleton, Timecode } from '@/components/ui/terminal';
+import { VirtualList } from '@/components/ui/VirtualList';
+import { usePageScrollViewport } from '@/components/layout/PageScrollViewport';
 import { ApiError, forumApi } from '@/lib/api';
 import { forumKeys, watchKeys } from '@/lib/query-keys';
 import { notifyProgressionUpdated } from '@/lib/progression-events';
-import { formatNumber } from '@/lib/utils';
+import { cn, formatNumber } from '@/lib/utils';
 import { useOwnerOperation } from '@/contexts/OwnerOperationContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/components/ui/SignalToast';
-import type { FeedbackType, ForumPost, ForumQuoteSourceType, ForumReply } from '@skynet/shared';
+import { useCursorPaginationRetry } from '@/hooks/useCursorPaginationRetry';
+import type {
+  FeedbackType,
+  ForumPost,
+  ForumQuoteSourceType,
+  ForumReply,
+  ForumReplySelection,
+} from '@skynet/shared';
 
 interface PostDetailProps {
   postId: string;
@@ -41,8 +50,108 @@ interface ReplyQuoteDraft {
   text: string;
 }
 
+const REPLY_THREAD_ESTIMATED_HEIGHT = 220;
+const SELECTED_REPLY_EXIT_TRANSITION_PROPERTY = 'grid-template-rows';
+const REDUCED_MOTION_MEDIA_QUERY = '(prefers-reduced-motion: reduce)';
+
 export function PostDetail({ postId }: PostDetailProps) {
   return <PostDetailContent key={postId} postId={postId} />;
+}
+
+interface SelectedReplyPanelProps {
+  postId: string;
+  selection: ForumReplySelection | undefined;
+  isPending: boolean;
+  isError: boolean;
+  onDismiss: () => void;
+  onReplyCreated: () => Promise<void>;
+  onReplyUpdated: () => Promise<void>;
+}
+
+function SelectedReplyPanel({
+  postId,
+  selection,
+  isPending,
+  isError,
+  onDismiss,
+  onReplyCreated,
+  onReplyUpdated,
+}: SelectedReplyPanelProps) {
+  const { t } = useTranslation();
+  const [isVisible, setIsVisible] = useState(true);
+  const [isClosing, setIsClosing] = useState(false);
+
+  const dismiss = () => {
+    if (window.matchMedia(REDUCED_MOTION_MEDIA_QUERY).matches) {
+      setIsVisible(false);
+      onDismiss();
+      return;
+    }
+    setIsClosing(true);
+  };
+
+  const handleTransitionEnd = (event: TransitionEvent<HTMLDivElement>) => {
+    if (
+      event.target !== event.currentTarget ||
+      event.propertyName !== SELECTED_REPLY_EXIT_TRANSITION_PROPERTY ||
+      !isClosing
+    ) {
+      return;
+    }
+    setIsVisible(false);
+    onDismiss();
+  };
+
+  if (!isVisible) return null;
+
+  return (
+    <div
+      className={cn(
+        'sticky top-2 z-20 grid overflow-hidden transition-[grid-template-rows,opacity,margin-bottom] duration-300 ease-out motion-reduce:transition-none',
+        isClosing ? 'mb-0 grid-rows-[0fr] opacity-0' : 'mb-3 grid-rows-[1fr] opacity-100',
+      )}
+      onTransitionEnd={handleTransitionEnd}
+    >
+      <div className="min-h-0 overflow-hidden">
+        <div
+          className={`selected-reply-shell border p-2.5 ${selection ? 'selected-reply-pulse' : ''}`}
+        >
+          <div className="mb-2 flex items-center justify-between gap-3 px-1">
+            <span className="inline-flex items-center border border-border-accent bg-accent-muted px-2 py-1 font-mono text-[11px] text-accent">
+              {t('replyThread.selected')}
+            </span>
+            <button
+              type="button"
+              aria-label={t('replyThread.closeSelected')}
+              title={t('replyThread.closeSelected')}
+              onClick={dismiss}
+              className="flex h-7 w-7 items-center justify-center text-text-tertiary transition-colors hover:bg-surface-3 hover:text-text-primary"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          {isPending ? (
+            <div role="status" aria-label={t('app.loading')} className="px-2 py-3">
+              <TSkeleton rows={3} />
+            </div>
+          ) : isError || !selection ? (
+            <p className="px-2 py-5 text-center font-mono text-xs font-semibold text-danger">
+              {t('replyThread.selectedLoadFailed')}
+            </p>
+          ) : (
+            <ReplyThread
+              reply={selection.rootReply}
+              postId={postId}
+              highlightedReplyId={selection.selectedReplyId}
+              domIdPrefix="selected-reply"
+              onReplyCreated={onReplyCreated}
+              onReplyUpdated={onReplyUpdated}
+            />
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function PostDetailContent({ postId }: PostDetailProps) {
@@ -52,7 +161,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
   const highlightedReplyId = searchParams.get('replyId');
   const selectedReplyId = highlightedReplyId ?? '';
   const selectionKey = highlightedReplyId ? `${postId}:${highlightedReplyId}` : null;
-  const [dismissedSelectionKey, setDismissedSelectionKey] = useState<string | null>(null);
+  const [selectedReplyLayoutVersion, setSelectedReplyLayoutVersion] = useState(0);
   const [favoriteBusy, setFavoriteBusy] = useState(false);
   const [watchBusy, setWatchBusy] = useState(false);
   const activePostIdRef = useRef(postId);
@@ -65,14 +174,17 @@ function PostDetailContent({ postId }: PostDetailProps) {
   const ownerOperationBlocked = isAuthenticated && !!agent && !ownerOperationEnabled;
   const toast = useToast();
   const queryClient = useQueryClient();
+  const scrollElement = usePageScrollViewport();
   const viewerKey = user?.id ?? 'anonymous';
   const postQuery = useQuery({
     queryKey: forumKeys.post(viewerKey, postId),
     queryFn: () => forumApi.getPost(postId),
     enabled: !authLoading && isAuthenticated,
   });
+  const repliesQueryKey = forumKeys.replies(viewerKey, postId);
   const repliesQuery = useInfiniteQuery({
-    queryKey: forumKeys.replies(viewerKey, postId),
+    queryKey: repliesQueryKey,
+    retry: false,
     queryFn: ({ pageParam }) =>
       forumApi.listReplies(postId, {
         cursor: pageParam || undefined,
@@ -89,9 +201,29 @@ function PostDetailContent({ postId }: PostDetailProps) {
     enabled: !authLoading && isAuthenticated && selectedReplyId.length > 0,
   });
   const post = postQuery.data ?? null;
-  const replies = repliesQuery.data?.pages.flatMap((page) => page.items) ?? [];
+  const replies = useMemo(
+    () => repliesQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [repliesQuery.data?.pages],
+  );
+  const retryReplies = useCursorPaginationRetry({
+    queryKey: repliesQueryKey,
+    error: repliesQuery.error,
+    isNextPageError: repliesQuery.isFetchNextPageError,
+    fetchNextPage: repliesQuery.fetchNextPage,
+    refetch: repliesQuery.refetch,
+  });
   const loading = postQuery.isPending;
   const hasPostError = postQuery.isError;
+  const handleRepliesNearEnd = useCallback(() => {
+    if (
+      repliesQuery.hasNextPage &&
+      !repliesQuery.isFetchingNextPage &&
+      !repliesQuery.isFetchNextPageError &&
+      replies.length > 0
+    ) {
+      void repliesQuery.fetchNextPage({ cancelRefetch: false });
+    }
+  }, [replies.length, repliesQuery]);
 
   useEffect(() => {
     activePostIdRef.current = postId;
@@ -553,45 +685,17 @@ function PostDetailContent({ postId }: PostDetailProps) {
           </div>
         )}
 
-        {selectionKey && dismissedSelectionKey !== selectionKey ? (
-          <div className="sticky top-2 z-20 mb-3">
-            <div
-              className={`selected-reply-shell border p-2.5 ${selectedReplyQuery.data ? 'selected-reply-pulse' : ''}`}
-            >
-              <div className="mb-2 flex items-center justify-between gap-3 px-1">
-                <span className="inline-flex items-center border border-border-accent bg-accent-muted px-2 py-1 font-mono text-[11px] text-accent">
-                  {t('replyThread.selected')}
-                </span>
-                <button
-                  type="button"
-                  aria-label={t('replyThread.closeSelected')}
-                  title={t('replyThread.closeSelected')}
-                  onClick={() => setDismissedSelectionKey(selectionKey)}
-                  className="flex h-7 w-7 items-center justify-center text-text-tertiary transition-colors hover:bg-surface-3 hover:text-text-primary"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-              {selectedReplyQuery.isPending ? (
-                <div role="status" aria-label={t('app.loading')} className="px-2 py-3">
-                  <TSkeleton rows={3} />
-                </div>
-              ) : selectedReplyQuery.isError || !selectedReplyQuery.data ? (
-                <p className="px-2 py-5 text-center font-mono text-xs font-semibold text-danger">
-                  {t('replyThread.selectedLoadFailed')}
-                </p>
-              ) : (
-                <ReplyThread
-                  reply={selectedReplyQuery.data.rootReply}
-                  postId={postId}
-                  highlightedReplyId={selectedReplyQuery.data.selectedReplyId}
-                  domIdPrefix="selected-reply"
-                  onReplyCreated={refreshReplyCreatedData}
-                  onReplyUpdated={refreshReplyData}
-                />
-              )}
-            </div>
-          </div>
+        {selectionKey ? (
+          <SelectedReplyPanel
+            key={selectionKey}
+            postId={postId}
+            selection={selectedReplyQuery.data}
+            isPending={selectedReplyQuery.isPending}
+            isError={selectedReplyQuery.isError}
+            onDismiss={() => setSelectedReplyLayoutVersion((version) => version + 1)}
+            onReplyCreated={refreshReplyCreatedData}
+            onReplyUpdated={refreshReplyData}
+          />
         ) : null}
 
         <div>
@@ -601,19 +705,50 @@ function PostDetailContent({ postId }: PostDetailProps) {
             </div>
           )}
 
-          {replies.map((reply) => (
-            <ReplyThread
-              key={reply.id}
-              reply={reply}
-              postId={postId}
-              highlightedReplyId={highlightedReplyId}
-              onReplyCreated={refreshReplyCreatedData}
-              onReplyUpdated={refreshReplyData}
+          {replies.length > 0 ? (
+            <VirtualList
+              items={replies}
+              scrollElement={scrollElement}
+              getItemKey={(reply) => reply.id}
+              estimateSize={() => REPLY_THREAD_ESTIMATED_HEIGHT}
+              onNearEnd={handleRepliesNearEnd}
+              layoutVersion={`${selectionKey ?? 'none'}:${selectedReplyLayoutVersion}`}
+              tail={
+                repliesQuery.isFetchingNextPage ? (
+                  <div className="pt-5 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                    {t('forum.loadingMoreReplies')}
+                  </div>
+                ) : repliesQuery.isError ? (
+                  <div className="mt-3 border border-danger/40 border-l-2 border-l-danger bg-danger/10 px-4 py-3 text-center font-mono text-[12px] tracking-wide text-danger">
+                    <p>{t('forum.repliesLoadFailed')}</p>
+                    <button
+                      type="button"
+                      onClick={() => void retryReplies()}
+                      className="mt-2 text-accent transition-colors hover:text-accent-dim"
+                    >
+                      {t('app.retry')}
+                    </button>
+                  </div>
+                ) : !repliesQuery.hasNextPage ? (
+                  <div className="py-5 text-center font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                    {t('forum.replyEnd')}
+                  </div>
+                ) : null
+              }
+              renderItem={(reply) => (
+                <ReplyThread
+                  reply={reply}
+                  postId={postId}
+                  highlightedReplyId={highlightedReplyId}
+                  onReplyCreated={refreshReplyCreatedData}
+                  onReplyUpdated={refreshReplyData}
+                />
+              )}
             />
-          ))}
+          ) : null}
         </div>
 
-        {repliesQuery.isError && (
+        {repliesQuery.isError && replies.length === 0 && (
           <div className="mt-3 border border-danger/40 border-l-2 border-l-danger bg-danger/10 px-4 py-3 text-center font-mono text-[12px] tracking-wide text-danger">
             <p>{t('forum.repliesLoadFailed')}</p>
             <button
@@ -622,21 +757,6 @@ function PostDetailContent({ postId }: PostDetailProps) {
               className="mt-2 text-accent transition-colors hover:text-accent-dim"
             >
               {t('app.retry')}
-            </button>
-          </div>
-        )}
-
-        {repliesQuery.hasNextPage && (
-          <div className="flex pt-5">
-            <button
-              type="button"
-              disabled={repliesQuery.isFetchingNextPage}
-              onClick={() => void repliesQuery.fetchNextPage()}
-              className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)] disabled:cursor-wait disabled:opacity-50"
-            >
-              {repliesQuery.isFetchingNextPage
-                ? t('forum.loadingMoreReplies')
-                : `[ ${t('forum.loadMoreReplies')} ]`}
             </button>
           </div>
         )}

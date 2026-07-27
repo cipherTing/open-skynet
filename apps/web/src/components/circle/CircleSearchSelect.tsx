@@ -1,14 +1,23 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Check, Search } from 'lucide-react';
+import { Check, ChevronsUpDown } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import type { Circle } from '@skynet/shared';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { TButton } from '@/components/ui/terminal';
+import { useAuth } from '@/contexts/AuthContext';
 import { circleApi } from '@/lib/api';
 import { circleKeys } from '@/lib/query-keys';
-import { useAuth } from '@/contexts/AuthContext';
-import { TInput } from '@/components/ui/terminal';
-import type { Circle } from '@skynet/shared';
 
 interface CircleSearchSelectProps {
   selectedCircle: Circle | null;
@@ -28,6 +37,7 @@ export function CircleSearchSelect({
   const { t } = useTranslation();
   const { user } = useAuth();
   const viewerKey = user?.id ?? 'anonymous';
+  const [open, setOpen] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [debouncedSearchText, setDebouncedSearchText] = useState('');
 
@@ -41,69 +51,102 @@ export function CircleSearchSelect({
   const searchQuery = useQuery({
     queryKey: circleKeys.search(viewerKey, debouncedSearchText, SEARCH_LIMIT),
     queryFn: () => circleApi.searchCircles({ q: debouncedSearchText, limit: SEARCH_LIMIT }),
-    enabled: debouncedSearchText.length > 0,
+    enabled: open && debouncedSearchText.length > 0,
   });
-
-  const items = searchQuery.data?.items ?? EMPTY_CIRCLES;
-  const displayItems = useMemo(() => {
-    if (debouncedSearchText.length > 0) return items;
-    return selectedCircle ? [selectedCircle] : [];
-  }, [debouncedSearchText.length, items, selectedCircle]);
+  const items =
+    debouncedSearchText.length > 0
+      ? (searchQuery.data?.items ?? EMPTY_CIRCLES)
+      : selectedCircle
+        ? [selectedCircle]
+        : EMPTY_CIRCLES;
+  const emptyLabel = searchQuery.isFetching
+    ? t('circles.searching')
+    : debouncedSearchText
+      ? t('circles.noSearchResults')
+      : t('circles.selectedCircleEmpty');
 
   return (
-    <div className="space-y-2">
-      <div className="group relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--t-faint)] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-focus-within:text-[var(--t-accent)]" />
-        <TInput
-          type="text"
-          value={searchText}
+    <Popover
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (!nextOpen) {
+          setSearchText('');
+          setDebouncedSearchText('');
+        }
+      }}
+    >
+      <PopoverTrigger asChild>
+        <TButton
+          type="button"
+          variant="secondary"
           disabled={disabled}
-          onChange={(event) => setSearchText(event.target.value)}
-          placeholder={t('circles.searchPlaceholder')}
-          className="pl-9"
-        />
-      </div>
-
-      <div className="border border-[var(--t-noise)] bg-black">
-        {displayItems.length > 0 ? (
-          <div className="max-h-52 overflow-y-auto p-1">
-            {displayItems.map((circle) => {
-              const active = selectedCircle?.id === circle.id;
-              return (
-                <button
-                  key={circle.id}
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => {
-                    onSelect(circle);
-                    setSearchText('');
-                    setDebouncedSearchText('');
-                  }}
-                  className={`flex w-full items-start justify-between gap-3 px-3 py-2 text-left transition-colors duration-100 [transition-timing-function:steps(2,end)] ${
-                    active
-                      ? 'bg-[var(--t-accent)]/10 text-[var(--t-accent)]'
-                      : 'text-[var(--t-text)]/70 hover:bg-[var(--t-accent)]/5 hover:text-white'
-                  } disabled:cursor-not-allowed disabled:opacity-60`}
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-bold">/{circle.name}</span>
-                    <span className="mt-0.5 block line-clamp-1 text-xs text-[var(--t-sub)]">{circle.topic}</span>
-                  </span>
-                  {active && <Check className="mt-0.5 h-4 w-4 shrink-0" />}
-                </button>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="px-3 py-3 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
-            {searchQuery.isFetching
-              ? t('circles.searching')
-              : debouncedSearchText
-                ? t('circles.noSearchResults')
-                : t('circles.selectedCircleEmpty')}
-          </div>
-        )}
-      </div>
-    </div>
+          aria-expanded={open}
+          className="h-auto min-h-10 w-full justify-between px-3 py-2 text-left normal-case tracking-normal"
+        >
+          <span className="min-w-0">
+            {selectedCircle ? (
+              <>
+                <span className="block truncate text-sm font-bold text-white/85">
+                  /{selectedCircle.name}
+                </span>
+                <span className="mt-0.5 block truncate text-[11px] text-[var(--t-sub)]">
+                  {selectedCircle.topic}
+                </span>
+              </>
+            ) : (
+              <span className="text-sm text-[var(--t-faint)]">
+                {t('circles.searchPlaceholder')}
+              </span>
+            )}
+          </span>
+          <ChevronsUpDown className="ml-3 h-4 w-4 shrink-0 text-[var(--t-faint)]" />
+        </TButton>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-0">
+        <Command shouldFilter={false}>
+          <CommandInput
+            value={searchText}
+            onValueChange={setSearchText}
+            placeholder={t('circles.searchPlaceholder')}
+          />
+          <CommandList>
+            {items.length === 0 ? <CommandEmpty>{emptyLabel}</CommandEmpty> : null}
+            {items.length > 0 ? (
+              <CommandGroup heading={t('circles.searchResults')}>
+                {items.map((circle) => {
+                  const active = selectedCircle?.id === circle.id;
+                  return (
+                    <CommandItem
+                      key={circle.id}
+                      value={circle.id}
+                      onSelect={() => {
+                        onSelect(circle);
+                        setOpen(false);
+                        setSearchText('');
+                        setDebouncedSearchText('');
+                      }}
+                      className="items-start gap-3"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-bold">/{circle.name}</span>
+                        <span className="mt-0.5 block line-clamp-1 text-xs text-[var(--t-sub)]">
+                          {circle.topic}
+                        </span>
+                      </span>
+                      <Check
+                        className={`mt-0.5 h-4 w-4 shrink-0 ${
+                          active ? 'opacity-100' : 'opacity-0'
+                        }`}
+                      />
+                    </CommandItem>
+                  );
+                })}
+              </CommandGroup>
+            ) : null}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }

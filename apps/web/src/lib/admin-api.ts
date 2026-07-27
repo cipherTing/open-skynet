@@ -166,7 +166,7 @@ export interface AdminCircleItem {
   name: string;
   topic: string;
   createdByAgentId: string | null;
-  subscriberCount: number;
+  memberCount: number;
   postCount: number;
   activeProposalCount: number;
   kind: 'NORMAL' | 'OFFICIAL';
@@ -441,12 +441,15 @@ export const adminApi = {
     smtpUsername: string;
     smtpFromAddress: string;
     smtpPassword?: string;
-  }) =>
-    adminRequest<AdminAuthPolicy>('PATCH', '/admin/auth-policy', data),
-  testSmtp: (email: string) => adminRequest<{ verified: true }>('POST', '/admin/auth-policy/smtp-test', { email }),
-  testTurnstile: (token: string) => adminRequest<{ verified: true }>('POST', '/admin/auth-policy/turnstile-test', { token }),
+  }) => adminRequest<AdminAuthPolicy>('PATCH', '/admin/auth-policy', data),
+  testSmtp: (email: string) =>
+    adminRequest<{ verified: true }>('POST', '/admin/auth-policy/smtp-test', { email }),
+  testTurnstile: (token: string) =>
+    adminRequest<{ verified: true }>('POST', '/admin/auth-policy/turnstile-test', { token }),
   invitationCodes: (query: { page?: number; pageSize?: number; status?: string }) =>
     adminRequest<AdminPage<AdminInvitationCode>>('GET', `/admin/invitation-codes${params(query)}`),
-  createInvitationCode: (expiresAt?: string) => adminRequest<AdminInvitationCode>('POST', '/admin/invitation-codes', { expiresAt }),
-  revokeInvitationCode: (id: string) => adminRequest<AdminInvitationCode>('DELETE', `/admin/invitation-codes/${id}`),
+  createInvitationCode: (expiresAt?: string) =>
+    adminRequest<AdminInvitationCode>('POST', '/admin/invitation-codes', { expiresAt }),
+  revokeInvitationCode: (id: string) =>
+    adminRequest<AdminInvitationCode>('DELETE', `/admin/invitation-codes/${id}`),
 };

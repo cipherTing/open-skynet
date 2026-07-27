@@ -12,6 +12,10 @@ export const commonErrors = {
   postNotFound: () => apiErrors.notFound('POST_NOT_FOUND', 'api.errors.postNotFound'),
   replyNotFound: () => apiErrors.notFound('REPLY_NOT_FOUND', 'api.errors.replyNotFound'),
   circleNotFound: () => apiErrors.notFound('CIRCLE_NOT_FOUND', 'api.errors.circleNotFound'),
+  paginationCursorInvalid: () =>
+    apiErrors.badRequest('PAGINATION_CURSOR_INVALID', 'api.errors.paginationCursorInvalid'),
+  paginationCursorExpired: () =>
+    apiErrors.badRequest('PAGINATION_CURSOR_EXPIRED', 'api.errors.paginationCursorExpired'),
 };
 
 export const authErrors = {
@@ -122,14 +126,6 @@ export const forumErrors = {
       'AUTH_REQUIRED_FOR_MORE_CONTENT',
       'api.errors.authRequiredForMoreContent',
     ),
-  replyCursorInvalid: () =>
-    apiErrors.badRequest('REPLY_CURSOR_INVALID', 'api.errors.replyCursorInvalid'),
-  hotCursorInvalid: () => apiErrors.badRequest('HOT_CURSOR_INVALID', 'api.errors.hotCursorInvalid'),
-  hotCursorExpired: () => apiErrors.gone('HOT_CURSOR_EXPIRED', 'api.errors.hotCursorExpired'),
-  postCursorInvalid: () =>
-    apiErrors.badRequest('POST_CURSOR_INVALID', 'api.errors.postCursorInvalid'),
-  privateAgentDataForbidden: () =>
-    apiErrors.forbidden('PRIVATE_AGENT_DATA_FORBIDDEN', 'api.errors.privateAgentDataForbidden'),
   quotePostScopeInvalid: () =>
     apiErrors.badRequest('QUOTE_POST_SCOPE_INVALID', 'api.errors.quotePostScopeInvalid'),
   quotedPostVersionUnavailable: () =>
@@ -144,17 +140,12 @@ export const forumErrors = {
     ),
   quoteTextMismatch: () =>
     apiErrors.badRequest('QUOTE_TEXT_MISMATCH', 'api.errors.quoteTextMismatch'),
-  latestDeepPageNotAllowed: () =>
-    apiErrors.badRequest('LATEST_DEEP_PAGE_NOT_ALLOWED', 'api.errors.latestDeepPageNotAllowed'),
-  subscribedFeedAuthRequired: () =>
-    apiErrors.unauthorized(
-      'SUBSCRIBED_FEED_AUTH_REQUIRED',
-      'api.errors.subscribedFeedAuthRequired',
-    ),
-  subscribedFeedCircleConflict: () =>
+  myCirclesFeedAuthRequired: () =>
+    apiErrors.unauthorized('MY_CIRCLES_FEED_AUTH_REQUIRED', 'api.errors.myCirclesFeedAuthRequired'),
+  myCirclesFeedCircleConflict: () =>
     apiErrors.badRequest(
-      'SUBSCRIBED_FEED_CIRCLE_CONFLICT',
-      'api.errors.subscribedFeedCircleConflict',
+      'MY_CIRCLES_FEED_CIRCLE_CONFLICT',
+      'api.errors.myCirclesFeedCircleConflict',
     ),
   postReviewTypeInvalid: () =>
     apiErrors.badRequest('POST_REVIEW_TYPE_INVALID', 'api.errors.postReviewTypeInvalid'),
@@ -289,13 +280,15 @@ export const circleProposalErrors = {
   voteImmutable: () =>
     apiErrors.conflict('COBUILD_VOTE_IMMUTABLE', 'api.errors.cobuildVoteImmutable'),
   votingClosed: () => apiErrors.conflict('COBUILD_VOTING_CLOSED', 'api.errors.cobuildVotingClosed'),
+  votersNotPublic: () =>
+    apiErrors.conflict('COBUILD_VOTERS_NOT_PUBLIC', 'api.errors.cobuildVotersNotPublic'),
   authorWithdrawalRequired: () =>
     apiErrors.forbidden(
       'COBUILD_AUTHOR_WITHDRAWAL_REQUIRED',
       'api.errors.cobuildAuthorWithdrawalRequired',
     ),
-  subscriptionRequired: () =>
-    apiErrors.forbidden('CIRCLE_SUBSCRIPTION_REQUIRED', 'api.errors.circleSubscriptionRequired'),
+  membershipRequired: () =>
+    apiErrors.forbidden('CIRCLE_MEMBERSHIP_REQUIRED', 'api.errors.circleMembershipRequired'),
   alreadyEnded: () => apiErrors.conflict('COBUILD_ALREADY_ENDED', 'api.errors.cobuildAlreadyEnded'),
   topicPayloadInvalid: () =>
     apiErrors.badRequest('COBUILD_TOPIC_PAYLOAD_INVALID', 'api.errors.cobuildTopicPayloadInvalid'),

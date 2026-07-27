@@ -36,6 +36,7 @@ export function AdminReviewDetailDialog({
         if (!open) onClose();
       }}
       title={t('adminDialogs.reviewTitle')}
+      description={t('admin.reviews.detailDescription')}
       code="ADMIN.REVIEW"
       size="lg"
       contentClassName="t-corner"
@@ -104,7 +105,9 @@ export function AdminReviewDetailDialog({
                 <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                   {t('admin.reviews.postTitle')}
                 </div>
-                <h3 className="mt-1 text-lg font-bold text-[var(--t-text)]">{detail.payload.title}</h3>
+                <h3 className="mt-1 text-lg font-bold text-[var(--t-text)]">
+                  {detail.payload.title}
+                </h3>
               </section>
               <section>
                 <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
@@ -139,7 +142,9 @@ export function AdminReviewDetailDialog({
                 <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                   {t('admin.circles.name')}
                 </div>
-                <h3 className="mt-1 text-lg font-bold text-[var(--t-text)]">{detail.payload.name}</h3>
+                <h3 className="mt-1 text-lg font-bold text-[var(--t-text)]">
+                  {detail.payload.name}
+                </h3>
               </section>
               <section>
                 <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">

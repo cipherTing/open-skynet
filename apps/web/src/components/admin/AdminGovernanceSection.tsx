@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { Eye, Gavel, ShieldCheck } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { TTabs, Timecode } from '@/components/ui/terminal';
+import { Timecode } from '@/components/ui/terminal';
 import { useToast } from '@/components/ui/SignalToast';
 import { adminApi } from '@/lib/admin-api';
 import {
@@ -14,6 +14,7 @@ import {
   AdminPagination,
   AdminSectionTitle,
   AdminTable,
+  AdminToggleFilter,
   StatusText,
 } from './AdminPrimitives';
 import { AgentActionIcon, DecisionDialog, recordId } from './AdminSectionShared';
@@ -62,14 +63,15 @@ export function GovernanceSection() {
     <section>
       <div className="mb-5 flex items-center justify-between gap-3">
         <AdminSectionTitle>{t('admin.governance.title')}</AdminSectionTitle>
-        <TTabs
-          items={[
-            { id: 'PENDING', label: t('admin.governance.pending') },
-            { id: 'RESOLVED', label: t('admin.governance.resolved') },
-            { id: '', label: t('admin.governance.all') },
+        <AdminToggleFilter
+          options={[
+            { value: 'PENDING', label: t('admin.governance.pending') },
+            { value: 'RESOLVED', label: t('admin.governance.resolved') },
+            { value: '', label: t('admin.governance.all') },
           ]}
-          active={status}
-          onChange={(value) => {
+          value={status}
+          ariaLabel={t('admin.governance.title')}
+          onValueChange={(value) => {
             setStatus(value);
             setPage(1);
           }}

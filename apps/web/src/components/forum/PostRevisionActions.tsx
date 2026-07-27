@@ -1,18 +1,19 @@
 'use client';
 
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMemo, useState } from 'react';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { Edit3, History } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import rehypeSanitize from 'rehype-sanitize';
+import remarkGfm from 'remark-gfm';
 import { useTranslation } from 'react-i18next';
-import { MAX_POST_TAGS, POST_TAG_VALUES, type ForumPost, type PostTag } from '@skynet/shared';
-import { ApiError, forumApi } from '@/lib/api';
-import { ComposerTextarea } from '@/components/ui/ComposerTextarea';
+import type { CursorPage, ForumPost, PostRevisionHistoryItem } from '@skynet/shared';
 import { TerminalDialog } from '@/components/ui/TerminalDialog';
 import { TSkeleton, Timecode } from '@/components/ui/terminal';
+import { forumApi } from '@/lib/api';
+import { ForumRevisionEditorDialog, type RevisionSubmission } from './ForumRevisionEditorDialog';
 import { PostTags } from './PostTags';
+import { useCursorPaginationRetry } from '@/hooks/useCursorPaginationRetry';
 
 interface PostRevisionActionsProps {
   post: ForumPost;
@@ -20,64 +21,43 @@ interface PostRevisionActionsProps {
   onUpdated: () => Promise<void>;
 }
 
-const FIELD_LABEL_CLASS = 'font-mono text-[11px] tracking-[0.12em] text-text-secondary';
-
 export function PostRevisionActions({ post, canEdit, onUpdated }: PostRevisionActionsProps) {
   const { t } = useTranslation();
   const [editOpen, setEditOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [title, setTitle] = useState(post.title);
-  const [content, setContent] = useState(post.content);
-  const [tags, setTags] = useState<PostTag[]>(post.tags);
-  const [hidePreviousVersion, setHidePreviousVersion] = useState(false);
-  const [hideReason, setHideReason] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-
-  const openEditor = () => {
-    setTitle(post.title);
-    setContent(post.content);
-    setTags(post.tags);
-    setHidePreviousVersion(false);
-    setHideReason('');
-    setError('');
-    setEditOpen(true);
-  };
-
-  const historyQuery = useQuery({
-    queryKey: ['forum', 'post-revisions', post.id, post.contentVersion],
-    queryFn: () => forumApi.listPostRevisions(post.id),
+  const historyQueryKey = ['forum', 'post-revisions', post.id, post.contentVersion] as const;
+  const historyQuery = useInfiniteQuery({
+    queryKey: historyQueryKey,
+    queryFn: ({ pageParam }) =>
+      forumApi.listPostRevisions(post.id, { cursor: pageParam, limit: 20 }),
+    initialPageParam: null,
+    getNextPageParam: (lastPage: CursorPage<PostRevisionHistoryItem>) =>
+      lastPage.nextCursor ?? undefined,
     enabled: historyOpen,
   });
+  const revisions = useMemo(
+    () => historyQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [historyQuery.data?.pages],
+  );
+  const retryHistory = useCursorPaginationRetry({
+    queryKey: historyQueryKey,
+    error: historyQuery.error,
+    isNextPageError: historyQuery.isFetchNextPageError,
+    fetchNextPage: historyQuery.fetchNextPage,
+    refetch: historyQuery.refetch,
+  });
 
-  const toggleTag = (tag: PostTag) => {
-    setTags((current) => {
-      if (current.includes(tag))
-        return current.length === 1 ? current : current.filter((item) => item !== tag);
-      return current.length >= MAX_POST_TAGS ? current : [...current, tag];
+  const saveRevision = async (values: RevisionSubmission) => {
+    await forumApi.revisePost(post.id, {
+      expectedVersion: post.contentVersion,
+      title: values.title,
+      content: values.content,
+      tags: values.tags,
+      hidePreviousVersion: values.hidePreviousVersion,
+      ...(values.hidePreviousVersion ? { hideReason: values.hideReason } : {}),
     });
-  };
-
-  const save = async () => {
-    if (saving) return;
-    setSaving(true);
-    setError('');
-    try {
-      await forumApi.revisePost(post.id, {
-        expectedVersion: post.contentVersion,
-        title: title.trim(),
-        content,
-        tags,
-        hidePreviousVersion,
-        ...(hidePreviousVersion ? { hideReason: hideReason.trim() } : {}),
-      });
-      await onUpdated();
-      setEditOpen(false);
-    } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : t('revisions.saveFailed'));
-    } finally {
-      setSaving(false);
-    }
+    await onUpdated();
+    setEditOpen(false);
   };
 
   return (
@@ -95,7 +75,7 @@ export function PostRevisionActions({ post, canEdit, onUpdated }: PostRevisionAc
       {canEdit ? (
         <button
           type="button"
-          onClick={openEditor}
+          onClick={() => setEditOpen(true)}
           className="inline-flex items-center gap-1 text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)]"
         >
           <Edit3 className="h-3 w-3" />
@@ -103,130 +83,24 @@ export function PostRevisionActions({ post, canEdit, onUpdated }: PostRevisionAc
         </button>
       ) : null}
 
-      <TerminalDialog
-        open={editOpen}
-        onOpenChange={(open) => {
-          if (saving) return;
-          if (open) openEditor();
-          else setEditOpen(false);
-        }}
-        title={t('revisions.editPost')}
-        code="EDIT.POST"
-        size="xl"
-        contentClassName="t-corner !fixed"
-        footer={
-          <>
-            <button
-              type="button"
-              onClick={() => setEditOpen(false)}
-              disabled={saving}
-              className="t-btn t-btn--ghost"
-            >
-              {t('app.cancel')}
-            </button>
-            <button
-              type="button"
-              onClick={() => void save()}
-              disabled={
-                saving ||
-                !title.trim() ||
-                !content.trim() ||
-                (hidePreviousVersion && hideReason.trim().length < 4)
-              }
-              className="t-btn t-btn--primary"
-            >
-              {saving ? t('revisions.saving') : t('revisions.save')}
-            </button>
-          </>
-        }
-      >
-        <div className="space-y-4">
-          <label className={`block ${FIELD_LABEL_CLASS}`}>
-            {t('createPost.postTitle')}
-            <input
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              maxLength={200}
-              className="skynet-input mt-2 w-full px-3 py-2.5 text-sm"
-            />
-          </label>
-          <div>
-            <p className={FIELD_LABEL_CLASS}>{t('createPost.tags')}</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {POST_TAG_VALUES.map((tag) => (
-                <button
-                  key={tag}
-                  type="button"
-                  aria-pressed={tags.includes(tag)}
-                  onClick={() => toggleTag(tag)}
-                  className={`border px-2.5 py-1 font-mono text-[11px] tracking-[0.08em] transition-colors ${
-                    tags.includes(tag)
-                      ? 'border-accent bg-accent-muted text-accent'
-                      : 'border-border text-text-tertiary hover:border-accent/40 hover:text-text-secondary'
-                  }`}
-                >
-                  {t(`postTags.${tag}.label`)}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <p className={`mb-2 ${FIELD_LABEL_CLASS}`}>{t('revisions.newContent')}</p>
-              <ComposerTextarea
-                value={content}
-                onChange={(event) => setContent(event.target.value)}
-                rows={14}
-                variant="framed"
-              />
-            </div>
-            <div>
-              <p className={`mb-2 ${FIELD_LABEL_CLASS}`}>{t('createPost.preview')}</p>
-              <div className="prose-deck min-h-[320px] border border-border bg-surface-3 px-4 py-3 text-sm">
-                <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
-                  {content || t('createPost.emptyPreview')}
-                </ReactMarkdown>
-              </div>
-            </div>
-          </div>
-          <label className="flex items-start gap-2 border border-border px-3 py-2.5 text-xs text-text-secondary">
-            <input
-              type="checkbox"
-              checked={hidePreviousVersion}
-              onChange={(event) => setHidePreviousVersion(event.target.checked)}
-              className="mt-0.5"
-            />
-            <span>
-              <strong className="block text-text-primary">{t('revisions.hidePrevious')}</strong>
-              {t('revisions.hidePreviousHint')}
-            </span>
-          </label>
-          {hidePreviousVersion ? (
-            <label className={`block ${FIELD_LABEL_CLASS}`}>
-              {t('revisions.hideReason')}
-              <input
-                value={hideReason}
-                onChange={(event) => setHideReason(event.target.value)}
-                maxLength={280}
-                className="skynet-input mt-2 w-full px-3 py-2.5 text-sm"
-              />
-            </label>
-          ) : null}
-          {error ? (
-            <p
-              role="alert"
-              className="border border-danger/30 border-l-2 border-l-danger bg-danger/10 px-3 py-2 text-xs text-danger"
-            >
-              {error}
-            </p>
-          ) : null}
-        </div>
-      </TerminalDialog>
+      {editOpen ? (
+        <ForumRevisionEditorDialog
+          key={`${post.id}:${post.contentVersion}`}
+          kind="post"
+          open
+          initialTitle={post.title}
+          initialContent={post.content}
+          initialTags={post.tags}
+          onOpenChange={setEditOpen}
+          onSave={saveRevision}
+        />
+      ) : null}
 
       <TerminalDialog
         open={historyOpen}
         onOpenChange={setHistoryOpen}
         title={t('revisions.postHistory')}
+        description={t('revisions.postHistoryDescription')}
         code="HISTORY.POST"
         size="lg"
         contentClassName="t-corner !fixed"
@@ -237,7 +111,7 @@ export function PostRevisionActions({ post, canEdit, onUpdated }: PostRevisionAc
               <TSkeleton rows={4} />
             </div>
           ) : null}
-          {historyQuery.data?.items.map((revision) => (
+          {revisions.map((revision) => (
             <article key={revision.version} className="border border-border bg-surface-1 p-4">
               <div className="flex items-center justify-between gap-3">
                 <strong className="font-mono text-[11px] tracking-[0.12em] text-info">
@@ -270,6 +144,24 @@ export function PostRevisionActions({ post, canEdit, onUpdated }: PostRevisionAc
           ))}
           {historyQuery.isError ? (
             <p className="text-xs text-danger">{t('revisions.loadFailed')}</p>
+          ) : null}
+          {historyQuery.hasNextPage || historyQuery.isFetchNextPageError ? (
+            <button
+              type="button"
+              disabled={historyQuery.isFetchingNextPage}
+              onClick={() =>
+                void (historyQuery.isFetchNextPageError
+                  ? retryHistory()
+                  : historyQuery.fetchNextPage({ cancelRefetch: false }))
+              }
+              className="font-mono text-[10px] uppercase tracking-[0.15em] text-info disabled:opacity-50"
+            >
+              {historyQuery.isFetchNextPageError
+                ? t('app.retry')
+                : historyQuery.isFetchingNextPage
+                  ? t('revisions.loading')
+                  : t('revisions.loadMore')}
+            </button>
           ) : null}
         </div>
       </TerminalDialog>

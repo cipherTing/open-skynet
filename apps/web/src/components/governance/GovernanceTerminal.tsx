@@ -1,6 +1,4 @@
-function joinClasses(...classes: Array<string | false | null | undefined>): string {
-  return classes.filter(Boolean).join(' ');
-}
+import { cn } from '@/lib/utils';
 
 /** 章节标记标题：CH.01 // 标题 + 1px 装饰横线。编号荧光绿、标题纯白。 */
 export function GovernanceChapterTitle({
@@ -13,11 +11,13 @@ export function GovernanceChapterTitle({
   className?: string;
 }) {
   return (
-    <div className={joinClasses('flex items-center gap-2', className)}>
+    <div className={cn('flex items-center gap-2', className)}>
       <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)]">
         {chapter}
       </span>
-      <span className="shrink-0 font-mono text-[10px] tracking-[0.15em] text-[var(--t-faint)]">{'//'}</span>
+      <span className="shrink-0 font-mono text-[10px] tracking-[0.15em] text-[var(--t-faint)]">
+        {'//'}
+      </span>
       <span className="shrink-0 text-xs font-bold text-white">{title}</span>
       <span aria-hidden className="h-px min-w-6 flex-1 bg-[var(--t-noise)]" />
     </div>
@@ -37,12 +37,17 @@ export function GovernanceAlertRail({ tone }: { tone: GovernanceRailTone }) {
   return (
     <span
       aria-hidden
-      className={joinClasses('absolute bottom-0 left-0 top-0 w-[2px]', RAIL_TONE_CLASS[tone])}
+      className={cn('absolute bottom-0 left-0 top-0 w-[2px]', RAIL_TONE_CLASS[tone])}
     />
   );
 }
 
-export type GovernanceVerdictTone = 'violation' | 'notViolation' | 'pending' | 'emergency' | 'admin';
+export type GovernanceVerdictTone =
+  | 'violation'
+  | 'notViolation'
+  | 'pending'
+  | 'emergency'
+  | 'admin';
 
 const VERDICT_STAMP_CLASS: Record<
   GovernanceVerdictTone,
@@ -94,7 +99,7 @@ export function GovernanceVerdictStamp({
   const stamp = VERDICT_STAMP_CLASS[tone];
   return (
     <span
-      className={joinClasses(
+      className={cn(
         'inline-flex border p-[2px]',
         stamp.outer,
         animate && 'motion-safe:[animation:t-glitch-shift_0.3s_steps(1)_1]',
@@ -102,7 +107,7 @@ export function GovernanceVerdictStamp({
       )}
     >
       <span
-        className={joinClasses(
+        className={cn(
           'inline-flex items-center gap-1.5 whitespace-nowrap border px-2 py-1',
           'font-mono text-[10px] font-bold uppercase leading-none tracking-[0.2em]',
           stamp.inner,
@@ -145,7 +150,7 @@ function SegmentTrack({
             : index === fullCells && hasPartialCell
               ? partialClass
               : 'bg-[var(--t-noise2)]';
-        return <span key={index} className={joinClasses('h-full flex-1', cellClass)} />;
+        return <span key={index} className={cn('h-full flex-1', cellClass)} />;
       })}
     </div>
   );
@@ -173,7 +178,7 @@ export function GovernanceVoteCompare({
   const total = violation + notViolation;
   return (
     <div
-      className={joinClasses('grid gap-2', className)}
+      className={cn('grid gap-2', className)}
       role="img"
       aria-label={`${violationLabel} ${violation} / ${notViolationLabel} ${notViolation}`}
     >

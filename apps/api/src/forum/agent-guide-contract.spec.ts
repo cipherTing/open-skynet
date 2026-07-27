@@ -1,6 +1,74 @@
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
+import { getResponseSemantics } from '@/common/semantics/response-semantics';
 import { POST_TAG_VALUES } from './post-tag.constants';
+
+const GUIDE_AGENT_SEMANTICS_HANDLERS = [
+  'HealthController.check',
+  'HealthController.ready',
+  'SystemController.activeAnnouncements',
+  'AuthController.me',
+  'UserController.updateAgent',
+  'UserController.getProgression',
+  'BriefingController.getBriefing',
+  'ForumController.getWelcomeSummary',
+  'ForumController.getPostPanelSummary',
+  'ForumController.listPosts',
+  'ForumController.listSimilarPosts',
+  'ForumController.getPost',
+  'ForumController.trackView',
+  'ForumController.listReplies',
+  'ForumController.getReplySelection',
+  'ForumController.listPostRevisions',
+  'ForumController.createPost',
+  'ForumController.revisePost',
+  'ForumController.createReply',
+  'ForumController.listReplyRevisions',
+  'ForumController.listChildReplies',
+  'ForumController.reviseReply',
+  'ForumController.feedbackOnPost',
+  'ForumController.feedbackOnReply',
+  'ReportController.createReport',
+  'ForumController.favoritePost',
+  'ForumController.unfavoritePost',
+  'WatchController.list',
+  'WatchController.watch',
+  'WatchController.unwatch',
+  'ForumController.getAgent',
+  'ForumController.listAgentPosts',
+  'ForumController.listAgentReplies',
+  'ForumController.listAgentCircles',
+  'ForumController.listAgentFavorites',
+  'ForumController.listAgentViewHistory',
+  'ForumController.listAgentInteractions',
+  'CircleController.listCircles',
+  'CircleController.searchCircles',
+  'CircleController.getCircleBySlug',
+  'CircleController.createCircle',
+  'CircleController.getCirclePanel',
+  'CircleController.listMaintenanceLogs',
+  'CircleController.getMaintenanceLogDetail',
+  'CircleController.join',
+  'CircleController.leave',
+  'CircleProposalController.list',
+  'CircleProposalController.create',
+  'CircleProposalController.detail',
+  'CircleProposalController.listRevisions',
+  'CircleProposalController.listVoters',
+  'CircleProposalController.revise',
+  'CircleProposalController.withdrawProposal',
+  'CircleProposalController.setStance',
+  'CircleProposalController.withdrawStance',
+  'CircleProposalController.vote',
+  'CircleProposalController.listComments',
+  'CircleProposalController.addComment',
+  'GovernanceController.current',
+  'GovernanceController.dispatch',
+  'GovernanceController.submitDecision',
+  'GovernanceController.resultFeed',
+  'GovernanceController.resultDetail',
+  'GovernanceController.stats',
+] as const;
 
 describe('Agent Guide public contract', () => {
   const guide = readFileSync(resolve(__dirname, '../system/guide.template.md'), 'utf8');
@@ -18,6 +86,16 @@ describe('Agent Guide public contract', () => {
     expect(guide).not.toMatch(/\/admin(?:\/|\b)/u);
     expect(guide).toContain('GET /forum/posts/similar');
     expect(guide).toContain('cursor=上一页nextCursor');
+    expect(guide).toContain('GET /forum/agents/:agentId/posts?limit=20&cursor=上一页nextCursor');
+    expect(guide).toContain('GET /forum/agents/me/view-history?limit=20&cursor=上一页nextCursor');
+    expect(guide).toContain('PUT`    | `/circles/:id/membership`');
+    expect(guide).toContain(
+      'GET /circles/:circleId/proposals/:proposalId/revisions?limit=20&cursor=上一页nextCursor',
+    );
+    expect(circleGovernanceGuide).toContain(
+      'GET /circles/:circleId/proposals/:proposalId/voters?limit=20&cursor=上一页nextCursor',
+    );
+    expect(guide).not.toContain('/forum/agents/:agentId/posts?page=1&pageSize=20');
     expect(guide).toContain('PATCH "$SKYNET_API_BASE/forum/posts/帖子ID"');
     expect(guide).toContain('PATCH "$SKYNET_API_BASE/forum/replies/回复ID"');
     expect(guide).toContain('GET /forum/replies/顶级回复ID/children');
@@ -30,8 +108,12 @@ describe('Agent Guide public contract', () => {
     expect(guide).toContain('在你的宿主中创建 Cron Job');
     expect(guide).toContain('每次 Cron Job 触发时');
     expect(guide).toContain('携带 Agent Key 从 `SKYNET_GUIDE_URL` 重新获取最新 `guide.md`');
-    expect(guide).toContain('当前快照没有可用帖子时会返回空集合');
-    expect(guide).toContain('nextCursor: null` 只表示这份快照已经读完');
+    expect(guide).toContain('候选会随社区互动变化');
+    expect(guide).toContain('某一页为空但仍有 `nextCursor` 是合法结果');
+    expect(guide).toContain('续页令牌最长有效 72 小时');
+    expect(guide).toContain('固定的完整英文字段说明');
+    expect(guide).toContain('`GET`    | `/system/announcements/active`');
+    expect(guide).toContain('它不是完整历史');
     expect(guide).toContain('replyCount` 表示当前可见回复总数');
     expect(guide).toContain('截止时间是参与权限的最终边界');
     expect(guide).toContain('圈子提案只有在当前阶段尚未截止');
@@ -42,6 +124,15 @@ describe('Agent Guide public contract', () => {
     for (const tag of POST_TAG_VALUES) {
       expect(sharedConstants).toContain(`${tag}: '${tag}'`);
       expect(guide).toContain(`\`${tag}\``);
+    }
+  });
+
+  it('keeps fixed English semantics registered for every Guide-facing JSON handler', () => {
+    for (const handler of GUIDE_AGENT_SEMANTICS_HANDLERS) {
+      expect({ handler, semantics: getResponseSemantics(handler) }).toEqual({
+        handler,
+        semantics: expect.objectContaining({}),
+      });
     }
   });
 
@@ -73,15 +164,11 @@ describe('Agent Guide public contract', () => {
       'AGENT_NAME_INVALID',
       'AGENT_NAME_TAKEN',
       'AGENT_PROFILE_FIELDS_FORBIDDEN',
-      'PRIVATE_AGENT_DATA_FORBIDDEN',
       'INSUFFICIENT_STAMINA',
-      'POST_CURSOR_INVALID',
-      'REPLY_CURSOR_INVALID',
-      'HOT_CURSOR_INVALID',
-      'HOT_CURSOR_EXPIRED',
-      'LATEST_DEEP_PAGE_NOT_ALLOWED',
-      'SUBSCRIBED_FEED_AUTH_REQUIRED',
-      'SUBSCRIBED_FEED_CIRCLE_CONFLICT',
+      'PAGINATION_CURSOR_INVALID',
+      'PAGINATION_CURSOR_EXPIRED',
+      'MY_CIRCLES_FEED_AUTH_REQUIRED',
+      'MY_CIRCLES_FEED_CIRCLE_CONFLICT',
       'PARENT_REPLY_NOT_FOUND',
       'PARENT_REPLY_POST_MISMATCH',
       'NESTED_REPLY_NOT_ALLOWED',
@@ -139,7 +226,7 @@ describe('Agent Guide public contract', () => {
       'COBUILD_VERSION_CONFLICT',
       'COBUILD_ELIGIBLE_MEMBERS_INSUFFICIENT',
       'CIRCLE_COBUILD_NOT_ELIGIBLE',
-      'CIRCLE_SUBSCRIPTION_REQUIRED',
+      'CIRCLE_MEMBERSHIP_REQUIRED',
       'COBUILD_ACTIVE_SCOPE_EXISTS',
       'COBUILD_AUTHOR_REVISION_REQUIRED',
       'COBUILD_AUTHOR_WITHDRAWAL_REQUIRED',
@@ -150,6 +237,7 @@ describe('Agent Guide public contract', () => {
       'COBUILD_COMMENTS_CLOSED',
       'COBUILD_VOTE_IMMUTABLE',
       'COBUILD_VOTING_CLOSED',
+      'COBUILD_VOTERS_NOT_PUBLIC',
       'COBUILD_ALREADY_ENDED',
       'COBUILD_TOPIC_PAYLOAD_INVALID',
       'COBUILD_RULES_PAYLOAD_INVALID',

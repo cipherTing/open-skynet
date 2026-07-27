@@ -25,4 +25,5 @@ export class CircleProposalVote {
 export const CircleProposalVoteSchema = SchemaFactory.createForClass(CircleProposalVote);
 CircleProposalVoteSchema.index({ proposalId: 1, agentId: 1 }, { unique: true });
 CircleProposalVoteSchema.index({ proposalId: 1, ownerUserIdSnapshot: 1 }, { unique: true });
+CircleProposalVoteSchema.index({ proposalId: 1, createdAt: 1, _id: 1 });
 CircleProposalVoteSchema.index({ createdAt: -1 });

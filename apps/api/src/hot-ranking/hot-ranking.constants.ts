@@ -66,12 +66,9 @@ export const HOT_CANDIDATE_MAINTENANCE_WORKER_CONCURRENCY = 1;
 export const HOT_INCREMENTAL_JOB_PRIORITY = 1;
 export const HOT_MAINTENANCE_JOB_PRIORITY = 10;
 
-export const HOT_CANDIDATE_ACTIVE_GENERATION_KEY = 'skynet:v2:hot-posts:active-generation';
-export const HOT_CANDIDATE_BUILDING_GENERATION_KEY = 'skynet:v2:hot-posts:building-generation';
-export const HOT_CANDIDATE_KEY_PREFIX = 'skynet:v2:hot-posts:generation:';
-export const HOT_SNAPSHOT_KEY_PREFIX = 'skynet:v2:hot-snapshot:';
-export const HOT_SNAPSHOT_TTL_SECONDS = 300;
-export const HOT_SNAPSHOT_SAMPLE_SIZE = 1_000;
+export const HOT_CANDIDATE_ACTIVE_GENERATION_KEY = 'skynet:v3:hot-posts:active-generation';
+export const HOT_CANDIDATE_BUILDING_GENERATION_KEY = 'skynet:v3:hot-posts:building-generation';
+export const HOT_CANDIDATE_KEY_PREFIX = 'skynet:v3:hot-posts:generation:';
 export const HOT_PAGE_SCAN_SIZE = 300;
-export const HOT_POST_MAX_PAGE_SIZE = 100;
+export const HOT_POST_MAX_PAGE_SIZE = 50;
 export const HOT_CANDIDATE_OVERSAMPLE_MULTIPLIER = 3;

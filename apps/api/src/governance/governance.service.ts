@@ -3,7 +3,6 @@ import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model, Types } from 'mongoose';
 import { AgentProgress } from '@/database/schemas/agent-progress.schema';
 import { Agent } from '@/database/schemas/agent.schema';
-import { AgentXpEvent } from '@/database/schemas/agent-xp-event.schema';
 import { FEATURE_FLAG_KEYS } from '@/database/schemas/feature-flag.schema';
 import { FeatureFlagService } from '@/system/feature-flag.service';
 import { Post } from '@/database/schemas/post.schema';
@@ -26,6 +25,10 @@ import {
 } from '@/database/schemas/agent-governance-history.schema';
 import { DatabaseService } from '@/database/database.service';
 import { ProgressionService } from '@/progression/progression.service';
+import {
+  EXTERNAL_XP_SOURCE_TYPES,
+  XP_EVENT_REASON_KEYS,
+} from '@/progression/progression.constants';
 import { AgentGovernanceProfile } from '@/database/schemas/agent-governance-profile.schema';
 import { GovernanceAssignment } from '@/database/schemas/governance-assignment.schema';
 import {
@@ -200,8 +203,7 @@ export interface GovernancePublicResultItem {
 
 export interface GovernanceResultsBatch {
   items: GovernancePublicResultItem[];
-  sampledAt: string;
-  serverTime: string;
+  generatedAt: string;
 }
 
 export interface GovernanceResultDetail extends GovernancePublicResultItem {
@@ -348,8 +350,6 @@ export class GovernanceService {
     private readonly reportTargetStateModel: Model<ReportTargetState>,
     @InjectModel(AgentProgress.name)
     private readonly progressModel: Model<AgentProgress>,
-    @InjectModel(AgentXpEvent.name)
-    private readonly xpEventModel: Model<AgentXpEvent>,
     @InjectModel(CircleRuleRevision.name)
     private readonly circleRuleRevisionModel: Model<CircleRuleRevision>,
     @InjectModel(GovernanceCorrection.name)
@@ -492,11 +492,9 @@ export class GovernanceService {
         .limit(GOVERNANCE_FEED_CANDIDATE_LIMIT);
     }
     const sampled = this.weightedSampleCases(candidates, limit, now);
-    const sampledAt = now.toISOString();
     return {
       items: sampled.map((governanceCase) => this.serializePublicResult(governanceCase)),
-      sampledAt,
-      serverTime: sampledAt,
+      generatedAt: now.toISOString(),
     };
   }
 
@@ -1487,42 +1485,19 @@ export class GovernanceService {
     caseId: string,
     xpPenalty: number,
     occurredAt: Date,
-    session?: ClientSession,
+    session: ClientSession,
   ) {
-    const existing = await this.xpEventModel.findOne(
+    await this.progressionService.applyExternalXpAdjustment(
       {
         agentId,
-        sourceType: 'GOVERNANCE_PENALTY',
+        requestedDelta: -xpPenalty,
+        sourceType: EXTERNAL_XP_SOURCE_TYPES.GOVERNANCE_PENALTY,
         sourceId: caseId,
-        reasonKey: 'violation-health-penalty',
+        reasonKey: XP_EVENT_REASON_KEYS.VIOLATION_HEALTH_PENALTY,
+        occurredAt,
       },
-      null,
-      { session },
+      session,
     );
-    if (existing) return;
-    await this.xpEventModel.create(
-      [
-        {
-          agentId,
-          sourceType: 'GOVERNANCE_PENALTY',
-          sourceId: caseId,
-          reasonKey: 'violation-health-penalty',
-          xp: -xpPenalty,
-          occurredAt,
-        },
-      ],
-      { session },
-    );
-    await this.progressModel.findOneAndUpdate(
-      { agentId },
-      { $inc: { xpTotal: -xpPenalty } },
-      { session, upsert: true },
-    );
-    const progress = await this.progressModel.findOne({ agentId }, null, { session });
-    if (progress && progress.xpTotal < 0) {
-      progress.xpTotal = 0;
-      await progress.save({ session });
-    }
   }
 
   private async buildTimelineEvents(

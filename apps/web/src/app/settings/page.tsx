@@ -5,23 +5,21 @@ import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { Save, RefreshCw, AlertTriangle, Copy, Check } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { z } from 'zod';
+import { useAppForm } from '@/components/forms/skynet-form';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { AgentAvatar } from '@/components/ui/AgentAvatar';
 import { TerminalDialog } from '@/components/ui/TerminalDialog';
 import { ErrorState, LoadingScreen } from '@/components/ui/LoadingState';
 import { useToast } from '@/components/ui/SignalToast';
 import { useUtcNow } from '@/components/home/terminal/terminal-hooks';
-import {
-  TButton,
-  TInput,
-  TPanel,
-  TRadarNode,
-  TTabs,
-  TTextarea,
-} from '@/components/ui/terminal';
+import { TButton, TPanel } from '@/components/ui/terminal';
+import { Switch } from '@/components/ui/switch';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOwnerOperation } from '@/contexts/OwnerOperationContext';
 import { userApi, ApiError } from '@/lib/api';
+import { cn } from '@/lib/utils';
 import type { Agent } from '@skynet/shared';
 
 type KeyInfo = {
@@ -37,15 +35,26 @@ type KeyInfoState =
 
 /** SYS.CONFIG 章节索引：左轨导航与滚动定位共用同一份定义。 */
 const CONFIG_SECTIONS = [
-  { id: 'sec-account', index: 'SEC.01', titleKey: 'settingsSys.sections.account', code: '// IDENTITY' },
-  { id: 'sec-permission', index: 'SEC.02', titleKey: 'settingsSys.sections.permission', code: '// AUTH.SCOPE' },
-  { id: 'sec-privacy', index: 'SEC.03', titleKey: 'settingsSys.sections.privacy', code: '// VISIBILITY' },
+  {
+    id: 'sec-account',
+    index: 'SEC.01',
+    titleKey: 'settingsSys.sections.account',
+    code: '// IDENTITY',
+  },
+  {
+    id: 'sec-permission',
+    index: 'SEC.02',
+    titleKey: 'settingsSys.sections.permission',
+    code: '// AUTH.SCOPE',
+  },
+  {
+    id: 'sec-privacy',
+    index: 'SEC.03',
+    titleKey: 'settingsSys.sections.privacy',
+    code: '// VISIBILITY',
+  },
   { id: 'sec-key', index: 'SEC.04', titleKey: 'settingsSys.sections.key', code: '// KEY.MGMT' },
 ] as const;
-
-function joinClasses(...classes: Array<string | false | null | undefined>): string {
-  return classes.filter(Boolean).join(' ');
-}
 
 /** SYS.CONFIG 章节标：[SEC.xx] 荧光绿等宽标号 + 白色标题 + 暗绿系统代号 + 1px hairline。 */
 function SectionMarker({ index, title, code }: { index: string; title: string; code: string }) {
@@ -57,7 +66,10 @@ function SectionMarker({ index, title, code }: { index: string; title: string; c
       <h2 className="font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-white">
         {title}
       </h2>
-      <span aria-hidden className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+      <span
+        aria-hidden
+        className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]"
+      >
         {code}
       </span>
       <span aria-hidden className="h-px flex-1 bg-[var(--t-noise)]" />
@@ -83,7 +95,7 @@ function CopyIconButton({
       onClick={onCopy}
       aria-label={copied ? copiedLabel : copyLabel}
       title={copied ? copiedLabel : copyLabel}
-      className={joinClasses(
+      className={cn(
         'inline-flex h-7 w-7 flex-none items-center justify-center border bg-transparent',
         'transition-[color,border-color] duration-100 [transition-timing-function:steps(2,end)]',
         'focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[var(--t-accent)]',
@@ -141,13 +153,6 @@ function SettingsPageContent({
   const toast = useToast();
   const utcNow = useUtcNow(1000);
 
-  const [agentName, setAgentName] = useState(agent.name);
-  const [agentDescription, setAgentDescription] = useState(agent.description || '');
-  const [favoritesPublic, setFavoritesPublic] = useState(agent.favoritesPublic !== false);
-  const [saving, setSaving] = useState(false);
-  const [privacySaving, setPrivacySaving] = useState(false);
-  const [ownerOperationSaving, setOwnerOperationSaving] = useState(false);
-
   const [newKey, setNewKey] = useState('');
   const [keyCopied, setKeyCopied] = useState(false);
   const [keyInfoCopied, setKeyInfoCopied] = useState(false);
@@ -171,65 +176,79 @@ function SettingsPageContent({
     await keyInfoQuery.refetch();
   }, [keyInfoQuery]);
 
-  const handleSaveProfile = async () => {
-    if (!agentName.trim()) {
-      toast.error(t('settings.agentNameRequired'));
-      return;
-    }
-    setSaving(true);
-    try {
-      await userApi.updateAgent({
-        name: agentName.trim(),
-        description: agentDescription.trim(),
-      });
-      await refreshUser();
-      toast.success(t('settings.saveSuccess'));
-    } catch (err) {
-      if (err instanceof ApiError) {
-        toast.error(t('settings.errorPrefix', { message: err.message }));
-      } else {
-        toast.error(t('settings.saveFailed'));
+  const profileForm = useAppForm({
+    defaultValues: {
+      name: agent.name,
+      description: agent.description || '',
+    },
+    validators: {
+      onSubmit: z.object({
+        name: z.string().trim().min(1, t('settings.agentNameRequired')).max(80),
+        description: z.string().max(500),
+      }),
+    },
+    onSubmit: async ({ value }) => {
+      try {
+        const updated = await userApi.updateAgent({
+          name: value.name.trim(),
+          description: value.description.trim(),
+        });
+        await refreshUser();
+        profileForm.reset({
+          name: updated.name,
+          description: updated.description || '',
+        });
+        toast.success(t('settings.saveSuccess'));
+      } catch (error) {
+        toast.error(
+          error instanceof ApiError
+            ? t('settings.errorPrefix', { message: error.message })
+            : t('settings.saveFailed'),
+        );
       }
-    } finally {
-      setSaving(false);
-    }
-  };
+    },
+  });
 
-  const handleFavoritesPublicChange = async (next: boolean) => {
-    const previous = favoritesPublic;
-    setFavoritesPublic(next);
-    setPrivacySaving(true);
-    try {
-      await userApi.updateAgent({ favoritesPublic: next });
-      await refreshUser();
-      toast.success(t('settings.saved'));
-    } catch (err) {
-      setFavoritesPublic(previous);
-      if (err instanceof ApiError) {
-        toast.error(t('settings.errorPrefix', { message: err.message }));
-      } else {
-        toast.error(t('settings.saveFailed'));
+  const privacyForm = useAppForm({
+    defaultValues: { favoritesPublic: agent.favoritesPublic !== false },
+    onSubmit: async ({ value }) => {
+      try {
+        const updated = await userApi.updateAgent({
+          favoritesPublic: value.favoritesPublic,
+        });
+        await refreshUser();
+        privacyForm.reset({ favoritesPublic: updated.favoritesPublic !== false });
+        toast.success(t('settings.saved'));
+      } catch (error) {
+        privacyForm.reset({ favoritesPublic: agent.favoritesPublic !== false });
+        toast.error(
+          error instanceof ApiError
+            ? t('settings.errorPrefix', { message: error.message })
+            : t('settings.saveFailed'),
+        );
       }
-    } finally {
-      setPrivacySaving(false);
-    }
-  };
+    },
+  });
 
-  const handleOwnerOperationChange = async (next: boolean) => {
-    setOwnerOperationSaving(true);
-    try {
-      await setOwnerOperationEnabled(next);
-      toast.success(t('settings.saved'));
-    } catch (err) {
-      if (err instanceof ApiError) {
-        toast.error(t('settings.errorPrefix', { message: err.message }));
-      } else {
-        toast.error(t('settings.saveFailed'));
+  const ownerOperationForm = useAppForm({
+    defaultValues: { ownerOperationEnabled },
+    onSubmit: async ({ value }) => {
+      try {
+        await setOwnerOperationEnabled(value.ownerOperationEnabled);
+        ownerOperationForm.reset({
+          ownerOperationEnabled: value.ownerOperationEnabled,
+        });
+        toast.success(t('settings.saved'));
+      } catch (error) {
+        ownerOperationForm.reset({ ownerOperationEnabled });
+        toast.error(
+          error instanceof ApiError
+            ? t('settings.errorPrefix', { message: error.message })
+            : t('settings.saveFailed'),
+        );
       }
-    } finally {
-      setOwnerOperationSaving(false);
-    }
-  };
+    },
+  });
 
   const regenerateKey = async () => {
     setRegenerating(true);
@@ -323,15 +342,21 @@ function SettingsPageContent({
       <PageHeader titleKey="settings.pageTitle" />
 
       {/* 窄屏章节切换：TTabs 横排，steps 硬切指示条 */}
-      <TTabs
-        className="flex-none overflow-x-auto md:hidden"
-        items={CONFIG_SECTIONS.map((section) => ({
-          id: section.id,
-          label: `${section.index} ${t(section.titleKey)}`,
-        }))}
-        active={activeSection}
-        onChange={scrollToSection}
-      />
+      <ToggleGroup
+        type="single"
+        value={activeSection}
+        onValueChange={(value) => {
+          if (CONFIG_SECTIONS.some((section) => section.id === value)) scrollToSection(value);
+        }}
+        aria-label={t('settings.pageTitle')}
+        className="flex-none overflow-x-auto border-x-0 border-t-0 md:hidden"
+      >
+        {CONFIG_SECTIONS.map((section) => (
+          <ToggleGroupItem key={section.id} value={section.id} className="shrink-0">
+            {section.index} {t(section.titleKey)}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
 
       <main className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
         {/* 左侧章节索引轨 */}
@@ -353,7 +378,7 @@ function SettingsPageContent({
                   type="button"
                   onClick={() => scrollToSection(section.id)}
                   aria-current={isActive}
-                  className={joinClasses(
+                  className={cn(
                     'group relative flex items-baseline gap-2.5 px-4 py-2.5 text-left',
                     'transition-colors duration-100 [transition-timing-function:steps(2,end)]',
                     'focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--t-accent)]',
@@ -362,21 +387,23 @@ function SettingsPageContent({
                 >
                   <span
                     aria-hidden
-                    className={joinClasses(
+                    className={cn(
                       'absolute inset-y-0 left-0 w-[2px]',
                       isActive ? 'bg-[var(--t-accent)]' : 'bg-transparent',
                     )}
                   />
                   <span
-                    className={joinClasses(
+                    className={cn(
                       'font-mono text-[10px] tracking-[0.15em]',
-                      isActive ? 'text-[var(--t-accent)]' : 'text-[var(--t-faint)] group-hover:text-white/60',
+                      isActive
+                        ? 'text-[var(--t-accent)]'
+                        : 'text-[var(--t-faint)] group-hover:text-white/60',
                     )}
                   >
                     {section.index}
                   </span>
                   <span
-                    className={joinClasses(
+                    className={cn(
                       'font-mono text-[11px] uppercase tracking-[0.15em]',
                       isActive ? 'text-white' : 'text-[var(--t-faint)] group-hover:text-white/70',
                     )}
@@ -462,47 +489,55 @@ function SettingsPageContent({
                   </div>
 
                   {/* 右侧：表单 */}
-                  <div className="min-w-0 flex-1 space-y-5">
-                    <div>
-                      <label
-                        htmlFor="settings-agent-name"
-                        className="mb-2 block font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]"
-                      >
-                        {t('settings.agentName')}
-                      </label>
-                      <TInput
-                        id="settings-agent-name"
-                        type="text"
-                        value={agentName}
-                        onChange={(e) => setAgentName(e.target.value)}
-                        className="max-w-md"
-                      />
-                    </div>
+                  <form
+                    className="min-w-0 flex-1 space-y-5"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      void profileForm.handleSubmit();
+                    }}
+                  >
+                    <profileForm.AppForm>
+                      <profileForm.AppField name="name">
+                        {(field) => (
+                          <field.InputField
+                            id="settings-agent-name"
+                            label={t('settings.agentName')}
+                            className="max-w-md"
+                          />
+                        )}
+                      </profileForm.AppField>
 
-                    <div>
-                      <label
-                        htmlFor="settings-agent-description"
-                        className="mb-2 block font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]"
-                      >
-                        {t('settings.description')}
-                      </label>
-                      <TTextarea
-                        id="settings-agent-description"
-                        rows={3}
-                        value={agentDescription}
-                        onChange={(e) => setAgentDescription(e.target.value)}
-                        placeholder={t('settings.descriptionPlaceholder')}
-                        className="max-w-md"
-                      />
-                    </div>
+                      <profileForm.AppField name="description">
+                        {(field) => (
+                          <field.TextareaField
+                            id="settings-agent-description"
+                            label={t('settings.description')}
+                            rows={3}
+                            maxLength={500}
+                            placeholder={t('settings.descriptionPlaceholder')}
+                            className="max-w-md"
+                          />
+                        )}
+                      </profileForm.AppField>
 
-                    <div className="pt-1">
-                      <TButton onClick={handleSaveProfile} disabled={saving}>
-                        <Save className="h-3.5 w-3.5" />
-                        {saving ? t('settings.saving') : t('settings.saveChanges')}
-                      </TButton>
-                    </div>
-                  </div>
+                      <profileForm.Subscribe
+                        selector={(state) => [!state.isDefaultValue, state.isSubmitting] as const}
+                      >
+                        {([hasUnsavedChanges, isSubmitting]) => (
+                          <div className="pt-1">
+                            <profileForm.SubmitButton
+                              disabled={!hasUnsavedChanges}
+                              submittingContent={t('settings.saving')}
+                            >
+                              <Save className="h-3.5 w-3.5" />
+                              {isSubmitting ? t('settings.saving') : t('settings.saveChanges')}
+                            </profileForm.SubmitButton>
+                          </div>
+                        )}
+                      </profileForm.Subscribe>
+                    </profileForm.AppForm>
+                  </form>
                 </div>
               </TPanel>
             </section>
@@ -515,15 +550,36 @@ function SettingsPageContent({
                 code="// AUTH.SCOPE"
               />
               <TPanel>
-                <TRadarNode
-                  checked={ownerOperationEnabled}
-                  onChange={handleOwnerOperationChange}
-                  disabled={ownerOperationSaving}
-                  label={t('settings.ownerOperationTitle')}
-                />
-                <p className="mt-2 pl-[26px] text-xs leading-relaxed text-white/50">
-                  {t('settings.ownerOperationHint')}
-                </p>
+                <ownerOperationForm.AppField name="ownerOperationEnabled">
+                  {(field) => (
+                    <ownerOperationForm.Subscribe selector={(state) => state.isSubmitting}>
+                      {(isSubmitting) => (
+                        <>
+                          <div className="flex items-center justify-between gap-4">
+                            <label
+                              htmlFor="settings-owner-operation"
+                              className="font-mono text-[11px] uppercase tracking-[0.15em] text-white/85"
+                            >
+                              {t('settings.ownerOperationTitle')}
+                            </label>
+                            <Switch
+                              id="settings-owner-operation"
+                              checked={field.state.value}
+                              disabled={isSubmitting}
+                              onCheckedChange={(next) => {
+                                field.handleChange(next);
+                                void ownerOperationForm.handleSubmit();
+                              }}
+                            />
+                          </div>
+                          <p className="mt-2 text-xs leading-relaxed text-white/50">
+                            {t('settings.ownerOperationHint')}
+                          </p>
+                        </>
+                      )}
+                    </ownerOperationForm.Subscribe>
+                  )}
+                </ownerOperationForm.AppField>
               </TPanel>
             </section>
 
@@ -535,15 +591,36 @@ function SettingsPageContent({
                 code="// VISIBILITY"
               />
               <TPanel>
-                <TRadarNode
-                  checked={favoritesPublic}
-                  onChange={handleFavoritesPublicChange}
-                  disabled={privacySaving}
-                  label={t('settings.favoritesPublicTitle')}
-                />
-                <p className="mt-2 pl-[26px] text-xs leading-relaxed text-white/50">
-                  {t('settings.favoritesPublicHint')}
-                </p>
+                <privacyForm.AppField name="favoritesPublic">
+                  {(field) => (
+                    <privacyForm.Subscribe selector={(state) => state.isSubmitting}>
+                      {(isSubmitting) => (
+                        <>
+                          <div className="flex items-center justify-between gap-4">
+                            <label
+                              htmlFor="settings-favorites-public"
+                              className="font-mono text-[11px] uppercase tracking-[0.15em] text-white/85"
+                            >
+                              {t('settings.favoritesPublicTitle')}
+                            </label>
+                            <Switch
+                              id="settings-favorites-public"
+                              checked={field.state.value}
+                              disabled={isSubmitting}
+                              onCheckedChange={(next) => {
+                                field.handleChange(next);
+                                void privacyForm.handleSubmit();
+                              }}
+                            />
+                          </div>
+                          <p className="mt-2 text-xs leading-relaxed text-white/50">
+                            {t('settings.favoritesPublicHint')}
+                          </p>
+                        </>
+                      )}
+                    </privacyForm.Subscribe>
+                  )}
+                </privacyForm.AppField>
               </TPanel>
             </section>
 
@@ -645,12 +722,7 @@ function SettingsPageContent({
                         onClick={handleRegenerateKey}
                         disabled={!canRegenerateKey}
                       >
-                        <RefreshCw
-                          className={joinClasses(
-                            'h-3.5 w-3.5',
-                            regenerating && 'animate-spin',
-                          )}
-                        />
+                        <RefreshCw className={cn('h-3.5 w-3.5', regenerating && 'animate-spin')} />
                         {regenerating ? t('settings.generating') : t('settings.regenerateKey')}
                       </TButton>
                     </div>
@@ -660,9 +732,7 @@ function SettingsPageContent({
                       onClick={handleRegenerateKey}
                       disabled={!canRegenerateKey}
                     >
-                      <RefreshCw
-                        className={joinClasses('h-3.5 w-3.5', regenerating && 'animate-spin')}
-                      />
+                      <RefreshCw className={cn('h-3.5 w-3.5', regenerating && 'animate-spin')} />
                       {regenerating ? t('settings.generating') : t('settings.generateKey')}
                     </TButton>
                   )}
@@ -678,6 +748,7 @@ function SettingsPageContent({
         open={regenerateConfirmOpen}
         onOpenChange={setRegenerateConfirmOpen}
         title={t('settings.regenerateTitle')}
+        description={t('settings.regenerateConfirm')}
         code="KEY.MGMT // CONFIRM"
         size="sm"
         variant="alert"
@@ -691,11 +762,7 @@ function SettingsPageContent({
             >
               {t('app.cancel')}
             </TButton>
-            <TButton
-              variant="danger"
-              disabled={regenerating}
-              onClick={() => void regenerateKey()}
-            >
+            <TButton variant="danger" disabled={regenerating} onClick={() => void regenerateKey()}>
               {regenerating ? t('settings.generating') : t('settings.regenerateKey')}
             </TButton>
           </>

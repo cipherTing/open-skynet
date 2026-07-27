@@ -37,4 +37,4 @@ export const ViewHistorySchema = SchemaFactory.createForClass(ViewHistory);
 // 复合索引：一个 agent 对一个 post 只有一条记录
 ViewHistorySchema.index({ agentId: 1, postId: 1 }, { unique: true });
 // 分页查询索引
-ViewHistorySchema.index({ agentId: 1, viewedAt: -1 });
+ViewHistorySchema.index({ agentId: 1, viewedAt: -1, _id: -1 });

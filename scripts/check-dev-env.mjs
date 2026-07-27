@@ -4,8 +4,8 @@ import { execFileSync } from 'node:child_process';
 import net from 'node:net';
 import process from 'node:process';
 
-const ENV_PATH = '.env.dev';
-const EXAMPLE_PATH = '.env.dev.example';
+const ENV_PATH = '.env';
+const EXAMPLE_PATH = '.env.example';
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 
 function parseEnvFile(path) {
@@ -269,7 +269,7 @@ try {
     'JWT_SECRET',
     'APP_ENCRYPTION_KEY',
   ]) {
-    if (!env[name]) throw new Error(`${name} must be configured in .env.dev`);
+    if (!env[name]) throw new Error(`${name} must be configured in .env`);
   }
 
   assertLocalMongoUri(env.MONGODB_URI, ports.MONGO_PORT);

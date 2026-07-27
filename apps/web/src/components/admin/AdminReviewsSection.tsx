@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Eye, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { TTabs } from '@/components/ui/terminal';
 import { useToast } from '@/components/ui/SignalToast';
 import { adminApi } from '@/lib/admin-api';
 import {
@@ -13,6 +12,7 @@ import {
   AdminPagination,
   AdminSectionTitle,
   AdminTable,
+  AdminToggleFilter,
   StatusText,
 } from './AdminPrimitives';
 import { AdminSelect } from './AdminSelect';
@@ -54,13 +54,14 @@ export function ReviewsSection() {
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <AdminSectionTitle>{t('admin.reviews.title')}</AdminSectionTitle>
         <div className="flex flex-wrap items-center gap-3">
-          <TTabs
-            items={['PENDING', 'APPROVED', 'REJECTED'].map((value) => ({
-              id: value,
+          <AdminToggleFilter
+            options={['PENDING', 'APPROVED', 'REJECTED'].map((value) => ({
+              value,
               label: t(`admin.reviews.statuses.${value}`),
             }))}
-            active={status}
-            onChange={(value) => {
+            value={status}
+            ariaLabel={t('admin.reviews.title')}
+            onValueChange={(value) => {
               setStatus(value);
               setPage(1);
             }}
@@ -124,7 +125,9 @@ export function ReviewsSection() {
                       {t(`admin.reviews.statuses.${item.status}`)}
                     </StatusText>
                     {item.decisionReason ? (
-                      <p className="mt-1 max-w-xs text-xs text-[var(--t-sub)]">{item.decisionReason}</p>
+                      <p className="mt-1 max-w-xs text-xs text-[var(--t-sub)]">
+                        {item.decisionReason}
+                      </p>
                     ) : null}
                   </td>
                   <td className="px-3 py-3">

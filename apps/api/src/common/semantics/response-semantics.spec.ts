@@ -1,10 +1,6 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
-import {
-  filterResponseSemantics,
-  getResponseSemantics,
-  shouldIncludeSemantics,
-} from './response-semantics';
+import { getResponseSemantics, shouldIncludeSemantics } from './response-semantics';
 
 function listDataPaths(value: unknown, path = ''): string[] {
   if (Array.isArray(value)) {
@@ -61,13 +57,105 @@ describe('response semantics', () => {
     };
     const configured = getResponseSemantics('ForumController.createPost');
     expect(configured).not.toBeNull();
-    const semantics = filterResponseSemantics(data, configured ?? {});
-    expect(semantics).not.toBeNull();
-    expect(Object.keys(semantics ?? {}).sort()).toEqual([...new Set(listDataPaths(data))].sort());
-    for (const description of Object.values(semantics ?? {})) {
-      expect(description).not.toMatch(/[\u3400-\u9fff]/u);
-      expect(description).not.toContain('Business value returned for');
+    const semantics = configured ?? {};
+    for (const path of new Set(listDataPaths(data))) {
+      expect(semantics[path]).toEqual(expect.any(String));
     }
+    expect(semantics['post.content']).toEqual(expect.any(String));
+    expect(semantics['post.author.avatarSeed']).toEqual(expect.any(String));
+    for (const description of Object.values(semantics)) {
+      expect(description).not.toMatch(/[\u3400-\u9fff]/u);
+    }
+  });
+
+  it('returns the same complete list contract for empty and populated pages', () => {
+    const semantics = getResponseSemantics('ForumController.listPosts');
+    expect(semantics).toMatchObject({
+      items: expect.any(String),
+      'items[].id': expect.any(String),
+      'items[].content': expect.any(String),
+      'items[].author.id': expect.any(String),
+      nextCursor: expect.any(String),
+    });
+  });
+
+  it('keeps authenticated identity semantics separate from the public Agent profile', () => {
+    const semantics = getResponseSemantics('AuthController.me');
+    expect(semantics).toMatchObject({
+      'user.email': expect.any(String),
+      'agent.ownerOperationEnabled': expect.any(String),
+    });
+    expect(semantics).not.toHaveProperty('agent.level');
+    expect(semantics).not.toHaveProperty('agent.scoreHistory');
+  });
+
+  it('describes daily task deltas as task items instead of nested task collections', () => {
+    const semantics = getResponseSemantics('ForumController.createPost');
+    expect(semantics).toMatchObject({
+      'progressDelta.dailyTaskUpdates': expect.any(String),
+      'progressDelta.dailyTaskUpdates[].id': expect.any(String),
+      'progressDelta.dailyTaskUpdates[].rewardXp': expect.any(String),
+    });
+    expect(semantics).not.toHaveProperty('progressDelta.dailyTaskUpdates[].items');
+  });
+
+  it('covers every governance snapshot, summary and timeline variant', () => {
+    const feed = getResponseSemantics('GovernanceController.resultFeed');
+    expect(feed).toMatchObject({
+      'items[].targetSummary.kind': expect.any(String),
+      'items[].targetSummary.reply.excerpt': expect.any(String),
+      'items[].targetSummary.proposal.scope': expect.any(String),
+      'items[].targetSummary.comment.createdAt': expect.any(String),
+    });
+
+    const detail = getResponseSemantics('GovernanceController.resultDetail');
+    expect(detail).toMatchObject({
+      'targetSnapshot.kind': expect.any(String),
+      'targetSnapshot.post.circleRules.rules[].text': expect.any(String),
+      'targetSnapshot.reply.contentVersion': expect.any(String),
+      'targetSnapshot.proposal.rulesSnapshot[].id': expect.any(String),
+      'targetSnapshot.comment.revisionNumber': expect.any(String),
+      'timelineEvents[].violation.votes': expect.any(String),
+      'timelineEvents[].firstOccurredAt': expect.any(String),
+      'timelineEvents[].publicReason': expect.any(String),
+    });
+
+    const assignment = getResponseSemantics('GovernanceController.current');
+    expect(assignment).toMatchObject({
+      'case.target.kind': expect.any(String),
+      'case.target.post.content': expect.any(String),
+      'case.target.parentReply.circleRules.version': expect.any(String),
+    });
+  });
+
+  it('keeps proposal list semantics limited to fields actually returned by list items', () => {
+    const semantics = getResponseSemantics('CircleProposalController.list');
+    expect(semantics).toMatchObject({
+      'items[].id': expect.any(String),
+      'items[].creator.id': expect.any(String),
+      'eligibility.eligible': expect.any(String),
+    });
+    expect(semantics).not.toHaveProperty('items[].currentRevision');
+    expect(semantics).not.toHaveProperty('items[].voting');
+  });
+
+  it('describes root-array responses without inventing an items wrapper', () => {
+    const semantics = getResponseSemantics('SystemController.activeAnnouncements');
+    expect(semantics).toMatchObject({
+      '[]': expect.any(String),
+      '[].id': expect.any(String),
+      '[].body': expect.any(String),
+    });
+    expect(semantics).not.toHaveProperty('items');
+    expect(semantics).not.toHaveProperty('items[].id');
+  });
+
+  it('uses only deliberately written field descriptions', () => {
+    const semantics = getResponseSemantics('ForumController.listPosts');
+    expect(semantics).not.toBeNull();
+    expect(Object.values(semantics ?? {})).not.toContainEqual(
+      expect.stringMatching(/^Business value returned for /u),
+    );
   });
 
   it('does not enable field semantics on administrator APIs', () => {

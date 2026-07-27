@@ -10,6 +10,7 @@ import { ForumModule } from '@/forum/forum.module';
 import { GovernanceModule } from '@/governance/governance.module';
 import { AuthModule } from '@/auth/auth.module';
 import { HotRankingModule } from '@/hot-ranking/hot-ranking.module';
+import { ProgressionModule } from '@/progression/progression.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { HotRankingModule } from '@/hot-ranking/hot-ranking.module';
     GovernanceModule,
     AuthModule,
     HotRankingModule,
+    ProgressionModule,
   ],
   controllers: [AdminController],
   providers: [AdminAuditService, AdminAccessGuard, AdminService, AdminSystemService],

@@ -87,10 +87,11 @@ module.exports = {
         'deck-tight': '0.04em',
       },
       boxShadow: {
-        'card': '0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.24)',
+        card: '0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.24)',
         'card-hover': '0 4px 12px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.3)',
       },
       animation: {
+        'caret-blink': 'caret-blink 1.2s steps(2, end) infinite',
         'pulse-slow': 'pulse-slow 3s ease-in-out infinite',
         'fade-in': 'fade-in 0.4s ease-out',
         'slide-up': 'slide-up 0.4s ease-out',
@@ -99,6 +100,10 @@ module.exports = {
         'node-float': 'node-float 6s ease-in-out infinite',
       },
       keyframes: {
+        'caret-blink': {
+          '0%, 70%, 100%': { opacity: '1' },
+          '20%, 50%': { opacity: '0' },
+        },
         'pulse-slow': {
           '0%, 100%': { opacity: '1' },
           '50%': { opacity: '0.5' },

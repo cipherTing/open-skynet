@@ -11,6 +11,16 @@ import {
 import { Post } from '@/database/schemas/post.schema';
 import { Reply } from '@/database/schemas/reply.schema';
 import { FEEDBACK_TARGET_TYPES, type FeedbackType } from '@/forum/feedback.constants';
+import {
+  CURSOR_PAGINATION_DEFAULT_LIMIT,
+  type CursorPaginationDto,
+} from '@/common/dto/cursor-pagination.dto';
+import {
+  decodeTimestampCursor,
+  encodeTimestampCursor,
+  RESOURCE_CURSOR_KINDS,
+} from '@/common/pagination/resource-cursor';
+import { CircleService } from '@/circle/circle.service';
 
 const INTERACTION_SNAPSHOT_MAX_LENGTH = 120;
 
@@ -54,6 +64,7 @@ export class ForumAgentInteractionService {
     private readonly interactionHistoryModel: Model<InteractionHistory>,
     @InjectModel(Post.name) private readonly postModel: Model<Post>,
     @InjectModel(Reply.name) private readonly replyModel: Model<Reply>,
+    private readonly circleService: CircleService,
   ) {}
 
   async recordFeedback(
@@ -80,16 +91,28 @@ export class ForumAgentInteractionService {
     await history.save({ session });
   }
 
-  async list(agentId: string, page: number, pageSize: number) {
+  async list(agentId: string, dto: CursorPaginationDto) {
     await this.ensureAgentExists(agentId);
-    const [histories, total] = await Promise.all([
-      this.interactionHistoryModel
-        .find({ agentId })
-        .sort({ createdAt: -1, _id: -1 })
-        .skip((page - 1) * pageSize)
-        .limit(pageSize),
-      this.interactionHistoryModel.countDocuments({ agentId }),
-    ]);
+    const limit = dto.limit ?? CURSOR_PAGINATION_DEFAULT_LIMIT;
+    const cursor = dto.cursor
+      ? decodeTimestampCursor(dto.cursor, RESOURCE_CURSOR_KINDS.AGENT_INTERACTIONS, agentId)
+      : null;
+    const candidates = await this.interactionHistoryModel
+      .find({
+        agentId,
+        ...(cursor
+          ? {
+              $or: [
+                { createdAt: { $lt: cursor.timestamp } },
+                { createdAt: cursor.timestamp, _id: { $lt: cursor.id } },
+              ],
+            }
+          : {}),
+      })
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(limit + 1);
+    const hasMore = candidates.length > limit;
+    const histories = hasMore ? candidates.slice(0, limit) : candidates;
 
     const postIds = [...new Set(histories.map((history) => history.postId))];
     const replyIds = [
@@ -99,25 +122,61 @@ export class ForumAgentInteractionService {
           .filter((replyId): replyId is string => replyId !== null),
       ),
     ];
-    const [availablePosts, availableReplies] = await Promise.all([
+    const [candidatePosts, availableReplies] = await Promise.all([
       postIds.length > 0
-        ? this.postModel.find({ _id: { $in: postIds }, deletedAt: null }).select('_id')
+        ? this.postModel
+            .find({ _id: { $in: postIds }, deletedAt: null, circleVisible: true })
+            .select('_id circleId')
         : [],
-      replyIds.length > 0 ? this.replyModel.find({ _id: { $in: replyIds } }).select('_id') : [],
+      replyIds.length > 0
+        ? this.replyModel
+            .find({ _id: { $in: replyIds }, deletedAt: null })
+            .select('_id parentReplyId')
+        : [],
     ]);
-    const availablePostIds = new Set(availablePosts.map((post) => post.id));
-    const availableReplyIds = new Set(availableReplies.map((reply) => reply.id));
+    const activeCircleIds = new Set(
+      await this.circleService.filterActiveCircleIds([
+        ...new Set(candidatePosts.map((post) => post.circleId)),
+      ]),
+    );
+    const availablePostIds = new Set(
+      candidatePosts.filter((post) => activeCircleIds.has(post.circleId)).map((post) => post.id),
+    );
+    const parentReplyIds = [
+      ...new Set(
+        availableReplies
+          .map((reply) => reply.parentReplyId)
+          .filter((replyId): replyId is string => replyId !== null),
+      ),
+    ];
+    const availableParentReplyIds = new Set(
+      parentReplyIds.length > 0
+        ? (
+            await this.replyModel
+              .find({ _id: { $in: parentReplyIds }, deletedAt: null })
+              .select('_id')
+          ).map((reply) => reply.id)
+        : [],
+    );
+    const availableReplyIds = new Set(
+      availableReplies
+        .filter(
+          (reply) =>
+            reply.parentReplyId === null || availableParentReplyIds.has(reply.parentReplyId),
+        )
+        .map((reply) => reply.id),
+    );
 
     return {
-      interactions: histories.map((history) => {
-        const postAvailable = availablePostIds.has(history.postId);
-        const replyAvailable = history.replyId === null || availableReplyIds.has(history.replyId);
-        const targetAvailable =
-          history.targetType === FEEDBACK_TARGET_TYPES.POST
+      items: histories
+        .filter((history) => {
+          const postAvailable = availablePostIds.has(history.postId);
+          const replyAvailable = history.replyId === null || availableReplyIds.has(history.replyId);
+          return history.targetType === FEEDBACK_TARGET_TYPES.POST
             ? postAvailable
             : postAvailable && replyAvailable;
-
-        return {
+        })
+        .map((history) => ({
           id: history.id,
           type: history.type,
           feedbackType: history.feedbackType,
@@ -135,25 +194,27 @@ export class ForumAgentInteractionService {
           post: {
             id: history.postId,
             title: history.postTitleSnapshot,
-            available: postAvailable,
+            available: true,
           },
           reply: history.replyId
             ? {
                 id: history.replyId,
                 excerpt: history.replyExcerptSnapshot ?? '',
-                available: replyAvailable,
+                available: true,
               }
             : null,
-          targetAvailable,
+          targetAvailable: true,
           createdAt: history.createdAt.toISOString(),
-        };
-      }),
-      meta: {
-        total,
-        page,
-        pageSize,
-        totalPages: Math.ceil(total / pageSize),
-      },
+        })),
+      nextCursor:
+        hasMore && histories.length > 0
+          ? encodeTimestampCursor(
+              RESOURCE_CURSOR_KINDS.AGENT_INTERACTIONS,
+              agentId,
+              histories[histories.length - 1].createdAt,
+              histories[histories.length - 1].id,
+            )
+          : null,
     };
   }
 

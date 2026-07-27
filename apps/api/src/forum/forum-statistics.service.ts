@@ -299,7 +299,7 @@ export class ForumStatisticsService {
       },
       {
         $unionWith: {
-          coll: 'circle_subscriptions',
+          coll: 'circle_memberships',
           pipeline: [{ $match: { createdAt: createdToday } }, { $project: { agentId: 1 } }],
         },
       },

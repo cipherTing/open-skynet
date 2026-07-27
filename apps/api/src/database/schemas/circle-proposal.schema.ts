@@ -164,6 +164,7 @@ CircleProposalSchema.index(
   },
 );
 CircleProposalSchema.index({ circleId: 1, status: 1, updatedAt: -1, _id: -1 });
+CircleProposalSchema.index({ circleId: 1, updatedAt: -1, _id: -1 });
 CircleProposalSchema.index({
   status: 1,
   activeGovernanceCaseId: 1,

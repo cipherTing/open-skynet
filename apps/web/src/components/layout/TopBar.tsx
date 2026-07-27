@@ -4,11 +4,12 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, LogIn, Menu, RefreshCw, Search, X } from 'lucide-react';
+import { ArrowLeft, Menu, RefreshCw, Search, X } from 'lucide-react';
 import * as Popover from '@radix-ui/react-popover';
 import { useTranslation } from 'react-i18next';
 import { LanguageToggle } from '@/components/ui/LanguageToggle';
-import { PortalTooltip } from '@/components/ui/FloatingPortal';
+import { SheetTrigger } from '@/components/ui/sheet';
+import { TerminalTooltip } from '@/components/ui/tooltip';
 import { AnnouncementMenu } from '@/components/system/AnnouncementMenu';
 import { useUtcNow } from '@/components/home/terminal/terminal-hooks';
 import { useAuth } from '@/contexts/AuthContext';
@@ -38,7 +39,7 @@ interface TopBarProps {
   backSection?: HomeSection;
   preferHistoryBack?: boolean;
   governanceControls?: TopBarGovernanceControls;
-  onOpenNav?: () => void;
+  showMobileNavigation?: boolean;
 }
 
 const SECTION_CODE: Record<NonNullable<TopBarProps['mode']>, string> = {
@@ -67,11 +68,11 @@ export function TopBar({
   backSection,
   preferHistoryBack = false,
   governanceControls,
-  onOpenNav,
+  showMobileNavigation = false,
 }: TopBarProps) {
   const { t } = useTranslation();
   const router = useRouter();
-  const { isAuthenticated, agent } = useAuth();
+  const { isAuthenticated } = useAuth();
   const setHomeActiveSection = useHomeNavigationStore((state) => state.setActiveSection);
   const postSearch = useHomeNavigationStore((state) => state.postSearch);
   const circleSearch = useHomeNavigationStore((state) => state.circleSearch);
@@ -80,7 +81,7 @@ export function TopBar({
   const [scrolled, setScrolled] = useState(false);
   const utcNow = useUtcNow(1000);
   const utcTimeLabel = utcNow ? formatUtcTime(utcNow) : '--:--:--';
-  const isSearchMode = mode === 'feed' || mode === 'circles';
+  const isSearchMode = mode === 'feed' || (mode === 'circles' && isAuthenticated);
   const appliedSearch = mode === 'circles' ? circleSearch : postSearch;
   const setAppliedSearch = mode === 'circles' ? setCircleSearch : setPostSearch;
   const [searchDraft, setSearchDraft] = useState({
@@ -114,10 +115,10 @@ export function TopBar({
   const sectionLabel = isGovernanceMode
     ? t('governance.plazaTitle')
     : mode === 'circles'
-        ? t('circles.plazaTitle')
-        : mode === 'detail'
-          ? (detailTitle ?? (detailTitleKey ? t(detailTitleKey) : t('app.terminal')))
-          : t('sidebar.feed');
+      ? t('circles.plazaTitle')
+      : mode === 'detail'
+        ? (detailTitle ?? (detailTitleKey ? t(detailTitleKey) : t('app.terminal')))
+        : t('sidebar.feed');
 
   const submitSearch = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -161,24 +162,19 @@ export function TopBar({
         effectiveScrolled ? '-translate-y-2 opacity-0' : ''
       }`}
     >
-      <div
-        className={
-          isGovernanceMode
-            ? 'flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 py-1.5 sm:px-6'
-            : 'flex h-12 items-center justify-between gap-3 px-4 sm:px-6'
-        }
-      >
+      <div className="flex h-12 min-h-12 items-center justify-between gap-3 overflow-hidden px-4 sm:px-6">
         {/* 左: 移动导航开关 + 返回（详情场景）+ 频道标识 */}
         <div className="flex min-w-0 items-center gap-3 pointer-events-auto">
-          {onOpenNav ? (
-            <button
-              type="button"
-              onClick={onOpenNav}
-              aria-label={t('sidebar.navigation')}
-              className="flex h-8 w-8 flex-none items-center justify-center border border-[var(--t-noise)] text-[var(--t-sub)] transition-colors [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)] md:hidden"
-            >
-              <Menu className="h-4 w-4 stroke-[1.5]" />
-            </button>
+          {showMobileNavigation ? (
+            <SheetTrigger asChild>
+              <button
+                type="button"
+                aria-label={t('sidebar.navigation')}
+                className="flex h-8 w-8 flex-none items-center justify-center border border-[var(--t-noise)] text-[var(--t-sub)] transition-colors [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)] md:hidden"
+              >
+                <Menu className="h-4 w-4 stroke-[1.5]" />
+              </button>
+            </SheetTrigger>
           ) : null}
           {hasBackLink ? (
             preferHistoryBack ? (
@@ -222,8 +218,8 @@ export function TopBar({
         {/* 中: 评审状态 */}
         <div
           className={`min-w-0 items-center gap-4 pointer-events-auto ${
-            isGovernanceMode
-              ? 'order-3 flex w-full justify-start sm:order-none sm:w-auto sm:flex-1 sm:justify-center'
+            isGovernanceMode && governanceControls
+              ? 'hidden flex-1 justify-center sm:flex'
               : 'hidden'
           }`}
         >
@@ -240,7 +236,7 @@ export function TopBar({
                   governanceControls.isProgressPaused ? 'opacity-45' : ''
                 }`}
               />
-              <PortalTooltip content={governanceControls.refreshLabel} placement="bottom">
+              <TerminalTooltip content={governanceControls.refreshLabel} side="bottom">
                 <button
                   type="button"
                   aria-label={governanceControls.refreshLabel}
@@ -252,12 +248,12 @@ export function TopBar({
                     className={`h-3.5 w-3.5 stroke-[1.5] ${governanceControls.isRefreshing ? 'animate-spin' : ''}`}
                   />
                 </button>
-              </PortalTooltip>
+              </TerminalTooltip>
             </div>
           ) : null}
         </div>
 
-        {/* 右: 搜索 + 公告 + 语言 + UTC 时钟 + 登录入口（已登录用户入口位于侧栏底部） */}
+        {/* 右: 搜索 + 公告 + 语言 + UTC 时钟；认证入口统一位于侧栏底部。 */}
         <div className="relative flex flex-none items-center gap-2.5 pointer-events-auto">
           {/* 搜索 */}
           {isSearchMode && (
@@ -278,7 +274,7 @@ export function TopBar({
                 maxLength={mode === 'circles' ? 80 : 200}
               />
               <Popover.Root open={searchOpen} onOpenChange={setSearchOpen}>
-                <PortalTooltip content={t('app.openSearch')} placement="bottom">
+                <TerminalTooltip content={t('app.openSearch')} side="bottom">
                   <Popover.Trigger asChild>
                     <button
                       type="button"
@@ -292,7 +288,7 @@ export function TopBar({
                       )}
                     </button>
                   </Popover.Trigger>
-                </PortalTooltip>
+                </TerminalTooltip>
                 <Popover.Portal>
                   <Popover.Content
                     align="end"
@@ -336,20 +332,6 @@ export function TopBar({
               UTC
             </span>
           </div>
-
-          {!isAuthenticated || !agent ? (
-            <>
-              <span aria-hidden="true" className="hidden h-3 w-px bg-[var(--t-noise)] sm:block" />
-              <Link
-                href="/auth"
-                aria-label={t('sidebar.login')}
-                className="flex h-8 items-center gap-1.5 border border-[var(--t-noise)] px-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-sub)] transition-colors [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]"
-              >
-                <LogIn className="h-3.5 w-3.5 stroke-[1.5]" />
-                <span className="hidden sm:inline">{t('sidebar.login')}</span>
-              </Link>
-            </>
-          ) : null}
         </div>
       </div>
 

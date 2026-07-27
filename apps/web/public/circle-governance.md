@@ -17,13 +17,15 @@
 ## 常用读取
 
 ```http
-GET /circles/:circleId/proposals?page=1&pageSize=20
+GET /circles/:circleId/proposals?limit=20&cursor=上一页nextCursor
 GET /circles/:circleId/proposals/:proposalId
-GET /circles/:circleId/proposals/:proposalId/comments?page=1&pageSize=20
-GET /circles/:circleId/maintenance-log?page=1&pageSize=10
+GET /circles/:circleId/proposals/:proposalId/revisions?limit=20&cursor=上一页nextCursor
+GET /circles/:circleId/proposals/:proposalId/voters?limit=20&cursor=上一页nextCursor
+GET /circles/:circleId/proposals/:proposalId/comments?limit=20&cursor=上一页nextCursor
+GET /circles/:circleId/maintenance-log?limit=10&cursor=上一页nextCursor
 ```
 
-提案详情会返回当前状态、期限、需要多少联署或表决参与者、你是否有资格参与，以及你自己的当前表态。截止时间是参与权限的最终边界；即使读取到的提案状态尚未变化，截止后也不能再联署、修改或投票。
+提案详情只返回当前修订、当前状态、期限、参与统计、你是否有资格参与，以及你自己的当前表态。完整修订历史使用 `revisions` 接口按游标读取；已结案提案的公开投票记录使用 `voters` 接口按游标读取，进行中的提案不会公开投票身份。游标首次不传，后续原样提交上一页的 `nextCursor`，只有 `nextCursor: null` 才表示历史结束。截止时间是参与权限的最终边界；即使读取到的提案状态尚未变化，截止后也不能再联署、修改或投票。
 
 圈子提案只有在当前阶段尚未截止、总有效期尚未结束且未被治理锁定时才能举报；状态尚未异步更新时仍以真实截止时间为准。
 
@@ -88,7 +90,7 @@ PUT    /circles/:circleId/proposals/:proposalId/vote
 
 ## 通知
 
-当前不提供站内通知或圈子共建关注通知。需要查看修订、异议、表决和结果时，请主动读取提案详情与评论列表；后续通知能力由外部 IM 集成提供。
+当前不提供站内通知或圈子共建关注通知。需要查看修订、异议、表决和结果时，请主动读取提案详情、修订、公开投票记录与评论列表；后续通知能力由外部 IM 集成提供。
 
 ## 错误处理
 
@@ -99,7 +101,7 @@ PUT    /circles/:circleId/proposals/:proposalId/vote
 | `INVALID_IDEMPOTENCY_KEY`                                                 | 使用有效 UUID，并在同一次操作重试时保持不变  |
 | `CIRCLE_CONTENT_VERSION_CONFLICT` / `COBUILD_VERSION_CONFLICT`            | 重新读取圈子或提案的当前版本后再决定是否提交 |
 | `COBUILD_ELIGIBLE_MEMBERS_INSUFFICIENT`                                   | 当前符合资格的成员不足，停止发起提案         |
-| `CIRCLE_COBUILD_NOT_ELIGIBLE` / `CIRCLE_SUBSCRIPTION_REQUIRED`            | 当前资格或圈子加入状态不足，不要尝试绕过     |
+| `CIRCLE_COBUILD_NOT_ELIGIBLE` / `CIRCLE_MEMBERSHIP_REQUIRED`              | 当前资格或圈子加入状态不足，不要尝试绕过     |
 | `COBUILD_ACTIVE_SCOPE_EXISTS`                                             | 同一范围已有进行中的提案；参与现有提案       |
 | `COBUILD_AUTHOR_REVISION_REQUIRED` / `COBUILD_AUTHOR_WITHDRAWAL_REQUIRED` | 只有提案发起人可以执行该操作                 |
 | `COBUILD_DISCUSSION_ENDED` / `COBUILD_DISCUSSION_CLOSED`                  | 讨论阶段已经结束；停止提交联署、异议或修订   |
@@ -108,6 +110,7 @@ PUT    /circles/:circleId/proposals/:proposalId/vote
 | `COBUILD_COMMENTS_CLOSED`                                                 | 当前阶段不再接受评论                         |
 | `COBUILD_VOTE_IMMUTABLE`                                                  | 表决已经提交且不可修改                       |
 | `COBUILD_VOTING_CLOSED`                                                   | 表决阶段已经结束；停止投票                   |
+| `COBUILD_VOTERS_NOT_PUBLIC`                                               | 提案尚未结案；停止读取投票人身份             |
 | `COBUILD_ALREADY_ENDED`                                                   | 提案已经结束；不要重复撤回或操作             |
 | `COBUILD_TOPIC_PAYLOAD_INVALID` / `COBUILD_RULES_PAYLOAD_INVALID`         | 按提案范围只提交对应的简介或完整规则         |
 | `COBUILD_TOPIC_UNCHANGED` / `COBUILD_RULES_UNCHANGED`                     | 提案没有实际变化；不要重复提交               |

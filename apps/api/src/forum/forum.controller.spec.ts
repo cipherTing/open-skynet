@@ -16,8 +16,10 @@ describe('ForumController removed-content read boundary', () => {
   const forumService = {
     listPosts: jest.fn(),
     getActiveAgentsToday: jest.fn(),
+    getPostPanelSummary: jest.fn(),
     getReplySelection: jest.fn(),
     listReplies: jest.fn(),
+    listAgentFavorites: jest.fn(),
   };
   const browserAdmin: JwtBrowserAuthUser = {
     userId: 'admin-user',
@@ -50,8 +52,20 @@ describe('ForumController removed-content read boundary', () => {
     jest.clearAllMocks();
     forumService.getReplySelection.mockResolvedValue({});
     forumService.listReplies.mockResolvedValue({ items: [], nextCursor: null });
-    forumService.listPosts.mockResolvedValue({ posts: [], nextCursor: null, meta: null });
+    forumService.listPosts.mockResolvedValue({ items: [], nextCursor: null });
     forumService.getActiveAgentsToday.mockResolvedValue({ value: 0 });
+    forumService.getPostPanelSummary.mockResolvedValue({
+      dayKey: '2026-07-27',
+      generatedAt: '2026-07-27T00:00:00.000Z',
+      postsToday: { value: 1 },
+      activeAgentsToday: { value: 1 },
+      latestPosts: { items: [] },
+    });
+    forumService.listAgentFavorites.mockResolvedValue({
+      hidden: false,
+      items: [],
+      nextCursor: null,
+    });
   });
 
   afterAll(async () => {
@@ -74,15 +88,12 @@ describe('ForumController removed-content read boundary', () => {
     ]);
   });
 
-  it('limits anonymous post discovery to the first page', async () => {
-    await expect(controller.listPosts({ page: 2 }, undefined)).rejects.toMatchObject({
-      response: { code: 'AUTH_REQUIRED_FOR_MORE_CONTENT' },
-    });
-    await expect(controller.listPosts({ pageSize: 21 }, undefined)).rejects.toMatchObject({
+  it('limits anonymous post discovery to one bounded page', async () => {
+    await expect(controller.listPosts({ limit: 21 }, undefined)).rejects.toMatchObject({
       response: { code: 'AUTH_REQUIRED_FOR_MORE_CONTENT' },
     });
     await expect(
-      controller.listPosts({ scope: PostScope.SUBSCRIBED }, undefined),
+      controller.listPosts({ scope: PostScope.MY_CIRCLES }, undefined),
     ).rejects.toMatchObject({
       response: { code: 'AUTH_REQUIRED_FOR_MORE_CONTENT' },
     });
@@ -93,15 +104,30 @@ describe('ForumController removed-content read boundary', () => {
   });
 
   it('keeps the complete post list available to authenticated users', async () => {
-    await controller.listPosts({ page: 2, pageSize: 100 }, browserAdmin);
+    await controller.listPosts({ limit: 50, cursor: 'opaque-cursor' }, browserAdmin);
     expect(forumService.listPosts).toHaveBeenCalledWith(
-      { page: 2, pageSize: 100 },
+      { limit: 50, cursor: 'opaque-cursor' },
       browserAdmin.userId,
     );
   });
 
-  it('exposes only the aggregate active-agent metric publicly', async () => {
+  it('exposes the aggregate discovery summary publicly', async () => {
     await expect(controller.getActiveAgentsToday()).resolves.toEqual({ value: 0 });
+    await expect(controller.getPostPanelSummary()).resolves.toMatchObject({
+      postsToday: { value: 1 },
+      activeAgentsToday: { value: 1 },
+      latestPosts: { items: [] },
+    });
     expect(forumService.getActiveAgentsToday).toHaveBeenCalledTimes(1);
+    expect(forumService.getPostPanelSummary).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets the current Agent key read its own private favorites', async () => {
+    await controller.listAgentFavorites(adminAgent.agentId, { limit: 20 }, adminAgent);
+    expect(forumService.listAgentFavorites).toHaveBeenCalledWith(
+      adminAgent.agentId,
+      { limit: 20 },
+      adminAgent.userId,
+    );
   });
 });

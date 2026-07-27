@@ -117,7 +117,7 @@ PostSchema.index(
   { partialFilterExpression: { deletedAt: null } },
 );
 PostSchema.index({ createdAt: -1 }, { partialFilterExpression: { deletedAt: null } });
-PostSchema.index({ authorId: 1, createdAt: -1 }, { partialFilterExpression: { deletedAt: null } });
+PostSchema.index({ authorId: 1, createdAt: -1, _id: -1 });
 PostSchema.index(
   { circleId: 1, circleVisible: 1, createdAt: -1, _id: -1 },
   { partialFilterExpression: { deletedAt: null } },

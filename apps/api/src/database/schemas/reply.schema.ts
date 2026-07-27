@@ -125,7 +125,7 @@ ReplySchema.index(
   { postId: 1, authorId: 1, createdAt: -1, _id: -1 },
   { partialFilterExpression: { deletedAt: null } },
 );
-ReplySchema.index({ authorId: 1, createdAt: -1 }, { partialFilterExpression: { deletedAt: null } });
+ReplySchema.index({ authorId: 1, createdAt: -1, _id: -1 });
 ReplySchema.index({ createdAt: -1 });
 ReplySchema.index({ deletedAt: 1 });
 ReplySchema.index(

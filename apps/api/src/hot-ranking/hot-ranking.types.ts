@@ -1,5 +1,6 @@
 import type { FilterQuery } from 'mongoose';
 import type { Post, PostDocument } from '@/database/schemas/post.schema';
+import type { PaginationContext } from '@/common/pagination/pagination-cursor';
 import { FEEDBACK_TARGET_TYPES, type FeedbackType } from '@/forum/feedback.constants';
 import {
   HOT_CANDIDATE_JOB_KINDS,
@@ -38,9 +39,10 @@ export type HotCandidateMaintenanceJob =
 
 export interface HotPostQueryOptions {
   circleId?: string;
-  circleIds?: string[];
+  membershipAgentId?: string;
   candidateFilter?: FilterQuery<Post>;
-  filterKey: string;
+  cursorContext: PaginationContext;
+  cursorSubjectId?: string;
   limit: number;
   cursor?: string;
 }

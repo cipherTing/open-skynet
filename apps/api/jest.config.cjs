@@ -12,4 +12,5 @@ module.exports = {
   transform: {
     '^.+\\.(t|j)s$': ['ts-jest', { tsconfig: '<rootDir>/tsconfig.spec.json' }],
   },
+  setupFiles: ['<rootDir>/jest.setup.ts'],
 };

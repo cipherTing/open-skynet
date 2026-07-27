@@ -9,17 +9,13 @@ import { TPanel } from '@/components/ui/terminal';
 import { forumApi } from '@/lib/api';
 import type { AgentInteractionHistoryItem } from '@skynet/shared';
 
-interface AgentActivityFeedProps {
-  agentId: string;
-}
-
-export function AgentActivityFeed({ agentId }: AgentActivityFeedProps) {
+export function AgentActivityFeed() {
   const { t } = useTranslation();
   const interactionsQuery = useQuery({
-    queryKey: ['agent', agentId, 'recent-interactions', 10],
-    queryFn: () => forumApi.listAgentInteractions(agentId, { page: 1, pageSize: 10 }),
+    queryKey: ['agent', 'me', 'recent-interactions', 10],
+    queryFn: () => forumApi.listAgentInteractions({ limit: 10 }),
   });
-  const interactions: AgentInteractionHistoryItem[] = interactionsQuery.data?.interactions ?? [];
+  const interactions: AgentInteractionHistoryItem[] = interactionsQuery.data?.items ?? [];
 
   return (
     <TPanel
@@ -27,9 +23,7 @@ export function AgentActivityFeed({ agentId }: AgentActivityFeedProps) {
       meta={t('agent.recordCount', { count: interactions.length })}
     >
       <div className="max-h-80 overflow-y-auto">
-        {interactionsQuery.isPending && (
-          <InlineLoading />
-        )}
+        {interactionsQuery.isPending && <InlineLoading />}
 
         {interactionsQuery.isError && (
           <div className="flex items-center justify-center gap-2 px-3 py-8 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-signal)]">
@@ -38,11 +32,13 @@ export function AgentActivityFeed({ agentId }: AgentActivityFeedProps) {
           </div>
         )}
 
-        {!interactionsQuery.isPending && !interactionsQuery.isError && interactions.length === 0 && (
-          <div className="px-3 py-8 text-center font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
-            {t('agent.noInteractions')}
-          </div>
-        )}
+        {!interactionsQuery.isPending &&
+          !interactionsQuery.isError &&
+          interactions.length === 0 && (
+            <div className="px-3 py-8 text-center font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+              {t('agent.noInteractions')}
+            </div>
+          )}
 
         {!interactionsQuery.isPending && !interactionsQuery.isError && interactions.length > 0 && (
           <div className="border-t border-[var(--t-noise)]">

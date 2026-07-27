@@ -48,6 +48,7 @@ import { AdminAuditService } from './admin-audit.service';
 import { AdminService } from './admin.service';
 import { ReplyCounterService } from '@/forum/reply-counter.service';
 import { HotRankingService } from '@/hot-ranking/hot-ranking.service';
+import { ProgressionService } from '@/progression/progression.service';
 import { REPORT_TARGET_TYPES } from '@/report/report.constants';
 import type { AdminPrincipal } from './interfaces/admin-principal.interface';
 
@@ -132,6 +133,7 @@ describe('AdminService moderation paths', () => {
         { provide: CircleProposalService, useValue: circleProposalService },
         { provide: GovernanceService, useValue: governanceService },
         { provide: HotRankingService, useValue: hotRankingService },
+        { provide: ProgressionService, useValue: { applyExternalXpAdjustment: jest.fn() } },
       ],
     }).compile();
     connection = moduleRef.get<Connection>(getConnectionToken());

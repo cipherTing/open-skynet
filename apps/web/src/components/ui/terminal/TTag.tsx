@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { cn } from '@/lib/utils';
 
 export type TTagColor = 'default' | 'accent' | 'amber' | 'red';
 
@@ -16,15 +17,11 @@ const COLOR_CLASSES: Record<TTagColor, string> = {
   red: 'border-[var(--t-hazard-dim)] text-[var(--t-hazard)]/80',
 };
 
-function joinClasses(...classes: Array<string | false | null | undefined>): string {
-  return classes.filter(Boolean).join(' ');
-}
-
 /** 终端小牌：1px 描边、直角、等宽微型大写，用于反馈信号等标签。 */
 export function TTag({ color = 'default', children, className }: TTagProps) {
   return (
     <span
-      className={joinClasses(
+      className={cn(
         'inline-flex items-center rounded-none border px-1.5 py-0.5',
         'font-mono text-[10px] uppercase leading-none tracking-[0.15em]',
         COLOR_CLASSES[color],

@@ -1,6 +1,13 @@
+'use client';
+
+import * as TabsPrimitive from '@radix-ui/react-tabs';
+import type { ReactNode } from 'react';
+import { cn } from '@/lib/utils';
+
 export interface TTabItem {
   id: string;
   label: string;
+  disabled?: boolean;
 }
 
 export interface TTabsProps {
@@ -9,49 +16,44 @@ export interface TTabsProps {
   active: string;
   onChange: (id: string) => void;
   className?: string;
-}
-
-function joinClasses(...classes: Array<string | false | null | undefined>): string {
-  return classes.filter(Boolean).join(' ');
+  rootClassName?: string;
+  children?: ReactNode;
 }
 
 /**
  * 终端受控 tabs：底部 2px 荧光绿指示条 steps 硬切跳动（禁滑动动画）。
  */
-export function TTabs({ items, active, onChange, className }: TTabsProps) {
+export function TTabs({ items, active, onChange, className, rootClassName, children }: TTabsProps) {
   return (
-    <div
-      role="tablist"
-      className={joinClasses('flex items-stretch border-b border-[var(--t-noise)]', className)}
-    >
-      {items.map((item) => {
-        const isActive = item.id === active;
-        return (
-          <button
+    <TabsPrimitive.Root value={active} onValueChange={onChange} className={rootClassName}>
+      <TabsPrimitive.List
+        className={cn(
+          'flex items-stretch overflow-x-auto border-b border-[var(--t-noise)]',
+          className,
+        )}
+      >
+        {items.map((item) => (
+          <TabsPrimitive.Trigger
             key={item.id}
-            type="button"
-            role="tab"
-            aria-selected={isActive}
-            onClick={() => onChange(item.id)}
-            className={joinClasses(
-              'relative px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.15em]',
-              'transition-colors duration-100 [transition-timing-function:steps(2,end)]',
-              'focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--t-accent)]',
-              isActive ? 'text-white' : 'text-[var(--t-sub)] hover:text-white/85',
+            value={item.id}
+            disabled={item.disabled}
+            className={cn(
+              'relative shrink-0 px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.15em]',
+              'text-[var(--t-sub)] transition-colors duration-100 [transition-timing-function:steps(2,end)]',
+              'hover:text-white/85 focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--t-accent)]',
+              'data-[state=active]:text-white disabled:cursor-not-allowed disabled:opacity-45',
+              'after:absolute after:inset-x-0 after:-bottom-px after:h-[2px] after:bg-[var(--t-accent)]',
+              'after:opacity-0 after:transition-opacity after:duration-100 after:[transition-timing-function:steps(2,end)]',
+              'data-[state=active]:after:opacity-100',
             )}
           >
             {item.label}
-            <span
-              aria-hidden
-              className={joinClasses(
-                'absolute inset-x-0 -bottom-px h-[2px] bg-[var(--t-accent)]',
-                'transition-opacity duration-150 [transition-timing-function:steps(2,end)]',
-                isActive ? 'opacity-100' : 'opacity-0',
-              )}
-            />
-          </button>
-        );
-      })}
-    </div>
+          </TabsPrimitive.Trigger>
+        ))}
+      </TabsPrimitive.List>
+      {children}
+    </TabsPrimitive.Root>
   );
 }
+
+export const TTabContent = TabsPrimitive.Content;

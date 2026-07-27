@@ -35,7 +35,10 @@ describe('reset-and-seed-mongo', () => {
         ...process.env,
         NODE_ENV: 'development',
         MONGODB_URI: mongoUri,
+        MONGO_USERNAME: '',
+        MONGO_PASSWORD: '',
         SKYNET_CONFIRM_DB_RESET: 'skynet',
+        SKYNET_SEED_PROFILE: 'test',
         JWT_SECRET: 'test-jwt-secret-at-least-32-characters',
         APP_ENCRYPTION_KEY: 'test-app-encryption-key-at-least-32-characters',
       },
@@ -71,6 +74,9 @@ describe('reset-and-seed-mongo', () => {
       'agents',
       'circles',
       'circle_rule_revisions',
+      'circle_proposals',
+      'circle_proposal_revisions',
+      'circle_proposal_votes',
       'posts',
       'post_revisions',
       'replies',
@@ -140,6 +146,102 @@ describe('reset-and-seed-mongo', () => {
         .collection('content_review_requests')
         .countDocuments({ status: 'PENDING', type: 'CIRCLE' }),
     ).resolves.toBeGreaterThanOrEqual(1);
+  });
+
+  it('seeds bounded proposal history for current-state and virtual-list acceptance', async () => {
+    const database = connection.db;
+    if (!database) throw new Error('MongoDB database handle is unavailable');
+
+    await expect(database.collection('circle_proposals').countDocuments()).resolves.toBe(2);
+    await expect(database.collection('circle_proposal_revisions').countDocuments()).resolves.toBe(
+      13,
+    );
+    await expect(database.collection('circle_proposal_votes').countDocuments()).resolves.toBe(8);
+    await expect(
+      database.collection('circle_proposals').findOne({ status: 'ACCEPTED' }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        currentRevisionNumber: 12,
+        approveCount: 6,
+        rejectCount: 2,
+      }),
+    );
+    await expect(
+      database.collection('circle_proposals').findOne({ status: 'DISCUSSION' }),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        currentRevisionNumber: 1,
+        nextTransitionAt: expect.any(Date),
+      }),
+    );
+  });
+
+  it('seeds scaled forum data with settled hot projections and matching XP ledgers', async () => {
+    const database = connection.db;
+    if (!database) throw new Error('MongoDB database handle is unavailable');
+
+    await expect(
+      database.collection('posts').countDocuments({ replyCount: { $ne: 12 } }),
+    ).resolves.toBe(0);
+    await expect(
+      database.collection('hot_projection_work_items').countDocuments({ dirty: true }),
+    ).resolves.toBe(0);
+
+    const syntheticPost = await database.collection('posts').findOne({
+      title: { $regex: '讨论样本' },
+    });
+    expect(syntheticPost).not.toBeNull();
+    const syntheticPostId = String(syntheticPost?._id);
+    await expect(
+      database.collection('replies').countDocuments({
+        postId: syntheticPostId,
+        deletedAt: null,
+      }),
+    ).resolves.toBe(12);
+    await expect(
+      database.collection('feedbacks').countDocuments({
+        targetType: 'POST',
+        postId: syntheticPostId,
+      }),
+    ).resolves.toBe(4);
+
+    const syntheticReply = await database.collection('replies').findOne({
+      postId: syntheticPostId,
+      deletedAt: null,
+    });
+    const replyWorkItem = await database.collection('hot_projection_work_items').findOne({
+      sourceKey: `REPLY:${String(syntheticReply?._id)}`,
+    });
+    expect(replyWorkItem).toEqual(
+      expect.objectContaining({
+        desiredActive: true,
+        projectedActive: true,
+        dirty: false,
+        processedVersion: 1,
+        version: 1,
+      }),
+    );
+    expect(
+      await database.collection('post_hot_states').findOne({ postId: syntheticPostId }),
+    ).toEqual(
+      expect.objectContaining({
+        effectiveReplyCount: 12,
+        projectionDirty: false,
+      }),
+    );
+
+    const xpTotals = await database
+      .collection('agent_xp_events')
+      .aggregate<{ _id: string; total: number }>([
+        { $group: { _id: '$agentId', total: { $sum: '$xp' } } },
+      ])
+      .toArray();
+    const xpByAgent = new Map(xpTotals.map((entry) => [entry._id, entry.total]));
+    const progresses = await database.collection('agent_progresses').find({}).toArray();
+    expect(progresses).toHaveLength(12);
+    for (const progress of progresses) {
+      expect(xpByAgent.get(String(progress.agentId)) ?? 0).toBe(progress.xpTotal);
+    }
   });
 
   it('seeds deadline scheduling facts without leaving terminal objects queued', async () => {
@@ -326,7 +428,10 @@ describe('reset-and-seed-mongo', () => {
           ...process.env,
           NODE_ENV: 'development',
           MONGODB_URI: mongoUri,
+          MONGO_USERNAME: '',
+          MONGO_PASSWORD: '',
           SKYNET_CONFIRM_DB_RESET: 'skynet',
+          SKYNET_SEED_PROFILE: 'test',
           JWT_SECRET: 'too-short',
           APP_ENCRYPTION_KEY: 'test-app-encryption-key-at-least-32-characters',
         },

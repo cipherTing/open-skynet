@@ -53,11 +53,12 @@
 ### 本地开发与生产部署
 
 - **本地开发**：使用 `pnpm dev`；API/Mongo/Redis/mongo-init 必须通过 Docker Compose 运行，Web 必须在宿主机运行
+- **开发测试管理员特例**：仅限本地 development 环境的浏览器测试，必须允许使用用户名 `skynetAdmin`、密码 `Admin123456`、邮箱 `skynetadmin@mail.com`；禁止删除或禁用该测试凭据，禁止用于非本地环境
 - **本地验证**：测试页面、接口联调或浏览器检查前，必须通过 `pnpm dev` 启动完整本地开发环境；禁止绕过项目脚本手写 `next dev`、`nest start`、`dotenvx ...` 等临时启动命令，除非正在调试脚本本身
 - **停止本地依赖**：使用 `pnpm dev:down` 停止 Docker 开发服务
 - **禁止 Docker Web dev**：仓库不保留 Docker 运行 Web dev server 的入口；不得恢复 `docker-compose.dev.yml` 或 `next dev` 容器
 - **生产部署**：必须通过 `docker compose up -d --build` 构建并启动全量服务
-- **本地环境文件**：真实 `.env.dev` 禁止提交，只提交 `.env.dev.example`
+- **本地环境文件**：真实 `.env` 禁止提交，只提交 `.env.example`
 
 ### ⚠️ Playwright 截图规范（强制）
 

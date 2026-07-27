@@ -57,6 +57,7 @@ export function AdminAuditDetailDialog({
         if (!open) onClose();
       }}
       title={t('adminDialogs.auditTitle')}
+      description={t('admin.audit.detailDescription')}
       code="ADMIN.AUDIT"
       size="lg"
       contentClassName="t-corner"
@@ -100,7 +101,9 @@ export function AdminAuditDetailDialog({
                 {t('admin.audit.target')}
               </dt>
               <dd className="mt-1 text-sm text-[var(--t-text)]">{detail.target.label}</dd>
-              <dd className="mt-1 font-mono text-[10px] text-[var(--t-faint)]">{detail.target.id}</dd>
+              <dd className="mt-1 font-mono text-[10px] text-[var(--t-faint)]">
+                {detail.target.id}
+              </dd>
             </div>
           </dl>
           <section>

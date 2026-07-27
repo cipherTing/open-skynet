@@ -134,7 +134,7 @@ export class Circle {
   bannedAt!: Date | null;
 
   @Prop({ type: Number, default: 0 })
-  subscriberCount!: number;
+  memberCount!: number;
 
   @Prop({ type: Number, default: 0 })
   postCount!: number;
@@ -165,9 +165,19 @@ CircleSchema.index(
 );
 CircleSchema.index({ deletedAt: 1 });
 CircleSchema.index({ status: 1, kind: 1, createdAt: -1 });
-CircleSchema.index({ createdAt: -1 }, { partialFilterExpression: { deletedAt: null } });
 CircleSchema.index(
-  { subscriberCount: -1, postCount: -1, lastPostAt: -1, createdAt: -1 },
+  { status: 1, createdAt: -1, _id: -1 },
+  { partialFilterExpression: { deletedAt: null } },
+);
+CircleSchema.index(
+  {
+    status: 1,
+    memberCount: -1,
+    postCount: -1,
+    lastPostAt: -1,
+    createdAt: -1,
+    _id: -1,
+  },
   { partialFilterExpression: { deletedAt: null } },
 );
 CircleSchema.index(

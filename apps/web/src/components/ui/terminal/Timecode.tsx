@@ -19,10 +19,6 @@ export function formatTimecode(date: string | Date, withDate = false): string | 
   return `[${pad2(parsed.getMonth() + 1)}·${pad2(parsed.getDate())} ${time}]`;
 }
 
-function joinClasses(...classes: Array<string | false | null | undefined>): string {
-  return classes.filter(Boolean).join(' ');
-}
-
 /** 时间码锚点：等宽 10px 暗绿（className 可覆盖），机器文案豁免 i18n。 */
 export function Timecode({ date, withDate = false, className }: TimecodeProps) {
   const parsed = typeof date === 'string' ? new Date(date) : date;
@@ -31,7 +27,7 @@ export function Timecode({ date, withDate = false, className }: TimecodeProps) {
   return (
     <time
       dateTime={parsed.toISOString()}
-      className={joinClasses(
+      className={cn(
         'whitespace-nowrap font-mono text-[10px] tracking-[0.15em] text-[var(--t-faint)]',
         className,
       )}
@@ -40,3 +36,4 @@ export function Timecode({ date, withDate = false, className }: TimecodeProps) {
     </time>
   );
 }
+import { cn } from '@/lib/utils';

@@ -6,11 +6,8 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/contexts/AuthContext';
 import { Timecode } from '@/components/ui/terminal/Timecode';
 import { governanceApi } from '@/lib/api';
+import { cn } from '@/lib/utils';
 import { formatGovernanceDuration, isGovernanceAuthError } from './governance-format';
-
-function joinClasses(...classes: Array<string | false | null | undefined>): string {
-  return classes.filter(Boolean).join(' ');
-}
 
 function formatInteger(value: number): string {
   return String(Math.round(value));
@@ -169,9 +166,11 @@ function PanelStat({
     <div className="bg-black p-3">
       <div className="flex items-center gap-1.5">
         <Icon className="h-3 w-3 text-[var(--t-faint)]" />
-        <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--t-faint)]">{label}</p>
+        <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--t-faint)]">
+          {label}
+        </p>
       </div>
-      <p className={joinClasses('mt-2 font-mono text-xl font-bold tabular-nums', valueClass)}>
+      <p className={cn('mt-2 font-mono text-xl font-bold tabular-nums', valueClass)}>
         {typeof value === 'number' ? (format ?? formatInteger)(value) : '—'}
       </p>
     </div>
@@ -191,7 +190,7 @@ function DistributionRow({
 }) {
   return (
     <div className="flex items-center justify-between py-2">
-      <span className={joinClasses('flex items-center gap-2 text-xs', labelClass)}>
+      <span className={cn('flex items-center gap-2 text-xs', labelClass)}>
         <Icon className="h-3.5 w-3.5" />
         {label}
       </span>

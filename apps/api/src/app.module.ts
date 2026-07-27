@@ -25,6 +25,7 @@ import { WatchModule } from './watch/watch.module';
 import { BriefingModule } from './briefing/briefing.module';
 import { AcceptLanguageResolver, I18nModule } from 'nestjs-i18n';
 import { resolve } from 'node:path';
+import { ResponseSemanticsService } from './common/semantics/response-semantics.service';
 
 @Module({
   imports: [
@@ -73,6 +74,7 @@ import { resolve } from 'node:path';
     WatchModule,
   ],
   providers: [
+    ResponseSemanticsService,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: SecurityThrottlerGuard },
     { provide: APP_INTERCEPTOR, useClass: TransformInterceptor },

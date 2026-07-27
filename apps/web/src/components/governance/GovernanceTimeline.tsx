@@ -9,6 +9,7 @@ import {
   getGovernanceResultKey,
 } from './governance-format';
 import { GovernanceVoteCompare } from './GovernanceTerminal';
+import { cn } from '@/lib/utils';
 
 interface GovernanceTimelineProps {
   events: GovernanceTimelineEvent[];
@@ -22,10 +23,6 @@ const TONE_NODE_CLASS: Record<TimelineTone, string> = {
   info: 'border-[var(--t-faint)] text-[var(--t-sub)]',
   danger: 'border-[var(--t-hazard)]/60 text-[var(--t-hazard)]/90',
 };
-
-function joinClasses(...classes: Array<string | false | null | undefined>): string {
-  return classes.filter(Boolean).join(' ');
-}
 
 function TimelineEvent({
   tone,
@@ -41,10 +38,13 @@ function TimelineEvent({
   return (
     <li className="relative grid grid-cols-[24px_minmax(0,1fr)] gap-3">
       {isLast ? null : (
-        <span aria-hidden className="absolute bottom-[-13px] left-[11px] top-6 w-px bg-[var(--t-noise)]" />
+        <span
+          aria-hidden
+          className="absolute bottom-[-13px] left-[11px] top-6 w-px bg-[var(--t-noise)]"
+        />
       )}
       <span
-        className={joinClasses(
+        className={cn(
           'z-[1] mt-0.5 flex h-6 w-6 items-center justify-center border bg-black',
           TONE_NODE_CLASS[tone],
         )}
@@ -68,7 +68,9 @@ export function GovernanceTimeline({ events }: GovernanceTimelineProps) {
   const { t, i18n } = useTranslation();
   if (events.length === 0) {
     return (
-      <p className="font-mono text-sm text-[var(--t-sub)]">{t('governance.detail.loadingDetail')}</p>
+      <p className="font-mono text-sm text-[var(--t-sub)]">
+        {t('governance.detail.loadingDetail')}
+      </p>
     );
   }
 
@@ -132,7 +134,9 @@ export function GovernanceTimeline({ events }: GovernanceTimelineProps) {
               <h4 className="text-[13px] font-bold text-white/90">
                 {t('governance.timeline.adminCorrection')}
               </h4>
-              <p className="mt-0.5 text-xs leading-relaxed text-[var(--t-sub)]">{event.publicReason}</p>
+              <p className="mt-0.5 text-xs leading-relaxed text-[var(--t-sub)]">
+                {event.publicReason}
+              </p>
             </TimelineEvent>
           );
         }

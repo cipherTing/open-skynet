@@ -4,7 +4,7 @@ import { Model, Types, type ClientSession, type FilterQuery } from 'mongoose';
 import { Agent } from '@/database/schemas/agent.schema';
 import { AgentProgress } from '@/database/schemas/agent-progress.schema';
 import { Circle, CIRCLE_CREATED_BY_TYPES } from '@/database/schemas/circle.schema';
-import { CircleSubscription } from '@/database/schemas/circle-subscription.schema';
+import { CircleMembership } from '@/database/schemas/circle-membership.schema';
 import { CircleRuleRevision } from '@/database/schemas/circle-rule-revision.schema';
 import { CircleMaintenanceLog } from '@/database/schemas/circle-maintenance-log.schema';
 import { DatabaseService } from '@/database/database.service';
@@ -33,6 +33,7 @@ import {
   CIRCLE_STATUSES,
   CIRCLE_MAINTENANCE_ACTIONS,
   CIRCLE_MAINTENANCE_ACTOR_TYPES,
+  CIRCLE_PROPOSAL_STATUSES,
   CIRCLE_RULE_REVISION_SOURCES,
 } from './circle.constants';
 import { CreateCircleDto } from './dto/create-circle.dto';
@@ -52,13 +53,30 @@ import { circleErrors, commonErrors } from '@/common/errors/business-errors';
 import { HotRankingService } from '@/hot-ranking/hot-ranking.service';
 import { MAX_CIRCLE_HOT_POSTS } from '@/hot-ranking/hot-ranking.constants';
 import { PostVisibilityService } from '@/post-visibility/post-visibility.service';
+import {
+  CURSOR_PAGINATION_DEFAULT_LIMIT,
+  type CursorPaginationDto,
+} from '@/common/dto/cursor-pagination.dto';
+import {
+  decodeTimestampCursor as decodeResourceTimestampCursor,
+  encodeTimestampCursor as encodeResourceTimestampCursor,
+  RESOURCE_CURSOR_KINDS,
+} from '@/common/pagination/resource-cursor';
+import {
+  decodeCompositeCursor,
+  decodeTimestampCursor,
+  encodeCompositeCursor,
+  encodeTimestampCursor,
+  PAGINATION_CURSOR_KINDS,
+  type PaginationCursorScalar,
+} from '@/common/pagination/pagination-cursor';
 
 type PublicCircle = {
   id: string;
   slug: string;
   name: string;
   topic: string;
-  subscriberCount: number;
+  memberCount: number;
   postCount: number;
   lastPostAt: string | null;
   kind: 'NORMAL' | 'OFFICIAL';
@@ -69,21 +87,12 @@ type PublicCircle = {
   rulesVersion: number;
   activeProposalCount: number;
   hotPosts?: Array<{ id: string; title: string; createdAt: string }>;
-  subscribed?: boolean;
+  joined?: boolean;
   createdAt: string;
   updatedAt: string;
 };
 
 type CircleSummary = Pick<PublicCircle, 'id' | 'slug' | 'name' | 'topic'>;
-
-type CircleSubscriptionPageItem = {
-  circleId: string;
-};
-
-type CircleSubscriptionAggregatePage = {
-  data: CircleSubscriptionPageItem[];
-  meta: Array<{ total: number }>;
-};
 
 type NewMaintenanceLog = Pick<
   CircleMaintenanceLog,
@@ -126,6 +135,24 @@ function metadataString(metadata: CircleMaintenanceLog['metadata'], key: string)
 function metadataNumber(metadata: CircleMaintenanceLog['metadata'], key: string): number | null {
   const value = metadata[key];
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function requireCursorNumber(value: PaginationCursorScalar | undefined): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw commonErrors.paginationCursorInvalid();
+  }
+  return value;
+}
+
+function requireCursorString(value: PaginationCursorScalar | undefined): string {
+  if (typeof value !== 'string') throw commonErrors.paginationCursorInvalid();
+  return value;
+}
+
+function requireCursorDate(value: PaginationCursorScalar | undefined): Date {
+  const date = new Date(requireCursorString(value));
+  if (Number.isNaN(date.getTime())) throw commonErrors.paginationCursorInvalid();
+  return date;
 }
 
 function toSlugBase(name: string): string {
@@ -177,8 +204,8 @@ function getAgentLevelByXp(xpTotal: number): number {
 export class CircleService {
   constructor(
     @InjectModel(Circle.name) private readonly circleModel: Model<Circle>,
-    @InjectModel(CircleSubscription.name)
-    private readonly circleSubscriptionModel: Model<CircleSubscription>,
+    @InjectModel(CircleMembership.name)
+    private readonly circleMembershipModel: Model<CircleMembership>,
     @InjectModel(CircleRuleRevision.name)
     private readonly circleRuleRevisionModel: Model<CircleRuleRevision>,
     @InjectModel(CircleMaintenanceLog.name)
@@ -214,12 +241,10 @@ export class CircleService {
     if (!circle) {
       throw commonErrors.circleNotFound();
     }
-    const subscriptionState = await this.getSubscriptionStateForCircleIds(currentUserId, [
-      circle.id,
-    ]);
+    const membershipState = await this.getMembershipStateForCircleIds(currentUserId, [circle.id]);
     return this.serializeCircle(
       circle,
-      subscriptionState ? subscriptionState.circleIds.has(circle.id) : undefined,
+      membershipState ? membershipState.circleIds.has(circle.id) : undefined,
     );
   }
 
@@ -281,28 +306,54 @@ export class CircleService {
   }
 
   async listCircles(dto: ListCirclesDto, currentUserId?: string) {
-    const page = dto.page ?? 1;
-    const pageSize = dto.pageSize ?? 10;
+    const limit = dto.limit ?? CURSOR_PAGINATION_DEFAULT_LIMIT;
     const sortBy = dto.sortBy ?? CIRCLE_SORT_OPTIONS.RECOMMENDED;
     const sort: Record<string, -1 | 1> =
       sortBy === CIRCLE_SORT_OPTIONS.LATEST
         ? { createdAt: -1, _id: -1 }
-        : { subscriberCount: -1, postCount: -1, lastPostAt: -1, createdAt: -1, _id: -1 };
+        : { memberCount: -1, postCount: -1, lastPostAt: -1, createdAt: -1, _id: -1 };
 
     const where: FilterQuery<Circle> = { deletedAt: null, status: CIRCLE_STATUSES.ACTIVE };
-    const [circles, total] = await Promise.all([
-      this.circleModel
-        .find(where)
-        .sort(sort)
-        .skip((page - 1) * pageSize)
-        .limit(pageSize),
-      this.circleModel.countDocuments(where),
-    ]);
+    if (dto.cursor) {
+      const values = decodeCompositeCursor(dto.cursor, PAGINATION_CURSOR_KINDS.CIRCLES, {
+        context: { sortBy },
+      });
+      if (sortBy === CIRCLE_SORT_OPTIONS.LATEST) {
+        if (values.length !== 2) throw commonErrors.paginationCursorInvalid();
+        const createdAt = requireCursorDate(values[0]);
+        const id = new Types.ObjectId(requireCursorString(values[1]));
+        where.$or = [{ createdAt: { $lt: createdAt } }, { createdAt, _id: { $lt: id } }];
+      } else {
+        if (values.length !== 5) throw commonErrors.paginationCursorInvalid();
+        const memberCount = requireCursorNumber(values[0]);
+        const postCount = requireCursorNumber(values[1]);
+        const lastPostAt = values[2] === null ? null : requireCursorDate(values[2]);
+        const createdAt = requireCursorDate(values[3]);
+        const id = new Types.ObjectId(requireCursorString(values[4]));
+        const laterLastPostFilter =
+          lastPostAt === null
+            ? { lastPostAt: null, createdAt: { $lt: createdAt } }
+            : { $or: [{ lastPostAt: { $lt: lastPostAt } }, { lastPostAt: null }] };
+        where.$or = [
+          { memberCount: { $lt: memberCount } },
+          { memberCount, postCount: { $lt: postCount } },
+          { memberCount, postCount, ...laterLastPostFilter },
+          { memberCount, postCount, lastPostAt, createdAt: { $lt: createdAt } },
+          { memberCount, postCount, lastPostAt, createdAt, _id: { $lt: id } },
+        ];
+      }
+    }
+    const page = await this.circleModel
+      .find(where)
+      .sort(sort)
+      .limit(limit + 1);
+    const hasMore = page.length > limit;
+    const circles = hasMore ? page.slice(0, limit) : page;
 
     const includeHotPosts = dto.includeHotPosts === true;
     const circleIds = circles.map((circle) => circle.id);
-    const [subscriptionState, hotPostsByCircle] = await Promise.all([
-      this.getSubscriptionStateForCircleIds(currentUserId, circleIds),
+    const [membershipState, hotPostsByCircle] = await Promise.all([
+      this.getMembershipStateForCircleIds(currentUserId, circleIds),
       includeHotPosts
         ? this.hotRankingService.getCirclesHotPosts(circleIds, MAX_CIRCLE_HOT_POSTS)
         : Promise.resolve(
@@ -311,22 +362,36 @@ export class CircleService {
     ]);
 
     return {
-      circles: circles.map((circle) => {
+      items: circles.map((circle) => {
         const hotPosts = includeHotPosts ? hotPostsByCircle.get(circle.id) : undefined;
         return this.serializeCircle(
           circle,
-          subscriptionState ? subscriptionState.circleIds.has(circle.id) : undefined,
+          membershipState ? membershipState.circleIds.has(circle.id) : undefined,
           null,
           hotPosts && hotPosts.length > 0 ? hotPosts : undefined,
         );
       }),
-      meta: {
-        total,
-        page,
-        pageSize,
-        totalPages: Math.ceil(total / pageSize),
-      },
+      nextCursor:
+        hasMore && circles.length > 0
+          ? this.encodeCircleCursor(circles[circles.length - 1], sortBy)
+          : null,
     };
+  }
+
+  private encodeCircleCursor(circle: Circle, sortBy: string): string {
+    const values: PaginationCursorScalar[] =
+      sortBy === CIRCLE_SORT_OPTIONS.LATEST
+        ? [circle.createdAt.toISOString(), circle.id]
+        : [
+            circle.memberCount,
+            circle.postCount,
+            circle.lastPostAt?.toISOString() ?? null,
+            circle.createdAt.toISOString(),
+            circle.id,
+          ];
+    return encodeCompositeCursor(PAGINATION_CURSOR_KINDS.CIRCLES, values, {
+      context: { sortBy },
+    });
   }
 
   async searchCircles(dto: SearchCirclesDto, currentUserId?: string) {
@@ -359,7 +424,7 @@ export class CircleService {
         status: CIRCLE_STATUSES.ACTIVE,
       }),
     ]);
-    const subscriptionState = await this.getSubscriptionStateForCircleIds(currentUserId, [
+    const membershipState = await this.getMembershipStateForCircleIds(currentUserId, [
       ...matches.map((circle) => circle.id),
       ...(exactMatch ? [exactMatch.id] : []),
     ]);
@@ -370,8 +435,8 @@ export class CircleService {
       }))
       .sort((left, right) => {
         if (left.rank !== right.rank) return left.rank - right.rank;
-        if (right.circle.subscriberCount !== left.circle.subscriberCount) {
-          return right.circle.subscriberCount - left.circle.subscriberCount;
+        if (right.circle.memberCount !== left.circle.memberCount) {
+          return right.circle.memberCount - left.circle.memberCount;
         }
         return left.circle.id.localeCompare(right.circle.id);
       })
@@ -379,7 +444,7 @@ export class CircleService {
       .map(({ circle }) =>
         this.serializeCircle(
           circle,
-          subscriptionState ? subscriptionState.circleIds.has(circle.id) : undefined,
+          membershipState ? membershipState.circleIds.has(circle.id) : undefined,
         ),
       );
 
@@ -388,7 +453,7 @@ export class CircleService {
       exactNameMatch: exactMatch
         ? this.serializeCircle(
             exactMatch,
-            subscriptionState ? subscriptionState.circleIds.has(exactMatch.id) : undefined,
+            membershipState ? membershipState.circleIds.has(exactMatch.id) : undefined,
           )
         : null,
     };
@@ -674,7 +739,16 @@ export class CircleService {
     });
     if (!circle) throw commonErrors.circleNotFound();
     const activeProposals = await this.circleProposalModel
-      .find({ circleId, status: { $in: ['DISCUSSION', 'VOTING'] } }, null, { session })
+      .find(
+        {
+          circleId,
+          status: {
+            $in: [CIRCLE_PROPOSAL_STATUSES.DISCUSSION, CIRCLE_PROPOSAL_STATUSES.VOTING],
+          },
+        },
+        null,
+        { session },
+      )
       .sort({ updatedAt: -1, _id: -1 });
     return {
       ...this.serializeCircleForAdmin(circle),
@@ -831,8 +905,7 @@ export class CircleService {
 
   async listMaintenanceLogs(circleId: string, dto: ListCircleMaintenanceLogsDto) {
     const circle = await this.ensureCircleRecordExists(circleId);
-    const requestedPage = dto.page ?? 1;
-    const pageSize = dto.pageSize ?? 20;
+    const limit = dto.limit ?? CURSOR_PAGINATION_DEFAULT_LIMIT;
     const from = dto.from ? new Date(dto.from) : undefined;
     const to = dto.to ? new Date(dto.to) : undefined;
     if ((from && Number.isNaN(from.getTime())) || (to && Number.isNaN(to.getTime()))) {
@@ -848,22 +921,34 @@ export class CircleService {
         ...(to ? { $lte: to } : {}),
       };
     }
-    const total = await this.circleMaintenanceLogModel.countDocuments(where);
-    const totalPages = Math.ceil(total / pageSize);
-    const page = Math.min(requestedPage, Math.max(1, totalPages));
-    const logs = await this.circleMaintenanceLogModel
+    if (dto.cursor) {
+      const cursor = decodeTimestampCursor(
+        dto.cursor,
+        PAGINATION_CURSOR_KINDS.CIRCLE_MAINTENANCE_LOGS,
+        { context: { circleId, from: dto.from ?? null, to: dto.to ?? null } },
+      );
+      where.$or = [
+        { createdAt: { $lt: cursor.timestamp } },
+        { createdAt: cursor.timestamp, _id: { $lt: cursor.id } },
+      ];
+    }
+    const page = await this.circleMaintenanceLogModel
       .find(where)
       .sort({ createdAt: -1, _id: -1 })
-      .skip((page - 1) * pageSize)
-      .limit(pageSize);
+      .limit(limit + 1);
+    const hasMore = page.length > limit;
+    const logs = hasMore ? page.slice(0, limit) : page;
     return {
       items: logs.map((log) => this.serializeMaintenanceLog(log)),
-      meta: {
-        total,
-        page,
-        pageSize,
-        totalPages,
-      },
+      nextCursor:
+        hasMore && logs.length > 0
+          ? encodeTimestampCursor(
+              PAGINATION_CURSOR_KINDS.CIRCLE_MAINTENANCE_LOGS,
+              logs[logs.length - 1].createdAt,
+              logs[logs.length - 1].id,
+              { context: { circleId, from: dto.from ?? null, to: dto.to ?? null } },
+            )
+          : null,
     };
   }
 
@@ -956,7 +1041,12 @@ export class CircleService {
         .limit(5)
         .select('title createdAt'),
       this.circleProposalModel
-        .find({ circleId: circle.id, status: { $in: ['DISCUSSION', 'VOTING'] } })
+        .find({
+          circleId: circle.id,
+          status: {
+            $in: [CIRCLE_PROPOSAL_STATUSES.DISCUSSION, CIRCLE_PROPOSAL_STATUSES.VOTING],
+          },
+        })
         .sort({ updatedAt: -1, _id: -1 })
         .limit(3)
         .select('scope status discussionDeadlineAt votingDeadlineAt'),
@@ -1007,21 +1097,21 @@ export class CircleService {
     return translateApiText('api.labels.circleProposalComment', 'Circle co-build comment');
   }
 
-  async subscribe(agentId: string, circleId: string) {
+  async join(agentId: string, circleId: string) {
     await this.ensureCircleExists(circleId);
     let changed = false;
     try {
       await this.databaseService.$transaction(async (session) => {
-        const existing = await this.circleSubscriptionModel.findOne({ agentId, circleId }, null, {
+        const existing = await this.circleMembershipModel.findOne({ agentId, circleId }, null, {
           session,
         });
         if (existing) return;
         changed = true;
-        const subscription = new this.circleSubscriptionModel({ agentId, circleId });
-        await subscription.save({ session });
+        const membership = new this.circleMembershipModel({ agentId, circleId });
+        await membership.save({ session });
         await this.circleModel.findByIdAndUpdate(
           circleId,
-          { $inc: { subscriberCount: 1 } },
+          { $inc: { memberCount: 1 } },
           { session },
         );
       });
@@ -1029,108 +1119,99 @@ export class CircleService {
       if (!isDuplicateKeyError(error)) throw error;
       changed = false;
     }
-    return { circleId, subscribed: true, changed };
+    return { circleId, joined: true, changed };
   }
 
-  async unsubscribe(agentId: string, circleId: string) {
+  async leave(agentId: string, circleId: string) {
     await this.ensureCircleExists(circleId);
     const changed = await this.databaseService.$transaction(async (session) => {
-      const result = await this.circleSubscriptionModel.deleteOne(
-        { agentId, circleId },
-        { session },
-      );
+      const result = await this.circleMembershipModel.deleteOne({ agentId, circleId }, { session });
       if (result.deletedCount > 0) {
         await this.circleModel.findByIdAndUpdate(
           circleId,
-          { $inc: { subscriberCount: -1 } },
+          { $inc: { memberCount: -1 } },
           { session },
         );
       }
       return result.deletedCount > 0;
     });
     await this.circleModel.updateOne(
-      { _id: circleId, subscriberCount: { $lt: 0 } },
-      { subscriberCount: 0 },
+      { _id: circleId, memberCount: { $lt: 0 } },
+      { memberCount: 0 },
     );
-    return { circleId, subscribed: false, changed };
+    return { circleId, joined: false, changed };
   }
 
-  async listAgentCircles(agentId: string, page: number, pageSize: number, currentUserId?: string) {
+  async listAgentCircles(agentId: string, dto: CursorPaginationDto, currentUserId?: string) {
     ensureValidObjectId(agentId, commonErrors.agentNotFound);
     const agent = await this.agentModel.findById(agentId).select('_id');
     if (!agent) throw commonErrors.agentNotFound();
-
-    const pageResult =
-      await this.circleSubscriptionModel.aggregate<CircleSubscriptionAggregatePage>([
-        { $match: { agentId } },
-        { $sort: { createdAt: -1, _id: -1 } },
-        {
-          $lookup: {
-            from: 'circles',
-            let: {
-              circleObjectId: {
-                $convert: { input: '$circleId', to: 'objectId', onError: null, onNull: null },
-              },
-            },
-            pipeline: [
-              { $match: { $expr: { $eq: ['$_id', '$$circleObjectId'] } } },
-              { $match: { deletedAt: null, status: CIRCLE_STATUSES.ACTIVE } },
-            ],
-            as: 'circle',
-          },
-        },
-        { $match: { circle: { $ne: [] } } },
-        {
-          $facet: {
-            data: [
-              { $skip: (page - 1) * pageSize },
-              { $limit: pageSize },
-              { $project: { circleId: 1 } },
-            ],
-            meta: [{ $count: 'total' }],
-          },
-        },
-      ]);
-    const subscriptions = pageResult[0]?.data ?? [];
-    const total = pageResult[0]?.meta[0]?.total ?? 0;
-    const circleIds = subscriptions.map((subscription) => subscription.circleId);
-    const [circles, subscriptionState] = await Promise.all([
+    const limit = dto.limit ?? CURSOR_PAGINATION_DEFAULT_LIMIT;
+    const cursor = dto.cursor
+      ? decodeResourceTimestampCursor(dto.cursor, RESOURCE_CURSOR_KINDS.AGENT_CIRCLES, agentId)
+      : null;
+    const candidates = await this.circleMembershipModel
+      .find({
+        agentId,
+        ...(cursor
+          ? {
+              $or: [
+                { createdAt: { $lt: cursor.timestamp } },
+                { createdAt: cursor.timestamp, _id: { $lt: cursor.id } },
+              ],
+            }
+          : {}),
+      })
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(limit + 1);
+    const hasMore = candidates.length > limit;
+    const memberships = hasMore ? candidates.slice(0, limit) : candidates;
+    const circleIds = memberships.map((membership) => membership.circleId);
+    const [circles, membershipState] = await Promise.all([
       this.circleModel.find({
         _id: { $in: circleIds },
         deletedAt: null,
         status: CIRCLE_STATUSES.ACTIVE,
       }),
-      this.getSubscriptionStateForCircleIds(currentUserId, circleIds),
+      this.getMembershipStateForCircleIds(currentUserId, circleIds),
     ]);
     const circleMap = new Map(circles.map((circle) => [circle.id, circle]));
 
     return {
-      circles: subscriptions
-        .map((subscription) => {
-          const circle = circleMap.get(subscription.circleId);
+      items: memberships
+        .map((membership) => {
+          const circle = circleMap.get(membership.circleId);
           return circle
             ? this.serializeCircle(
                 circle,
-                subscriptionState ? subscriptionState.circleIds.has(circle.id) : undefined,
+                membershipState ? membershipState.circleIds.has(circle.id) : undefined,
               )
             : null;
         })
         .filter((circle) => circle !== null),
-      meta: {
-        total,
-        page,
-        pageSize,
-        totalPages: Math.ceil(total / pageSize),
-      },
+      nextCursor:
+        hasMore && memberships.length > 0
+          ? encodeResourceTimestampCursor(
+              RESOURCE_CURSOR_KINDS.AGENT_CIRCLES,
+              agentId,
+              memberships[memberships.length - 1].createdAt,
+              memberships[memberships.length - 1].id,
+            )
+          : null,
     };
   }
 
-  async getSubscribedCircleIdsForUser(currentUserId: string): Promise<string[]> {
-    const subscriptionState = await this.getSubscribedCircleIds(currentUserId);
-    return subscriptionState ? this.filterActiveCircleIds([...subscriptionState.circleIds]) : [];
+  async filterJoinedCircleIds(agentId: string, circleIds: string[]): Promise<Set<string>> {
+    const uniqueCircleIds = [...new Set(circleIds)];
+    if (uniqueCircleIds.length === 0) return new Set();
+    const memberships = await this.circleMembershipModel
+      .find({ agentId, circleId: { $in: uniqueCircleIds } })
+      .select('circleId')
+      .lean<Array<Pick<CircleMembership, 'circleId'>>>();
+    return new Set(memberships.map((membership) => membership.circleId));
   }
 
-  private async getSubscriptionStateForCircleIds(
+  private async getMembershipStateForCircleIds(
     currentUserId: string | undefined,
     circleIds: string[],
   ): Promise<{ agentId: string; circleIds: Set<string> } | null> {
@@ -1139,33 +1220,16 @@ export class CircleService {
     if (!agent) return null;
 
     const uniqueCircleIds = [...new Set(circleIds)];
-    const subscriptions =
+    const memberships =
       uniqueCircleIds.length === 0
         ? []
-        : await this.circleSubscriptionModel
+        : await this.circleMembershipModel
             .find({ agentId: agent.id, circleId: { $in: uniqueCircleIds } })
             .select('circleId')
-            .lean<Array<Pick<CircleSubscription, 'circleId'>>>();
+            .lean<Array<Pick<CircleMembership, 'circleId'>>>();
     return {
       agentId: agent.id,
-      circleIds: new Set(subscriptions.map((subscription) => subscription.circleId)),
-    };
-  }
-
-  private async getSubscribedCircleIds(currentUserId?: string): Promise<{
-    agentId: string;
-    circleIds: Set<string>;
-  } | null> {
-    if (!currentUserId) return null;
-    const agent = await this.agentModel.findOne({ userId: currentUserId }).select('_id');
-    if (!agent) return null;
-    const subscriptions = await this.circleSubscriptionModel
-      .find({ agentId: agent.id })
-      .select('circleId')
-      .lean<Array<Pick<CircleSubscription, 'circleId'>>>();
-    return {
-      agentId: agent.id,
-      circleIds: new Set(subscriptions.map((subscription) => subscription.circleId)),
+      circleIds: new Set(memberships.map((membership) => membership.circleId)),
     };
   }
 
@@ -1255,7 +1319,7 @@ export class CircleService {
 
   private serializeCircle(
     circle: Circle,
-    subscribed?: boolean,
+    joined?: boolean,
     _currentAgentId: string | null = null,
     hotPosts?: Array<{ id: string; title: string; createdAt: string }>,
   ): PublicCircle {
@@ -1264,7 +1328,7 @@ export class CircleService {
       slug: circle.slug,
       name: circle.name,
       topic: circle.topic,
-      subscriberCount: Math.max(0, circle.subscriberCount ?? 0),
+      memberCount: Math.max(0, circle.memberCount ?? 0),
       postCount: Math.max(0, circle.postCount ?? 0),
       lastPostAt: circle.lastPostAt?.toISOString() ?? null,
       kind: circle.kind,
@@ -1274,7 +1338,7 @@ export class CircleService {
       topicOrigin: circle.topicOrigin,
       rulesVersion: circle.rulesVersion,
       activeProposalCount: circle.activeProposalCount,
-      ...(subscribed === undefined ? {} : { subscribed }),
+      ...(joined === undefined ? {} : { joined }),
       ...(hotPosts === undefined ? {} : { hotPosts }),
       createdAt: circle.createdAt.toISOString(),
       updatedAt: circle.updatedAt.toISOString(),

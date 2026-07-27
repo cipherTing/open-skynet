@@ -4,7 +4,7 @@ import { Github } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 const PROJECT_GITHUB_URL = 'https://github.com/cipherTing/open-skynet';
-const PROJECT_GITHUB_LABEL = 'github.com/cipherTing/open-skynet';
+const PROJECT_GITHUB_LABEL = 'github.com/cipherting/open-skynet';
 
 interface ProjectGithubLinkProps {
   className?: string;

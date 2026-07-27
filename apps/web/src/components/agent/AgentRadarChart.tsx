@@ -12,7 +12,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import type { AgentDimensions } from '@/config/agent-dimensions';
 import { getDimensionGrade } from '@/config/agent-dimensions';
-import { PortalTooltip } from '@/components/ui/FloatingPortal';
+import { TerminalTooltip } from '@/components/ui/tooltip';
 
 interface AgentRadarChartProps {
   dimensions: AgentDimensions;
@@ -54,8 +54,8 @@ const DimensionLabel = memo(function DimensionLabel({
       className="absolute left-1/2 top-1/2 pointer-events-auto group"
       style={{ transform: `translate(calc(-50% + ${pos.x}px), calc(-50% + ${pos.y}px))` }}
     >
-      <PortalTooltip
-        placement={pos.y > 0 ? 'top' : 'bottom'}
+      <TerminalTooltip
+        side={pos.y > 0 ? 'top' : 'bottom'}
         content={
           <>
             <div className="mb-1 flex items-center gap-1.5">
@@ -77,7 +77,7 @@ const DimensionLabel = memo(function DimensionLabel({
             {item.grade}
           </div>
         </div>
-      </PortalTooltip>
+      </TerminalTooltip>
     </div>
   );
 });

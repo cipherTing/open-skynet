@@ -13,11 +13,17 @@ import { apiMessage, type ApiMessage } from '@/common/i18n/api-message';
 import {
   AGENT_LEVELS,
   DAILY_TASKS,
+  EXTERNAL_XP_SOURCE_TYPES,
   PROGRESSION_ACTION_CONFIG,
   PROGRESSION_TIME_ZONE,
   SECONDS_PER_DAY,
+  XP_EVENT_SOURCE_TYPES,
+  XP_EVENT_REASON_KEYS,
   type AgentLevelConfig,
+  type ExternalXpSourceType,
   type ProgressionAction,
+  type XpEventReasonKey,
+  type XpEventSourceType,
 } from './progression.constants';
 
 export interface AgentLevelSummary {
@@ -87,15 +93,36 @@ interface ApplyActionParams {
 
 interface XpEventKey {
   agentId: string;
-  sourceType: string;
+  sourceType: XpEventSourceType;
   sourceId: string;
-  reasonKey: string;
+  reasonKey: XpEventReasonKey;
+}
+
+interface ExternalXpAdjustmentInput {
+  agentId: string;
+  requestedDelta: number;
+  sourceType: ExternalXpSourceType;
+  sourceId: string;
+  reasonKey: XpEventReasonKey;
+  occurredAt: Date;
+}
+
+export type ExternalXpAdjustmentResult =
+  | { applied: false }
+  | {
+      applied: true;
+      previousXp: number;
+      nextXp: number;
+      appliedDelta: number;
+      levelAfter: number;
+    };
+
+interface DailyXpDelta {
+  _id: string;
+  value: number;
 }
 
 type CounterKey = keyof DailyCounters;
-
-const ACTION_REWARD_REASON_KEY = 'active-action';
-const ACTION_STAMINA_REASON_KEY = 'stamina-charge';
 
 const EMPTY_COUNTERS: DailyCounters = {
   posts: 0,
@@ -340,7 +367,7 @@ export class ProgressionService {
     agentId: string,
     action: ProgressionAction,
     sourceId: string,
-    reasonKey = ACTION_REWARD_REASON_KEY,
+    reasonKey: XpEventReasonKey = XP_EVENT_REASON_KEYS.ACTIVE_ACTION,
   ): XpEventKey {
     return {
       agentId,
@@ -411,9 +438,9 @@ export class ProgressionService {
       const created = await this.createXpEventIfAbsent(
         {
           agentId: progress.agentId,
-          sourceType: 'DAILY_TASK',
+          sourceType: XP_EVENT_SOURCE_TYPES.DAILY_TASK,
           sourceId: `${progress.dailyProgressDate}:${task.id}`,
-          reasonKey: 'daily-task-reward',
+          reasonKey: XP_EVENT_REASON_KEYS.DAILY_TASK_REWARD,
         },
         task.rewardXp,
         now,
@@ -469,7 +496,7 @@ export class ProgressionService {
       params.agentId,
       params.action,
       params.sourceId,
-      ACTION_STAMINA_REASON_KEY,
+      XP_EVENT_REASON_KEYS.STAMINA_CHARGE,
     );
     const existingEvent = await this.xpEventModel
       .findOne(eventKey, null, { session })
@@ -526,7 +553,7 @@ export class ProgressionService {
       params.agentId,
       params.action,
       params.sourceId,
-      ACTION_STAMINA_REASON_KEY,
+      XP_EVENT_REASON_KEYS.STAMINA_CHARGE,
     );
     const staminaEvent = await this.xpEventModel
       .findOne(staminaEventKey, null, { session })
@@ -684,31 +711,77 @@ export class ProgressionService {
     return this.buildLevelSummary(progress.xpTotal);
   }
 
+  async applyExternalXpAdjustment(
+    input: ExternalXpAdjustmentInput,
+    session: ClientSession,
+  ): Promise<ExternalXpAdjustmentResult> {
+    if (!Object.values(EXTERNAL_XP_SOURCE_TYPES).includes(input.sourceType)) {
+      throw new Error(`Unsupported external XP source type: ${input.sourceType}`);
+    }
+    const eventKey: XpEventKey = {
+      agentId: input.agentId,
+      sourceType: input.sourceType,
+      sourceId: input.sourceId,
+      reasonKey: input.reasonKey,
+    };
+    const existing = await this.xpEventModel.findOne(eventKey, null, { session }).select('_id');
+    if (existing) return { applied: false };
+
+    const progress = await this.getOrCreateProgress(input.agentId, input.occurredAt, session);
+    const previousXp = progress.xpTotal;
+    const nextXp = Math.max(0, previousXp + input.requestedDelta);
+    const appliedDelta = nextXp - previousXp;
+    const nextLevel = getLevelByXp(nextXp);
+    progress.xpTotal = nextXp;
+    progress.staminaCurrent = Math.min(progress.staminaCurrent, nextLevel.staminaMax);
+    progress.markModified('xpTotal');
+    await progress.save({ session });
+    await new this.xpEventModel({
+      ...eventKey,
+      xp: appliedDelta,
+      occurredAt: input.occurredAt,
+    }).save({ session });
+
+    return {
+      applied: true,
+      previousXp,
+      nextXp,
+      appliedDelta,
+      levelAfter: nextLevel.level,
+    };
+  }
+
   async getScoreHistory(agentId: string, days = 30): Promise<AgentScorePoint[]> {
     const safeDays = clampNumber(Math.floor(days), 1, 90);
     const now = new Date();
     const todayKey = getShanghaiDayKey(now);
     const todayStart = getShanghaiDayStart(todayKey);
     const start = addDays(todayStart, -(safeDays - 1));
+    const end = addDays(todayStart, 1);
     const progress = await this.progressModel
       .findOne({ agentId })
       .select('xpTotal')
       .lean<Pick<AgentProgress, 'xpTotal'>>();
     if (!progress) return [];
 
-    const events = await this.xpEventModel
-      .find({ agentId, occurredAt: { $gte: start } })
-      .select('xp occurredAt')
-      .sort({ occurredAt: 1 })
-      .lean<Array<Pick<AgentXpEvent, 'xp' | 'occurredAt'>>>();
-
-    const perDay = new Map<string, number>();
-    for (const event of events) {
-      const dayKey = getShanghaiDayKey(event.occurredAt);
-      perDay.set(dayKey, (perDay.get(dayKey) ?? 0) + event.xp);
-    }
-
-    const inWindowXp = events.reduce((sum, event) => sum + event.xp, 0);
+    const dailyDeltas = await this.xpEventModel.aggregate<DailyXpDelta>([
+      { $match: { agentId, occurredAt: { $gte: start, $lt: end } } },
+      {
+        $group: {
+          _id: {
+            $dateToString: {
+              date: '$occurredAt',
+              format: '%Y-%m-%d',
+              timezone: PROGRESSION_TIME_ZONE,
+            },
+          },
+          value: { $sum: '$xp' },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]);
+    const perDay = new Map(dailyDeltas.map((item) => [item._id, item.value]));
+    const inWindowXp = dailyDeltas.reduce((sum, item) => sum + item.value, 0);
     let running = Math.max(0, progress.xpTotal - inWindowXp);
     const points: AgentScorePoint[] = [];
     for (let index = 0; index < safeDays; index += 1) {

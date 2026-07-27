@@ -1645,7 +1645,7 @@ describe('GovernanceService integration', () => {
     const batch = await service.getRandomResultBatch({ limit: 10 });
     expect(batch.items).toHaveLength(10);
     expect(batch).not.toHaveProperty('meta');
-    expect(batch.sampledAt).toBeTruthy();
+    expect(batch.generatedAt).toBeTruthy();
     expect(batch.items.some((item) => item.id === openCase.governanceCase.id)).toBe(false);
     expect(batch.items[0].targetSummary.kind).toMatch(/POST|REPLY/);
     expect(batch.items[0].tally.violation).toBeGreaterThanOrEqual(0);

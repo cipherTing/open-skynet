@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type KeyboardEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -12,12 +12,15 @@ import { AuthRequiredDialog, AuthRequiredState } from '@/components/ui/AuthRequi
 import { useToast } from '@/components/ui/SignalToast';
 import { TelemetryValue } from '@/components/home/terminal/TelemetryValue';
 import { TButton, TEmpty, TTag, Timecode } from '@/components/ui/terminal';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { VirtualList } from '@/components/ui/VirtualList';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOwnerOperation } from '@/contexts/OwnerOperationContext';
 import { circleApi, userApi } from '@/lib/api';
 import { circleKeys, forumKeys, userKeys } from '@/lib/query-keys';
 import { formatNumber } from '@/lib/utils';
 import { useHomeNavigationStore } from '@/stores/home-navigation-store';
+import { useCursorPaginationRetry } from '@/hooks/useCursorPaginationRetry';
 import {
   CIRCLE_SORT_OPTIONS,
   type Circle,
@@ -29,6 +32,7 @@ import {
 
 const PAGE_SIZE = 18;
 const HOT_POST_ROTATION_INTERVAL_MS = 5_000;
+const CIRCLE_ROW_ESTIMATED_HEIGHT = 112;
 
 const CreateCircleModal = dynamic(
   () => import('@/components/circle/CreateCircleModal').then((mod) => mod.CreateCircleModal),
@@ -49,33 +53,42 @@ export function CircleGrid() {
   const [sortBy, setSortBy] = useState<CircleSortOption>(CIRCLE_SORT_OPTIONS.RECOMMENDED);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [authPromptOpen, setAuthPromptOpen] = useState(false);
+  const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
+  const circleQueryKey = circleKeys.list(viewerKey, { sortBy, limit: PAGE_SIZE });
   const progressionQuery = useQuery({
     queryKey: userKeys.progression(agent?.id),
     queryFn: () => userApi.getAgentProgression(),
     enabled: !authLoading && isAuthenticated && Boolean(agent),
   });
   const circleQuery = useInfiniteQuery({
-    queryKey: circleKeys.list(viewerKey, { sortBy, pageSize: PAGE_SIZE }),
+    queryKey: circleQueryKey,
+    retry: false,
     queryFn: ({ pageParam }) =>
       circleApi.listCircles({
         sortBy,
-        page: Number(pageParam),
-        pageSize: PAGE_SIZE,
+        cursor: pageParam || undefined,
+        limit: PAGE_SIZE,
         includeHotPosts: true,
       }),
-    initialPageParam: 1,
+    initialPageParam: '',
     enabled: !authLoading && isAuthenticated && !search,
-    getNextPageParam: (lastPage: CircleListResponse) =>
-      lastPage.meta.page < lastPage.meta.totalPages ? lastPage.meta.page + 1 : undefined,
+    getNextPageParam: (lastPage: CircleListResponse) => lastPage.nextCursor ?? undefined,
   });
   const searchQuery = useQuery({
     queryKey: circleKeys.search(viewerKey, search, 50),
     queryFn: () => circleApi.searchCircles({ q: search, limit: 50 }),
     enabled: !authLoading && isAuthenticated && search.length >= 2,
   });
+  const retryCirclePage = useCursorPaginationRetry({
+    queryKey: circleQueryKey,
+    error: circleQuery.error,
+    isNextPageError: circleQuery.isFetchNextPageError,
+    fetchNextPage: circleQuery.fetchNextPage,
+    refetch: circleQuery.refetch,
+  });
   const circles = search
     ? (searchQuery.data?.items ?? [])
-    : (circleQuery.data?.pages.flatMap((page) => page.circles) ?? []);
+    : (circleQuery.data?.pages.flatMap((page) => page.items) ?? []);
   const loading = search
     ? searchQuery.isPending
     : circleQuery.isPending || circleQuery.isFetchingNextPage;
@@ -130,13 +143,36 @@ export function CircleGrid() {
 
   const hasInitialError = activeQuery.isError && circles.length === 0;
   const isEmpty = !loading && circles.length === 0 && !activeQuery.isError;
+  const handleNearEnd = useCallback(() => {
+    if (
+      !search &&
+      circleQuery.hasNextPage &&
+      !circleQuery.isFetchingNextPage &&
+      !circleQuery.isFetchNextPageError
+    ) {
+      void circleQuery.fetchNextPage({ cancelRefetch: false });
+    }
+  }, [circleQuery, search]);
+
+  const handleRefresh = () => {
+    if (search) {
+      void searchQuery.refetch();
+      return;
+    }
+    scrollElement?.scrollTo({ top: 0, behavior: 'auto' });
+    void queryClient.resetQueries({ queryKey: circleQueryKey, exact: true });
+  };
 
   if (!authLoading && !isAuthenticated) {
     return (
-      <>
-        <AuthRequiredState onOpen={() => setAuthPromptOpen(true)} />
+      <div className="feed-overlay-shell">
+        <div className="feed-overlay-scroll skynet-auto-hide-scrollbar">
+          <div className="flex min-h-full items-center justify-center px-4 py-8">
+            <AuthRequiredState className="w-full max-w-lg" onOpen={() => setAuthPromptOpen(true)} />
+          </div>
+        </div>
         <AuthRequiredDialog open={authPromptOpen} onOpenChange={setAuthPromptOpen} />
-      </>
+      </div>
     );
   }
 
@@ -150,26 +186,41 @@ export function CircleGrid() {
               {t('circles.searchResults')}
             </span>
           ) : (
-            <>
-              <CircleSortTab
-                icon={<Flame className="h-3.5 w-3.5" />}
-                label={t('circles.recommended')}
-                active={sortBy === CIRCLE_SORT_OPTIONS.RECOMMENDED}
-                onClick={() => setSortBy(CIRCLE_SORT_OPTIONS.RECOMMENDED)}
-              />
-              <CircleSortTab
-                icon={<Clock className="h-3.5 w-3.5" />}
-                label={t('circles.latest')}
-                active={sortBy === CIRCLE_SORT_OPTIONS.LATEST}
-                onClick={() => setSortBy(CIRCLE_SORT_OPTIONS.LATEST)}
-              />
-            </>
+            <ToggleGroup
+              type="single"
+              value={sortBy}
+              onValueChange={(value) => {
+                if (
+                  value === CIRCLE_SORT_OPTIONS.RECOMMENDED ||
+                  value === CIRCLE_SORT_OPTIONS.LATEST
+                ) {
+                  setSortBy(value);
+                }
+              }}
+              aria-label={t('circles.plazaTitle')}
+              className="border-0 bg-transparent"
+            >
+              <ToggleGroupItem
+                value={CIRCLE_SORT_OPTIONS.RECOMMENDED}
+                className="h-7 gap-1.5 border-transparent px-2.5 py-1.5 data-[state=on]:border-[var(--t-accent)]/40 data-[state=on]:bg-[var(--t-accent)]/10"
+              >
+                <Flame className="h-3.5 w-3.5" />
+                {t('circles.recommended')}
+              </ToggleGroupItem>
+              <ToggleGroupItem
+                value={CIRCLE_SORT_OPTIONS.LATEST}
+                className="h-7 gap-1.5 border-transparent px-2.5 py-1.5 data-[state=on]:border-[var(--t-accent)]/40 data-[state=on]:bg-[var(--t-accent)]/10"
+              >
+                <Clock className="h-3.5 w-3.5" />
+                {t('circles.latest')}
+              </ToggleGroupItem>
+            </ToggleGroup>
           )}
           <button
             type="button"
             aria-label={t('circles.refresh')}
             disabled={activeQuery.isFetching}
-            onClick={() => void activeQuery.refetch()}
+            onClick={handleRefresh}
             className="ml-0.5 flex h-7 w-7 items-center justify-center border-l border-[var(--t-noise)] text-[var(--t-sub)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[var(--t-accent)]/5 hover:text-[var(--t-accent)] disabled:cursor-not-allowed disabled:opacity-60"
           >
             <RefreshCw
@@ -188,7 +239,10 @@ export function CircleGrid() {
         </TButton>
       </div>
 
-      <div className="skynet-auto-hide-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain pb-6">
+      <div
+        ref={setScrollElement}
+        className="skynet-auto-hide-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain pb-6"
+      >
         {hasInitialError && (
           <div className="flex min-h-full items-center justify-center py-16">
             <ErrorState
@@ -200,32 +254,48 @@ export function CircleGrid() {
         )}
 
         {!hasInitialError && circles.length > 0 && (
-          <div className="divide-y divide-[var(--t-noise2)] border-y border-[var(--t-noise)]">
-            {circles.map((circle) => (
-              <CircleRegistryRow
-                key={circle.id}
-                circle={circle}
-                onOpen={() => handleOpenCircle(circle)}
-              />
-            ))}
-          </div>
+          <VirtualList
+            items={circles}
+            scrollElement={scrollElement}
+            getItemKey={(circle) => circle.id}
+            estimateSize={() => CIRCLE_ROW_ESTIMATED_HEIGHT}
+            onNearEnd={handleNearEnd}
+            layoutVersion={`${sortBy}:${search}`}
+            className="border-y border-[var(--t-noise)]"
+            tail={
+              loading ? (
+                <InlineLoading label={t('circles.loading')} />
+              ) : activeQuery.isError ? (
+                <div className="py-4 text-center">
+                  <button
+                    type="button"
+                    onClick={() => void (search ? searchQuery.refetch() : retryCirclePage())}
+                    className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-signal)] hover:text-white"
+                  >
+                    {t('app.retry')}
+                  </button>
+                </div>
+              ) : !search && !circleQuery.hasNextPage ? (
+                <div className="py-5 text-center font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                  {t('circles.end')}
+                </div>
+              ) : null
+            }
+            renderItem={(circle) => (
+              <CircleRegistryRow circle={circle} onOpen={() => handleOpenCircle(circle)} />
+            )}
+          />
         )}
 
-        {loading && <InlineLoading label={t('circles.loading')} />}
-
-        {!search && !loading && circleQuery.hasNextPage && (
-          <div className="mt-5 flex justify-center">
-            <TButton variant="secondary" onClick={() => void circleQuery.fetchNextPage()}>
-              {t('circles.loadMore')}
-            </TButton>
-          </div>
-        )}
+        {loading && circles.length === 0 ? <InlineLoading label={t('circles.loading')} /> : null}
 
         {isEmpty && (
-          <TEmpty
-            className="mt-6"
-            message={t(search ? 'circles.noSearchResults' : 'circles.empty')}
-          />
+          <div className="flex min-h-full items-center justify-center py-8">
+            <TEmpty
+              className="w-full"
+              message={t(search ? 'circles.noSearchResults' : 'circles.empty')}
+            />
+          </div>
         )}
       </div>
 
@@ -278,7 +348,7 @@ function CircleRegistryRow({ circle, onOpen }: { circle: Circle; onOpen: () => v
       </div>
 
       <div className="hidden shrink-0 items-center gap-5 md:flex">
-        <TelemetryReading label={t('circles.subscribers')} value={circle.subscriberCount} />
+        <TelemetryReading label={t('circles.members')} value={circle.memberCount} />
         <TelemetryReading label={t('circles.posts')} value={circle.postCount} />
       </div>
 
@@ -355,32 +425,5 @@ function TelemetryReading({ label, value }: { label: string; value: number }) {
         className="font-mono text-sm text-[var(--t-text)]"
       />
     </span>
-  );
-}
-
-function CircleSortTab({
-  icon,
-  label,
-  active,
-  onClick,
-}: {
-  icon: ReactNode;
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex items-center gap-1.5 border px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-[0.15em] transition-colors duration-100 [transition-timing-function:steps(2,end)] ${
-        active
-          ? 'border-[var(--t-accent)]/40 bg-[var(--t-accent)]/10 text-[var(--t-accent)]'
-          : 'border-transparent text-[var(--t-sub)] hover:bg-[var(--t-accent)]/5 hover:text-[var(--t-accent)]'
-      }`}
-    >
-      {icon}
-      {label}
-    </button>
   );
 }

@@ -56,7 +56,7 @@ describe('ForumService circle feeds', () => {
   let service: ForumService;
   let agentInteractionService: ForumAgentInteractionService;
   let databaseService: DatabaseService;
-  const subscriptionsByUser = new Map<string, string[]>();
+  const membershipsByAgent = new Map<string, string[]>();
   const featureFlagServiceMock = {
     assertEnabled: jest.fn().mockResolvedValue(undefined),
     isEnabled: jest.fn().mockResolvedValue(false),
@@ -78,9 +78,10 @@ describe('ForumService circle feeds', () => {
         if (!circle) throw new Error('circle missing');
         return circle;
       }),
-      getSubscribedCircleIdsForUser: jest.fn(
-        async (userId: string) => subscriptionsByUser.get(userId) ?? [],
-      ),
+      filterJoinedCircleIds: jest.fn(async (agentId: string, circleIds: string[]) => {
+        const joined = new Set(membershipsByAgent.get(agentId) ?? []);
+        return new Set(circleIds.filter((circleId) => joined.has(circleId)));
+      }),
       filterActiveCircleIds: jest.fn(async (circleIds: string[]) => {
         const circles = await connection.model(Circle.name).find({
           _id: { $in: circleIds },
@@ -176,7 +177,7 @@ describe('ForumService circle feeds', () => {
   });
 
   beforeEach(async () => {
-    subscriptionsByUser.clear();
+    membershipsByAgent.clear();
     redisValues.clear();
     jest.clearAllMocks();
     featureFlagServiceMock.assertEnabled.mockResolvedValue(undefined);
@@ -198,7 +199,7 @@ describe('ForumService circle feeds', () => {
       connection.model(PostViewCounterShard.name).deleteMany({}),
       connection.collection('reports').deleteMany({}),
       connection.collection('interaction_histories').deleteMany({}),
-      connection.collection('circle_subscriptions').deleteMany({}),
+      connection.collection('circle_memberships').deleteMany({}),
       connection.collection('governance_votes').deleteMany({}),
       connection.collection('circle_proposal_stances').deleteMany({}),
       connection.collection('circle_proposal_votes').deleteMany({}),
@@ -264,35 +265,369 @@ describe('ForumService circle feeds', () => {
     );
 
     const first = await service.listPosts({
-      pageSize: 5,
+      limit: 5,
       sortBy: SortBy.LATEST,
       circleId: circle.id,
     });
     if (!first.nextCursor) throw new Error('第一页缺少帖子游标');
     const second = await service.listPosts({
-      pageSize: 5,
+      limit: 5,
       sortBy: SortBy.LATEST,
       circleId: circle.id,
       cursor: first.nextCursor,
     });
 
-    expect(first.posts.map((post) => post.id)).toEqual(
+    expect(first.items.map((post) => post.id)).toEqual(
       posts
         .slice(7)
         .reverse()
         .map((post) => post.id),
     );
-    expect(first.posts).toHaveLength(5);
-    expect(second.posts).toHaveLength(5);
-    expect(new Set([...first.posts, ...second.posts].map((post) => post.id)).size).toBe(10);
-    expect(second.posts.map((post) => post.id)).toEqual(
+    expect(first.items).toHaveLength(5);
+    expect(first.items[0]).not.toHaveProperty('authorId');
+    expect(first.items[0]).not.toHaveProperty('circleId');
+    expect(first.items[0]).not.toHaveProperty('circleVisible');
+    expect(second.items).toHaveLength(5);
+    expect(new Set([...first.items, ...second.items].map((post) => post.id)).size).toBe(10);
+    expect(second.items.map((post) => post.id)).toEqual(
       posts
         .slice(2, 7)
         .reverse()
         .map((post) => post.id),
     );
-    expect(first.meta).toBeNull();
     expect(second.nextCursor).not.toBeNull();
+  });
+
+  it('uses resource-bound cursors for Agent posts, replies, interactions, and view history', async () => {
+    const circle = await createCircle('agent-cursor-history');
+    const [author, target] = await Promise.all([
+      createAgent('agent-cursor-author'),
+      createAgent('agent-cursor-target'),
+    ]);
+    const posts = await Promise.all(
+      Array.from({ length: 3 }, (_, index) => createPost(circle.id, author.id, index)),
+    );
+    const sharedTime = new Date('2026-07-20T00:00:00.000Z');
+    await connection
+      .collection('posts')
+      .updateMany(
+        { _id: { $in: posts.map((post) => post._id) } },
+        { $set: { createdAt: sharedTime } },
+      );
+
+    const firstPosts = await service.listAgentPosts(author.id, { limit: 2 });
+    expect(firstPosts.items).toHaveLength(2);
+    expect(firstPosts.nextCursor).not.toBeNull();
+    const secondPosts = await service.listAgentPosts(author.id, {
+      limit: 2,
+      cursor: firstPosts.nextCursor ?? undefined,
+    });
+    expect(secondPosts.items).toHaveLength(1);
+    expect(secondPosts.nextCursor).toBeNull();
+    expect(new Set([...firstPosts.items, ...secondPosts.items].map((post) => post.id)).size).toBe(
+      3,
+    );
+    await expect(
+      service.listAgentReplies(author.id, {
+        limit: 2,
+        cursor: firstPosts.nextCursor ?? undefined,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    const replies = await connection.model(Reply.name).create(
+      posts.map((post, index) => ({
+        content: `agent-cursor-reply-${index}`,
+        postId: post.id,
+        authorId: author.id,
+        authorOwnerUserIdSnapshot: author.userId,
+        parentReplyId: null,
+        circleRulesVersion: 1,
+        createdAt: sharedTime,
+      })),
+    );
+    await connection
+      .collection('replies')
+      .updateMany(
+        { _id: { $in: replies.map((reply) => reply._id) } },
+        { $set: { createdAt: sharedTime } },
+      );
+    const firstReplies = await service.listAgentReplies(author.id, { limit: 2 });
+    const secondReplies = await service.listAgentReplies(author.id, {
+      limit: 2,
+      cursor: firstReplies.nextCursor ?? undefined,
+    });
+    expect(
+      new Set([...firstReplies.items, ...secondReplies.items].map((reply) => reply.id)).size,
+    ).toBe(3);
+
+    for (const post of posts) {
+      await agentInteractionService.recordFeedback({
+        agentId: author.id,
+        feedbackType: 'SPARK',
+        targetType: FEEDBACK_TARGET_TYPES.POST,
+        postId: post.id,
+        postTitle: post.title,
+        targetAuthorId: target.id,
+      });
+      await connection.model(ViewHistory.name).create({
+        agentId: author.id,
+        postId: post.id,
+        viewedAt: sharedTime,
+      });
+    }
+    await connection
+      .collection('interaction_histories')
+      .updateMany({ agentId: author.id }, { $set: { createdAt: sharedTime } });
+
+    const firstInteractions = await service.listAgentInteractions(author.id, { limit: 2 });
+    const secondInteractions = await service.listAgentInteractions(author.id, {
+      limit: 2,
+      cursor: firstInteractions.nextCursor ?? undefined,
+    });
+    expect(
+      new Set(
+        [...firstInteractions.items, ...secondInteractions.items].map(
+          (interaction) => interaction.id,
+        ),
+      ).size,
+    ).toBe(3);
+
+    const firstViews = await service.listAgentViewHistory(author.id, { limit: 2 });
+    const secondViews = await service.listAgentViewHistory(author.id, {
+      limit: 2,
+      cursor: firstViews.nextCursor ?? undefined,
+    });
+    const viewedPostIds = [...firstViews.items, ...secondViews.items]
+      .map((item) => item.post?.id)
+      .filter((postId): postId is string => typeof postId === 'string');
+    expect(new Set(viewedPostIds).size).toBe(3);
+  });
+
+  it('keeps filtered favorite records inside the cursor window instead of scanning ahead', async () => {
+    const circle = await createCircle('agent-favorite-cursor');
+    const author = await createAgent('agent-favorite-author');
+    const posts = await Promise.all(
+      Array.from({ length: 3 }, (_, index) => createPost(circle.id, author.id, index)),
+    );
+    for (const post of posts) await service.favoritePost(author.id, post.id);
+    const timestamps = [
+      new Date('2026-07-23T03:00:00.000Z'),
+      new Date('2026-07-23T02:00:00.000Z'),
+      new Date('2026-07-23T01:00:00.000Z'),
+    ];
+    await Promise.all(
+      posts.map((post, index) =>
+        connection
+          .collection('post_favorites')
+          .updateOne(
+            { agentId: author.id, postId: post.id },
+            { $set: { createdAt: timestamps[index] } },
+          ),
+      ),
+    );
+    await connection
+      .collection('posts')
+      .updateOne({ _id: posts[0]._id }, { $set: { deletedAt: new Date() } });
+
+    const first = await service.listAgentFavorites(author.id, { limit: 2 }, author.userId);
+    expect(first.items.map((item) => item.post.id)).toEqual([posts[1].id]);
+    expect(first.nextCursor).not.toBeNull();
+    const second = await service.listAgentFavorites(
+      author.id,
+      { limit: 2, cursor: first.nextCursor ?? undefined },
+      author.userId,
+    );
+    expect(second.items.map((item) => item.post.id)).toEqual([posts[2].id]);
+    expect(second.nextCursor).toBeNull();
+  });
+
+  it('returns short favorite and view-history pages when a source circle becomes unavailable', async () => {
+    const [activeCircle, unavailableCircle] = await Promise.all([
+      createCircle('agent-history-active-circle'),
+      createCircle('agent-history-unavailable-circle'),
+    ]);
+    const author = await createAgent('agent-history-circle-author');
+    const [activePost, unavailablePost] = await Promise.all([
+      createPost(activeCircle.id, author.id, 1),
+      createPost(unavailableCircle.id, author.id, 2),
+    ]);
+    await Promise.all([
+      service.favoritePost(author.id, activePost.id),
+      service.favoritePost(author.id, unavailablePost.id),
+      connection.model(ViewHistory.name).create({
+        agentId: author.id,
+        postId: activePost.id,
+        viewedAt: new Date('2026-07-23T01:00:00.000Z'),
+      }),
+      connection.model(ViewHistory.name).create({
+        agentId: author.id,
+        postId: unavailablePost.id,
+        viewedAt: new Date('2026-07-23T02:00:00.000Z'),
+      }),
+    ]);
+    await connection
+      .collection('post_favorites')
+      .updateOne(
+        { agentId: author.id, postId: unavailablePost.id },
+        { $set: { createdAt: new Date('2026-07-23T02:00:00.000Z') } },
+      );
+    await connection
+      .collection('post_favorites')
+      .updateOne(
+        { agentId: author.id, postId: activePost.id },
+        { $set: { createdAt: new Date('2026-07-23T01:00:00.000Z') } },
+      );
+    await connection
+      .collection('circles')
+      .updateOne({ _id: unavailableCircle._id }, { $set: { status: 'BANNED' } });
+
+    const favorites = await service.listAgentFavorites(author.id, { limit: 2 }, author.userId);
+    const views = await service.listAgentViewHistory(author.id, { limit: 2 });
+
+    expect(favorites.items.map((item) => item.post.id)).toEqual([activePost.id]);
+    expect(favorites.nextCursor).toBeNull();
+    expect(views.items.map((item) => item.post?.id)).toEqual([activePost.id]);
+    expect(views.nextCursor).toBeNull();
+  });
+
+  it('keeps hidden Agent history records inside their source cursor window', async () => {
+    const circle = await createCircle('agent-hidden-source-cursor');
+    const [author, target] = await Promise.all([
+      createAgent('agent-hidden-source-author'),
+      createAgent('agent-hidden-source-target'),
+    ]);
+    const posts = await Promise.all(
+      Array.from({ length: 3 }, (_, index) => createPost(circle.id, author.id, index)),
+    );
+    const replyModel = connection.model(Reply.name);
+    const replies = await replyModel.create(
+      posts.map((post, index) => ({
+        content: `agent-hidden-source-reply-${index}`,
+        postId: post.id,
+        authorId: author.id,
+        authorOwnerUserIdSnapshot: author.userId,
+        parentReplyId: null,
+        circleRulesVersion: 1,
+      })),
+    );
+    for (const post of posts) {
+      await agentInteractionService.recordFeedback({
+        agentId: author.id,
+        feedbackType: 'SPARK',
+        targetType: FEEDBACK_TARGET_TYPES.POST,
+        postId: post.id,
+        postTitle: post.title,
+        targetAuthorId: target.id,
+      });
+      await connection.model(ViewHistory.name).create({
+        agentId: author.id,
+        postId: post.id,
+        viewedAt: post.createdAt,
+      });
+    }
+    const timestamps = [
+      new Date('2026-07-23T03:00:00.000Z'),
+      new Date('2026-07-23T02:00:00.000Z'),
+      new Date('2026-07-23T01:00:00.000Z'),
+    ];
+    await Promise.all(
+      posts.map(async (post, index) => {
+        await connection
+          .collection('posts')
+          .updateOne({ _id: post._id }, { $set: { createdAt: timestamps[index] } });
+        await connection
+          .collection('view_histories')
+          .updateOne(
+            { agentId: author.id, postId: post.id },
+            { $set: { viewedAt: timestamps[index] } },
+          );
+        await connection
+          .collection('interaction_histories')
+          .updateOne(
+            { agentId: author.id, postId: post.id },
+            { $set: { createdAt: timestamps[index] } },
+          );
+        await connection
+          .collection('replies')
+          .updateOne({ _id: replies[index]._id }, { $set: { createdAt: timestamps[index] } });
+      }),
+    );
+    await connection
+      .collection('posts')
+      .updateOne({ _id: posts[0]._id }, { $set: { deletedAt: new Date() } });
+    await connection
+      .collection('replies')
+      .updateOne({ _id: replies[0]._id }, { $set: { deletedAt: new Date() } });
+
+    const firstPosts = await service.listAgentPosts(author.id, { limit: 2 });
+    expect(firstPosts.items.map((post) => post.id)).toEqual([posts[1].id]);
+    expect(firstPosts.nextCursor).not.toBeNull();
+    const secondPosts = await service.listAgentPosts(author.id, {
+      limit: 2,
+      cursor: firstPosts.nextCursor ?? undefined,
+    });
+    expect(secondPosts.items.map((post) => post.id)).toEqual([posts[2].id]);
+
+    const firstReplies = await service.listAgentReplies(author.id, { limit: 2 });
+    expect(firstReplies.items.map((reply) => reply.id)).toEqual([replies[1].id]);
+    expect(firstReplies.nextCursor).not.toBeNull();
+
+    const firstInteractions = await service.listAgentInteractions(author.id, { limit: 2 });
+    expect(firstInteractions.items.map((interaction) => interaction.post.id)).toEqual([
+      posts[1].id,
+    ]);
+    expect(firstInteractions.nextCursor).not.toBeNull();
+
+    const firstViews = await service.listAgentViewHistory(author.id, { limit: 2 });
+    expect(firstViews.items.map((history) => history.post?.id)).toEqual([posts[1].id]);
+    expect(firstViews.nextCursor).not.toBeNull();
+  });
+
+  it('hides reply interactions while their top-level branch is unavailable', async () => {
+    const circle = await createCircle('agent-reply-interaction-visibility');
+    const [actor, target] = await Promise.all([
+      createAgent('agent-reply-interaction-actor'),
+      createAgent('agent-reply-interaction-target'),
+    ]);
+    const post = await createPost(circle.id, target.id, 1);
+    const replyModel = connection.model(Reply.name);
+    const parent = await replyModel.create({
+      content: 'top-level reply',
+      postId: post.id,
+      authorId: target.id,
+      authorOwnerUserIdSnapshot: target.userId,
+      parentReplyId: null,
+      circleRulesVersion: 1,
+    });
+    const child = await replyModel.create({
+      content: 'child reply',
+      postId: post.id,
+      authorId: target.id,
+      authorOwnerUserIdSnapshot: target.userId,
+      parentReplyId: parent.id,
+      circleRulesVersion: 1,
+    });
+    await agentInteractionService.recordFeedback({
+      agentId: actor.id,
+      feedbackType: 'SPARK',
+      targetType: FEEDBACK_TARGET_TYPES.REPLY,
+      postId: post.id,
+      postTitle: post.title,
+      targetAuthorId: target.id,
+      replyId: child.id,
+      replyContent: child.content,
+    });
+    await replyModel.updateOne({ _id: parent.id }, { $set: { deletedAt: new Date() } });
+
+    await expect(service.listAgentInteractions(actor.id, { limit: 20 })).resolves.toMatchObject({
+      items: [],
+      nextCursor: null,
+    });
+    await replyModel.updateOne({ _id: parent.id }, { $set: { deletedAt: null } });
+    await expect(service.listAgentInteractions(actor.id, { limit: 20 })).resolves.toMatchObject({
+      items: [expect.objectContaining({ id: expect.any(String) })],
+      nextCursor: null,
+    });
   });
 
   it('returns a committed view count and Agent history, and rolls both back on failure', async () => {
@@ -370,21 +705,22 @@ describe('ForumService circle feeds', () => {
     expect((await connection.model(Post.name).findById(post.id))?.viewCount).toBe(7);
 
     const page = await service.listPosts({
-      pageSize: 20,
+      limit: 20,
       sortBy: SortBy.LATEST,
       circleId: circle.id,
     });
-    expect(page.posts).toHaveLength(1);
-    expect(page.posts[0].viewCount).toBe(7 + concurrentViews);
+    expect(page.items).toHaveLength(1);
+    expect(page.items[0].viewCount).toBe(7 + concurrentViews);
   });
 
-  it('rejects anonymous and conflicting subscribed-feed requests', async () => {
-    await expect(service.listPosts({ scope: PostScope.SUBSCRIBED })).rejects.toBeInstanceOf(
+  it('rejects anonymous and conflicting my-circles-feed requests', async () => {
+    await expect(service.listPosts({ scope: PostScope.MY_CIRCLES })).rejects.toBeInstanceOf(
       UnauthorizedException,
     );
     const circle = await createCircle('conflicting-scope');
+    const viewer = await createAgent('conflicting-scope-viewer');
     await expect(
-      service.listPosts({ scope: PostScope.SUBSCRIBED, circleId: circle.id }, 'viewer-user'),
+      service.listPosts({ scope: PostScope.MY_CIRCLES, circleId: circle.id }, viewer.userId),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
@@ -504,42 +840,42 @@ describe('ForumService circle feeds', () => {
     });
   });
 
-  it('returns an explicit empty page and isolates each Agent subscription set', async () => {
+  it('returns an explicit empty page and isolates each Agent membership set', async () => {
     const [firstCircle, secondCircle] = await Promise.all([
-      createCircle('first-subscription'),
-      createCircle('second-subscription'),
+      createCircle('first-membership'),
+      createCircle('second-membership'),
     ]);
     const [firstAgent, secondAgent] = await Promise.all([
-      createAgent('first-subscriber'),
-      createAgent('second-subscriber'),
+      createAgent('first-member'),
+      createAgent('second-member'),
     ]);
     await Promise.all([
       createPost(firstCircle.id, firstAgent.id, 1),
       createPost(secondCircle.id, secondAgent.id, 2),
     ]);
-    subscriptionsByUser.set(firstAgent.userId, [firstCircle.id]);
-    subscriptionsByUser.set(secondAgent.userId, [secondCircle.id]);
+    const emptyAgent = await createAgent('empty-member');
+    membershipsByAgent.set(firstAgent.id, [firstCircle.id]);
+    membershipsByAgent.set(secondAgent.id, [secondCircle.id]);
 
     const empty = await service.listPosts(
-      { scope: PostScope.SUBSCRIBED, sortBy: SortBy.LATEST, page: 1, pageSize: 20 },
-      'empty-user',
+      { scope: PostScope.MY_CIRCLES, sortBy: SortBy.LATEST, limit: 20 },
+      emptyAgent.userId,
     );
     const first = await service.listPosts(
-      { scope: PostScope.SUBSCRIBED, sortBy: SortBy.LATEST, page: 1, pageSize: 20 },
+      { scope: PostScope.MY_CIRCLES, sortBy: SortBy.LATEST, limit: 20 },
       firstAgent.userId,
     );
     const second = await service.listPosts(
-      { scope: PostScope.SUBSCRIBED, sortBy: SortBy.LATEST, page: 1, pageSize: 20 },
+      { scope: PostScope.MY_CIRCLES, sortBy: SortBy.LATEST, limit: 20 },
       secondAgent.userId,
     );
 
     expect(empty).toEqual({
-      posts: [],
+      items: [],
       nextCursor: null,
-      meta: null,
     });
-    expect(first.posts.map((post) => post.circle.id)).toEqual([firstCircle.id]);
-    expect(second.posts.map((post) => post.circle.id)).toEqual([secondCircle.id]);
+    expect(first.items.map((post) => post.circle.id)).toEqual([firstCircle.id]);
+    expect(second.items.map((post) => post.circle.id)).toEqual([secondCircle.id]);
   });
 
   it('searches segmented Chinese and English terms through the text index', async () => {
@@ -556,23 +892,19 @@ describe('ForumService circle feeds', () => {
     await Promise.all([titleMatch.save(), contentMatch.save(), unrelated.save()]);
 
     const chineseResult = await service.listPosts({
-      page: 1,
-      pageSize: 20,
+      limit: 20,
       sortBy: SortBy.LATEST,
       search: '论坛',
     });
     const englishResult = await service.listPosts({
-      page: 1,
-      pageSize: 20,
+      limit: 20,
       sortBy: SortBy.LATEST,
       search: 'quantum',
     });
 
-    expect(chineseResult.posts.map((post) => post.id)).toEqual([titleMatch.id]);
-    expect(chineseResult.meta).toBeNull();
+    expect(chineseResult.items.map((post) => post.id)).toEqual([titleMatch.id]);
     expect(chineseResult.nextCursor).toBeNull();
-    expect(englishResult.posts.map((post) => post.id)).toEqual([contentMatch.id]);
-    expect(englishResult.meta).toBeNull();
+    expect(englishResult.items.map((post) => post.id)).toEqual([contentMatch.id]);
     expect(englishResult.nextCursor).toBeNull();
     expect(
       (await connection.model(Post.name).collection.indexes()).some(
@@ -591,8 +923,7 @@ describe('ForumService circle feeds', () => {
     await question.save();
 
     const filtered = await service.listPosts({
-      page: 1,
-      pageSize: 20,
+      limit: 20,
       sortBy: SortBy.LATEST,
       tags: ['QUESTION', 'DISCUSSION'],
     });
@@ -601,7 +932,7 @@ describe('ForumService circle feeds', () => {
       circleId: circle.id,
     });
 
-    expect(filtered.posts.map((post) => post.id)).toEqual([question.id, discussion.id]);
+    expect(filtered.items.map((post) => post.id)).toEqual([question.id, discussion.id]);
     expect(similar).toEqual([
       expect.objectContaining({
         id: question.id,
@@ -636,7 +967,7 @@ describe('ForumService circle feeds', () => {
       hideReason: '旧版本包含访问密钥',
     });
 
-    const history = await service.listPostRevisions(post.id, 1, 20);
+    const history = await service.listPostRevisions(post.id, { limit: 20 });
     expect(history.items.map((item) => item.version)).toEqual([2, 1]);
     expect(history.items[1]).toMatchObject({
       title: null,
@@ -697,6 +1028,9 @@ describe('ForumService circle feeds', () => {
     expect(firstPage.items[0]?.children).toHaveLength(2);
     expect(firstPage.items[0]?.childrenNextCursor).not.toBeNull();
     expect(firstPage.nextCursor).not.toBeNull();
+    expect(firstPage.items[0]).not.toHaveProperty('authorOwnerUserIdSnapshot');
+    expect(firstPage.items[0]).not.toHaveProperty('authorId');
+    expect(firstPage.items[0]?.children?.[0]).not.toHaveProperty('authorOwnerUserIdSnapshot');
     if (!firstPage.nextCursor) throw new Error('第一页缺少顶级回复游标');
 
     const secondPage = await service.listReplies(post.id, {
@@ -766,7 +1100,8 @@ describe('ForumService circle feeds', () => {
       },
     });
     expect(childSelection.rootReply.children).toHaveLength(1);
-    expect(pageAfter).toEqual(pageBefore);
+    expect(pageAfter.items).toEqual(pageBefore.items);
+    expect(Boolean(pageAfter.nextCursor)).toBe(Boolean(pageBefore.nextCursor));
   });
 
   it('enforces selected reply post ownership and removed-content visibility', async () => {
@@ -892,14 +1227,14 @@ describe('ForumService circle feeds', () => {
     });
 
     await connection.model(Agent.name).updateOne({ _id: actor.id }, { name: 'renamed-actor' });
-    const page = await agentInteractionService.list(actor.id, 1, 20);
-    expect(page.interactions).toHaveLength(1);
-    expect(page.interactions[0]).toMatchObject({
+    const page = await agentInteractionService.list(actor.id, { limit: 20 });
+    expect(page.items).toHaveLength(1);
+    expect(page.items[0]).toMatchObject({
       agent: { id: actor.id, name: actor.name },
       targetAuthor: { id: target.id, name: target.name },
       post: { id: post.id, available: true },
       targetAvailable: true,
     });
-    expect(page.interactions[0]?.post.title.length).toBeLessThanOrEqual(123);
+    expect(page.items[0]?.post.title.length).toBeLessThanOrEqual(123);
   });
 });

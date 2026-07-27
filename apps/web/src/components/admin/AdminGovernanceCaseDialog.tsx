@@ -52,6 +52,7 @@ export function AdminGovernanceCaseDialog({
         if (!nextOpen) onClose();
       }}
       title={t('adminDialogs.caseTitle')}
+      description={t('admin.governance.detailDescription')}
       code="ADMIN.CASE"
       size="xl"
       contentClassName="t-corner"
@@ -249,7 +250,9 @@ export function AdminGovernanceCaseDialog({
                   <div className="text-xs text-[var(--t-sub)]">
                     {t('admin.governance.violationVotes')}
                   </div>
-                  <div className="mt-1 text-lg font-bold text-[var(--t-hazard)]">{detail.tally.violation}</div>
+                  <div className="mt-1 text-lg font-bold text-[var(--t-hazard)]">
+                    {detail.tally.violation}
+                  </div>
                 </div>
                 <div className="border-l-2 border-[var(--t-accent)] pl-3">
                   <div className="text-xs text-[var(--t-sub)]">

@@ -4,12 +4,19 @@ import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Bot, Orbit, Radio, Scale } from 'lucide-react';
+import { Bot, LogIn, Orbit, Radio, Scale } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/contexts/AuthContext';
-import { TerminalDialog } from '@/components/ui/TerminalDialog';
+import {
+  TerminalAlertDialogAction,
+  TerminalAlertDialogCancel,
+  TerminalDialog,
+} from '@/components/ui/TerminalDialog';
 import { UserDropdown } from '@/components/ui/UserDropdown';
 import { useToast } from '@/components/ui/SignalToast';
+import { SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { TButton } from '@/components/ui/terminal';
 import { useHomeNavigationStore, type HomeSection } from '@/stores/home-navigation-store';
 import { useAgentConnectStore } from '@/stores/agent-connect-store';
 
@@ -20,7 +27,6 @@ interface SidebarProps {
   activeSection?: SidebarSection;
   /** 频道切换回调（缺省时直接写入 home-navigation-store） */
   onSectionChange?: (section: SidebarSection) => void;
-  mobileOpen?: boolean;
   onRequestClose?: () => void;
 }
 
@@ -50,12 +56,7 @@ function ActiveIndicator() {
   );
 }
 
-export function Sidebar({
-  activeSection,
-  onSectionChange,
-  mobileOpen = false,
-  onRequestClose,
-}: SidebarProps) {
+export function Sidebar({ activeSection, onSectionChange, onRequestClose }: SidebarProps) {
   const { t } = useTranslation();
   const router = useRouter();
   const toast = useToast();
@@ -91,116 +92,130 @@ export function Sidebar({
     })();
   };
 
-  return (
-    <>
-      {mobileOpen ? (
+  const renderNavigationContent = () => (
+    <div className="relative flex h-full min-h-0 w-full flex-col items-center px-0 py-4">
+      <Link
+        href="/"
+        className="group flex-none"
+        aria-label={t('sidebar.backWelcome')}
+        onClick={onRequestClose}
+      >
+        <div className="brand-logo-tile flex h-[46px] w-[46px] items-center justify-center border p-1">
+          <Image
+            src="/logo.png"
+            alt=""
+            width={42}
+            height={42}
+            loading="eager"
+            className="h-full w-full object-contain"
+          />
+        </div>
+      </Link>
+
+      <div className="deck-divider my-3 w-10 flex-none" />
+
+      <ScrollArea className="min-h-0 w-full flex-1">
+        <nav
+          className="flex w-full flex-col items-center divide-y divide-[var(--t-noise)] overflow-x-hidden"
+          aria-label={t('sidebar.navigation')}
+        >
+          {SIDEBAR_CHANNELS.map((channel) => {
+            const Icon = channel.icon;
+            const isActive = resolvedActiveSection === channel.section;
+            return (
+              <Link
+                key={channel.section}
+                href="/workspace"
+                aria-current={isActive ? 'page' : undefined}
+                aria-label={t(channel.labelKey)}
+                className={navItemClass(isActive)}
+                onClick={() => handleSelect(channel.section)}
+              >
+                {isActive ? <ActiveIndicator /> : null}
+                <span className="relative">
+                  <Icon className="h-5 w-5 stroke-[1.5]" />
+                </span>
+                <span className={NAV_LABEL_CLASS}>{t(channel.labelKey)}</span>
+              </Link>
+            );
+          })}
+        </nav>
+      </ScrollArea>
+
+      {isAuthenticated && agent ? (
         <button
           type="button"
-          aria-label={t('sidebar.closeNav')}
-          onClick={onRequestClose}
-          className="fixed inset-0 z-40 bg-[rgba(0,0,0,0.72)] md:hidden"
-        />
+          onClick={() => {
+            setAgentConnectOpen(true);
+            onRequestClose?.();
+          }}
+          className={navItemClass(false)}
+          aria-label={t('sidebar.connectAgent')}
+        >
+          <Bot className="h-5 w-5 stroke-[1.5]" />
+          <span className={NAV_LABEL_CLASS}>{t('sidebar.connectAgent')}</span>
+        </button>
       ) : null}
-      <aside
-        className={`absolute inset-y-0 left-0 z-40 flex w-[68px] flex-col items-center overflow-hidden border-r border-[var(--t-noise)] bg-black py-4 max-md:fixed max-md:z-50 ${
-          mobileOpen ? 'max-md:translate-x-0' : 'max-md:-translate-x-full'
-        }`}
-      >
-        <div className="relative flex h-full min-h-0 w-full flex-col items-center px-0">
+
+      {isAuthenticated && agent ? (
+        <div className="flex w-full flex-none flex-col items-center gap-1 pb-2">
+          <div className="deck-divider my-2 w-10 flex-none" />
+          <UserDropdown agent={agent} onLogout={() => setShowLogoutConfirm(true)} />
+        </div>
+      ) : (
+        <div className="flex w-full flex-none flex-col items-center gap-1 pb-2">
+          <div className="deck-divider my-2 w-10 flex-none" />
           <Link
-            href="/"
-            className="group flex-none"
-            aria-label={t('sidebar.backWelcome')}
+            href="/auth?mode=login"
+            className={navItemClass(false)}
+            aria-label={t('sidebar.login')}
             onClick={onRequestClose}
           >
-            <div className="brand-logo-tile flex h-[46px] w-[46px] items-center justify-center border p-1">
-              <Image
-                src="/logo.png"
-                alt=""
-                width={42}
-                height={42}
-                loading="eager"
-                className="h-full w-full object-contain"
-              />
-            </div>
+            <LogIn className="h-5 w-5 stroke-[1.5]" />
+            <span className={NAV_LABEL_CLASS}>{t('sidebar.login')}</span>
           </Link>
-
-          <div className="deck-divider my-3 w-10 flex-none" />
-
-          <nav
-            className="skynet-auto-hide-scrollbar flex min-h-0 w-full flex-1 flex-col items-center divide-y divide-[var(--t-noise)] overflow-x-hidden overflow-y-auto overscroll-contain"
-            aria-label={t('sidebar.navigation')}
-          >
-            {SIDEBAR_CHANNELS.map((channel) => {
-              const Icon = channel.icon;
-              const isActive = resolvedActiveSection === channel.section;
-              return (
-                <Link
-                  key={channel.section}
-                  href="/workspace"
-                  aria-current={isActive ? 'page' : undefined}
-                  aria-label={t(channel.labelKey)}
-                  className={navItemClass(isActive)}
-                  onClick={() => handleSelect(channel.section)}
-                >
-                  {isActive ? <ActiveIndicator /> : null}
-                  <span className="relative">
-                    <Icon className="h-5 w-5 stroke-[1.5]" />
-                  </span>
-                  <span className={NAV_LABEL_CLASS}>{t(channel.labelKey)}</span>
-                </Link>
-              );
-            })}
-          </nav>
-
-          {isAuthenticated && agent ? (
-            <button
-              type="button"
-              onClick={() => {
-                setAgentConnectOpen(true);
-                onRequestClose?.();
-              }}
-              className={navItemClass(false)}
-              aria-label={t('sidebar.connectAgent')}
-            >
-              <Bot className="h-5 w-5 stroke-[1.5]" />
-              <span className={NAV_LABEL_CLASS}>{t('sidebar.connectAgent')}</span>
-            </button>
-          ) : null}
-
-          {isAuthenticated && agent ? (
-            <div className="flex w-full flex-none flex-col items-center gap-1 pb-2">
-              <div className="deck-divider my-2 w-10 flex-none" />
-              <UserDropdown agent={agent} onLogout={() => setShowLogoutConfirm(true)} />
-            </div>
-          ) : null}
         </div>
+      )}
+    </div>
+  );
+
+  return (
+    <>
+      <aside className="absolute inset-y-0 left-0 z-40 hidden w-[68px] flex-col items-center overflow-hidden border-r border-[var(--t-noise)] bg-black md:flex">
+        {renderNavigationContent()}
       </aside>
+
+      <SheetContent
+        side="left"
+        showClose={false}
+        className="w-[68px] overflow-hidden border-r border-[var(--t-noise)] p-0 md:hidden"
+      >
+        <SheetTitle className="sr-only">{t('sidebar.navigation')}</SheetTitle>
+        <SheetDescription className="sr-only">{t('sidebar.closeNav')}</SheetDescription>
+        {renderNavigationContent()}
+      </SheetContent>
 
       <TerminalDialog
         open={showLogoutConfirm}
         onOpenChange={setShowLogoutConfirm}
         title={t('sidebar.logoutTitle')}
+        description={t('sidebar.logoutQuestion')}
         code="AUTH.LOGOUT"
         size="sm"
         variant="alert"
+        busy={logoutBusy}
         footer={
           <>
-            <button
-              type="button"
-              className="t-btn t-btn--ghost"
-              onClick={() => setShowLogoutConfirm(false)}
-            >
-              {t('app.cancel')}
-            </button>
-            <button
-              type="button"
-              disabled={logoutBusy}
-              className="t-btn t-btn--danger"
-              onClick={handleLogoutConfirm}
-            >
-              {t('sidebar.logoutConfirm')}
-            </button>
+            <TerminalAlertDialogCancel asChild>
+              <TButton variant="secondary" disabled={logoutBusy}>
+                {t('app.cancel')}
+              </TButton>
+            </TerminalAlertDialogCancel>
+            <TerminalAlertDialogAction asChild>
+              <TButton variant="danger" disabled={logoutBusy} onClick={handleLogoutConfirm}>
+                {t('sidebar.logoutConfirm')}
+              </TButton>
+            </TerminalAlertDialogAction>
           </>
         }
       >

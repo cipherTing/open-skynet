@@ -4,6 +4,7 @@ import { createCipheriv, createHmac, hkdfSync, randomBytes } from 'node:crypto';
 import bcrypt from 'bcrypt';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
+import { seedRealisticDataset, verifyRealisticDataset } from './realistic-seed.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
@@ -12,6 +13,7 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://mongo:27017/skynet';
 const DEV_PASSWORD = 'Password123';
 const DEMO_SECRET_KEY = 'sk_live_dev_seed_key_20260426_Hermes';
 const RESET_CONFIRMATION = 'skynet';
+const SEED_PROFILE = process.env.SKYNET_SEED_PROFILE?.trim() || 'full';
 const CREATE_POST_STAMINA_COST = 8;
 const JWT_SECRET = process.env.JWT_SECRET;
 const APP_ENCRYPTION_KEY = process.env.APP_ENCRYPTION_KEY;
@@ -239,9 +241,7 @@ async function createIndexes(db) {
   await db
     .collection('posts')
     .createIndex({ createdAt: -1 }, { partialFilterExpression: { deletedAt: null } });
-  await db
-    .collection('posts')
-    .createIndex({ authorId: 1, createdAt: -1 }, { partialFilterExpression: { deletedAt: null } });
+  await db.collection('posts').createIndex({ authorId: 1, createdAt: -1, _id: -1 });
   await db
     .collection('posts')
     .createIndex(
@@ -278,11 +278,21 @@ async function createIndexes(db) {
   await db.collection('circles').createIndex({ deletedAt: 1 });
   await db
     .collection('circles')
-    .createIndex({ createdAt: -1 }, { partialFilterExpression: { deletedAt: null } });
+    .createIndex(
+      { status: 1, createdAt: -1, _id: -1 },
+      { partialFilterExpression: { deletedAt: null } },
+    );
   await db
     .collection('circles')
     .createIndex(
-      { subscriberCount: -1, postCount: -1, lastPostAt: -1, createdAt: -1 },
+      {
+        status: 1,
+        memberCount: -1,
+        postCount: -1,
+        lastPostAt: -1,
+        createdAt: -1,
+        _id: -1,
+      },
       { partialFilterExpression: { deletedAt: null } },
     );
   await db.collection('circles').createIndex({ status: 1, kind: 1, createdAt: -1 });
@@ -304,11 +314,10 @@ async function createIndexes(db) {
     },
   );
   await db
-    .collection('circle_subscriptions')
+    .collection('circle_memberships')
     .createIndex({ agentId: 1, circleId: 1 }, { unique: true });
-  await db.collection('circle_subscriptions').createIndex({ agentId: 1, createdAt: -1, _id: -1 });
-  await db.collection('circle_subscriptions').createIndex({ circleId: 1, createdAt: -1, _id: -1 });
-  await db.collection('circle_subscriptions').createIndex({ createdAt: -1 });
+  await db.collection('circle_memberships').createIndex({ agentId: 1, createdAt: -1, _id: -1 });
+  await db.collection('circle_memberships').createIndex({ circleId: 1, createdAt: -1, _id: -1 });
   await db
     .collection('replies')
     .createIndex(
@@ -316,9 +325,7 @@ async function createIndexes(db) {
       { partialFilterExpression: { deletedAt: null } },
     );
   await db.collection('replies').createIndex({ postId: 1, parentReplyId: 1, _id: 1 });
-  await db
-    .collection('replies')
-    .createIndex({ authorId: 1, createdAt: -1 }, { partialFilterExpression: { deletedAt: null } });
+  await db.collection('replies').createIndex({ authorId: 1, createdAt: -1, _id: -1 });
   await db
     .collection('replies')
     .createIndex(
@@ -460,7 +467,7 @@ async function createIndexes(db) {
     .collection('hot_candidate_generations')
     .createIndex({ status: 1, updatedAt: -1, _id: -1 });
   await db.collection('view_histories').createIndex({ agentId: 1, postId: 1 }, { unique: true });
-  await db.collection('view_histories').createIndex({ agentId: 1, viewedAt: -1 });
+  await db.collection('view_histories').createIndex({ agentId: 1, viewedAt: -1, _id: -1 });
   await db
     .collection('post_view_counter_shards')
     .createIndex({ postId: 1, shard: 1 }, { unique: true });
@@ -484,7 +491,7 @@ async function createIndexes(db) {
   await db
     .collection('agent_xp_events')
     .createIndex({ agentId: 1, sourceType: 1, sourceId: 1, reasonKey: 1 }, { unique: true });
-  await db.collection('agent_xp_events').createIndex({ agentId: 1, occurredAt: 1 });
+  await db.collection('agent_xp_events').createIndex({ agentId: 1, occurredAt: 1, xp: 1 });
   await db.collection('browsersessions').createIndex({ userId: 1, expiresAt: -1 });
   await db.collection('browsersessions').createIndex({ currentTokenHash: 1 }, { unique: true });
   await db
@@ -663,6 +670,9 @@ async function createIndexes(db) {
   await db
     .collection('circle_proposals')
     .createIndex({ circleId: 1, status: 1, updatedAt: -1, _id: -1 });
+  await db
+    .collection('circle_proposals')
+    .createIndex({ circleId: 1, updatedAt: -1, _id: -1 });
   await db.collection('circle_proposals').createIndex({
     status: 1,
     activeGovernanceCaseId: 1,
@@ -704,17 +714,18 @@ async function createIndexes(db) {
   await db
     .collection('circle_proposal_votes')
     .createIndex({ proposalId: 1, ownerUserIdSnapshot: 1 }, { unique: true });
+  await db.collection('circle_proposal_votes').createIndex({ proposalId: 1, createdAt: 1, _id: 1 });
   await db.collection('circle_proposal_votes').createIndex({ createdAt: -1 });
   await db
     .collection('circle_proposal_comments')
-    .createIndex({ proposalId: 1, createdAt: 1, _id: 1 });
+    .createIndex({ proposalId: 1, hiddenAt: 1, createdAt: 1, _id: 1 });
   await db.collection('circle_proposal_comments').createIndex({ createdAt: -1 });
   await db
     .collection('circle_proposal_comments')
     .createIndex({ authorOwnerUserIdSnapshot: 1, idempotencyKey: 1 }, { unique: true });
 }
 
-function makeDemoCircle(posts, creatorAgentId, subscriberCount) {
+function makeDemoCircle(posts, creatorAgentId, memberCount) {
   const createdAt = daysAgo(20);
   const lastPostAt = posts.reduce(
     (latest, post) => (latest === null || post.createdAt > latest ? post.createdAt : latest),
@@ -739,7 +750,7 @@ function makeDemoCircle(posts, creatorAgentId, subscriberCount) {
     status: 'ACTIVE',
     visibilityVersion: 1,
     bannedAt: null,
-    subscriberCount,
+    memberCount,
     postCount: posts.length,
     lastPostAt,
     deletedAt: null,
@@ -1714,7 +1725,6 @@ async function main() {
   if (!db) throw new Error('MongoDB connection is not ready');
 
   await db.dropDatabase();
-  await createIndexes(db);
 
   const users = [];
   const agents = [];
@@ -1762,14 +1772,14 @@ async function main() {
 
   const casualCircleId = objectId();
   const posts = POST_TITLES.map((_, index) => makePost(index, agents, casualCircleId.toString()));
-  const subscribedAgents = agents.slice(0, 6);
+  const joinedAgents = agents.slice(0, 6);
   const circles = [
     {
-      ...makeDemoCircle(posts, idOf(agents[0]), subscribedAgents.length),
+      ...makeDemoCircle(posts, idOf(agents[0]), joinedAgents.length),
       _id: casualCircleId,
     },
   ];
-  const circleSubscriptions = subscribedAgents.map((agent, index) => ({
+  const circleMemberships = joinedAgents.map((agent, index) => ({
     _id: objectId(),
     agentId: idOf(agent),
     circleId: casualCircleId.toString(),
@@ -1886,7 +1896,7 @@ async function main() {
   await db.collection('agents').insertMany(agents);
   await db.collection('circles').insertMany(circles);
   await db.collection('circle_post_visibility_states').insertMany(circlePostVisibilityStates);
-  await db.collection('circle_subscriptions').insertMany(circleSubscriptions);
+  await db.collection('circle_memberships').insertMany(circleMemberships);
   await db.collection('circle_rule_revisions').insertMany(circleRuleRevisions);
   await db.collection('posts').insertMany(posts);
   await db.collection('post_revisions').insertMany(postRevisions);
@@ -1934,6 +1944,24 @@ async function main() {
     updatedAt: new Date(),
   });
 
+  await seedRealisticDataset({
+    db,
+    profileName: SEED_PROFILE,
+    passwordHash,
+    baseTitles: POST_TITLES,
+    users,
+    agents,
+    circles,
+    posts,
+    replies,
+    feedbacks,
+    interactionHistories,
+    hotStates,
+  });
+  console.log('[seed] building MongoDB indexes after bulk data insertion');
+  await createIndexes(db);
+  const { counts } = await verifyRealisticDataset(db, SEED_PROFILE);
+
   const demoAgent = agents[0];
   const ownPost = posts.find((post) => post.authorId === idOf(demoAgent));
   const foreignPost = posts.find((post) => post.authorId !== idOf(demoAgent));
@@ -1941,25 +1969,31 @@ async function main() {
   const childReply = replies.find((reply) => reply.parentReplyId);
 
   console.log('Skynet Mongo reset and seed complete.');
-  console.log(`users=${users.length}`);
-  console.log(`agents=${agents.length}`);
-  console.log(`circles=${circles.length}`);
-  console.log(`circle_subscriptions=${circleSubscriptions.length}`);
-  console.log(`circle_rule_revisions=${circleRuleRevisions.length}`);
-  console.log(`posts=${posts.length}`);
-  console.log(`post_revisions=${postRevisions.length}`);
-  console.log(`replies=${replies.length}`);
-  console.log(`reply_revisions=${replyRevisions.length}`);
-  console.log(`feedbacks=${feedbacks.length}`);
-  console.log(`post_hot_states=${hotStates.length}`);
-  console.log(`hot_projection_work_items=${hotWorkItems.length}`);
+  console.log(`seed_profile=${SEED_PROFILE}`);
+  console.log(`users=${counts.users}`);
+  console.log(`agents=${counts.agents}`);
+  console.log(`circles=${counts.circles}`);
+  console.log(`circle_memberships=${counts.circleMemberships}`);
+  console.log(`circle_rule_revisions=${counts.circleRuleRevisions}`);
+  console.log(`circle_proposals=${counts.circleProposals}`);
+  console.log(`circle_proposal_revisions=${counts.circleProposalRevisions}`);
+  console.log(`circle_proposal_votes=${counts.circleProposalVotes}`);
+  console.log(`posts=${counts.posts}`);
+  console.log(`post_revisions=${counts.postRevisions}`);
+  console.log(`replies=${counts.replies}`);
+  console.log(`reply_revisions=${counts.replyRevisions}`);
+  console.log(`feedbacks=${counts.feedbacks}`);
+  console.log(`post_hot_states=${counts.hotStates}`);
+  console.log(`post_hot_participants=${counts.hotParticipants}`);
+  console.log(`hot_projection_work_items=${counts.hotWorkItems}`);
+  console.log(`hot_projection_work_items_dirty=${counts.dirtyHotWork}`);
   console.log(`hot_reply_branch_fanouts=${hotBranchFanouts.length}`);
   console.log(`hot_reply_feedback_fanouts=${hotFanouts.length}`);
-  console.log(`interaction_histories=${interactionHistories.length}`);
-  console.log(`view_histories=${viewHistories.length}`);
-  console.log(`post_favorites=${postFavorites.length}`);
-  console.log(`agent_progresses=${progresses.length}`);
-  console.log(`agent_xp_events=${xpEvents.length}`);
+  console.log(`interaction_histories=${counts.interactions}`);
+  console.log(`view_histories=${counts.views}`);
+  console.log(`post_favorites=${counts.favorites}`);
+  console.log(`agent_progresses=${counts.agentProgresses}`);
+  console.log(`agent_xp_events=${counts.xpEvents}`);
   console.log(`agent_governance_profiles=${governanceProfiles.length}`);
   console.log(`reports=${reports.length}`);
   console.log(`report_target_states=${reportTargetStates.length}`);
@@ -1982,11 +2016,11 @@ async function main() {
   console.log(`childReplyId=${childReply ? idOf(childReply) : ''}`);
 }
 
-main()
-  .catch((error) => {
-    console.error(error);
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await mongoose.disconnect();
-  });
+try {
+  await main();
+} catch (error) {
+  console.error(error);
+  process.exitCode = 1;
+} finally {
+  await mongoose.disconnect();
+}

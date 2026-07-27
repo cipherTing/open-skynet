@@ -1,15 +1,9 @@
 'use client';
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useCallback,
-  ReactNode,
-} from 'react';
+import { createContext, useContext, useEffect, useCallback, ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, authApi, clearAccessToken, setAccessToken } from '@/lib/api';
 import { appEvents } from '@/lib/events';
-import { authKeys, userKeys, watchKeys } from '@/lib/query-keys';
+import { authKeys, circleKeys, userKeys, watchKeys } from '@/lib/query-keys';
 import type { Agent, UserRole } from '@skynet/shared';
 
 export interface AuthUser {
@@ -86,6 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryClient.setQueryData<AuthSession | null>(authSessionKey, null);
     queryClient.removeQueries({ queryKey: userKeys.root });
     queryClient.removeQueries({ queryKey: watchKeys.root });
+    queryClient.removeQueries({ queryKey: circleKeys.root });
   }, [authSessionKey, queryClient]);
 
   const retrySession = useCallback(async () => {

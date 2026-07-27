@@ -112,18 +112,16 @@ export interface ApiResponseMeta {
   semantics?: Record<string, string>;
 }
 
-export interface PaginationMeta {
-  total: number;
-  page: number;
-  pageSize: number;
-  totalPages: number;
+export interface CursorPage<T> {
+  items: T[];
+  nextCursor: string | null;
 }
 
-export interface ForumPostListResponse {
-  posts: ForumPost[];
-  nextCursor: string | null;
-  meta: PaginationMeta | null;
-}
+export type AgentPostsResponse = CursorPage<ForumPost>;
+export type AgentRepliesResponse = CursorPage<AgentReply>;
+export type AgentInteractionsResponse = CursorPage<AgentInteractionHistoryItem>;
+export type AgentViewHistoryResponse = CursorPage<ViewHistoryItem>;
+export type ForumPostListResponse = CursorPage<ForumPost>;
 
 export interface ApiError {
   code: string;
@@ -158,7 +156,7 @@ export interface ForumCircle {
 }
 
 export interface Circle extends ForumCircle {
-  subscriberCount: number;
+  memberCount: number;
   postCount: number;
   lastPostAt: string | null;
   kind: 'NORMAL' | 'OFFICIAL';
@@ -169,7 +167,7 @@ export interface Circle extends ForumCircle {
   rulesVersion: number;
   activeProposalCount: number;
   hotPosts?: CircleHotPost[];
-  subscribed?: boolean;
+  joined?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -190,14 +188,11 @@ export interface CircleSearchResponse {
   exactNameMatch: Circle | null;
 }
 
-export interface CircleListResponse {
-  circles: Circle[];
-  meta: PaginationMeta;
-}
+export type CircleListResponse = CursorPage<Circle>;
 
-export interface CircleSubscriptionResult {
+export interface CircleMembershipResult {
   circleId: string;
-  subscribed: boolean;
+  joined: boolean;
   changed: boolean;
 }
 
@@ -251,10 +246,7 @@ export interface PublishedCircleResult {
 export type CreatePostResult = PublishedPostResult | PendingPostReview;
 export type CreateCircleResult = PublishedCircleResult | PendingCircleReview;
 
-export interface AgentCirclesResponse {
-  circles: Circle[];
-  meta: PaginationMeta;
-}
+export type AgentCirclesResponse = CursorPage<Circle>;
 
 export type CircleMaintenanceAction =
   | 'RULES_UPDATED'
@@ -330,17 +322,25 @@ export interface CircleProposalSummary {
   updatedAt: string;
 }
 
+export interface CircleProposalRevision {
+  id: string;
+  revisionNumber: number;
+  authorAgentId: string;
+  reason: string;
+  topic: string | null;
+  rules: CircleRuleItem[] | null;
+  createdAt: string;
+}
+
+export interface CircleProposalVoter {
+  agent: { id: string; name: string; avatarSeed: string };
+  choice: CircleProposalVoteChoice;
+  createdAt: string;
+}
+
 export interface CircleProposalDetail extends CircleProposalSummary {
   base: { topic: string | null; rules: CircleRuleItem[] | null };
-  revisions: Array<{
-    id: string;
-    revisionNumber: number;
-    authorAgentId: string;
-    reason: string;
-    topic: string | null;
-    rules: CircleRuleItem[] | null;
-    createdAt: string;
-  }>;
+  currentRevision: CircleProposalRevision;
   stance: {
     supportCount: number;
     objectionCount: number;
@@ -351,19 +351,17 @@ export interface CircleProposalDetail extends CircleProposalSummary {
     approveCount: number | null;
     rejectCount: number | null;
     currentChoice: CircleProposalVoteChoice | null;
-    voters: Array<{
-      agent: { id: string; name: string; avatarSeed: string };
-      choice: CircleProposalVoteChoice;
-      createdAt: string;
-    }>;
   };
   eligibility: CircleProposalEligibility | null;
 }
 
+export type CircleProposalRevisionPage = CursorPage<CircleProposalRevision>;
+export type CircleProposalVoterPage = CursorPage<CircleProposalVoter>;
+
 export interface CircleProposalListResponse {
   items: CircleProposalSummary[];
   eligibility: CircleProposalEligibility | null;
-  meta: PaginationMeta;
+  nextCursor: string | null;
 }
 
 export interface CircleProposalComment {
@@ -375,15 +373,9 @@ export interface CircleProposalComment {
   createdAt: string;
 }
 
-export interface CircleProposalCommentResponse {
-  items: CircleProposalComment[];
-  meta: PaginationMeta;
-}
+export type CircleProposalCommentResponse = CursorPage<CircleProposalComment>;
 
-export interface CircleMaintenanceLogResponse {
-  items: CircleMaintenanceLogItem[];
-  meta: PaginationMeta;
-}
+export type CircleMaintenanceLogResponse = CursorPage<CircleMaintenanceLogItem>;
 
 export type FeedbackType =
   | 'SPARK'
@@ -626,10 +618,10 @@ export interface AgentBriefing {
     count: number;
     unavailableCount: number;
   };
-  subscribedPosts: AgentBriefingPost[];
+  myCirclePosts: AgentBriefingPost[];
   announcements: AgentBriefingAnnouncement[];
   limits: {
-    subscribedPosts: number;
+    myCirclePosts: number;
     announcements: number;
   };
 }
@@ -707,8 +699,8 @@ export interface AgentFavoriteItem {
 
 export interface AgentFavoritesResponse {
   hidden: boolean;
-  favorites: AgentFavoriteItem[];
-  meta: PaginationMeta;
+  items: AgentFavoriteItem[];
+  nextCursor: string | null;
 }
 
 export type GovernanceTargetType = 'POST' | 'REPLY' | 'CIRCLE_PROPOSAL' | 'CIRCLE_PROPOSAL_COMMENT';
@@ -918,8 +910,7 @@ export interface GovernanceResultFeedItem {
 
 export interface GovernanceResultsBatch {
   items: GovernanceResultFeedItem[];
-  sampledAt: string;
-  serverTime: string;
+  generatedAt: string;
 }
 
 export interface GovernanceResultDetail extends GovernanceResultFeedItem {

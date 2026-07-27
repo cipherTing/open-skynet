@@ -39,20 +39,12 @@ function loadEnvironmentExample(fileName: string): Record<string, string> {
   return parse(readFileSync(resolve(__dirname, '../../../../', fileName)));
 }
 
-const DEVELOPMENT_EXAMPLE = loadEnvironmentExample('.env.dev.example');
-const PRODUCTION_EXAMPLE = loadEnvironmentExample('.env.example');
-const PUBLIC_SECRET_CASES: PublicSecretCase[] = [
-  ...SECRET_NAMES.map((name) => ({
-    source: '.env.dev.example',
-    name,
-    value: DEVELOPMENT_EXAMPLE[name],
-  })),
-  ...SECRET_NAMES.map((name) => ({
-    source: '.env.example',
-    name,
-    value: PRODUCTION_EXAMPLE[name],
-  })),
-];
+const ENVIRONMENT_EXAMPLE = loadEnvironmentExample('.env.example');
+const PUBLIC_SECRET_CASES: PublicSecretCase[] = SECRET_NAMES.map((name) => ({
+  source: '.env.example',
+  name,
+  value: ENVIRONMENT_EXAMPLE[name],
+}));
 
 describe('security secret validation', () => {
   beforeEach(() => {

@@ -5,8 +5,17 @@ import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { AgentProgress, AgentProgressSchema } from '@/database/schemas/agent-progress.schema';
 import { AgentXpEvent, AgentXpEventSchema } from '@/database/schemas/agent-xp-event.schema';
 import { DatabaseService } from '@/database/database.service';
-import { PROGRESSION_ACTIONS } from './progression.constants';
-import { ProgressionService } from './progression.service';
+import {
+  EXTERNAL_XP_SOURCE_TYPES,
+  PROGRESSION_ACTIONS,
+  XP_EVENT_REASON_KEYS,
+} from './progression.constants';
+import {
+  addDays,
+  getShanghaiDayKey,
+  getShanghaiDayStart,
+  ProgressionService,
+} from './progression.service';
 
 describe('ProgressionService precharged actions', () => {
   jest.setTimeout(60_000);
@@ -109,5 +118,180 @@ describe('ProgressionService precharged actions', () => {
         ),
       ),
     ).rejects.toThrow('Precharged action is missing its stamina event');
+  });
+
+  it('records the actual applied external XP delta when a penalty reaches zero', async () => {
+    await connection.model(AgentProgress.name).create({
+      agentId: 'agent-penalty',
+      xpTotal: 5,
+    });
+
+    const result = await databaseService.$transaction((session) =>
+      service.applyExternalXpAdjustment(
+        {
+          agentId: 'agent-penalty',
+          requestedDelta: -10,
+          sourceType: EXTERNAL_XP_SOURCE_TYPES.GOVERNANCE_PENALTY,
+          sourceId: 'case-1',
+          reasonKey: XP_EVENT_REASON_KEYS.VIOLATION_HEALTH_PENALTY,
+          occurredAt: new Date('2026-07-23T12:00:00.000Z'),
+        },
+        session,
+      ),
+    );
+
+    expect(result).toEqual({
+      applied: true,
+      previousXp: 5,
+      nextXp: 0,
+      appliedDelta: -5,
+      levelAfter: 1,
+    });
+    expect(
+      await connection.model(AgentProgress.name).findOne({ agentId: 'agent-penalty' }),
+    ).toMatchObject({
+      xpTotal: 0,
+    });
+    expect(
+      await connection.model(AgentXpEvent.name).findOne({ agentId: 'agent-penalty' }),
+    ).toMatchObject({
+      xp: -5,
+    });
+    await expect(
+      databaseService.$transaction((session) =>
+        service.applyExternalXpAdjustment(
+          {
+            agentId: 'agent-penalty',
+            requestedDelta: -10,
+            sourceType: EXTERNAL_XP_SOURCE_TYPES.GOVERNANCE_PENALTY,
+            sourceId: 'case-1',
+            reasonKey: XP_EVENT_REASON_KEYS.VIOLATION_HEALTH_PENALTY,
+            occurredAt: new Date('2026-07-23T12:00:00.000Z'),
+          },
+          session,
+        ),
+      ),
+    ).resolves.toEqual({ applied: false });
+  });
+
+  it('serializes concurrent external XP adjustments without losing updates', async () => {
+    await connection.model(AgentProgress.name).create({
+      agentId: 'agent-concurrent-adjustment',
+      xpTotal: 100,
+    });
+    const occurredAt = new Date('2026-07-23T12:00:00.000Z');
+    const apply = (sourceId: string, requestedDelta: number) =>
+      databaseService.$transaction((session) =>
+        service.applyExternalXpAdjustment(
+          {
+            agentId: 'agent-concurrent-adjustment',
+            requestedDelta,
+            sourceType: EXTERNAL_XP_SOURCE_TYPES.ADMIN_ADJUSTMENT,
+            sourceId,
+            reasonKey: XP_EVENT_REASON_KEYS.ADMIN_XP_ADJUSTMENT,
+            occurredAt,
+          },
+          session,
+        ),
+      );
+
+    const duplicateResults = await Promise.all([
+      apply('same-operation', 20),
+      apply('same-operation', 20),
+    ]);
+    expect(duplicateResults.filter((result) => result.applied)).toHaveLength(1);
+    expect(
+      await connection
+        .model(AgentProgress.name)
+        .findOne({ agentId: 'agent-concurrent-adjustment' }),
+    ).toMatchObject({ xpTotal: 120 });
+
+    await Promise.all([apply('operation-a', 7), apply('operation-b', 3)]);
+    expect(
+      await connection
+        .model(AgentProgress.name)
+        .findOne({ agentId: 'agent-concurrent-adjustment' }),
+    ).toMatchObject({ xpTotal: 130 });
+    expect(
+      await connection.model(AgentXpEvent.name).countDocuments({
+        agentId: 'agent-concurrent-adjustment',
+      }),
+    ).toBe(3);
+  });
+
+  it('rolls back both progression and ledger changes when the caller transaction fails', async () => {
+    await connection.model(AgentProgress.name).create({
+      agentId: 'agent-adjustment-rollback',
+      xpTotal: 500,
+    });
+
+    await expect(
+      databaseService.$transaction(async (session) => {
+        await service.applyExternalXpAdjustment(
+          {
+            agentId: 'agent-adjustment-rollback',
+            requestedDelta: -200,
+            sourceType: EXTERNAL_XP_SOURCE_TYPES.GOVERNANCE_PENALTY,
+            sourceId: 'rollback-case',
+            reasonKey: XP_EVENT_REASON_KEYS.VIOLATION_HEALTH_PENALTY,
+            occurredAt: new Date('2026-07-23T12:00:00.000Z'),
+          },
+          session,
+        );
+        throw new Error('rollback requested');
+      }),
+    ).rejects.toThrow('rollback requested');
+
+    expect(
+      await connection.model(AgentProgress.name).findOne({ agentId: 'agent-adjustment-rollback' }),
+    ).toMatchObject({ xpTotal: 500 });
+    expect(
+      await connection.model(AgentXpEvent.name).countDocuments({
+        agentId: 'agent-adjustment-rollback',
+      }),
+    ).toBe(0);
+  });
+
+  it('aggregates score history by Shanghai day before returning it to the application', async () => {
+    const todayKey = getShanghaiDayKey(new Date());
+    const todayStart = getShanghaiDayStart(todayKey);
+    const firstDay = addDays(todayStart, -2);
+    const secondDay = addDays(todayStart, -1);
+    await connection.model(AgentProgress.name).create({
+      agentId: 'agent-score-history',
+      xpTotal: 8,
+    });
+    await connection.model(AgentXpEvent.name).create([
+      {
+        agentId: 'agent-score-history',
+        sourceType: PROGRESSION_ACTIONS.CREATE_REPLY,
+        sourceId: 'reply-1',
+        reasonKey: XP_EVENT_REASON_KEYS.ACTIVE_ACTION,
+        xp: 2,
+        occurredAt: new Date(firstDay.getTime() + 30 * 60 * 1000),
+      },
+      {
+        agentId: 'agent-score-history',
+        sourceType: PROGRESSION_ACTIONS.CREATE_CHILD_REPLY,
+        sourceId: 'reply-2',
+        reasonKey: XP_EVENT_REASON_KEYS.ACTIVE_ACTION,
+        xp: 3,
+        occurredAt: new Date(firstDay.getTime() + 60 * 60 * 1000),
+      },
+      {
+        agentId: 'agent-score-history',
+        sourceType: PROGRESSION_ACTIONS.FEEDBACK_POST,
+        sourceId: 'feedback-1',
+        reasonKey: XP_EVENT_REASON_KEYS.ACTIVE_ACTION,
+        xp: 3,
+        occurredAt: new Date(secondDay.getTime() + 60 * 60 * 1000),
+      },
+    ]);
+
+    await expect(service.getScoreHistory('agent-score-history', 3)).resolves.toEqual([
+      { date: getShanghaiDayKey(firstDay).slice(5), value: 5 },
+      { date: getShanghaiDayKey(secondDay).slice(5), value: 8 },
+      { date: todayKey.slice(5), value: 8 },
+    ]);
   });
 });

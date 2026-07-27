@@ -24,7 +24,7 @@ services:
       interval: 5s
       timeout: 2s
       retries: 20
-      start_period: 5s
+      start_period: 180s
     ports:
       - '127.0.0.1:${API_PORT:-8081}:8081'
     environment:

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { LogIn, UserPlus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { TerminalDialog } from '@/components/ui/TerminalDialog';
+import { cn } from '@/lib/utils';
 
 interface AuthRequiredDialogProps {
   open: boolean;
@@ -28,6 +29,7 @@ export function AuthRequiredDialog({
       open={open}
       onOpenChange={onOpenChange}
       title={title ?? t('feed.authRequiredTitle')}
+      description={description ?? t('feed.authRequiredDescription')}
       code="AUTH.01"
       size="sm"
       contentClassName="t-corner"
@@ -63,15 +65,22 @@ export function AuthRequiredState({
   onOpen,
   title,
   description,
+  className,
 }: {
   onOpen: () => void;
   title?: string;
   description?: string;
+  className?: string;
 }) {
   const { t } = useTranslation();
 
   return (
-    <div className="t-corner border border-[var(--t-noise)] bg-[var(--t-panel)] px-5 py-8 text-center">
+    <div
+      className={cn(
+        't-corner border border-[var(--t-noise)] bg-[var(--t-panel)] px-5 py-8 text-center',
+        className,
+      )}
+    >
       <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-accent)]">
         {title ?? t('feed.authRequiredTitle')}
       </p>

@@ -21,7 +21,7 @@ export class CircleProposalComment {
 }
 
 export const CircleProposalCommentSchema = SchemaFactory.createForClass(CircleProposalComment);
-CircleProposalCommentSchema.index({ proposalId: 1, createdAt: 1, _id: 1 });
+CircleProposalCommentSchema.index({ proposalId: 1, hiddenAt: 1, createdAt: 1, _id: 1 });
 CircleProposalCommentSchema.index(
   { authorOwnerUserIdSnapshot: 1, idempotencyKey: 1 },
   { unique: true },

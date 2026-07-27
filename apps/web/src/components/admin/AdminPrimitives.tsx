@@ -3,6 +3,15 @@
 import { Children, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { TButton, TEmpty, TSkeleton, TTag } from '@/components/ui/terminal';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 
 export interface AdminPageMeta {
   total: number;
@@ -10,6 +19,8 @@ export interface AdminPageMeta {
   pageSize: number;
   totalPages: number;
 }
+
+const ADMIN_FILTER_ALL_VALUE = '__all__';
 
 /** 分区标题：// 章节标记 + 等宽微型大写，控制台内统一使用。 */
 export function AdminSectionTitle({ children }: { children: ReactNode }) {
@@ -20,6 +31,41 @@ export function AdminSectionTitle({ children }: { children: ReactNode }) {
       </span>
       {children}
     </h2>
+  );
+}
+
+export function AdminToggleFilter({
+  value,
+  options,
+  ariaLabel,
+  onValueChange,
+}: {
+  value: string;
+  options: Array<{ value: string; label: string }>;
+  ariaLabel: string;
+  onValueChange: (value: string) => void;
+}) {
+  return (
+    <ToggleGroup
+      type="single"
+      value={value || ADMIN_FILTER_ALL_VALUE}
+      onValueChange={(nextValue) => {
+        const normalizedValue = nextValue === ADMIN_FILTER_ALL_VALUE ? '' : nextValue;
+        if (options.some((option) => option.value === normalizedValue)) {
+          onValueChange(normalizedValue);
+        }
+      }}
+      aria-label={ariaLabel}
+    >
+      {options.map((option) => (
+        <ToggleGroupItem
+          key={option.value || ADMIN_FILTER_ALL_VALUE}
+          value={option.value || ADMIN_FILTER_ALL_VALUE}
+        >
+          {option.label}
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
   );
 }
 
@@ -35,21 +81,21 @@ export function AdminTable({
   const { t } = useTranslation();
   const hasRows = Children.count(children) > 0;
   return (
-    <div className="overflow-x-auto border-y border-[var(--t-noise)]">
-      <table className="w-full min-w-[760px] border-collapse text-left [font-variant-numeric:tabular-nums]">
-        <thead>
-          <tr className="border-b border-[var(--t-noise)] bg-[var(--t-panel)]">
+    <div className="border-y border-[var(--t-noise)]">
+      <Table className="min-w-[760px] [font-variant-numeric:tabular-nums]">
+        <TableHeader>
+          <TableRow className="border-b border-[var(--t-noise)] bg-[var(--t-panel)] hover:bg-[var(--t-panel)]">
             {headers.map((header, index) => (
-              <th
+              <TableHead
                 key={`${header}-${index}`}
                 className={`px-3 py-2 font-mono text-[10px] font-semibold uppercase tracking-[0.15em] text-[var(--t-faint)] ${centeredColumns.includes(index) ? 'text-center' : ''}`}
               >
                 {header}
-              </th>
+              </TableHead>
             ))}
-          </tr>
-        </thead>
-        <tbody
+          </TableRow>
+        </TableHeader>
+        <TableBody
           className={[
             '[&>tr]:h-11',
             '[&>tr]:transition-colors [&>tr]:duration-100 [&>tr]:[transition-timing-function:steps(2,end)]',
@@ -60,14 +106,14 @@ export function AdminTable({
           {hasRows ? (
             children
           ) : (
-            <tr>
-              <td colSpan={headers.length} className="px-3 py-8">
+            <TableRow>
+              <TableCell colSpan={headers.length} className="px-3 py-8">
                 <TEmpty message={t('admin.empty')} />
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           )}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }

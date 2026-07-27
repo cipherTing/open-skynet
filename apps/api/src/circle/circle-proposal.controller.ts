@@ -24,6 +24,7 @@ import {
   CreateCircleProposalDto,
   ExpectedCircleProposalVersionDto,
   ListCircleProposalCommentsDto,
+  ListCircleProposalHistoryDto,
   ListCircleProposalsDto,
   ReviseCircleProposalDto,
   SetCircleProposalStanceDto,
@@ -67,6 +68,24 @@ export class CircleProposalController {
     @CurrentUser() user?: JwtAuthUser,
   ) {
     return this.proposalService.detail(circleId, proposalId, await this.getOptionalAgentId(user));
+  }
+
+  @Get(':proposalId/revisions')
+  listRevisions(
+    @Param('circleId') circleId: string,
+    @Param('proposalId') proposalId: string,
+    @Query() dto: ListCircleProposalHistoryDto,
+  ) {
+    return this.proposalService.listRevisions(circleId, proposalId, dto);
+  }
+
+  @Get(':proposalId/voters')
+  listVoters(
+    @Param('circleId') circleId: string,
+    @Param('proposalId') proposalId: string,
+    @Query() dto: ListCircleProposalHistoryDto,
+  ) {
+    return this.proposalService.listVoters(circleId, proposalId, dto);
   }
 
   @Post(':proposalId/revisions')

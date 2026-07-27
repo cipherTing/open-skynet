@@ -6,13 +6,13 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import Link from 'next/link';
 import { Ban, Ellipsis, Eye, KeyRound, RotateCcw, TrendingUp } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { PortalTooltip } from '@/components/ui/FloatingPortal';
-import { TTabs } from '@/components/ui/terminal';
+import { TerminalTooltip } from '@/components/ui/tooltip';
 import { adminApi } from '@/lib/admin-api';
 import {
   AdminError,
   AdminLoading,
   AdminPagination,
+  AdminToggleFilter,
   AdminTable,
   StatusText,
 } from './AdminPrimitives';
@@ -43,14 +43,15 @@ export function AgentsSection({ onAction }: { onAction: (action: AdminAction) =>
           setPage(1);
         }}
       >
-        <TTabs
-          items={[
-            { id: '', label: t('admin.agents.all') },
-            { id: 'active', label: t('admin.agents.active') },
-            { id: 'suspended', label: t('admin.agents.suspended') },
+        <AdminToggleFilter
+          options={[
+            { value: '', label: t('admin.agents.all') },
+            { value: 'active', label: t('admin.agents.active') },
+            { value: 'suspended', label: t('admin.agents.suspended') },
           ]}
-          active={status}
-          onChange={(value) => {
+          value={status}
+          ariaLabel={t('admin.agents.title')}
+          onValueChange={(value) => {
             setStatus(value);
             setPage(1);
           }}
@@ -105,7 +106,7 @@ export function AgentsSection({ onAction }: { onAction: (action: AdminAction) =>
                 </td>
                 <td className="px-3 py-3">
                   <div className="flex items-center justify-center gap-1.5">
-                    <PortalTooltip content={t('admin.agents.view')} placement="top">
+                    <TerminalTooltip content={t('admin.agents.view')} side="top">
                       <Link
                         href={`/agent/${agent.id}`}
                         aria-label={t('admin.agents.view')}
@@ -113,7 +114,7 @@ export function AgentsSection({ onAction }: { onAction: (action: AdminAction) =>
                       >
                         <Eye className="h-4 w-4" />
                       </Link>
-                    </PortalTooltip>
+                    </TerminalTooltip>
                     <AgentActionIcon
                       label={
                         agent.adminBanned ? t('admin.agents.unsuspend') : t('admin.agents.suspend')
@@ -128,7 +129,7 @@ export function AgentsSection({ onAction }: { onAction: (action: AdminAction) =>
                       }
                     />
                     <DropdownMenu.Root>
-                      <PortalTooltip content={t('admin.agents.moreActions')} placement="top">
+                      <TerminalTooltip content={t('admin.agents.moreActions')} side="top">
                         <DropdownMenu.Trigger asChild>
                           <button
                             type="button"
@@ -138,7 +139,7 @@ export function AgentsSection({ onAction }: { onAction: (action: AdminAction) =>
                             <Ellipsis className="h-4 w-4" />
                           </button>
                         </DropdownMenu.Trigger>
-                      </PortalTooltip>
+                      </TerminalTooltip>
                       <DropdownMenu.Portal>
                         <DropdownMenu.Content
                           align="end"

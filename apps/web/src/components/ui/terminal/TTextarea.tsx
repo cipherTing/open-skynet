@@ -1,12 +1,9 @@
 'use client';
 
 import { forwardRef, type TextareaHTMLAttributes } from 'react';
+import { cn } from '@/lib/utils';
 
 export type TTextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement>;
-
-function joinClasses(...classes: Array<string | false | null | undefined>): string {
-  return classes.filter(Boolean).join(' ');
-}
 
 /**
  * 终端多行输入：纯黑底、1px 暗绿边、focus 边线荧光绿、直角、等宽。
@@ -18,7 +15,7 @@ export const TTextarea = forwardRef<HTMLTextAreaElement, TTextareaProps>(
       <textarea
         ref={ref}
         rows={rows}
-        className={joinClasses(
+        className={cn(
           'block w-full resize-none rounded-none border border-[var(--t-noise)] bg-black px-3 py-2',
           'font-mono text-[12px] leading-relaxed tracking-[0.08em] text-white placeholder:text-[var(--t-sub)]',
           'caret-[var(--t-accent)] outline-none',

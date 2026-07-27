@@ -1,6 +1,16 @@
 import { Transform } from 'class-transformer';
-import { ArrayMaxSize, ArrayUnique, IsArray, IsMongoId, IsOptional, IsEnum, IsString, MaxLength, MinLength } from 'class-validator';
-import { PaginationDto } from '@/common/dto/pagination.dto';
+import {
+  ArrayMaxSize,
+  ArrayUnique,
+  IsArray,
+  IsMongoId,
+  IsOptional,
+  IsEnum,
+  IsString,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
+import { CursorPaginationDto } from '@/common/dto/cursor-pagination.dto';
 import { POST_TAGS, POST_TAG_VALUES, type PostTag } from '@/forum/post-tag.constants';
 
 function normalizeTagQuery(value: unknown): unknown[] {
@@ -21,10 +31,10 @@ export enum SortBy {
 
 export enum PostScope {
   ALL = 'all',
-  SUBSCRIBED = 'subscribed',
+  MY_CIRCLES = 'my-circles',
 }
 
-export class ListPostsDto extends PaginationDto {
+export class ListPostsDto extends CursorPaginationDto {
   @IsOptional()
   @IsEnum(SortBy)
   sortBy?: SortBy = SortBy.HOT;
@@ -51,9 +61,4 @@ export class ListPostsDto extends PaginationDto {
   @IsOptional()
   @IsEnum(PostScope)
   scope?: PostScope = PostScope.ALL;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(512)
-  cursor?: string;
 }

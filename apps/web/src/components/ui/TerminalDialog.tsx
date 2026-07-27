@@ -3,6 +3,10 @@
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import * as Dialog from '@radix-ui/react-dialog';
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
+import { TButton } from '@/components/ui/terminal';
+import { cn } from '@/lib/utils';
+import { UI_LAYER_CLASS } from '@/components/ui/layers';
 
 export type TerminalDialogSize = 'sm' | 'md' | 'lg' | 'xl';
 export type TerminalDialogVariant = 'dialog' | 'alert';
@@ -11,12 +15,14 @@ export interface TerminalDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
+  description: ReactNode;
   code?: string;
   size?: TerminalDialogSize;
   variant?: TerminalDialogVariant;
   footer?: ReactNode;
   children: ReactNode;
   contentClassName?: string;
+  busy?: boolean;
 }
 
 const SIZE_MAX_WIDTH_CLASS: Record<TerminalDialogSize, string> = {
@@ -26,18 +32,19 @@ const SIZE_MAX_WIDTH_CLASS: Record<TerminalDialogSize, string> = {
   xl: 'max-w-[960px]',
 };
 
-const OVERLAY_CLASS = 'skynet-dialog-overlay fixed inset-0 z-[200] bg-[rgba(0,0,0,0.72)]';
+const OVERLAY_CLASS = cn(
+  'skynet-dialog-overlay fixed inset-0 bg-[rgba(0,0,0,0.72)]',
+  UI_LAYER_CLASS.modalOverlay,
+);
 
 const CONTENT_BASE_CLASS =
-  'skynet-dialog-content !fixed left-1/2 top-1/2 z-[210] max-h-[calc(100dvh-32px)] w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-none border border-border bg-surface-1 text-text-primary';
+  'skynet-dialog-content !fixed left-1/2 top-1/2 max-h-[calc(100dvh-32px)] w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-none border border-border bg-surface-1 text-text-primary';
 
 const TITLE_CLASS = 'font-mono text-[11px] font-medium tracking-[0.12em] text-text-primary';
 
-const CLOSE_CLASS =
-  'px-1 font-mono text-[11px] leading-none text-text-tertiary transition-colors hover:text-accent';
-
 interface TerminalDialogFrameProps {
   title: ReactNode;
+  description: ReactNode;
   code?: string;
   closeButton?: ReactNode;
   footer?: ReactNode;
@@ -46,6 +53,7 @@ interface TerminalDialogFrameProps {
 
 function TerminalDialogFrame({
   title,
+  description,
   code,
   closeButton,
   footer,
@@ -64,6 +72,7 @@ function TerminalDialogFrame({
         </div>
         {closeButton}
       </div>
+      {description}
       <div className="px-4 py-4">{children}</div>
       {footer ? (
         <div className="flex items-center justify-end gap-2 border-t border-border px-4 py-3">
@@ -78,25 +87,43 @@ export function TerminalDialog({
   open,
   onOpenChange,
   title,
+  description,
   code,
   size = 'md',
   variant = 'dialog',
   footer,
   children,
   contentClassName,
+  busy = false,
 }: TerminalDialogProps) {
-  const contentClass = [CONTENT_BASE_CLASS, SIZE_MAX_WIDTH_CLASS[size], contentClassName]
-    .filter(Boolean)
-    .join(' ');
+  const { t } = useTranslation();
+  const contentClass = cn(
+    CONTENT_BASE_CLASS,
+    UI_LAYER_CLASS.modal,
+    SIZE_MAX_WIDTH_CLASS[size],
+    contentClassName,
+  );
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen && busy) return;
+    onOpenChange(nextOpen);
+  };
 
   if (variant === 'alert') {
     return (
-      <AlertDialog.Root open={open} onOpenChange={onOpenChange}>
+      <AlertDialog.Root open={open} onOpenChange={handleOpenChange}>
         <AlertDialog.Portal>
           <AlertDialog.Overlay className={OVERLAY_CLASS} />
-          <AlertDialog.Content className={contentClass} aria-describedby={undefined}>
+          <AlertDialog.Content
+            className={contentClass}
+            onEscapeKeyDown={(event) => {
+              if (busy) event.preventDefault();
+            }}
+          >
             <TerminalDialogFrame
               title={<AlertDialog.Title className={TITLE_CLASS}>{title}</AlertDialog.Title>}
+              description={
+                <AlertDialog.Description className="sr-only">{description}</AlertDialog.Description>
+              }
               code={code}
               footer={footer}
             >
@@ -109,14 +136,38 @@ export function TerminalDialog({
   }
 
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+    <Dialog.Root open={open} onOpenChange={handleOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className={OVERLAY_CLASS} />
-        <Dialog.Content className={contentClass} aria-describedby={undefined}>
+        <Dialog.Content
+          className={contentClass}
+          onEscapeKeyDown={(event) => {
+            if (busy) event.preventDefault();
+          }}
+          onPointerDownOutside={(event) => {
+            if (busy) event.preventDefault();
+          }}
+          onInteractOutside={(event) => {
+            if (busy) event.preventDefault();
+          }}
+        >
           <TerminalDialogFrame
             title={<Dialog.Title className={TITLE_CLASS}>{title}</Dialog.Title>}
+            description={<Dialog.Description className="sr-only">{description}</Dialog.Description>}
             code={code}
-            closeButton={<Dialog.Close className={CLOSE_CLASS}>[×]</Dialog.Close>}
+            closeButton={
+              <Dialog.Close asChild>
+                <TButton
+                  variant="secondary"
+                  size="sm"
+                  disabled={busy}
+                  aria-label={t('termUi.dialog.close')}
+                  className="!h-7 !px-2"
+                >
+                  [×]
+                </TButton>
+              </Dialog.Close>
+            }
             footer={footer}
           >
             {children}
@@ -126,3 +177,7 @@ export function TerminalDialog({
     </Dialog.Root>
   );
 }
+
+export const TerminalDialogClose = Dialog.Close;
+export const TerminalAlertDialogCancel = AlertDialog.Cancel;
+export const TerminalAlertDialogAction = AlertDialog.Action;

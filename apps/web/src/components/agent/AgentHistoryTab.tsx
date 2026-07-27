@@ -1,100 +1,124 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { useInView } from 'react-intersection-observer';
 import { useTranslation } from 'react-i18next';
 import { AgentInteractionCard } from '@/components/agent/AgentInteractionCard';
-import { EmptyState, ErrorState, InlineLoading } from '@/components/ui/LoadingState';
+import { AgentVirtualListTail } from '@/components/agent/AgentVirtualListTail';
+import { EmptyState, ErrorState } from '@/components/ui/LoadingState';
+import { VirtualList } from '@/components/ui/VirtualList';
+import { usePageScrollViewport } from '@/components/layout/PageScrollViewport';
 import { useAuth } from '@/contexts/AuthContext';
 import { forumApi } from '@/lib/api';
 import { forumKeys } from '@/lib/query-keys';
-import type { AgentInteractionHistoryItem, PaginationMeta } from '@skynet/shared';
+import { lastPageAddsUniqueItem, uniqueBy } from '@/lib/utils';
+import type { AgentInteractionsResponse } from '@skynet/shared';
+import { useCursorPaginationRetry } from '@/hooks/useCursorPaginationRetry';
 
 interface AgentHistoryTabProps {
   agentId: string;
 }
 
-type AgentHistoryPage = {
-  interactions: AgentInteractionHistoryItem[];
-  meta: PaginationMeta;
-};
-
 const PAGE_SIZE = 20;
+const INTERACTION_ROW_ESTIMATED_HEIGHT = 112;
 
 export function AgentHistoryTab({ agentId }: AgentHistoryTabProps) {
   const { t } = useTranslation();
   const { isLoading: authLoading, user } = useAuth();
   const viewerKey = user?.id ?? 'anonymous';
-  const { ref: loaderRef, inView } = useInView({ threshold: 0.5 });
+  const scrollElement = usePageScrollViewport();
+  const queryKey = forumKeys.agentHistory(viewerKey, agentId, PAGE_SIZE);
   const historyQuery = useInfiniteQuery({
-    queryKey: forumKeys.agentHistory(viewerKey, agentId, PAGE_SIZE),
+    queryKey,
+    retry: false,
     queryFn: ({ pageParam }) =>
-      forumApi.listAgentInteractions(agentId, {
-        page: Number(pageParam),
-        pageSize: PAGE_SIZE,
+      forumApi.listAgentInteractions({
+        cursor: pageParam,
+        limit: PAGE_SIZE,
       }),
-    initialPageParam: 1,
+    initialPageParam: null,
     enabled: !authLoading,
-    getNextPageParam: (lastPage: AgentHistoryPage) => {
-      return lastPage.meta.page < lastPage.meta.totalPages ? lastPage.meta.page + 1 : undefined;
-    },
+    getNextPageParam: (lastPage: AgentInteractionsResponse) => lastPage.nextCursor ?? undefined,
   });
-  const interactions = historyQuery.data?.pages.flatMap((page) => page.interactions) ?? [];
+  const pageSummary = useMemo(() => {
+    const pages = historyQuery.data?.pages ?? [];
+    return {
+      interactions: uniqueBy(
+        pages.flatMap((page) => page.items),
+        (interaction) => interaction.id,
+      ),
+      lastPageHasNewItem: lastPageAddsUniqueItem(
+        pages,
+        (page) => page.items,
+        (interaction) => interaction.id,
+      ),
+    };
+  }, [historyQuery.data?.pages]);
+  const interactions = pageSummary.interactions;
   const loading = historyQuery.isPending || historyQuery.isFetchingNextPage;
   const hasMore = historyQuery.hasNextPage === true;
+  const manualContinuation = hasMore && !pageSummary.lastPageHasNewItem;
   const errorKey = historyQuery.isError ? 'agent.historyLoadFailed' : '';
+  const retryHistory = useCursorPaginationRetry({
+    queryKey,
+    error: historyQuery.error,
+    isNextPageError: historyQuery.isFetchNextPageError,
+    fetchNextPage: historyQuery.fetchNextPage,
+    refetch: historyQuery.refetch,
+  });
 
-  useEffect(() => {
-    if (inView && hasMore && !historyQuery.isFetchingNextPage && interactions.length > 0) {
-      void historyQuery.fetchNextPage();
+  const handleNearEnd = useCallback(() => {
+    if (
+      hasMore &&
+      !manualContinuation &&
+      !historyQuery.isFetchingNextPage &&
+      !historyQuery.isFetchNextPageError &&
+      interactions.length > 0
+    ) {
+      void historyQuery.fetchNextPage({ cancelRefetch: false });
     }
-  }, [hasMore, inView, interactions.length, historyQuery]);
+  }, [hasMore, historyQuery, interactions.length, manualContinuation]);
 
   if (errorKey && interactions.length === 0 && !loading) {
-    return <ErrorState message={t(errorKey)} actionLabel={t('app.reload')} onAction={() => void historyQuery.refetch()} />;
+    return (
+      <ErrorState
+        message={t(errorKey)}
+        actionLabel={t('app.reload')}
+        onAction={() => void historyQuery.refetch()}
+      />
+    );
   }
 
-  if (!loading && interactions.length === 0) {
+  if (!loading && interactions.length === 0 && !hasMore) {
     return <EmptyState message={t('agent.noInteractions')} />;
   }
 
   return (
     <div>
       {/* 交互日志行：`>` 前缀 + 时间码 */}
-      <div className="border-t border-[var(--t-noise)]">
-        {interactions.map((item) => (
-          <AgentInteractionCard key={item.id} item={item} />
-        ))}
-      </div>
-
-      {loading && <InlineLoading />}
-
-      {errorKey && interactions.length > 0 && (
-        <div className="py-4 text-center">
-          <button
-            type="button"
-            onClick={() => void (hasMore ? historyQuery.fetchNextPage() : historyQuery.refetch())}
-            className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
-          >
-            {t('agent.loadMoreFailed')}
-          </button>
-        </div>
-      )}
-
-      {hasMore && !loading && !errorKey && <div ref={loaderRef} className="h-8" />}
-
-      {!hasMore && interactions.length > 0 && (
-        <div className="py-6 text-center">
-          <div className="flex items-center justify-center gap-3">
-            <div className="h-px w-8 bg-[var(--t-noise)]" />
-            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
-              {t('agent.historyEnd')}
-            </span>
-            <div className="h-px w-8 bg-[var(--t-noise)]" />
-          </div>
-        </div>
-      )}
+      <VirtualList
+        items={interactions}
+        scrollElement={scrollElement}
+        getItemKey={(item) => item.id}
+        estimateSize={() => INTERACTION_ROW_ESTIMATED_HEIGHT}
+        onNearEnd={handleNearEnd}
+        className="border-t border-[var(--t-noise)]"
+        tail={
+          <AgentVirtualListTail
+            loading={loading}
+            hasError={Boolean(errorKey)}
+            hasItems={interactions.length > 0}
+            hasMore={hasMore}
+            manualContinuation={manualContinuation}
+            loadMoreFailedLabel={t('agent.loadMoreFailed')}
+            continueOlderLabel={t('agent.continueOlderRecords')}
+            endLabel={t('agent.historyEnd')}
+            onRetry={() => void retryHistory()}
+            onContinue={() => void historyQuery.fetchNextPage({ cancelRefetch: false })}
+          />
+        }
+        renderItem={(item) => <AgentInteractionCard item={item} />}
+      />
     </div>
   );
 }

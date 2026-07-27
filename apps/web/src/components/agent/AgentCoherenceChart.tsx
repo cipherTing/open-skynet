@@ -1,52 +1,30 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import type { Dispatch, RefObject, SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  AreaChart,
   Area,
+  AreaChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip as RechartsTooltip,
   XAxis,
   YAxis,
-  CartesianGrid,
-  Tooltip as RechartsTooltipController,
-  ResponsiveContainer,
 } from 'recharts';
-import type { CoherencePoint } from '@/config/agent-dimensions';
-import { FloatingPortal, FLOATING_Z_INDEX, type FloatingAnchorRect } from '@/components/ui/FloatingPortal';
-import { TelemetryValue } from '@/components/home/terminal/TelemetryValue';
 import { getAgentLevelByXp } from '@skynet/shared';
+import type { CoherencePoint } from '@/config/agent-dimensions';
+import { TelemetryValue } from '@/components/home/terminal/TelemetryValue';
 
 interface AgentCoherenceChartProps {
   history: CoherencePoint[];
 }
 
-interface PortalChartTooltip {
-  data: CoherencePoint;
-  rect: FloatingAnchorRect;
-}
-
-interface TooltipBridgeProps {
+interface ChartTooltipProps {
   active?: boolean;
-  payload?: Array<{
-    payload?: CoherencePoint;
-  }>;
-  coordinate?: {
-    x?: number;
-    y?: number;
-  };
-}
-
-interface TooltipBridgeComponentProps extends TooltipBridgeProps {
-  chartRef: RefObject<HTMLDivElement | null>;
-  setTooltip: Dispatch<SetStateAction<PortalChartTooltip | null>>;
+  payload?: Array<{ payload?: CoherencePoint }>;
 }
 
 interface ScoreCursorProps {
-  points?: Array<{
-    x?: number;
-    y?: number;
-  }>;
+  points?: Array<{ x?: number; y?: number }>;
   left?: number;
   top?: number;
   width?: number;
@@ -60,6 +38,8 @@ interface ScoreDotProps {
   cy?: number;
   index?: number;
 }
+
+const SCORE_CHART_INITIAL_DIMENSION = { width: 640, height: 190 } as const;
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
@@ -91,21 +71,8 @@ function getCursorPayloadValue(payload: unknown): number | null {
   const firstPayload = payload[0];
   const nestedPayload = getObjectField(firstPayload, 'payload');
   if (isCoherencePoint(nestedPayload)) return nestedPayload.value;
-
   const value = getObjectField(firstPayload, 'value');
   return isFiniteNumber(value) ? value : null;
-}
-
-function isSameTooltip(
-  current: PortalChartTooltip | null,
-  next: PortalChartTooltip,
-) {
-  return (
-    current?.data.date === next.data.date &&
-    current.data.value === next.data.value &&
-    current.rect.left === next.rect.left &&
-    current.rect.top === next.rect.top
-  );
 }
 
 function getNiceStep(value: number): number {
@@ -123,9 +90,7 @@ function getScoreYAxisDomain(history: CoherencePoint[]): [number, number] {
     .map((point) => point.value)
     .filter(Number.isFinite)
     .map((value) => Math.max(0, value));
-
   if (values.length === 0) return [0, 10];
-
   const minValue = Math.min(...values);
   const maxValue = Math.max(...values);
   const rawRange = maxValue - minValue;
@@ -161,7 +126,6 @@ function ScoreCrosshairCursor({
 }: ScoreCursorProps) {
   const x = points?.[0]?.x;
   const value = getCursorPayloadValue(payload);
-
   if (
     !isFiniteNumber(x) ||
     value === null ||
@@ -172,9 +136,7 @@ function ScoreCrosshairCursor({
   ) {
     return null;
   }
-
   const y = getChartY(value, yAxisDomain, top, height);
-
   return (
     <g
       stroke="var(--t-accent)"
@@ -191,58 +153,50 @@ function ScoreCrosshairCursor({
 
 function renderTodayDot(props: ScoreDotProps, lastPointIndex: number) {
   const { cx, cy, index } = props;
-  if (index !== lastPointIndex || !isFiniteNumber(cx) || !isFiniteNumber(cy)) {
-    return null;
-  }
-  return <circle cx={cx} cy={cy} r={4} fill="var(--t-panel)" stroke="var(--t-accent)" strokeWidth={2} />;
+  if (index !== lastPointIndex || !isFiniteNumber(cx) || !isFiniteNumber(cy)) return null;
+  return (
+    <circle cx={cx} cy={cy} r={4} fill="var(--t-panel)" stroke="var(--t-accent)" strokeWidth={2} />
+  );
 }
 
 function renderActiveDot(props: ScoreDotProps) {
   const { cx, cy } = props;
   if (!isFiniteNumber(cx) || !isFiniteNumber(cy)) return null;
-  return <circle cx={cx} cy={cy} r={4.5} fill="var(--t-panel)" stroke="var(--t-accent)" strokeWidth={2} />;
+  return (
+    <circle
+      cx={cx}
+      cy={cy}
+      r={4.5}
+      fill="var(--t-panel)"
+      stroke="var(--t-accent)"
+      strokeWidth={2}
+    />
+  );
 }
 
-function TooltipBridge({
-  active,
-  payload,
-  coordinate,
-  chartRef,
-  setTooltip,
-}: TooltipBridgeComponentProps) {
-  const rawPoint = payload?.[0]?.payload;
-  const point = isCoherencePoint(rawPoint) ? rawPoint : undefined;
-  const x = coordinate?.x;
-  const y = coordinate?.y;
-
-  useEffect(() => {
-    const chartBox = chartRef.current?.getBoundingClientRect();
-
-    if (!active || !chartBox || !point || typeof x !== 'number' || typeof y !== 'number') {
-      setTooltip((current) => (current === null ? current : null));
-      return;
-    }
-
-    const nextTooltip: PortalChartTooltip = {
-      data: point,
-      rect: {
-        left: chartBox.left + x,
-        top: chartBox.top + y,
-        width: 1,
-        height: 1,
-      },
-    };
-
-    setTooltip((current) => (isSameTooltip(current, nextTooltip) ? current : nextTooltip));
-  }, [active, chartRef, point, setTooltip, x, y]);
-
-  return null;
+function ChartTooltip({ active, payload }: ChartTooltipProps) {
+  const { t } = useTranslation();
+  const point = payload?.[0]?.payload;
+  if (!active || !isCoherencePoint(point)) return null;
+  const levelMeta = getAgentLevelByXp(point.value);
+  const levelName = t(`agent.levelNames.${levelMeta.level}`, { defaultValue: levelMeta.name });
+  return (
+    <div className="pointer-events-none border border-[var(--t-noise)] bg-[var(--t-panel)] px-3 py-2 text-xs">
+      <div className="mb-0.5 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+        {point.date}
+      </div>
+      <div className="font-mono font-bold text-[var(--t-accent)]">
+        {t('agent.score', { score: point.value })}
+      </div>
+      <div className="mt-0.5 font-mono text-[10px] text-[var(--t-faint)]">
+        Lv{levelMeta.level} · {levelName}
+      </div>
+    </div>
+  );
 }
 
 export function AgentCoherenceChart({ history }: AgentCoherenceChartProps) {
   const { t } = useTranslation();
-  const chartRef = useRef<HTMLDivElement | null>(null);
-  const [tooltip, setTooltip] = useState<PortalChartTooltip | null>(null);
   const lastPoint = history.length > 0 ? history[history.length - 1] : null;
   const lastPointIndex = history.length - 1;
   const yAxisDomain = getScoreYAxisDomain(history);
@@ -257,7 +211,6 @@ export function AgentCoherenceChart({ history }: AgentCoherenceChartProps) {
           : t('agent.scoreChartEmptyAria')
       }
     >
-      {/* 标题 */}
       <div className="flex items-center justify-between border-b border-[var(--t-noise)] px-4 py-2.5">
         <div className="flex items-center gap-2">
           <div className="h-1.5 w-1.5 bg-[var(--t-accent)]" />
@@ -269,18 +222,13 @@ export function AgentCoherenceChart({ history }: AgentCoherenceChartProps) {
           {t('agent.last30Days')}
         </span>
       </div>
-
-      {/* 图表 */}
-      <div
-        ref={chartRef}
-        className="min-h-[190px] w-full flex-1 select-none"
-      >
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart
-            data={history}
-            margin={{ top: 10, right: 34, left: 10, bottom: 0 }}
-            onMouseLeave={() => setTooltip(null)}
-          >
+      <div className="h-[190px] min-w-0 w-full shrink-0 select-none">
+        <ResponsiveContainer
+          width="100%"
+          height="100%"
+          initialDimension={SCORE_CHART_INITIAL_DIMENSION}
+        >
+          <AreaChart data={history} margin={{ top: 10, right: 34, left: 10, bottom: 0 }}>
             <CartesianGrid strokeDasharray="2 4" stroke="var(--t-noise2)" vertical={false} />
             <XAxis
               dataKey="date"
@@ -299,11 +247,10 @@ export function AgentCoherenceChart({ history }: AgentCoherenceChartProps) {
               axisLine={false}
               width={52}
             />
-            <RechartsTooltipController
-              content={<TooltipBridge chartRef={chartRef} setTooltip={setTooltip} />}
+            <RechartsTooltip
+              content={<ChartTooltip />}
               cursor={<ScoreCrosshairCursor yAxisDomain={yAxisDomain} />}
               isAnimationActive={false}
-              wrapperStyle={{ display: 'none' }}
             />
             <Area
               type="monotone"
@@ -319,40 +266,6 @@ export function AgentCoherenceChart({ history }: AgentCoherenceChartProps) {
           </AreaChart>
         </ResponsiveContainer>
       </div>
-
-      <FloatingPortal
-        open={!!tooltip}
-        anchorRect={tooltip?.rect ?? null}
-        placement="top"
-        align="center"
-        offset={10}
-        zIndex={FLOATING_Z_INDEX.tooltip}
-        className="pointer-events-none border border-[var(--t-noise)] bg-[var(--t-panel)] px-3 py-2 text-xs"
-        role="tooltip"
-      >
-        {tooltip &&
-          (() => {
-            const levelMeta = getAgentLevelByXp(tooltip.data.value);
-            const levelName = t(`agent.levelNames.${levelMeta.level}`, {
-              defaultValue: levelMeta.name,
-            });
-            return (
-              <>
-                <div className="mb-0.5 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
-                  {tooltip.data.date}
-                </div>
-                <div className="font-mono font-bold text-[var(--t-accent)]">
-                  {t('agent.score', { score: tooltip.data.value })}
-                </div>
-                <div className="mt-0.5 font-mono text-[10px] text-[var(--t-faint)]">
-                  Lv{levelMeta.level} · {levelName}
-                </div>
-              </>
-            );
-          })()}
-      </FloatingPortal>
-
-      {/* 底部当前值 */}
       <div className="flex items-center gap-2 border-t border-[var(--t-noise)] px-4 py-2.5">
         {lastPoint ? (
           <>

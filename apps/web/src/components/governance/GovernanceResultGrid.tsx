@@ -6,6 +6,7 @@ import dynamic from 'next/dynamic';
 import { useTranslation } from 'react-i18next';
 import type { GovernanceResultFeedItem, GovernanceResultsBatch } from '@skynet/shared';
 import { useAuth } from '@/contexts/AuthContext';
+import { AuthRequiredDialog, AuthRequiredState } from '@/components/ui/AuthRequiredDialog';
 import { TEmpty } from '@/components/ui/terminal/TEmpty';
 import { TSkeleton } from '@/components/ui/terminal/TSkeleton';
 import { Timecode } from '@/components/ui/terminal/Timecode';
@@ -29,24 +30,31 @@ export function GovernanceResultGrid({ query, onDetailOpenChange }: GovernanceRe
   const { t } = useTranslation();
   const { isAuthenticated, isLoading: isAuthLoading, isUnavailable: isAuthUnavailable } = useAuth();
   const [selectedResult, setSelectedResult] = useState<GovernanceResultFeedItem | null>(null);
+  const [authPromptOpen, setAuthPromptOpen] = useState(false);
   const returnFocusRef = useRef<HTMLElement | null>(null);
 
   const data = query.data;
   const items = data?.items ?? [];
   const requiresLogin = !isAuthLoading && !isAuthUnavailable && !isAuthenticated;
 
-  const openDetails = useCallback((result: GovernanceResultFeedItem, trigger: HTMLElement) => {
-    returnFocusRef.current = trigger;
-    setSelectedResult(result);
-    onDetailOpenChange(true);
-  }, [onDetailOpenChange]);
+  const openDetails = useCallback(
+    (result: GovernanceResultFeedItem, trigger: HTMLElement) => {
+      returnFocusRef.current = trigger;
+      setSelectedResult(result);
+      onDetailOpenChange(true);
+    },
+    [onDetailOpenChange],
+  );
 
-  const closeDetails = useCallback((open: boolean) => {
-    if (!open) {
-      setSelectedResult(null);
-      onDetailOpenChange(false);
-    }
-  }, [onDetailOpenChange]);
+  const closeDetails = useCallback(
+    (open: boolean) => {
+      if (!open) {
+        setSelectedResult(null);
+        onDetailOpenChange(false);
+      }
+    },
+    [onDetailOpenChange],
+  );
 
   return (
     <div className="feed-overlay-shell">
@@ -56,11 +64,13 @@ export function GovernanceResultGrid({ query, onDetailOpenChange }: GovernanceRe
             {t('governance.syncFailed')}
           </div>
         ) : requiresLogin ? (
-          <div className="t-corner border border-[var(--t-noise)] bg-[var(--t-panel)] p-8 text-center">
-            <p className="text-base font-semibold text-white">{t('governance.loginRequiredTitle')}</p>
-            <p className="mt-2 font-mono text-[11px] leading-5 tracking-[0.08em] text-[var(--t-sub)]">
-              {t('governance.loginRequiredDescription')}
-            </p>
+          <div className="flex min-h-full items-center justify-center px-4 py-8">
+            <AuthRequiredState
+              className="w-full max-w-lg"
+              onOpen={() => setAuthPromptOpen(true)}
+              title={t('governance.loginRequiredTitle')}
+              description={t('governance.loginRequiredDescription')}
+            />
           </div>
         ) : isAuthLoading || query.isLoading ? (
           <div className="border border-[var(--t-noise)] bg-[var(--t-panel)] p-6">
@@ -74,9 +84,11 @@ export function GovernanceResultGrid({ query, onDetailOpenChange }: GovernanceRe
             {t('governance.syncFailed')}
           </div>
         ) : items.length === 0 && !query.isLoading ? (
-          <TEmpty message={t('governance.emptyResults')} />
+          <div className="flex min-h-full items-center justify-center py-8">
+            <TEmpty className="w-full" message={t('governance.emptyResults')} />
+          </div>
         ) : (
-          <div key={data?.sampledAt ?? 'governance-batch'} className="pb-3">
+          <div key={data?.generatedAt ?? 'governance-batch'} className="pb-3">
             <div className="mb-2 flex items-center gap-2 px-1 pt-2">
               <span className="shrink-0 text-xs font-bold text-white">
                 {t('governance.plazaTitle')}
@@ -85,7 +97,7 @@ export function GovernanceResultGrid({ query, onDetailOpenChange }: GovernanceRe
               {data ? (
                 <span className="flex shrink-0 items-center gap-2 font-mono text-[10px] tabular-nums tracking-[0.15em] text-[var(--t-faint)]">
                   <span>{t('governance.resultCount', { count: items.length })}</span>
-                  <Timecode date={data.sampledAt} withDate />
+                  <Timecode date={data.generatedAt} withDate />
                 </span>
               ) : null}
             </div>
@@ -105,6 +117,12 @@ export function GovernanceResultGrid({ query, onDetailOpenChange }: GovernanceRe
         open={!!selectedResult}
         onOpenChange={closeDetails}
         returnFocusRef={returnFocusRef}
+      />
+      <AuthRequiredDialog
+        open={authPromptOpen}
+        onOpenChange={setAuthPromptOpen}
+        title={t('governance.loginRequiredTitle')}
+        description={t('governance.loginRequiredDescription')}
       />
     </div>
   );

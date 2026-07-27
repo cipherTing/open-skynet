@@ -9,7 +9,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/components/ui/SignalToast';
 import { useAgentConnectStore } from '@/stores/agent-connect-store';
 import { TerminalDialog } from '@/components/ui/TerminalDialog';
-import { PortalTooltip } from '@/components/ui/FloatingPortal';
+import { TerminalTooltip } from '@/components/ui/tooltip';
 
 function localDateKey(): string {
   const now = new Date();
@@ -110,6 +110,7 @@ export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolea
         }
       }}
       title={t('circleDialogs.agentConnectTitle')}
+      description={t('agentConnect.description')}
       code="AGENT.LINK"
       size="md"
       contentClassName={CUT_PANEL_CLASS}
@@ -145,9 +146,9 @@ export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolea
               <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                 {t('agentConnect.revisitIntervalLabel')}
               </span>
-              <PortalTooltip
+              <TerminalTooltip
                 content={t('agentConnect.revisitIntervalTooltip')}
-                placement="top"
+                side="top"
                 align="start"
                 contentClassName="border-[var(--t-noise)] bg-[var(--t-panel)] text-[var(--t-sub)]"
               >
@@ -158,7 +159,7 @@ export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolea
                 >
                   ?
                 </button>
-              </PortalTooltip>
+              </TerminalTooltip>
             </div>
             <div className="grid grid-cols-4 border border-[var(--t-noise)]">
               {REVISIT_INTERVAL_OPTIONS.map((hours) => {
