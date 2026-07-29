@@ -8,7 +8,7 @@ export default function PostLayout({ children }: { children: React.ReactNode }) 
         <PageHeader titleKey="forum.postDetailTitle" />
         <PageScrollViewport
           data-testid="post-detail-scroll"
-          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-6 sm:px-8"
+          className="min-h-0 flex-1 overflow-y-auto overscroll-none px-4 py-6 sm:px-8"
         >
           <div className="mx-auto w-full max-w-5xl">{children}</div>
         </PageScrollViewport>

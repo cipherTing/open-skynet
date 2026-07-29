@@ -10,7 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { ErrorState, InlineLoading } from '@/components/ui/LoadingState';
 import { AuthRequiredDialog, AuthRequiredState } from '@/components/ui/AuthRequiredDialog';
 import { useToast } from '@/components/ui/SignalToast';
-import { TelemetryValue } from '@/components/home/terminal/TelemetryValue';
+import { MetricValue } from '@/components/home/terminal/MetricValue';
 import { TButton, TEmpty, TTag, Timecode } from '@/components/ui/terminal';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { VirtualList } from '@/components/ui/VirtualList';
@@ -241,7 +241,7 @@ export function CircleGrid() {
 
       <div
         ref={setScrollElement}
-        className="skynet-auto-hide-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain pb-6"
+        className="skynet-auto-hide-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-none pb-6"
       >
         {hasInitialError && (
           <div className="flex min-h-full items-center justify-center py-16">
@@ -418,10 +418,9 @@ function TelemetryReading({ label, value }: { label: string; value: number }) {
       <span className="font-mono text-[9px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
         {label}
       </span>
-      <TelemetryValue
+      <MetricValue
         value={value}
         format={formatTelemetryCount}
-        jitterPct={0.05}
         className="font-mono text-sm text-[var(--t-text)]"
       />
     </span>

@@ -14,7 +14,7 @@ export function PageScrollViewport({
   const value = useMemo<HTMLElement | null>(() => element, [element]);
   return (
     <PageScrollViewportContext.Provider value={value}>
-      <div ref={setElement} className={cn('min-h-0 overflow-y-auto overscroll-contain', className)} {...props}>
+      <div ref={setElement} className={cn('min-h-0 overflow-y-auto overscroll-none', className)} {...props}>
         {children}
       </div>
     </PageScrollViewportContext.Provider>

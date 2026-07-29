@@ -436,7 +436,7 @@ function SettingsPageContent({
         {/* 右侧表单区 */}
         <div
           ref={scrollRef}
-          className="t-ambient-scan min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain"
+          className="t-ambient-scan min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-none"
         >
           <div className="mx-auto max-w-2xl px-6 py-8 sm:px-8">
             {/* 页面标题 */}

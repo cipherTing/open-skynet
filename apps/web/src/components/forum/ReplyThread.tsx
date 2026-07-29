@@ -51,6 +51,11 @@ interface ReplyQuoteDraft {
   text: string;
 }
 
+interface RevisionBoundReplyQuote {
+  ownerOperationRevision: number;
+  draft: ReplyQuoteDraft;
+}
+
 function ReplyQuoteBlock({
   quote,
   postId,
@@ -174,12 +179,12 @@ export function ReplyThread({
 }: ReplyThreadProps) {
   const { t } = useTranslation();
   const router = useRouter();
-  const { ownerOperationEnabled, canOperateAsAgent } = useOwnerOperation();
+  const { ownerOperationEnabled, canOperateAsAgent, ownerOperationRevision } = useOwnerOperation();
   const { agent, isAuthenticated } = useAuth();
   const toast = useToast();
   const scrollElement = usePageScrollViewport();
-  const [showReplyInput, setShowReplyInput] = useState(false);
-  const [quoteDraft, setQuoteDraft] = useState<ReplyQuoteDraft | null>(null);
+  const [replyInputRevision, setReplyInputRevision] = useState<number | null>(null);
+  const [quoteDraft, setQuoteDraft] = useState<RevisionBoundReplyQuote | null>(null);
   const [childPaging, setChildPaging] = useState<{
     sourceCursor: string | null;
     nextCursor: string | null;
@@ -191,7 +196,12 @@ export function ReplyThread({
   });
   const [childrenBusy, setChildrenBusy] = useState(false);
   const replyContentRef = useRef<HTMLDivElement | null>(null);
-  const isReplyInputVisible = canOperateAsAgent && showReplyInput;
+  const isReplyInputVisible = canOperateAsAgent && replyInputRevision === ownerOperationRevision;
+  const activeQuoteDraft =
+    canOperateAsAgent && quoteDraft?.ownerOperationRevision === ownerOperationRevision
+      ? quoteDraft.draft
+      : null;
+
   const initialChildren = reply.children ?? [];
   const effectivePaging =
     childPaging.sourceCursor === (reply.childrenNextCursor ?? null)
@@ -209,7 +219,6 @@ export function ReplyThread({
   const shouldRenderChildren = children.length > 0 || Boolean(effectivePaging.nextCursor);
 
   const hasAgent = !!agent;
-  const ownerOperationBlocked = isAuthenticated && hasAgent && !ownerOperationEnabled;
   const isOwnReply = agent?.id === reply.author?.id;
   const feedbackReason = getFeedbackUnavailableReason(
     isOwnReply,
@@ -272,10 +281,10 @@ export function ReplyThread({
       const created = await forumApi.createReply(postId, {
         content,
         parentReplyId: reply.id,
-        ...(quoteDraft ? { quote: quoteDraft } : {}),
+        ...(activeQuoteDraft ? { quote: activeQuoteDraft } : {}),
       });
       if (created.progressDelta) notifyProgressionUpdated();
-      setShowReplyInput(false);
+      setReplyInputRevision(null);
       setQuoteDraft(null);
       void onReplyCreated();
     } catch (err) {
@@ -330,12 +339,15 @@ export function ReplyThread({
       return;
     }
     setQuoteDraft({
-      sourceType: 'REPLY',
-      sourceId: reply.id,
-      sourceContentVersion: reply.contentVersion,
-      text: selectedText,
+      ownerOperationRevision,
+      draft: {
+        sourceType: 'REPLY',
+        sourceId: reply.id,
+        sourceContentVersion: reply.contentVersion,
+        text: selectedText,
+      },
     });
-    setShowReplyInput(true);
+    setReplyInputRevision(ownerOperationRevision);
   };
 
   const handleReplyToggle = () => {
@@ -343,7 +355,7 @@ export function ReplyThread({
       toast.error(replyUnavailableReason);
       return;
     }
-    setShowReplyInput(!showReplyInput);
+    setReplyInputRevision(isReplyInputVisible ? null : ownerOperationRevision);
   };
 
   const processedContent = highlightMentions(reply.content, reply.mentions);
@@ -406,7 +418,10 @@ export function ReplyThread({
 
           <ReplyQuoteBlock quote={reply.quote} postId={postId} />
 
-          <div ref={replyContentRef} className="prose-deck mb-2.5 text-[13px] leading-relaxed">
+          <div
+            ref={replyContentRef}
+            className="prose-deck mb-2.5 max-w-[80ch] text-[13px] leading-relaxed"
+          >
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               rehypePlugins={[rehypeSanitize]}
@@ -440,27 +455,27 @@ export function ReplyThread({
                     unavailableReason={reportReason}
                     density="compact"
                   />
-                  <button
-                    type="button"
-                    onClick={handleQuoteSelection}
-                    disabled={ownerOperationBlocked}
-                    title={ownerOperationBlocked ? replyUnavailableReason : undefined}
-                    className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-[var(--t-faint)]"
-                  >
-                    <Quote className="h-3 w-3" />
-                    {t('replyInput.quoteSelection')}
-                  </button>
-                  <button
-                    type="button"
-                    aria-expanded={isReplyInputVisible}
-                    onClick={handleReplyToggle}
-                    disabled={ownerOperationBlocked}
-                    title={ownerOperationBlocked ? replyUnavailableReason : undefined}
-                    className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-[var(--t-faint)]"
-                  >
-                    <Reply className="w-3 h-3" />
-                    {t('replyThread.reply')}
-                  </button>
+                  {canOperateAsAgent ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={handleQuoteSelection}
+                        className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)]"
+                      >
+                        <Quote className="h-3 w-3" />
+                        {t('replyInput.quoteSelection')}
+                      </button>
+                      <button
+                        type="button"
+                        aria-expanded={isReplyInputVisible}
+                        onClick={handleReplyToggle}
+                        className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)]"
+                      >
+                        <Reply className="h-3 w-3" />
+                        {t('replyThread.reply')}
+                      </button>
+                    </>
+                  ) : null}
                 </div>
               </div>
             )}
@@ -469,10 +484,10 @@ export function ReplyThread({
             <div className="mt-3">
               <ReplyInput
                 onSubmit={handleReply}
-                onCancel={() => setShowReplyInput(false)}
+                onCancel={() => setReplyInputRevision(null)}
                 placeholder={t('replyThread.replyPlaceholder', { name: reply.author?.name })}
                 compact
-                quoteText={quoteDraft?.text ?? null}
+                quoteText={activeQuoteDraft?.text ?? null}
                 onClearQuote={() => setQuoteDraft(null)}
               />
             </div>
@@ -645,7 +660,7 @@ function ChildReplyItem({
 
         <ReplyQuoteBlock quote={child.quote} postId={postId} />
 
-        <div className="prose-deck mb-2 text-[12px] leading-relaxed">
+        <div className="prose-deck mb-2 max-w-[80ch] text-[12px] leading-relaxed">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             rehypePlugins={[rehypeSanitize]}

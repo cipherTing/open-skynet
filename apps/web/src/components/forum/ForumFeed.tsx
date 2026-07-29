@@ -1,6 +1,12 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef, type UIEvent } from 'react';
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+} from 'react';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
 import {
@@ -18,16 +24,15 @@ import { useTranslation } from 'react-i18next';
 import { PostCard } from './PostCard';
 import { ForumFeedContextProvider } from './ForumFeedContext';
 import { FORUM_FEED_PAGE_SIZE, feedBandItemClass } from './forum-feed-constants';
+import { VirtuosoGrid, type VirtuosoGridHandle } from 'react-virtuoso';
 import { ErrorState } from '@/components/ui/LoadingState';
 import { TEmpty, TSkeleton } from '@/components/ui/terminal';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { VirtualList } from '@/components/ui/VirtualList';
 import { AuthRequiredDialog, AuthRequiredState } from '@/components/ui/AuthRequiredDialog';
 import { ApiError, forumApi } from '@/lib/api';
 import { forumKeys } from '@/lib/query-keys';
 import { useOwnerOperation } from '@/contexts/OwnerOperationContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { useAutoHideScrollbar } from '@/hooks/useAutoHideScrollbar';
 import { isPaginationCursorError } from '@/hooks/useCursorPaginationRetry';
 import { useToast } from '@/components/ui/SignalToast';
 import {
@@ -40,7 +45,6 @@ import {
 } from '@skynet/shared';
 import {
   getForumFeedSortMode,
-  getForumFeedToolbarVisible,
   useForumFeedStore,
 } from '@/stores/forum-feed-store';
 import { useHomeNavigationStore } from '@/stores/home-navigation-store';
@@ -54,10 +58,13 @@ const CreatePostModal = dynamic(
   },
 );
 const OVERLAY_BAR_SCROLL_THRESHOLD = 8;
-const POST_ROW_ESTIMATED_HEIGHT = 248;
-const POST_MASONRY_ESTIMATED_HEIGHT = 360;
 const POST_MASONRY_GAP_PX = 12;
 const POST_MASONRY_MIN_COLUMN_WIDTH_PX = 300;
+const POST_FEED_FOOTER_HEIGHT_CLASS = 'h-24';
+const POST_LIST_ITEM_CLASS = 'h-[132px]';
+const POST_TWO_COLUMN_ITEM_CLASS = 'h-[232px]';
+const POST_THREE_COLUMN_ITEM_CLASS = 'h-[252px]';
+const POST_FEED_VIEWPORT_EXTENSION = { top: 0, bottom: 2600 } as const;
 const FORUM_LAYOUT_OPTIONS = [
   { value: 1, icon: List, labelKey: 'forum.layoutList' },
   { value: 2, icon: Columns2, labelKey: 'forum.layoutTwo' },
@@ -67,6 +74,24 @@ const FORUM_LAYOUT_OPTIONS = [
   icon: typeof List;
   labelKey: string;
 }>;
+
+interface ForumFeedGridContext extends ForumFeedTailProps {
+  chapterLabel: string;
+  recordCountLabel: string;
+}
+
+interface ForumFeedTailProps {
+  loading: boolean;
+  errorMessage: string;
+  hasMore: boolean;
+  isAuthenticated: boolean;
+  loadingLabel: string;
+  endLabel: string;
+  authLabel: string;
+  retryLabel: string;
+  onRetry: () => void;
+  onRequireAuth: () => void;
+}
 
 interface ForumFeedProps {
   circle?: Circle;
@@ -84,14 +109,15 @@ export function ForumFeed({
   receiveErrorTitleKey = 'forum.postsReceiveError',
 }: ForumFeedProps = {}) {
   const { t } = useTranslation();
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [scrollRoot, setScrollRoot] = useState<HTMLDivElement | null>(null);
+  const [createModalRevision, setCreateModalRevision] = useState<number | null>(null);
+  const [feedContainer, setFeedContainer] = useState<HTMLDivElement | null>(null);
   const [feedWidth, setFeedWidth] = useState<number | null>(null);
-  const scrollRootRef = useRef<HTMLDivElement | null>(null);
-  const lastRestoredKeyRef = useRef('');
-  const scrollReadyFeedKeyRef = useRef<string | null>(null);
-  const currentFeedKeyRef = useRef('');
+  const [toolbarVisible, setToolbarVisible] = useState(true);
+  const [isScrolling, setIsScrolling] = useState(false);
+  const [gridScroller, setGridScroller] = useState<HTMLElement | null>(null);
+  const virtuosoRef = useRef<VirtuosoGridHandle | null>(null);
   const lastScrollTopRef = useRef(0);
+  const refreshingFeedRef = useRef(false);
   const submittedSearch = useHomeNavigationStore((state) => state.postSearch);
   const searchRevision = useHomeNavigationStore((state) => state.postSearchRevision);
   const search = circle ? '' : submittedSearch;
@@ -100,13 +126,12 @@ export function ForumFeed({
   const authPromptedFeedKeyRef = useRef<string | null>(null);
   const feedScope = useForumFeedStore((state) => state.globalFeedScope);
   const setFeedScope = useForumFeedStore((state) => state.setGlobalFeedScope);
-  const { ownerOperationEnabled, canOperateAsAgent } = useOwnerOperation();
+  const { ownerOperationEnabled, canOperateAsAgent, ownerOperationRevision } = useOwnerOperation();
   const { isAuthenticated, isLoading: authLoading, user, agent } = useAuth();
   const ownerOperationBlocked = isAuthenticated && !!agent && !ownerOperationEnabled;
   const viewerKey = user?.id ?? 'anonymous';
   const toast = useToast();
   const queryClient = useQueryClient();
-  const { isScrolling, handleScroll } = useAutoHideScrollbar();
   const effectiveScope = circle || !isAuthenticated ? 'all' : feedScope;
   const scopeKey = circle
     ? `${viewerKey}:circle:${circle.id}`
@@ -121,13 +146,8 @@ export function ForumFeed({
   const maximumSupportedLayout = getMaximumSupportedLayout(feedWidth);
   const effectiveLayout = getEffectiveLayout(layout, maximumSupportedLayout);
   const layoutReady = feedWidth !== null;
-  const feedKey = `${scopeKey}:${sortMode}:${selectedTags.join(',') || 'all-tags'}:layout:${layout}:${FORUM_FEED_PAGE_SIZE}:search:${encodeURIComponent(search)}:${searchRevision}`;
+  const feedKey = `${scopeKey}:${sortMode}:${selectedTags.join(',') || 'all-tags'}:${FORUM_FEED_PAGE_SIZE}:search:${encodeURIComponent(search)}:${searchRevision}`;
   const setSortMode = useForumFeedStore((state) => state.setSortMode);
-  const setScrollTop = useForumFeedStore((state) => state.setScrollTop);
-  const resetScrollTop = useForumFeedStore((state) => state.resetScrollTop);
-  const toolbarVisibleByFeedKey = useForumFeedStore((state) => state.toolbarVisibleByFeedKey);
-  const toolbarVisible = getForumFeedToolbarVisible(toolbarVisibleByFeedKey, feedKey);
-  const setToolbarVisible = useForumFeedStore((state) => state.setToolbarVisible);
   const queryKey = forumKeys.posts(viewerKey, {
     limit: FORUM_FEED_PAGE_SIZE,
     sortBy: sortMode,
@@ -154,13 +174,16 @@ export function ForumFeed({
       ),
     initialPageParam: '',
     enabled: !authLoading && (!circle || isAuthenticated),
+    refetchOnMount: false,
     getNextPageParam: (lastPage: ForumPostListResponse) => {
       if (!isAuthenticated) return undefined;
       return lastPage.nextCursor ?? undefined;
     },
   });
-  const posts = postsQuery.data?.pages.flatMap((page) => page.items) ?? [];
-  const firstPostId = posts[0]?.id ?? 'empty';
+  const posts = useMemo(
+    () => postsQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    [postsQuery.data?.pages],
+  );
   const {
     fetchNextPage,
     hasNextPage,
@@ -184,6 +207,7 @@ export function ForumFeed({
     : !circle && effectiveScope === 'my-circles'
       ? 'forum.emptySubscribedPosts'
       : emptyMessageKey;
+  const showCreateModal = canOperateAsAgent && createModalRevision === ownerOperationRevision;
 
   const openAuthPrompt = useCallback(() => {
     if (isAuthenticated) return;
@@ -194,33 +218,61 @@ export function ForumFeed({
     }
   }, [feedKey, isAuthenticated, t, toast]);
 
-  const bindScrollRoot = useCallback((node: HTMLDivElement | null) => {
-    scrollRootRef.current = node;
-    lastRestoredKeyRef.current = '';
-    scrollReadyFeedKeyRef.current = null;
-    lastScrollTopRef.current = 0;
-    setScrollRoot(node);
+  const bindFeedContainer = useCallback((node: HTMLDivElement | null) => {
+    setFeedContainer(node);
     const width = node?.clientWidth ?? 0;
     setFeedWidth(width > 0 ? width : null);
   }, []);
 
   useEffect(() => {
-    if (!scrollRoot) return undefined;
+    if (!feedContainer) return undefined;
     const observer = new ResizeObserver(([entry]) => {
-      if (entry?.contentRect.width && entry.contentRect.width > 0) {
-        setFeedWidth(entry.contentRect.width);
-      }
+      const width = entry?.contentRect.width ?? 0;
+      if (width <= 0) return;
+      setFeedWidth(width);
     });
-    observer.observe(scrollRoot);
+    observer.observe(feedContainer);
     return () => observer.disconnect();
-  }, [scrollRoot]);
+  }, [feedContainer]);
+
+  const bindGridScroller = useCallback((node: HTMLElement | null) => {
+    if (node && node.scrollTop <= OVERLAY_BAR_SCROLL_THRESHOLD) {
+      setToolbarVisible(true);
+    }
+    setGridScroller(node);
+  }, []);
+
+  useEffect(() => {
+    if (!gridScroller) return undefined;
+    lastScrollTopRef.current = gridScroller.scrollTop;
+    const handleGridScroll = () => {
+      const scrollTop = gridScroller.scrollTop;
+      const delta = scrollTop - lastScrollTopRef.current;
+      lastScrollTopRef.current = scrollTop;
+      if (scrollTop <= OVERLAY_BAR_SCROLL_THRESHOLD) {
+        setToolbarVisible(true);
+        return;
+      }
+      if (Math.abs(delta) < OVERLAY_BAR_SCROLL_THRESHOLD) return;
+      setToolbarVisible(delta < 0);
+    };
+    gridScroller.addEventListener('scroll', handleGridScroll, { passive: true });
+    return () => gridScroller.removeEventListener('scroll', handleGridScroll);
+  }, [gridScroller]);
+
+  const handleGridScrollingChange = useCallback(
+    (scrolling: boolean) => {
+      setIsScrolling(scrolling);
+    },
+    [],
+  );
 
   const handleNearEnd = useCallback(() => {
     if (posts.length === 0) return;
     if (!isAuthenticated) return;
-    if (hasMore && !isFetchingNextPage && !isFetchNextPageError) {
-      void fetchNextPage({ cancelRefetch: false });
-    }
+    if (refreshingFeedRef.current) return;
+    if (!hasMore || isFetchingNextPage || isFetchNextPageError) return;
+    void fetchNextPage({ cancelRefetch: false });
   }, [
     fetchNextPage,
     hasMore,
@@ -230,116 +282,110 @@ export function ForumFeed({
     posts.length,
   ]);
 
-  useEffect(() => {
-    currentFeedKeyRef.current = feedKey;
-    const node = scrollRootRef.current;
-    if (!node) return;
-    if (posts.length === 0) {
-      if (!isPending) {
-        setToolbarVisible(feedKey, true);
-        scrollReadyFeedKeyRef.current = feedKey;
-      }
-      return;
-    }
-
-    const restoreKey = `${feedKey}:${firstPostId}`;
-    if (lastRestoredKeyRef.current === restoreKey) {
-      scrollReadyFeedKeyRef.current = feedKey;
-      return;
-    }
-
-    scrollReadyFeedKeyRef.current = null;
-    let cancelled = false;
-    let releaseFrame: number | null = null;
-    const targetScrollTop = useForumFeedStore.getState().scrollTopByFeedKey[feedKey] ?? 0;
-    const restoreFrame = window.requestAnimationFrame(() => {
-      if (cancelled || scrollRootRef.current !== node || currentFeedKeyRef.current !== feedKey)
-        return;
-      node.scrollTo({ top: targetScrollTop, behavior: 'auto' });
-      releaseFrame = window.requestAnimationFrame(() => {
-        if (cancelled || scrollRootRef.current !== node || currentFeedKeyRef.current !== feedKey)
-          return;
-        const maximumScrollTop = Math.max(0, node.scrollHeight - node.clientHeight);
-        if (targetScrollTop > maximumScrollTop && hasMore && !isFetchNextPageError) return;
-
-        const restoredScrollTop = node.scrollTop;
-        lastRestoredKeyRef.current = restoreKey;
-        if (restoredScrollTop <= OVERLAY_BAR_SCROLL_THRESHOLD) {
-          setToolbarVisible(feedKey, true);
-        }
-        if (restoredScrollTop !== targetScrollTop) {
-          setScrollTop(feedKey, restoredScrollTop);
-        }
-        scrollReadyFeedKeyRef.current = feedKey;
-      });
+  const handleRefresh = useCallback(() => {
+    if (refreshingFeedRef.current) return;
+    refreshingFeedRef.current = true;
+    setRefreshingFeed(true);
+    setToolbarVisible(true);
+    virtuosoRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+    void (async () => {
+      await queryClient.cancelQueries({ queryKey, exact: true }, { silent: true });
+      await queryClient.resetQueries(
+        { queryKey, exact: true },
+        { cancelRefetch: true },
+      );
+    })().finally(() => {
+      refreshingFeedRef.current = false;
+      setRefreshingFeed(false);
     });
+  }, [queryClient, queryKey]);
 
-    return () => {
-      cancelled = true;
-      window.cancelAnimationFrame(restoreFrame);
-      if (releaseFrame !== null) window.cancelAnimationFrame(releaseFrame);
-    };
+  const handleTailRetry = useCallback(() => {
+    if (!isAuthenticated) {
+      openAuthPrompt();
+      return;
+    }
+    if (resetRequired) {
+      handleRefresh();
+      return;
+    }
+    void (isFetchNextPageError
+      ? fetchNextPage({ cancelRefetch: false })
+      : handleRefresh());
   }, [
-    feedKey,
-    firstPostId,
-    hasMore,
+    fetchNextPage,
+    handleRefresh,
+    isAuthenticated,
     isFetchNextPageError,
-    isPending,
-    posts.length,
-    setScrollTop,
-    setToolbarVisible,
+    openAuthPrompt,
+    resetRequired,
   ]);
+
+  const gridContext = useMemo<ForumFeedGridContext>(
+    () => ({
+      loading,
+      errorMessage: errorMessage ? `${t(receiveErrorTitleKey)}: ${errorMessage}` : '',
+      hasMore,
+      isAuthenticated,
+      loadingLabel: t(loadingLabelKey),
+      endLabel: t('forum.postsEnd'),
+      authLabel: t('feed.moreRequiresLogin'),
+      retryLabel: resetRequired ? t('forum.refreshPosts') : t('app.retry'),
+      onRetry: handleTailRetry,
+      onRequireAuth: openAuthPrompt,
+      chapterLabel: t('forum.chapterFeed'),
+      recordCountLabel: t('feed.recordCount', { count: posts.length }),
+    }),
+    [
+      errorMessage,
+      handleTailRetry,
+      hasMore,
+      isAuthenticated,
+      loading,
+      loadingLabelKey,
+      openAuthPrompt,
+      receiveErrorTitleKey,
+      resetRequired,
+      posts.length,
+      t,
+    ],
+  );
+
+  const gridColumnsClass =
+    effectiveLayout === 1
+      ? 'grid-cols-1'
+      : effectiveLayout === 2
+        ? 'grid-cols-2'
+        : 'grid-cols-3';
+  const gridItemClass =
+    effectiveLayout === 1
+      ? POST_LIST_ITEM_CLASS
+      : effectiveLayout === 2
+        ? POST_TWO_COLUMN_ITEM_CLASS
+        : POST_THREE_COLUMN_ITEM_CLASS;
+  const gridListClass = `grid w-full ${gridColumnsClass} gap-3 ${effectiveLayout === 1 ? 'border-t border-[var(--t-noise)]' : ''}`;
 
   const handleSortChange = (mode: SortOption) => {
     if (mode === sortMode) return;
-    lastRestoredKeyRef.current = '';
+    setToolbarVisible(true);
     setSortMode(scopeKey, mode);
   };
 
   const handleTagChange = (tags: PostTag[]) => {
     if (tags.join(',') === selectedTags.join(',')) return;
-    lastRestoredKeyRef.current = '';
+    setToolbarVisible(true);
     setTags(scopeKey, tags);
   };
 
   const handleLayoutChange = (nextLayout: ForumLayoutMode) => {
     if (nextLayout === layout) return;
-    lastRestoredKeyRef.current = '';
     setLayout(nextLayout);
   };
 
-  const handleFeedScroll = useCallback(
-    (event: UIEvent<HTMLDivElement>) => {
-      handleScroll();
-      const scrollTop = event.currentTarget.scrollTop;
-      const delta = scrollTop - lastScrollTopRef.current;
-      lastScrollTopRef.current = scrollTop;
-      if (scrollReadyFeedKeyRef.current !== feedKey) return;
-      setScrollTop(feedKey, scrollTop);
-      if (scrollTop <= OVERLAY_BAR_SCROLL_THRESHOLD) {
-        setToolbarVisible(feedKey, true);
-        return;
-      }
-      if (Math.abs(delta) < OVERLAY_BAR_SCROLL_THRESHOLD) return;
-      setToolbarVisible(feedKey, delta < 0);
-    },
-    [feedKey, handleScroll, setScrollTop, setToolbarVisible],
-  );
-
-  const handleRefresh = useCallback(() => {
-    setRefreshingFeed(true);
-    lastRestoredKeyRef.current = '';
-    resetScrollTop(feedKey);
-    scrollRootRef.current?.scrollTo({ top: 0, behavior: 'auto' });
-    void queryClient.resetQueries({ queryKey, exact: true }).finally(() => {
-      setRefreshingFeed(false);
-    });
-  }, [feedKey, queryClient, queryKey, resetScrollTop]);
-
   const handlePostCreated = (created: ForumPost) => {
-    setShowCreateModal(false);
-    resetScrollTop(feedKey);
-    scrollRootRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+    setCreateModalRevision(null);
+    setToolbarVisible(true);
+    virtuosoRef.current?.scrollTo({ top: 0, behavior: 'auto' });
     void queryClient.invalidateQueries({ queryKey: forumKeys.viewerRoot(viewerKey) });
     toast.success(t('createPost.createSuccess'), {
       durationMs: 5000,
@@ -364,7 +410,7 @@ export function ForumFeed({
       toast.error(t('replyThread.ownerOperationRequired'));
       return;
     }
-    setShowCreateModal(true);
+    setCreateModalRevision(ownerOperationRevision);
   };
 
   const hasInitialError = Boolean(errorMessage && !loading && posts.length === 0);
@@ -428,12 +474,12 @@ export function ForumFeed({
               <button
                 type="button"
                 aria-label={t('forum.refreshPosts')}
-                disabled={postsQuery.isFetching}
+                disabled={refreshingFeed || isPending}
                 onClick={handleRefresh}
                 className={`${feedBandItemClass(false)} disabled:cursor-not-allowed disabled:opacity-40`}
               >
                 <RefreshCw
-                  className={`h-3 w-3 ${postsQuery.isFetching ? '[animation:t-spin-step_0.8s_steps(8)_infinite]' : ''}`}
+                  className={`h-3 w-3 ${refreshingFeed ? '[animation:t-spin-step_0.8s_steps(8)_infinite]' : ''}`}
                 />
               </button>
             </div>
@@ -467,7 +513,7 @@ export function ForumFeed({
 
             <ToggleGroup
               type="single"
-              value={String(effectiveLayout)}
+              value={String(layout)}
               onValueChange={(value) => {
                 if (value === '1') handleLayoutChange(1);
                 if (value === '2') handleLayoutChange(2);
@@ -483,35 +529,29 @@ export function ForumFeed({
                   aria-label={t(labelKey)}
                   title={t(labelKey)}
                   disabled={value > maximumSupportedLayout}
-                  className={feedBandItemClass(effectiveLayout === value)}
+                  className={feedBandItemClass(layout === value)}
                 >
                   <Icon className="h-3 w-3" />
                 </ToggleGroupItem>
               ))}
             </ToggleGroup>
 
-            <button
-              type="button"
-              onClick={handleCreateClick}
-              disabled={ownerOperationBlocked}
-              title={ownerOperationBlocked ? t('replyThread.ownerOperationRequired') : undefined}
-              className={`t-btn shrink-0 disabled:cursor-not-allowed disabled:opacity-40 ${canOperateAsAgent ? 't-btn--primary' : 't-btn--ghost'}`}
-            >
-              <Plus className="h-3 w-3" />
-              {t('forum.createPost')}
-            </button>
+            {!ownerOperationBlocked ? (
+              <button
+                type="button"
+                onClick={handleCreateClick}
+                className={`t-btn shrink-0 ${canOperateAsAgent ? 't-btn--primary' : 't-btn--ghost'}`}
+              >
+                <Plus className="h-3 w-3" />
+                {t('forum.createPost')}
+              </button>
+            ) : null}
           </div>
         </div>
         {/* 帖子档案行 */}
-        <div
-          ref={bindScrollRoot}
-          onScroll={handleFeedScroll}
-          className={`feed-overlay-scroll feed-overlay-scroll--with-toolbar skynet-auto-hide-scrollbar ${
-            isScrolling ? 'is-scrolling' : ''
-          }`}
-        >
+        <div ref={bindFeedContainer} className="min-h-0 min-w-0 flex-1">
           {hasInitialError && (
-            <div className="flex min-h-full items-center justify-center py-16">
+            <div className="forum-feed-state flex min-h-full items-center justify-center py-16">
               <ErrorState
                 title={t(receiveErrorTitleKey)}
                 message={errorMessage}
@@ -524,71 +564,30 @@ export function ForumFeed({
           {showingRefreshLoading && <FeedLoadingState label={t(loadingLabelKey)} />}
 
           {!showingRefreshLoading && posts.length > 0 && layoutReady && (
-            <>
-              <div className="mb-2 flex items-center gap-3 px-1">
-                <span className="font-mono text-[11px] tracking-[0.2em] text-[var(--t-accent)]">
-                  CH.01
-                </span>
-                <span className="font-mono text-[11px] tracking-[0.2em] text-[var(--t-faint)]">
-                  {'//'}
-                </span>
-                <span className="text-[13px] font-bold tracking-wide text-text-primary">
-                  {t('forum.chapterFeed')}
-                </span>
-                <span aria-hidden className="h-px flex-1 bg-[var(--t-noise)]" />
-                <span className="font-mono text-[10px] tracking-[0.2em] text-[var(--t-faint)]">
-                  {t('feed.recordCount', { count: posts.length })}
-                </span>
-              </div>
-              <VirtualList
-                key={feedKey}
-                items={posts}
-                scrollElement={scrollRoot}
-                getItemKey={(post) => post.id}
-                estimateSize={() =>
-                  effectiveLayout === 1 ? POST_ROW_ESTIMATED_HEIGHT : POST_MASONRY_ESTIMATED_HEIGHT
-                }
-                onNearEnd={isAuthenticated ? handleNearEnd : undefined}
-                initialOffset={() => useForumFeedStore.getState().scrollTopByFeedKey[feedKey] ?? 0}
-                layoutVersion={`${feedKey}:${effectiveLayout}`}
-                lanes={effectiveLayout}
-                gap={effectiveLayout > 1 ? POST_MASONRY_GAP_PX : 0}
-                className={effectiveLayout === 1 ? 'border-t border-[var(--t-noise)]' : undefined}
-                tail={
-                  <ForumFeedTail
-                    loading={loading}
-                    errorMessage={errorMessage ? `${t(receiveErrorTitleKey)}: ${errorMessage}` : ''}
-                    hasMore={hasMore}
-                    isAuthenticated={isAuthenticated}
-                    loadingLabel={t(loadingLabelKey)}
-                    endLabel={t('forum.postsEnd')}
-                    authLabel={t('feed.moreRequiresLogin')}
-                    retryLabel={resetRequired ? t('forum.refreshPosts') : t('app.retry')}
-                    onRetry={() => {
-                      if (!isAuthenticated) {
-                        openAuthPrompt();
-                        return;
-                      }
-                      if (resetRequired) {
-                        handleRefresh();
-                        return;
-                      }
-                      void (isFetchNextPageError
-                        ? fetchNextPage({ cancelRefetch: false })
-                        : handleRefresh());
-                    }}
-                    onRequireAuth={openAuthPrompt}
-                  />
-                }
-                renderItem={(post) => (
-                  <PostCard
-                    post={post}
-                    layout={effectiveLayout}
-                    onRequireAuth={!isAuthenticated ? openAuthPrompt : undefined}
-                  />
-                )}
-              />
-            </>
+            <VirtuosoGrid
+              ref={virtuosoRef}
+              key={feedKey}
+              data={posts}
+              computeItemKey={(_, post) => post.id}
+              itemContent={(_, post) => (
+                <PostCard
+                  post={post}
+                  layout={effectiveLayout}
+                  onRequireAuth={!isAuthenticated ? openAuthPrompt : undefined}
+                />
+              )}
+              endReached={isAuthenticated ? handleNearEnd : undefined}
+              increaseViewportBy={POST_FEED_VIEWPORT_EXTENSION}
+              components={FORUM_FEED_GRID_COMPONENTS}
+              context={gridContext}
+              itemClassName={gridItemClass}
+              listClassName={gridListClass}
+              scrollerRef={bindGridScroller}
+              isScrolling={handleGridScrollingChange}
+              className={`feed-overlay-scroll skynet-auto-hide-scrollbar ${
+                isScrolling ? 'is-scrolling' : ''
+              }`}
+            />
           )}
 
           {!showingRefreshLoading && isEmpty && (
@@ -600,7 +599,7 @@ export function ForumFeed({
         {showCreateModal && canOperateAsAgent && (
           <CreatePostModal
             key="create-post-modal"
-            onClose={() => setShowCreateModal(false)}
+            onClose={() => setCreateModalRevision(null)}
             onCreated={handlePostCreated}
             initialCircle={circle}
           />
@@ -635,7 +634,7 @@ function getEffectiveLayout(
 
 function FeedLoadingState({ label }: { label: string }) {
   return (
-    <div role="status" aria-label={label} className="flex min-h-full flex-col py-2">
+    <div role="status" aria-label={label} className="forum-feed-state flex min-h-full flex-col py-2">
       {[0, 1, 2, 3].map((row) => (
         <div key={row} className="border-b border-[var(--t-noise)] px-4 py-4 sm:px-5">
           <TSkeleton rows={2} />
@@ -647,11 +646,47 @@ function FeedLoadingState({ label }: { label: string }) {
 
 function FeedEmptyState({ message }: { message: string }) {
   return (
-    <div className="flex min-h-full items-center justify-center py-16">
+    <div className="forum-feed-state flex min-h-full items-center justify-center py-16">
       <TEmpty message={message} className="w-full" />
     </div>
   );
 }
+
+function ForumFeedGridFooter({ context }: { context: ForumFeedGridContext }) {
+  return (
+    <div className={`${POST_FEED_FOOTER_HEIGHT_CLASS} w-full`}>
+      <ForumFeedTail {...context} />
+    </div>
+  );
+}
+
+function ForumFeedGridHeader({ context }: { context: ForumFeedGridContext }) {
+  return (
+    <>
+      <div aria-hidden className="forum-feed-toolbar-spacer" />
+      <div className="mb-2 flex items-center gap-3 px-1">
+        <span className="font-mono text-[11px] tracking-[0.2em] text-[var(--t-accent)]">
+          CH.01
+        </span>
+        <span className="font-mono text-[11px] tracking-[0.2em] text-[var(--t-faint)]">
+          {'//'}
+        </span>
+        <span className="text-[13px] font-bold tracking-wide text-text-primary">
+          {context.chapterLabel}
+        </span>
+        <span aria-hidden className="h-px flex-1 bg-[var(--t-noise)]" />
+        <span className="font-mono text-[10px] tracking-[0.2em] text-[var(--t-faint)]">
+          {context.recordCountLabel}
+        </span>
+      </div>
+    </>
+  );
+}
+
+const FORUM_FEED_GRID_COMPONENTS = {
+  Header: ForumFeedGridHeader,
+  Footer: ForumFeedGridFooter,
+};
 
 function ForumFeedTail({
   loading,
@@ -664,34 +699,29 @@ function ForumFeedTail({
   retryLabel,
   onRetry,
   onRequireAuth,
-}: {
-  loading: boolean;
-  errorMessage: string;
-  hasMore: boolean;
-  isAuthenticated: boolean;
-  loadingLabel: string;
-  endLabel: string;
-  authLabel: string;
-  retryLabel: string;
-  onRetry: () => void;
-  onRequireAuth: () => void;
-}) {
+}: ForumFeedTailProps) {
   if (loading) {
     return (
       <div
         role="status"
         aria-label={loadingLabel}
-        className="border-b border-[var(--t-noise)] px-4 py-4"
+        className="flex h-full items-center border-b border-[var(--t-noise)] px-4 py-4"
       >
-        <TSkeleton rows={2} />
+        <div className="w-full">
+          <TSkeleton rows={2} />
+        </div>
       </div>
     );
   }
   if (errorMessage) {
     return (
-      <div className="flex items-center justify-between border border-danger/30 border-l-2 border-l-danger bg-danger/10 px-4 py-3 font-mono text-[11px] tracking-deck-tight text-danger">
-        <span>{errorMessage}</span>
-        <button type="button" onClick={onRetry} className="ml-3 text-accent hover:text-accent-dim">
+      <div className="flex h-full items-center justify-between border border-danger/30 border-l-2 border-l-danger bg-danger/10 px-4 py-3 font-mono text-[11px] tracking-deck-tight text-danger">
+        <span className="line-clamp-2 min-w-0">{errorMessage}</span>
+        <button
+          type="button"
+          onClick={onRetry}
+          className="ml-3 shrink-0 text-accent hover:text-accent-dim"
+        >
           {retryLabel}
         </button>
       </div>
@@ -703,14 +733,14 @@ function ForumFeedTail({
       <button
         type="button"
         onClick={onRequireAuth}
-        className="flex w-full items-center justify-center py-8 text-center font-mono text-[11px] tracking-deck-normal text-[var(--t-accent)] transition-colors hover:text-white"
+        className="flex h-full w-full items-center justify-center text-center font-mono text-[11px] tracking-deck-normal text-[var(--t-accent)] transition-colors hover:text-white"
       >
         {authLabel}
       </button>
     );
   }
   return (
-    <div className="py-8 text-center font-mono text-[11px] tracking-deck-normal text-text-tertiary">
+    <div className="flex h-full items-center justify-center text-center font-mono text-[11px] tracking-deck-normal text-text-tertiary">
       <div className="flex items-center justify-center gap-3">
         <div className="h-px w-8 bg-[var(--t-noise)]" aria-hidden />
         <span>{endLabel}</span>

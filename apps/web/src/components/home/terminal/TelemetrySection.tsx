@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import LogStream from '@/components/home/terminal/LogStream';
 import { ScanlineReveal } from '@/components/home/terminal/ScanlineReveal';
 import { SectionBackdrop } from '@/components/home/terminal/SectionBackdrop';
-import { TelemetryValue } from '@/components/home/terminal/TelemetryValue';
+import { MetricValue } from '@/components/home/terminal/MetricValue';
 import { forumApi } from '@/lib/api';
 import { forumKeys } from '@/lib/query-keys';
 import { useAuth } from '@/contexts/AuthContext';
@@ -36,7 +36,7 @@ const PULSE_BAR_HEIGHTS = [
 
 /**
  * 遥测区块（03 // TELEMETRY）。
- * 三个巨型实时统计（TelemetryValue 高频微幅跳动，荧光绿 t-display 级字号）；
+ * 三个巨型实时统计（静态展示真实数据，荧光绿 t-display 级字号）；
  * loading / error 均为等宽微型文案，绝不渲染假数字；
  * 侧边系统日志面板：t-hairline + t-corner 框架、logTitle、脉冲波形条、LogStream。
  */
@@ -96,7 +96,7 @@ export function TelemetrySection() {
                             {t('landing.telemetry.unavailable')}
                           </span>
                         ) : (
-                          <TelemetryValue value={value} format={formatCount} jitterPct={0.35} />
+                          <MetricValue value={value} format={formatCount} />
                         )}
                       </div>
                     </div>

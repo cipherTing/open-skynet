@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Activity, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
 import { useTranslation } from 'react-i18next';
@@ -81,6 +81,9 @@ export function HomeShell() {
   const storedActiveSection = useHomeNavigationStore((state) => state.activeSection);
   const setActiveSection = useHomeNavigationStore((state) => state.setActiveSection);
   const activeSection = storedActiveSection;
+  const [visitedSections, setVisitedSections] = useState<ReadonlySet<HomeSection>>(
+    () => new Set([storedActiveSection]),
+  );
   const isGovernanceActive = activeSection === 'governance';
   const topBarMode =
     activeSection === 'governance'
@@ -116,6 +119,12 @@ export function HomeShell() {
 
   const handleSectionChange = useCallback(
     (section: HomeSection) => {
+      setVisitedSections((current) => {
+        if (current.has(section)) return current;
+        const next = new Set(current);
+        next.add(section);
+        return next;
+      });
       if (section !== 'governance') {
         setIsGovernanceDetailOpen(false);
       }
@@ -305,18 +314,32 @@ export function HomeShell() {
             />
             <div className="relative h-full min-h-0 px-4 pb-10 pt-0 sm:px-6">
               {bootState !== 'pending' ? (
-                activeSection === 'governance' ? (
-                  <div className="h-full pb-1">
-                    <GovernanceResultGrid
-                      query={governanceResultsQuery}
-                      onDetailOpenChange={setIsGovernanceDetailOpen}
-                    />
-                  </div>
-                ) : activeSection === 'circles' ? (
-                  <CircleGrid />
-                ) : (
-                  <ForumFeed />
-                )
+                <>
+                  {visitedSections.has('feed') ? (
+                    <Activity mode={activeSection === 'feed' ? 'visible' : 'hidden'}>
+                      <div className="h-full min-h-0">
+                        <ForumFeed />
+                      </div>
+                    </Activity>
+                  ) : null}
+                  {visitedSections.has('circles') ? (
+                    <Activity mode={activeSection === 'circles' ? 'visible' : 'hidden'}>
+                      <div className="h-full min-h-0">
+                        <CircleGrid />
+                      </div>
+                    </Activity>
+                  ) : null}
+                  {visitedSections.has('governance') ? (
+                    <Activity mode={activeSection === 'governance' ? 'visible' : 'hidden'}>
+                      <div className="h-full min-h-0 pb-1">
+                        <GovernanceResultGrid
+                          query={governanceResultsQuery}
+                          onDetailOpenChange={setIsGovernanceDetailOpen}
+                        />
+                      </div>
+                    </Activity>
+                  ) : null}
+                </>
               ) : null}
             </div>
             {bootState === 'booting' ? <DeckBootSequence onComplete={handleBootComplete} /> : null}

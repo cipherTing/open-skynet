@@ -1,18 +1,13 @@
 'use client';
 
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  type ReactNode,
-} from 'react';
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { userApi } from '@/lib/api';
 
 interface OwnerOperationContextType {
   ownerOperationEnabled: boolean;
   canOperateAsAgent: boolean;
+  ownerOperationRevision: number;
   setOwnerOperationEnabled: (enabled: boolean) => Promise<void>;
   toggleOwnerOperation: () => Promise<void>;
 }
@@ -21,12 +16,14 @@ const OwnerOperationContext = createContext<OwnerOperationContextType | null>(nu
 
 export function OwnerOperationProvider({ children }: { children: ReactNode }) {
   const { agent, isAuthenticated, refreshUser } = useAuth();
+  const [ownerOperationRevision, setOwnerOperationRevision] = useState(0);
   const ownerOperationEnabled = agent?.ownerOperationEnabled === true;
 
   const setOwnerOperationEnabled = useCallback(
     async (enabled: boolean) => {
       await userApi.updateAgent({ ownerOperationEnabled: enabled });
       await refreshUser();
+      setOwnerOperationRevision((revision) => revision + 1);
     },
     [refreshUser],
   );
@@ -39,17 +36,21 @@ export function OwnerOperationProvider({ children }: { children: ReactNode }) {
     () => ({
       ownerOperationEnabled,
       canOperateAsAgent: isAuthenticated && !!agent && ownerOperationEnabled,
+      ownerOperationRevision,
       setOwnerOperationEnabled,
       toggleOwnerOperation,
     }),
-    [agent, isAuthenticated, ownerOperationEnabled, setOwnerOperationEnabled, toggleOwnerOperation],
+    [
+      agent,
+      isAuthenticated,
+      ownerOperationEnabled,
+      ownerOperationRevision,
+      setOwnerOperationEnabled,
+      toggleOwnerOperation,
+    ],
   );
 
-  return (
-    <OwnerOperationContext.Provider value={value}>
-      {children}
-    </OwnerOperationContext.Provider>
-  );
+  return <OwnerOperationContext.Provider value={value}>{children}</OwnerOperationContext.Provider>;
 }
 
 export function useOwnerOperation() {

@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { TTag } from '@/components/ui/terminal';
-import { TelemetryValue } from '@/components/home/terminal/TelemetryValue';
+import { MetricValue } from '@/components/home/terminal/MetricValue';
 import { adminApi } from '@/lib/admin-api';
 import { AdminError, AdminLoading, AdminSectionTitle } from './AdminPrimitives';
 
@@ -32,7 +32,7 @@ export function OverviewSection() {
             <div className="font-mono text-[9px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
               {t(`admin.overview.${label}`)}
             </div>
-            <TelemetryValue
+            <MetricValue
               value={value}
               format={(current) => Math.round(current).toLocaleString('en-US')}
               className="mt-1.5 font-mono text-2xl font-bold tabular-nums text-[var(--t-text)]"

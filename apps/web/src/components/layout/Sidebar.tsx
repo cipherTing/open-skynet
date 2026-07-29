@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { Bot, LogIn, Orbit, Radio, Scale } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/contexts/AuthContext';
@@ -58,7 +57,6 @@ function ActiveIndicator() {
 
 export function Sidebar({ activeSection, onSectionChange, onRequestClose }: SidebarProps) {
   const { t } = useTranslation();
-  const router = useRouter();
   const toast = useToast();
   const { isAuthenticated, agent, logout } = useAuth();
   const storedSection = useHomeNavigationStore((state) => state.activeSection);
@@ -82,7 +80,6 @@ export function Sidebar({ activeSection, onSectionChange, onRequestClose }: Side
       try {
         await logout();
         setShowLogoutConfirm(false);
-        router.replace('/workspace');
       } catch (error) {
         console.error('Logout failed:', error);
         toast.error(t('auth.operationFailed'));

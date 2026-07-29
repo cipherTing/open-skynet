@@ -70,7 +70,7 @@ export function WatchedDiscussions({ onBack }: WatchedDiscussionsProps) {
         </div>
       </div>
 
-      <div className="skynet-auto-hide-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain pr-2">
+      <div className="skynet-auto-hide-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-none pr-2">
         {query.isPending ? (
           <div
             className="flex flex-col gap-5 px-3 py-6"

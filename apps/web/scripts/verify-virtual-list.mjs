@@ -49,10 +49,30 @@ function shouldLoadNextPage({
   return viewportStart <= listEnd && viewportEnd >= listEnd - estimatedItemSize * 5;
 }
 
-const [virtualListSource, forumFeedSource, replyThreadSource] = await Promise.all([
+const [
+  virtualListSource,
+  forumFeedSource,
+  postCardSource,
+  postDetailSource,
+  postDetailLoadingSource,
+  replyThreadSource,
+  ownerOperationSource,
+  globalStyles,
+  forumFeedStoreSource,
+  homeShellSource,
+  nextConfigSource,
+] = await Promise.all([
   readFile(new URL('../src/components/ui/VirtualList.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/components/forum/ForumFeed.tsx', import.meta.url), 'utf8'),
+  readFile(new URL('../src/components/forum/PostCard.tsx', import.meta.url), 'utf8'),
+  readFile(new URL('../src/components/forum/PostDetail.tsx', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/post/[id]/loading.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/components/forum/ReplyThread.tsx', import.meta.url), 'utf8'),
+  readFile(new URL('../src/contexts/OwnerOperationContext.tsx', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/globals.css', import.meta.url), 'utf8'),
+  readFile(new URL('../src/stores/forum-feed-store.ts', import.meta.url), 'utf8'),
+  readFile(new URL('../src/components/home/HomeShell.tsx', import.meta.url), 'utf8'),
+  readFile(new URL('../next.config.mjs', import.meta.url), 'utf8'),
 ]);
 
 assert.match(virtualListSource, /const DEFAULT_OVERSCAN = 6;/u);
@@ -70,15 +90,75 @@ assert.doesNotMatch(virtualListSource, /instance\.isAtEnd\(/u);
 assert.doesNotMatch(virtualListSource, /lastNearEndRequestKeyRef|loadMoreKey|laneAnchorRef/u);
 assert.doesNotMatch(virtualListSource, /anchorTo: 'end'|followOnAppend/u);
 assert.match(virtualListSource, /laneAssignmentMode: lanes > 1 \? 'measured' : 'estimate'/u);
-assert.match(virtualListSource, /\{tail \? <div role="listitem">\{tail\}<\/div> : null\}/u);
-assert.match(forumFeedSource, /const POST_ROW_ESTIMATED_HEIGHT = 248;/u);
-assert.match(forumFeedSource, /queryClient\.resetQueries\(\{ queryKey, exact: true \}\)/u);
+assert.doesNotMatch(virtualListSource, /paddingEnd|getFirstVisibleAnchor|scrollBy/u);
+assert.doesNotMatch(
+  virtualListSource,
+  /MAX_ANCHOR_RESTORE_FRAME_COUNT|data-virtual-key|useImperativeHandle/u,
+);
+assert.match(
+  forumFeedSource,
+  /queryClient\.resetQueries\(\s*\{ queryKey, exact: true \},\s*\{ cancelRefetch: true \},\s*\)/u,
+);
 assert.doesNotMatch(forumFeedSource, /queryClient\.setQueryData<InfiniteData/u);
 assert.match(forumFeedSource, /fetchNextPage\(\{ cancelRefetch: false \}\)/u);
 assert.match(forumFeedSource, /useForumLayoutStore/u);
-assert.match(forumFeedSource, /lanes=\{effectiveLayout\}/u);
+assert.match(forumFeedSource, /from 'react-virtuoso';/u);
+assert.match(forumFeedSource, /<VirtuosoGrid/u);
+assert.match(forumFeedSource, /computeItemKey=\{\(_, post\) => post\.id\}/u);
+assert.doesNotMatch(forumFeedSource, /customScrollParent/u);
+assert.match(forumFeedSource, /scrollerRef=\{bindGridScroller\}/u);
+assert.match(forumFeedSource, /isScrolling=\{handleGridScrollingChange\}/u);
+assert.match(forumFeedSource, /increaseViewportBy=\{POST_FEED_VIEWPORT_EXTENSION\}/u);
+assert.doesNotMatch(forumFeedSource, /nativeScrollActiveRef|scrollend|queuedLoadMoreFeedKeyRef/u);
+assert.match(forumFeedSource, /refreshingFeedRef\.current/u);
+assert.match(forumFeedSource, /queryClient\.cancelQueries\(\{ queryKey, exact: true \}, \{ silent: true \}\)/u);
+assert.match(forumFeedSource, /cancelRefetch: true/u);
+assert.match(forumFeedSource, /ref=\{virtuosoRef\}/u);
+assert.match(forumFeedSource, /refetchOnMount: false/u);
+assert.match(forumFeedSource, /endReached=\{isAuthenticated \? handleNearEnd : undefined\}/u);
+assert.match(forumFeedSource, /components=\{FORUM_FEED_GRID_COMPONENTS\}/u);
+assert.match(forumFeedSource, /key=\{feedKey\}/u);
+assert.doesNotMatch(
+  forumFeedSource,
+  /captureTopPostIndex|scrollToIndex|layoutRestore|initialTopMostItemIndex|readyStateChanged|overscan=/u,
+);
+assert.match(forumFeedSource, /POST_LIST_ITEM_CLASS/u);
+assert.match(forumFeedSource, /POST_TWO_COLUMN_ITEM_CLASS/u);
+assert.match(forumFeedSource, /POST_THREE_COLUMN_ITEM_CLASS/u);
+assert.match(forumFeedSource, /const POST_LIST_ITEM_CLASS = 'h-\[132px\]';/u);
+assert.match(forumFeedSource, /const POST_TWO_COLUMN_ITEM_CLASS = 'h-\[232px\]';/u);
+assert.match(forumFeedSource, /const POST_THREE_COLUMN_ITEM_CLASS = 'h-\[252px\]';/u);
+assert.match(postCardSource, /line-clamp-2 font-bold text-xl/u);
+assert.match(postCardSource, /mt-auto line-clamp-2/u);
+assert.doesNotMatch(forumFeedSource, /<VirtualList/u);
+assert.doesNotMatch(forumFeedSource, /POST_.*ESTIMATED_HEIGHT/u);
+assert.doesNotMatch(forumFeedSource, /paddingEnd=/u);
+assert.doesNotMatch(forumFeedSource, /:layout:\$\{layout\}/u);
+assert.doesNotMatch(forumFeedSource, /requestAnimationFrame|scrollTopByFeedKey|setScrollTop/u);
+assert.doesNotMatch(forumFeedStoreSource, /scrollTopByFeedKey|toolbarVisibleByFeedKey/u);
+assert.match(homeShellSource, /<Activity mode=\{activeSection === 'feed'/u);
+assert.match(homeShellSource, /<Activity mode=\{activeSection === 'circles'/u);
+assert.match(homeShellSource, /<Activity mode=\{activeSection === 'governance'/u);
+assert.match(nextConfigSource, /cacheComponents: true/u);
+assert.match(forumFeedSource, /!ownerOperationBlocked \? \(/u);
+assert.match(forumFeedSource, /createModalRevision === ownerOperationRevision/u);
+assert.match(postCardSource, /h-full cursor-pointer overflow-hidden/u);
+assert.match(postCardSource, /min-h-0 min-w-0 flex-1 flex-col overflow-hidden/u);
+assert.match(postDetailSource, /\{canOperateAsAgent \? \(/u);
+assert.doesNotMatch(postDetailSource, /disabled=\{ownerOperationBlocked\}/u);
+assert.doesNotMatch(postDetailSource, /APPEND\.LOG/u);
+assert.match(postDetailSource, /max-w-\[80ch\]/u);
+assert.match(postDetailSource, /border-\[var\(--t-frame\)\]/u);
+assert.doesNotMatch(postDetailSource, /max-w-3xl/u);
+assert.match(postDetailLoadingSource, /max-w-5xl/u);
+assert.match(postDetailLoadingSource, /border-\[var\(--t-frame\)\]/u);
 assert.match(replyThreadSource, /const CHILD_REPLY_ESTIMATED_HEIGHT = 164;/u);
 assert.match(replyThreadSource, /<VirtualList/u);
+assert.doesNotMatch(replyThreadSource, /disabled=\{ownerOperationBlocked\}/u);
+assert.match(replyThreadSource, /replyInputRevision === ownerOperationRevision/u);
+assert.match(ownerOperationSource, /setOwnerOperationRevision\(\(revision\) => revision \+ 1\)/u);
+assert.match(globalStyles, /overscroll-behavior: none;/u);
+assert.match(globalStyles, /--t-frame: #4a684a;/u);
 
 const topLevel = [
   inspectVirtualSlots(TOP_LEVEL_ITEM_COUNT, TOP_LEVEL_ITEM_HEIGHT, 0),
@@ -139,4 +219,11 @@ assert.equal(sharedPageScroll.revisionNearEnd, true);
 assert.equal(sharedPageScroll.revisionAlreadyAboveViewport, false);
 assert.equal(sharedPageScroll.voterNearEnd, true);
 
-console.log(JSON.stringify({ topLevel, children, masonry, sharedPageScroll }));
+console.log(
+  JSON.stringify({
+    topLevel,
+    children,
+    masonry,
+    sharedPageScroll,
+  }),
+);

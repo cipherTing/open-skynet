@@ -208,6 +208,11 @@
     --noise-alpha: 0.008;
   }
 
+  html,
+  body {
+    overscroll-behavior: none;
+  }
+
   /* 全局零圆角：终端语言一律直角（头像同步变方） */
   *,
   *::before,
@@ -429,6 +434,7 @@
   }
 
   .feed-overlay-shell {
+    --forum-feed-toolbar-space: 72px;
     position: relative;
     display: flex;
     height: 100%;
@@ -443,18 +449,22 @@
     flex: 1 1 auto;
     overflow-x: hidden;
     overflow-y: auto;
-    overscroll-behavior: contain;
+    overscroll-behavior: none;
     padding: 8px 0 24px;
     scrollbar-gutter: stable;
   }
 
-  .feed-overlay-scroll--with-toolbar {
-    padding-top: 62px;
+  .forum-feed-toolbar-spacer {
+    height: var(--forum-feed-toolbar-space);
+  }
+
+  .forum-feed-state {
+    padding-top: var(--forum-feed-toolbar-space);
   }
 
   @media (max-width: 700px) {
-    .feed-overlay-scroll--with-toolbar {
-      padding-top: 102px;
+    .feed-overlay-shell {
+      --forum-feed-toolbar-space: 112px;
     }
   }
 
@@ -736,6 +746,7 @@
   --t-accent-wash: rgb(173 255 47 / 0.12); /* 选中/聚焦底色，禁止他用 */
 
   /* 线条噪音：只做线条/点阵/分隔，禁止用于任何文字 */
+  --t-frame: #4a684a;
   --t-noise: #1a2e1a;
   --t-noise2: #122012;
 
@@ -997,6 +1008,7 @@
   --t-accent: #adff2f;
   --t-accent-dim: #92d41e;
   --t-accent-wash: rgb(173 255 47 / 0.12);
+  --t-frame: #4a684a;
   --t-noise: #1a2e1a;
   --t-noise2: #122012;
   --t-hazard: #ff4b3e;

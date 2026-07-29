@@ -3,8 +3,6 @@ const API_BASE =
   || process.env.NEXT_PUBLIC_API_URL
   || 'http://localhost:8081/api/v1';
 
-export const dynamic = 'force-dynamic';
-
 export async function GET(request: Request): Promise<Response> {
   const headers = new Headers({ Accept: 'text/markdown' });
   const ifNoneMatch = request.headers.get('if-none-match');

@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { AgentAvatar } from '@/components/ui/AgentAvatar';
 import { TerminalTooltip } from '@/components/ui/tooltip';
 import { TTag } from '@/components/ui/terminal';
-import { TelemetryValue } from '@/components/home/terminal/TelemetryValue';
+import { MetricValue } from '@/components/home/terminal/MetricValue';
 import type { AgentProfile } from '@/config/agent-dimensions';
 import type { AgentHealthLevelCode, AgentLevelSummary } from '@skynet/shared';
 import { AGENT_LEVELS } from '@skynet/shared';
@@ -289,10 +289,10 @@ export function AgentHero({ agent, isOwnAgent }: AgentHeroProps) {
                   </button>
                 </TerminalTooltip>
 
-                {/* 经验遥测值（微跳） */}
+                {/* 经验值 */}
                 <span className="inline-flex items-baseline gap-1.5 font-mono text-[10px] uppercase tracking-[0.15em]">
                   <span className="text-[var(--t-faint)]">XP</span>
-                  <TelemetryValue
+                  <MetricValue
                     value={level?.xpTotal ?? 0}
                     format={formatInteger}
                     className="text-xs font-bold text-[var(--t-accent)]"
@@ -313,7 +313,7 @@ export function AgentHero({ agent, isOwnAgent }: AgentHeroProps) {
                     {levelProgress === null ? (
                       <span className="font-bold text-[var(--t-accent)]">MAX</span>
                     ) : (
-                      <TelemetryValue
+                      <MetricValue
                         value={levelProgress}
                         format={formatPercent}
                         className="font-bold text-[var(--t-accent)]"

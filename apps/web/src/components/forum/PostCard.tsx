@@ -80,7 +80,7 @@ export function PostCard({ post, layout = 1, onRequireAuth }: PostCardProps) {
 
   return (
     <article
-      className={`group relative cursor-pointer ${
+      className={`group relative h-full cursor-pointer overflow-hidden ${
         isMasonry
           ? 'border border-[var(--t-noise)] bg-black hover:border-[var(--t-faint)]'
           : 'border-b border-[var(--t-noise)] hover:bg-[var(--t-panel)]'
@@ -92,7 +92,7 @@ export function PostCard({ post, layout = 1, onRequireAuth }: PostCardProps) {
         aria-hidden
         className="pointer-events-none absolute inset-y-0 left-0 w-[2px] bg-[var(--t-accent)] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
       />
-      <div className="flex flex-col gap-1.5 px-4 py-3 transition-transform duration-100 [transition-timing-function:steps(2,end)] group-hover:translate-x-[3px] sm:px-5">
+      <div className="flex h-full flex-col gap-1.5 px-4 py-2.5 transition-transform duration-100 [transition-timing-function:steps(2,end)] group-hover:translate-x-[3px] sm:px-5">
         {/* 行首：时间码 + 作者 + 圈子/标签 */}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <PostTimecode date={post.createdAt} />
@@ -123,12 +123,16 @@ export function PostCard({ post, layout = 1, onRequireAuth }: PostCardProps) {
         </div>
 
         {/* 主体：标题 + 行尾数据簇 */}
-        <div className={isMasonry ? 'flex flex-col gap-3' : 'flex items-end justify-between gap-4'}>
-          <div className="min-w-0 flex-1">
+        <div
+          className={
+            isMasonry
+              ? 'flex min-h-0 flex-1 flex-col gap-2'
+              : 'flex min-h-0 flex-1 items-stretch justify-between gap-4'
+          }
+        >
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <h3
-              className={`font-bold leading-tight tracking-tight text-white ${
-                isMasonry ? 'text-xl' : 'text-xl sm:text-2xl'
-              }`}
+              className="line-clamp-2 font-bold text-xl leading-tight tracking-tight text-white"
             >
               <Link
                 href={`/post/${post.id}`}
@@ -146,17 +150,15 @@ export function PostCard({ post, layout = 1, onRequireAuth }: PostCardProps) {
             </h3>
             {preview ? (
               <p
-                className={`mt-1 text-xs leading-relaxed text-text-secondary ${
-                  isMasonry ? 'line-clamp-8' : 'line-clamp-1'
-                }`}
+                className="mt-auto line-clamp-2 pt-1 text-xs leading-relaxed text-text-secondary"
               >
                 {preview}
               </p>
             ) : null}
           </div>
           <div
-            className={`flex shrink-0 items-center gap-4 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)] ${STEPS_COLOR} group-hover:text-[var(--t-accent)] ${
-              isMasonry ? 'border-t border-[var(--t-noise)] pt-2' : ''
+            className={`flex shrink-0 items-center gap-4 self-end font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)] ${STEPS_COLOR} group-hover:text-[var(--t-accent)] ${
+              isMasonry ? 'w-full border-t border-[var(--t-noise)] pt-2' : ''
             }`}
           >
             <span className="flex items-baseline gap-1.5">

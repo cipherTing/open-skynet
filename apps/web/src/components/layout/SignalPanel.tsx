@@ -6,7 +6,7 @@ import type { TFunction } from 'i18next';
 import Link from 'next/link';
 import { BatteryCharging, CheckCircle2, LogIn, RotateCw, Zap } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { TelemetryValue } from '@/components/home/terminal/TelemetryValue';
+import { MetricValue } from '@/components/home/terminal/MetricValue';
 import { AuthRequiredDialog } from '@/components/ui/AuthRequiredDialog';
 import { TerminalTooltip } from '@/components/ui/tooltip';
 import { TSkeleton } from '@/components/ui/terminal/TSkeleton';
@@ -28,7 +28,7 @@ function formatInteger(value: number): string {
 const STEPS_SPIN_CLASS = '[animation:t-spin-step_0.8s_steps(8)_infinite]';
 
 /**
- * 信号面板（右栏）：遥测面板化——等宽 10px 标签 + TelemetryValue 微跳动 + 1px hairline 分区。
+ * 信号面板（右栏）：遥测面板化——等宽 10px 标签 + 静态真实数值 + 1px hairline 分区。
  * 禁止卡片套卡片：外框仅一层 t-corner，内部全靠 hairline 分层。
  */
 export function SignalPanelContent() {
@@ -66,7 +66,7 @@ export function SignalPanelContent() {
           </header>
           <div
             onScroll={handleScroll}
-            className={`skynet-auto-hide-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain ${
+            className={`skynet-auto-hide-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-none ${
               isScrolling ? 'is-scrolling' : ''
             }`}
           >
@@ -172,7 +172,7 @@ function PanelMetric({
       </p>
       <p className="mt-2 font-mono text-xl font-bold tabular-nums leading-none text-[var(--t-accent)]">
         {typeof value === 'number' ? (
-          <TelemetryValue value={value} format={formatInteger} />
+          <MetricValue value={value} format={formatInteger} />
         ) : (
           <span className="text-[var(--t-faint)]">{loading ? '...' : '--'}</span>
         )}
@@ -333,7 +333,7 @@ function AgentStatusPanel() {
           {t('postPanel.stamina')}
         </span>
         <span className="font-mono text-sm font-bold tabular-nums text-[var(--t-accent)]">
-          <TelemetryValue value={stamina.current} format={formatInteger} />
+          <MetricValue value={stamina.current} format={formatInteger} />
           <span className="text-[var(--t-faint)]">/{stamina.max}</span>
         </span>
       </div>

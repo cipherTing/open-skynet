@@ -7,7 +7,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import { AppBootstrapLoading } from '@/components/ui/AppBootstrapLoading';
 import { ErrorState } from '@/components/ui/LoadingState';
-import { AuthProvider } from '@/contexts/AuthContext';
+import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { OwnerOperationProvider } from '@/contexts/OwnerOperationContext';
 import { RouteNetworkCanvas } from '@/components/effects/RouteNetworkCanvas';
 import { SystemAnnouncementBar } from '@/components/system/SystemAnnouncementBar';
@@ -69,19 +69,27 @@ export function InitializationGate({ children }: { children: ReactNode }) {
   return (
     <PageFade>
       <AuthProvider>
-        <OwnerOperationProvider>
-          <RouteNetworkCanvas />
-          <div className="noise-texture" aria-hidden="true" />
-          <div className="ambient-glow" aria-hidden="true" />
-          <div className="flex h-dvh min-h-0 flex-col overflow-hidden">
-            <SystemAnnouncementBar />
-            <div className="relative z-10 min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-              {children}
-            </div>
-          </div>
-        </OwnerOperationProvider>
+        <SessionScopedApplication>{children}</SessionScopedApplication>
       </AuthProvider>
     </PageFade>
+  );
+}
+
+function SessionScopedApplication({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+
+  return (
+    <OwnerOperationProvider key={user?.id ?? 'anonymous'}>
+      <RouteNetworkCanvas />
+      <div className="noise-texture" aria-hidden="true" />
+      <div className="ambient-glow" aria-hidden="true" />
+      <div className="flex h-dvh min-h-0 flex-col overflow-hidden">
+        <SystemAnnouncementBar />
+        <div className="relative z-10 min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+          {children}
+        </div>
+      </div>
+    </OwnerOperationProvider>
   );
 }
 

@@ -3,7 +3,7 @@ import { createContext, useContext, useEffect, useCallback, ReactNode } from 're
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, authApi, clearAccessToken, setAccessToken } from '@/lib/api';
 import { appEvents } from '@/lib/events';
-import { authKeys, circleKeys, userKeys, watchKeys } from '@/lib/query-keys';
+import { authKeys } from '@/lib/query-keys';
 import type { Agent, UserRole } from '@skynet/shared';
 
 export interface AuthUser {
@@ -77,11 +77,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const clearAuthState = useCallback(() => {
     clearAccessToken();
-    queryClient.setQueryData<AuthSession | null>(authSessionKey, null);
-    queryClient.removeQueries({ queryKey: userKeys.root });
-    queryClient.removeQueries({ queryKey: watchKeys.root });
-    queryClient.removeQueries({ queryKey: circleKeys.root });
-  }, [authSessionKey, queryClient]);
+    queryClient.clear();
+  }, [queryClient]);
+
+  const resetBrowserSession = useCallback(() => {
+    clearAuthState();
+    window.location.replace('/workspace');
+  }, [clearAuthState]);
 
   const retrySession = useCallback(async () => {
     await authSessionQuery.refetch();
@@ -94,16 +96,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       queryClient.setQueryData<AuthSession | null>(authSessionKey, data);
     } catch (err) {
       if (isExpiredAuthError(err)) {
-        clearAuthState();
+        resetBrowserSession();
         return;
       }
       throw err;
     }
-  }, [authSessionKey, clearAuthState, queryClient]);
+  }, [authSessionKey, queryClient, resetBrowserSession]);
 
   useEffect(() => {
     const handleAuthExpired = () => {
-      clearAuthState();
+      const currentSession = queryClient.getQueryData<AuthSession | null>(authSessionKey);
+      if (currentSession) {
+        resetBrowserSession();
+        return;
+      }
+      clearAccessToken();
     };
     const handleRefreshRequired = () => {
       void queryClient.invalidateQueries({ queryKey: authSessionKey, exact: true });
@@ -120,7 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       appEvents.off('auth:refresh-required', handleRefreshRequired);
       appEvents.off('auth:session-refreshed', handleSessionRefreshed);
     };
-  }, [authSessionKey, clearAuthState, queryClient]);
+  }, [authSessionKey, clearAuthState, queryClient, resetBrowserSession]);
 
   const login = async (identity: string, password: string, turnstileToken?: string) => {
     const data = await authApi.login({ identity, password, turnstileToken });
@@ -136,7 +143,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     await authApi.logout();
-    clearAuthState();
+    resetBrowserSession();
   };
 
   return (

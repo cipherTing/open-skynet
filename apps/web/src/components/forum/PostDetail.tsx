@@ -50,6 +50,11 @@ interface ReplyQuoteDraft {
   text: string;
 }
 
+interface RevisionBoundReplyQuote {
+  ownerOperationRevision: number;
+  draft: ReplyQuoteDraft;
+}
+
 const REPLY_THREAD_ESTIMATED_HEIGHT = 220;
 const SELECTED_REPLY_EXIT_TRANSITION_PROPERTY = 'grid-template-rows';
 const REDUCED_MOTION_MEDIA_QUERY = '(prefers-reduced-motion: reduce)';
@@ -167,11 +172,10 @@ function PostDetailContent({ postId }: PostDetailProps) {
   const activePostIdRef = useRef(postId);
   const trackedViewPostIdRef = useRef<string | null>(null);
   const postContentRef = useRef<HTMLDivElement | null>(null);
-  const [replyQuote, setReplyQuote] = useState<ReplyQuoteDraft | null>(null);
+  const [replyQuote, setReplyQuote] = useState<RevisionBoundReplyQuote | null>(null);
   const [authPromptOpen, setAuthPromptOpen] = useState(false);
-  const { ownerOperationEnabled, canOperateAsAgent } = useOwnerOperation();
+  const { ownerOperationEnabled, canOperateAsAgent, ownerOperationRevision } = useOwnerOperation();
   const { agent, isAuthenticated, isLoading: authLoading, user } = useAuth();
-  const ownerOperationBlocked = isAuthenticated && !!agent && !ownerOperationEnabled;
   const toast = useToast();
   const queryClient = useQueryClient();
   const scrollElement = usePageScrollViewport();
@@ -400,10 +404,12 @@ function PostDetailContent({ postId }: PostDetailProps) {
 
   const handleReply = async (content: string) => {
     if (!canOperateAsAgent) return;
+    const activeReplyQuote =
+      replyQuote?.ownerOperationRevision === ownerOperationRevision ? replyQuote.draft : null;
     try {
       const created = await forumApi.createReply(postId, {
         content,
-        ...(replyQuote ? { quote: replyQuote } : {}),
+        ...(activeReplyQuote ? { quote: activeReplyQuote } : {}),
       });
       if (created.progressDelta) notifyProgressionUpdated();
       setReplyQuote(null);
@@ -432,10 +438,13 @@ function PostDetailContent({ postId }: PostDetailProps) {
       return;
     }
     setReplyQuote({
-      sourceType: 'POST',
-      sourceId: post.id,
-      sourceContentVersion: post.contentVersion,
-      text: selectedText,
+      ownerOperationRevision,
+      draft: {
+        sourceType: 'POST',
+        sourceId: post.id,
+        sourceContentVersion: post.contentVersion,
+        text: selectedText,
+      },
     });
     document
       .getElementById('post-reply-composer')
@@ -445,13 +454,13 @@ function PostDetailContent({ postId }: PostDetailProps) {
   if (loading) {
     return (
       <div role="status" aria-label={t('forum.loadingPost')} className="flex flex-col gap-8 py-8">
-        <div className="border border-[var(--t-noise)] bg-[var(--t-panel)] px-4 py-5 sm:px-6">
+        <div className="border border-[var(--t-frame)] bg-[var(--t-panel)] px-4 py-5 sm:px-6">
           <TSkeleton rows={3} />
         </div>
-        <div className="max-w-3xl">
+        <div className="max-w-5xl">
           <TSkeleton rows={5} />
         </div>
-        <div className="max-w-3xl">
+        <div className="max-w-5xl">
           <TSkeleton rows={3} />
         </div>
       </div>
@@ -475,17 +484,21 @@ function PostDetailContent({ postId }: PostDetailProps) {
   const watchReason = getWatchUnavailableReason();
   const canWatchPost = !watchReason;
   const postWatching = post.currentAgentWatching === true;
+  const activeReplyQuote =
+    canOperateAsAgent && replyQuote?.ownerOperationRevision === ownerOperationRevision
+      ? replyQuote.draft
+      : null;
 
   return (
     <div className="w-full pb-10">
       {/* 档案卷宗头 */}
-      <article className="t-corner relative border border-[var(--t-noise)] bg-[var(--t-panel)]">
+      <article className="t-corner relative border border-[var(--t-frame)] bg-[var(--t-panel)]">
         {post.activeGovernanceCase ? (
           <GovernanceCaseStamp caseId={post.activeGovernanceCase.id} />
         ) : null}
         <div aria-hidden className="t-ambient-scan pointer-events-none absolute inset-0" />
 
-        <div className="relative flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--t-noise)] px-4 py-2 sm:px-6">
+        <div className="relative flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-[var(--t-frame)] px-4 py-2 sm:px-6">
           <span className="ml-auto flex items-center gap-3 font-mono text-[10px] tabular-nums tracking-[0.15em] text-[var(--t-faint)]">
             <span>
               {t('feed.statReplies')} {formatNumber(post.replyCount || 0)}
@@ -497,7 +510,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
         </div>
 
         {/* 元数据栅格：1px 暗绿分隔 */}
-        <div className="relative grid grid-cols-2 gap-px border-b border-[var(--t-noise)] bg-[var(--t-noise2)] sm:grid-cols-4">
+        <div className="relative grid grid-cols-2 gap-px border-b border-[var(--t-frame)] bg-[var(--t-noise2)] sm:grid-cols-4">
           <div className="bg-[var(--t-panel)] px-4 py-2.5 sm:px-6">
             <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-[var(--t-faint)]">
               {t('post.meta.author')}
@@ -565,7 +578,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
         </div>
 
         {/* 等宽小字操作行 */}
-        <div className="relative flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-[var(--t-noise2)] px-4 py-2 sm:px-6">
+        <div className="relative flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-[var(--t-frame)] px-4 py-2 sm:px-6">
           <button
             type="button"
             disabled={favoriteBusy}
@@ -595,13 +608,11 @@ function PostDetailContent({ postId }: PostDetailProps) {
             {postWatching ? <BellRing className="h-3 w-3" /> : <Bell className="h-3 w-3" />}
             {postWatching ? t('forum.watching') : t('forum.watch')}
           </button>
-          {isAuthenticated && agent ? (
+          {canOperateAsAgent ? (
             <button
               type="button"
               onClick={quoteSelectedPostText}
-              disabled={ownerOperationBlocked}
-              title={ownerOperationBlocked ? t('replyThread.ownerOperationRequired') : undefined}
-              className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-[var(--t-faint)]"
+              className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)]"
             >
               <Quote className="h-3 w-3" />
               {t('replyInput.quoteSelection')}
@@ -636,69 +647,60 @@ function PostDetailContent({ postId }: PostDetailProps) {
             />
           </div>
         )}
+
+        <div className="relative border-t border-[var(--t-frame)] px-4 py-6 sm:px-6 sm:py-8">
+          <div
+            id="post-content"
+            ref={postContentRef}
+            className="prose-deck post-topic-prose max-w-[80ch] text-[15px] leading-7"
+          >
+            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
+              {post.content}
+            </ReactMarkdown>
+          </div>
+        </div>
       </article>
 
-      {/* 正文：可读栏宽 */}
-      <div className="mt-8 w-full max-w-3xl">
-        <div
-          id="post-content"
-          ref={postContentRef}
-          className="prose-deck post-topic-prose text-[15px] leading-7"
-        >
-          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
-            {post.content}
-          </ReactMarkdown>
-        </div>
-      </div>
-
-      {/* 回复区域 = 追加日志 */}
-      <section className="mt-10 w-full max-w-3xl">
-        <div className="mb-4 flex items-center gap-3">
-          <span className="font-mono text-[11px] tracking-[0.2em] text-[var(--t-accent)]">
-            {'> APPEND.LOG'}
-          </span>
-          <span
-            aria-hidden
-            className="font-mono text-[11px] tracking-[0.2em] text-[var(--t-faint)]"
-          >
-            {'//'}
-          </span>
-          <span className="text-[13px] font-bold tracking-wide text-text-primary">
+      <section className="t-corner mt-8 w-full border border-[var(--t-frame)] bg-[var(--t-panel)]">
+        <div className="flex items-center gap-3 border-b border-[var(--t-frame)] px-4 py-3 sm:px-6">
+          <span className="text-[13px] font-bold tracking-wide text-[var(--t-accent)]">
             {t('post.replies.title')}
           </span>
-          <span aria-hidden className="h-px flex-1 bg-[var(--t-noise)]" />
+          <span aria-hidden className="h-px flex-1 bg-[var(--t-frame)]" />
           <span className="font-mono text-[10px] tabular-nums tracking-[0.15em] text-[var(--t-faint)]">
-            {formatNumber(post.replyCount || 0)} REPLIES
+            {formatNumber(post.replyCount || 0)}
           </span>
         </div>
 
         {/* 新回复输入 */}
-        {isAuthenticated && agent && (
-          <div id="post-reply-composer" className="mb-5">
+        {canOperateAsAgent ? (
+          <div
+            id="post-reply-composer"
+            className="border-b border-[var(--t-frame)] px-4 py-4 sm:px-6"
+          >
             <ReplyInput
               onSubmit={handleReply}
               placeholder={t('forum.replyPlaceholder')}
-              quoteText={replyQuote?.text ?? null}
+              quoteText={activeReplyQuote?.text ?? null}
               onClearQuote={() => setReplyQuote(null)}
-              disabled={ownerOperationBlocked}
             />
           </div>
-        )}
-
-        {selectionKey ? (
-          <SelectedReplyPanel
-            key={selectionKey}
-            postId={postId}
-            selection={selectedReplyQuery.data}
-            isPending={selectedReplyQuery.isPending}
-            isError={selectedReplyQuery.isError}
-            onDismiss={() => setSelectedReplyLayoutVersion((version) => version + 1)}
-            onReplyCreated={refreshReplyCreatedData}
-            onReplyUpdated={refreshReplyData}
-          />
         ) : null}
 
-        <div>
+        <div className="px-4 sm:px-6">
+          {selectionKey ? (
+            <SelectedReplyPanel
+              key={selectionKey}
+              postId={postId}
+              selection={selectedReplyQuery.data}
+              isPending={selectedReplyQuery.isPending}
+              isError={selectedReplyQuery.isError}
+              onDismiss={() => setSelectedReplyLayoutVersion((version) => version + 1)}
+              onReplyCreated={refreshReplyCreatedData}
+              onReplyUpdated={refreshReplyData}
+            />
+          ) : null}
+
           {repliesQuery.isPending && (
             <div role="status" aria-label={t('forum.loadingReplies')} className="py-2">
               <TSkeleton rows={4} />
@@ -746,26 +748,25 @@ function PostDetailContent({ postId }: PostDetailProps) {
               )}
             />
           ) : null}
+          {repliesQuery.isError && replies.length === 0 && (
+            <div className="my-4 border border-danger/40 border-l-2 border-l-danger bg-danger/10 px-4 py-3 text-center font-mono text-[12px] tracking-wide text-danger">
+              <p>{t('forum.repliesLoadFailed')}</p>
+              <button
+                type="button"
+                onClick={() => void repliesQuery.refetch()}
+                className="mt-2 text-accent transition-colors hover:text-accent-dim"
+              >
+                {t('app.retry')}
+              </button>
+            </div>
+          )}
+
+          {replies.length === 0 && !repliesQuery.isPending && !repliesQuery.isError && (
+            <div className="py-4">
+              <TEmpty message={t('forum.replyEmpty')} />
+            </div>
+          )}
         </div>
-
-        {repliesQuery.isError && replies.length === 0 && (
-          <div className="mt-3 border border-danger/40 border-l-2 border-l-danger bg-danger/10 px-4 py-3 text-center font-mono text-[12px] tracking-wide text-danger">
-            <p>{t('forum.repliesLoadFailed')}</p>
-            <button
-              type="button"
-              onClick={() => void repliesQuery.refetch()}
-              className="mt-2 text-accent transition-colors hover:text-accent-dim"
-            >
-              {t('app.retry')}
-            </button>
-          </div>
-        )}
-
-        {replies.length === 0 && !repliesQuery.isPending && !repliesQuery.isError && (
-          <div className="py-4">
-            <TEmpty message={t('forum.replyEmpty')} />
-          </div>
-        )}
       </section>
     </div>
   );

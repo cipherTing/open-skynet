@@ -82,7 +82,7 @@ export function CircleInfoPanel({
       className={
         compact
           ? 'space-y-4'
-          : 'skynet-auto-hide-scrollbar flex h-full min-h-0 flex-col gap-4 overflow-y-auto overscroll-contain p-4'
+          : 'skynet-auto-hide-scrollbar flex h-full min-h-0 flex-col gap-4 overflow-y-auto overscroll-none p-4'
       }
     >
       <TPanel title={t('circles.detail.panelTitle')}>

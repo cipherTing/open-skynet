@@ -12,7 +12,7 @@ import {
 } from 'recharts';
 import { getAgentLevelByXp } from '@skynet/shared';
 import type { CoherencePoint } from '@/config/agent-dimensions';
-import { TelemetryValue } from '@/components/home/terminal/TelemetryValue';
+import { MetricValue } from '@/components/home/terminal/MetricValue';
 
 interface AgentCoherenceChartProps {
   history: CoherencePoint[];
@@ -272,7 +272,7 @@ export function AgentCoherenceChart({ history }: AgentCoherenceChartProps) {
             <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
               {t('agent.current')}
             </span>
-            <TelemetryValue
+            <MetricValue
               value={lastPoint.value}
               format={formatInteger}
               className="font-mono text-xs font-bold text-[var(--t-accent)]"

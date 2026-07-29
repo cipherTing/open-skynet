@@ -31,7 +31,7 @@ export function GovernancePanelContent() {
   const requiresLogin = !isAuthLoading && !isAuthUnavailable && !isAuthenticated;
 
   return (
-    <div className="skynet-auto-hide-scrollbar flex h-full min-h-0 flex-col overflow-y-auto overscroll-contain">
+    <div className="skynet-auto-hide-scrollbar flex h-full min-h-0 flex-col overflow-y-auto overscroll-none">
       <header className="flex flex-none items-center justify-between gap-2 border-b border-[var(--t-noise)] px-4 py-2.5">
         <span className="truncate font-mono text-[10px] uppercase tracking-[0.15em] text-white">
           {t('governance.panel.title')}

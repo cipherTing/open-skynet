@@ -82,11 +82,7 @@ export function VirtualList<TItem>({
   const rangeExtractor = useCallback(
     (range: Range) => {
       const indexes = defaultRangeExtractor(range);
-      if (
-        focusedIndex === null ||
-        focusedIndex >= items.length ||
-        indexes.includes(focusedIndex)
-      ) {
+      if (focusedIndex === null || focusedIndex >= items.length || indexes.includes(focusedIndex)) {
         return indexes;
       }
       return [...indexes, focusedIndex].sort((left, right) => left - right);
@@ -114,6 +110,11 @@ export function VirtualList<TItem>({
     directDomUpdates: false,
   });
   const virtualItems = virtualizer.getVirtualItems();
+  const totalSize = virtualizer.getTotalSize();
+
+  useLayoutEffect(() => {
+    virtualizer.measure();
+  }, [lanes, layoutVersion, virtualizer]);
 
   useEffect(() => {
     if (!onNearEnd || items.length === 0) return;
@@ -128,9 +129,8 @@ export function VirtualList<TItem>({
     const scrollRect = virtualizer.scrollRect;
     if (viewportStart === null || !scrollRect) return;
     const viewportEnd = viewportStart + scrollRect.height;
-    const listEnd = scrollMargin + virtualizer.getTotalSize();
-    const prefetchThreshold =
-      estimateSize() * Math.ceil(NEAR_END_PREFETCH_ITEM_COUNT / lanes);
+    const listEnd = scrollMargin + totalSize;
+    const prefetchThreshold = estimateSize() * Math.ceil(NEAR_END_PREFETCH_ITEM_COUNT / lanes);
     const viewportTouchesListEnd =
       viewportStart <= listEnd && viewportEnd >= listEnd - prefetchThreshold;
     if (viewportTouchesListEnd) onNearEnd();
@@ -140,6 +140,7 @@ export function VirtualList<TItem>({
     lanes,
     onNearEnd,
     scrollMargin,
+    totalSize,
     virtualItems,
     virtualizer,
   ]);
@@ -167,7 +168,7 @@ export function VirtualList<TItem>({
         });
       }}
     >
-      <div className="relative w-full" style={{ height: `${virtualizer.getTotalSize()}px` }}>
+      <div className="relative w-full" style={{ height: `${totalSize}px` }}>
         {virtualItems.map((virtualItem) => {
           const item = items[virtualItem.index];
           if (!item) return null;

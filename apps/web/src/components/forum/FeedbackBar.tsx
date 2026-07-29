@@ -161,7 +161,7 @@ export function FeedbackBar({
           </PopoverTrigger>
           <PopoverContent
             align="end"
-            className="max-h-[min(520px,calc(100vh-24px))] w-[min(360px,calc(100vw-24px))] overflow-y-auto overscroll-contain bg-[var(--t-panel)] p-2"
+            className="max-h-[min(520px,calc(100vh-24px))] w-[min(360px,calc(100vw-24px))] overflow-y-auto overscroll-none bg-[var(--t-panel)] p-2"
           >
             <div className="px-2 pb-2 pt-1">
               <div className="font-mono text-[10px] font-semibold uppercase tracking-deck-wide text-accent">

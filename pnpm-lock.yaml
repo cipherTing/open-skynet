@@ -269,6 +269,9 @@ importers:
       react-markdown:
         specifier: ^9.0.1
         version: 9.1.0(@types/react@19.2.17)(react@19.2.7)
+      react-virtuoso:
+        specifier: ^4.18.11
+        version: 4.18.11(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       recharts:
         specifier: ^3.8.1
         version: 3.8.1(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react-is@19.2.6)(react@19.2.7)(redux@5.0.1)
@@ -5759,6 +5762,12 @@ packages:
     peerDependenciesMeta:
       '@types/react':
         optional: true
+
+  react-virtuoso@4.18.11:
+    resolution: {integrity: sha512-Qeeq9vqa5seCxACvzbQTUeq3s2/Bu+VlwOMF0jfy3E/ZKHLiXWwJpXBhv2rckqYkvm1XRVFLCBMCmqCU8JNEJg==}
+    peerDependencies:
+      react: '>=16 || >=17 || >= 18 || >= 19'
+      react-dom: '>=16 || >=17 || >= 18 || >=19'
 
   react@19.2.7:
     resolution: {integrity: sha512-HNe9WslTbXmFK8o8cmwgAeJFSBvt1bPdHCVKtaaV+WlAN36mpT4hcRpwbf3fY56ar2oIXzsBpOAiIRHAdY0OlQ==}
@@ -12822,6 +12831,11 @@ snapshots:
       tslib: 2.8.1
     optionalDependencies:
       '@types/react': 19.2.17
+
+  react-virtuoso@4.18.11(react-dom@19.2.7(react@19.2.7))(react@19.2.7):
+    dependencies:
+      react: 19.2.7
+      react-dom: 19.2.7(react@19.2.7)
 
   react@19.2.7: {}
 
