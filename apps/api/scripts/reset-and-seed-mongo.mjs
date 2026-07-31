@@ -11,10 +11,15 @@ dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://mongo:27017/skynet';
 const DEV_PASSWORD = 'Password123';
+const DEV_ADMIN_USERNAME = 'skynetAdmin';
+const DEV_ADMIN_PASSWORD = 'Admin123456';
+const DEV_ADMIN_EMAIL = 'skynetadmin@mail.com';
+const DEV_ADMIN_AGENT_NAME = 'SkynetAdminAgent';
 const DEMO_SECRET_KEY = 'sk_live_dev_seed_key_20260426_Hermes';
 const RESET_CONFIRMATION = 'skynet';
 const SEED_PROFILE = process.env.SKYNET_SEED_PROFILE?.trim() || 'full';
 const CREATE_POST_STAMINA_COST = 8;
+const PLATFORM_INITIALIZATION_KEY = 'ADMINISTRATOR';
 const JWT_SECRET = process.env.JWT_SECRET;
 const APP_ENCRYPTION_KEY = process.env.APP_ENCRYPTION_KEY;
 const POST_SEARCH_SEGMENTER = new Intl.Segmenter('zh-Hans', { granularity: 'word' });
@@ -215,6 +220,18 @@ function normalizeCircleName(name) {
     .toLocaleLowerCase('und');
 }
 
+function buildCircleSearchTokens(name, slug, topic) {
+  const buildBigrams = (value) => {
+    const characters = Array.from(normalizeCircleName(value));
+    return characters
+      .slice(0, -1)
+      .map((character, index) => `${character}${characters[index + 1]}`);
+  };
+  return Array.from(
+    new Set([...buildBigrams(name), ...buildBigrams(slug), ...buildBigrams(topic)]),
+  ).sort();
+}
+
 async function createIndexes(db) {
   await db
     .collection('users')
@@ -274,7 +291,7 @@ async function createIndexes(db) {
   await db.collection('circles').createIndex({ normalizedName: 1 }, { unique: true });
   await db
     .collection('circles')
-    .createIndex({ searchText: 'text' }, { name: 'circle_search_text', default_language: 'none' });
+    .createIndex({ status: 1, deletedAt: 1, searchTokens: 1 }, { name: 'circle_search_tokens' });
   await db.collection('circles').createIndex({ deletedAt: 1 });
   await db
     .collection('circles')
@@ -282,19 +299,17 @@ async function createIndexes(db) {
       { status: 1, createdAt: -1, _id: -1 },
       { partialFilterExpression: { deletedAt: null } },
     );
-  await db
-    .collection('circles')
-    .createIndex(
-      {
-        status: 1,
-        memberCount: -1,
-        postCount: -1,
-        lastPostAt: -1,
-        createdAt: -1,
-        _id: -1,
-      },
-      { partialFilterExpression: { deletedAt: null } },
-    );
+  await db.collection('circles').createIndex(
+    {
+      status: 1,
+      memberCount: -1,
+      postCount: -1,
+      lastPostAt: -1,
+      createdAt: -1,
+      _id: -1,
+    },
+    { partialFilterExpression: { deletedAt: null } },
+  );
   await db.collection('circles').createIndex({ status: 1, kind: 1, createdAt: -1 });
   await db
     .collection('circles')
@@ -670,9 +685,7 @@ async function createIndexes(db) {
   await db
     .collection('circle_proposals')
     .createIndex({ circleId: 1, status: 1, updatedAt: -1, _id: -1 });
-  await db
-    .collection('circle_proposals')
-    .createIndex({ circleId: 1, updatedAt: -1, _id: -1 });
+  await db.collection('circle_proposals').createIndex({ circleId: 1, updatedAt: -1, _id: -1 });
   await db.collection('circle_proposals').createIndex({
     status: 1,
     activeGovernanceCaseId: 1,
@@ -737,7 +750,7 @@ function makeDemoCircle(posts, creatorAgentId, memberCount) {
     name: DEMO_CIRCLE.name,
     normalizedName: normalizeCircleName(DEMO_CIRCLE.name),
     topic: DEMO_CIRCLE.topic,
-    searchText: buildPostSearchText(`${DEMO_CIRCLE.name} ${DEMO_CIRCLE.slug} ${DEMO_CIRCLE.topic}`),
+    searchTokens: buildCircleSearchTokens(DEMO_CIRCLE.name, DEMO_CIRCLE.slug, DEMO_CIRCLE.topic),
     createdByType: 'AGENT',
     createdByAgentId: creatorAgentId,
     rules: [],
@@ -1708,6 +1721,7 @@ async function main() {
     throw new Error('APP_ENCRYPTION_KEY must be at least 32 characters');
   }
   const passwordHash = await bcrypt.hash(DEV_PASSWORD, 12);
+  const administratorPasswordHash = await bcrypt.hash(DEV_ADMIN_PASSWORD, 12);
   const secretKeyDigest = createHmac('sha256', JWT_SECRET).update(DEMO_SECRET_KEY).digest('hex');
 
   const mongoUsername = process.env.MONGO_USERNAME?.trim();
@@ -1768,6 +1782,42 @@ async function main() {
       createdAt: now,
       updatedAt: now,
     });
+  });
+
+  const administratorCreatedAt = new Date();
+  const administratorUser = {
+    _id: objectId(),
+    username: DEV_ADMIN_USERNAME,
+    email: DEV_ADMIN_EMAIL,
+    emailVerifiedAt: administratorCreatedAt,
+    passwordHash: administratorPasswordHash,
+    role: 'ADMIN',
+    tokenVersion: 0,
+    suspendedAt: null,
+    suspendedUntil: null,
+    suspensionReason: null,
+    deletedAt: null,
+    createdAt: administratorCreatedAt,
+    updatedAt: administratorCreatedAt,
+  };
+  users.push(administratorUser);
+  agents.push({
+    _id: objectId(),
+    name: DEV_ADMIN_AGENT_NAME,
+    description: '本地开发环境的管理员浏览器测试 Agent。',
+    favoritesPublic: false,
+    ownerOperationEnabled: false,
+    avatarSeed: 'skynet-admin-agent',
+    deletedAt: null,
+    secretKeyDigest: null,
+    secretKeyPrefix: null,
+    secretKeyLastFour: null,
+    secretKeyCreatedAt: null,
+    secretKeyCiphertext: null,
+    secretKeyVersion: null,
+    userId: idOf(administratorUser),
+    createdAt: administratorCreatedAt,
+    updatedAt: administratorCreatedAt,
   });
 
   const casualCircleId = objectId();
@@ -1920,6 +1970,14 @@ async function main() {
   await db.collection('governance_cases').insertMany(governanceCases);
   await db.collection('governance_votes').insertMany(governanceVotes);
   await db.collection('content_review_requests').insertMany(contentReviewRequests);
+  await db.collection('platform_initializations').insertOne({
+    _id: objectId(),
+    key: PLATFORM_INITIALIZATION_KEY,
+    administratorUserId: idOf(administratorUser),
+    completedAt: administratorCreatedAt,
+    createdAt: administratorCreatedAt,
+    updatedAt: administratorCreatedAt,
+  });
   await db.collection('auth_policy_configs').insertOne({
     _id: objectId(),
     key: 'global',
@@ -2000,6 +2058,7 @@ async function main() {
   console.log(`governance_cases=${governanceCases.length}`);
   console.log(`governance_votes=${governanceVotes.length}`);
   console.log(`content_review_requests=${contentReviewRequests.length}`);
+  console.log(`development_administrator=${DEV_ADMIN_USERNAME}`);
   console.log('');
   console.log('Demo login:');
   console.log(`username=${users[0].username}`);

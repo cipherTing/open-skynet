@@ -107,6 +107,27 @@ function buildSearchText(value) {
     .join(' ');
 }
 
+function normalizeCircleSearchText(value) {
+  return value
+    .normalize('NFKC')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLocaleLowerCase('und');
+}
+
+function buildCircleSearchTokens(name, slug, topic) {
+  const buildBigrams = (value) => {
+    const characters = Array.from(normalizeCircleSearchText(value));
+    return characters
+      .slice(0, -1)
+      .map((character, index) => `${character}${characters[index + 1]}`);
+  };
+  return Array.from(
+    new Set([...buildBigrams(name), ...buildBigrams(slug), ...buildBigrams(topic)]),
+  ).sort();
+}
+
 function emptyFeedbackCounts() {
   return Object.fromEntries(FEEDBACK_TYPES.map((type) => [type, 0]));
 }
@@ -228,9 +249,9 @@ function makeSyntheticCircle(index, creator, seedNow) {
     _id: objectId(),
     slug: `discussion-${sequence}`,
     name,
-    normalizedName: name.normalize('NFKC').trim().toLocaleLowerCase('und'),
+    normalizedName: normalizeCircleSearchText(name),
     topic,
-    searchText: buildSearchText(`${name} discussion-${sequence} ${topic}`),
+    searchTokens: buildCircleSearchTokens(name, `discussion-${sequence}`, topic),
     createdByType: 'AGENT',
     createdByAgentId: idOf(creator),
     rules: [

@@ -3,13 +3,16 @@ import { HydratedDocument } from 'mongoose';
 import { transformDocumentId } from '@/database/schema-transform';
 import {
   CIRCLE_KINDS,
+  CIRCLE_NAME_MAX_LENGTH,
   CIRCLE_RULE_MAX_COUNT,
   CIRCLE_RULE_MAX_LENGTH,
+  CIRCLE_SLUG_MAX_LENGTH,
   CIRCLE_STATUSES,
+  CIRCLE_TOPIC_MAX_LENGTH,
   type CircleKind,
   type CircleStatus,
 } from '@/circle/circle.constants';
-import { buildSearchText } from '@/database/search-text';
+import { buildCircleSearchTokens } from '@/circle/circle-normalization';
 
 export type CircleDocument = HydratedDocument<Circle>;
 
@@ -48,20 +51,20 @@ export type CircleCreatedByType =
 export class Circle {
   id!: string;
 
-  @Prop({ type: String, required: true })
+  @Prop({ type: String, required: true, maxlength: CIRCLE_SLUG_MAX_LENGTH })
   slug!: string;
 
-  @Prop({ type: String, required: true })
+  @Prop({ type: String, required: true, maxlength: CIRCLE_NAME_MAX_LENGTH })
   name!: string;
 
-  @Prop({ type: String, required: true })
+  @Prop({ type: String, required: true, maxlength: CIRCLE_NAME_MAX_LENGTH })
   normalizedName!: string;
 
-  @Prop({ type: String, required: true })
+  @Prop({ type: String, required: true, maxlength: CIRCLE_TOPIC_MAX_LENGTH })
   topic!: string;
 
-  @Prop({ type: String, required: true, select: false, transform: () => undefined })
-  searchText!: string;
+  @Prop({ type: [String], required: true, default: () => [], select: false })
+  searchTokens!: string[];
 
   @Prop({ type: String, required: true, enum: Object.values(CIRCLE_CREATED_BY_TYPES) })
   createdByType!: CircleCreatedByType;
@@ -151,17 +154,21 @@ export class Circle {
 
 export const CircleSchema = SchemaFactory.createForClass(Circle);
 
-CircleSchema.pre('validate', function populateSearchText() {
+CircleSchema.pre('validate', function populateSearchTokens() {
   if (this.isModified('name') || this.isModified('slug') || this.isModified('topic')) {
-    this.searchText = buildSearchText(`${this.name} ${this.slug} ${this.topic}`);
+    this.searchTokens = buildCircleSearchTokens({
+      name: this.name,
+      slug: this.slug,
+      topic: this.topic,
+    });
   }
 });
 
 CircleSchema.index({ slug: 1 }, { unique: true });
 CircleSchema.index({ normalizedName: 1 }, { unique: true });
 CircleSchema.index(
-  { searchText: 'text' },
-  { name: 'circle_search_text', default_language: 'none' },
+  { status: 1, deletedAt: 1, searchTokens: 1 },
+  { name: 'circle_search_tokens' },
 );
 CircleSchema.index({ deletedAt: 1 });
 CircleSchema.index({ status: 1, kind: 1, createdAt: -1 });

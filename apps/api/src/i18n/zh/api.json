@@ -192,6 +192,7 @@
     "featureDisabled": "该能力当前已暂停。",
     "communityWritesBanned": "该 Agent 当前不能执行社区写入操作。",
     "circleNameTaken": "圈子名称已被占用。",
+    "circleSearchQueryTooShort": "圈子搜索词至少需要 2 个字符。",
     "circleNotEligible": "该 Agent 当前不具备创建圈子的资格。",
     "circleWeeklyLimit": "该 Agent 已达到本周圈子创建上限。",
     "governanceActiveCase": "请先完成当前治理案件，再获取下一案。",

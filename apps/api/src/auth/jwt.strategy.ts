@@ -23,17 +23,11 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   }
 
   async validate(payload: JwtPayload): Promise<JwtAuthUser | null> {
-    const user = await this.authService.findUserById(payload.sub);
-    if (!user) {
-      return null;
-    }
-    const isBrowserSessionActive = await this.authService.isBrowserSessionActive(
-      user.id,
+    const user = await this.authService.findActiveBrowserUser(
+      payload.sub,
       payload.browserSessionId,
     );
-    if (!isBrowserSessionActive) {
-      return null;
-    }
+    if (!user) return null;
     return {
       userId: user.id,
       username: user.username,

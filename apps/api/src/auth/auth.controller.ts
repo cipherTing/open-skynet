@@ -24,6 +24,7 @@ import {
 } from '@/system/security-event.service';
 import { apiMessage } from '@/common/i18n/api-message';
 import { authErrors } from '@/common/errors/business-errors';
+import { PreAuthThrottle } from '@/common/guards/pre-auth-throttle.decorator';
 
 const REFRESH_COOKIE_NAME = 'skynet_refresh';
 const REFRESH_COOKIE_PATH = '/api/v1/auth';
@@ -88,6 +89,7 @@ export class AuthController {
 
   @Public()
   @Post('email-verifications')
+  @PreAuthThrottle()
   @Throttle({ short: { ttl: 60000, limit: 5 }, medium: { ttl: 3600000, limit: 30 } })
   sendEmailVerification(@Req() request: Request, @Body() dto: SendEmailVerificationDto) {
     return this.emailVerificationService.send(
@@ -100,6 +102,7 @@ export class AuthController {
 
   @Public()
   @Post('password-reset')
+  @PreAuthThrottle()
   @Throttle({ short: { ttl: 60000, limit: 5 }, medium: { ttl: 3600000, limit: 20 } })
   async resetPassword(@Body() dto: ResetPasswordDto) {
     await this.authService.resetPassword(dto);
@@ -114,6 +117,7 @@ export class AuthController {
 
   @Public()
   @Post('initialization')
+  @PreAuthThrottle()
   @Throttle({ short: { ttl: 60000, limit: 3 }, medium: { ttl: 3600000, limit: 10 } })
   async initializeAdministrator(
     @Body() dto: InitializeAdministratorDto,
@@ -125,6 +129,7 @@ export class AuthController {
 
   @Public()
   @Post('register')
+  @PreAuthThrottle()
   @Throttle({ short: { ttl: 60000, limit: 3 }, medium: { ttl: 3600000, limit: 10 } })
   async register(@Body() dto: RegisterDto, @Res({ passthrough: true }) response: Response) {
     const result = await this.authService.register(dto);
@@ -133,6 +138,7 @@ export class AuthController {
 
   @Public()
   @Post('login')
+  @PreAuthThrottle()
   @Throttle({ short: { ttl: 10000, limit: 5 }, medium: { ttl: 60000, limit: 15 } })
   async login(
     @Req() request: Request,

@@ -231,6 +231,34 @@ describe('AuthService administrator initialization', () => {
     await expect(connection.model(PlatformInitialization.name).countDocuments({})).resolves.toBe(0);
   });
 
+  it('loads an active browser user with one bounded session aggregation', async () => {
+    const result = await service.initializeAdministrator({
+      username: 'session_admin',
+      email: 'session-admin@example.com',
+      password: 'Password123',
+      agentName: 'SessionAdminAgent',
+    });
+    const browserSession = await connection.model(BrowserSession.name).findOne({
+      userId: result.user.id,
+    });
+    expect(browserSession).not.toBeNull();
+
+    await expect(
+      service.findActiveBrowserUser(result.user.id, browserSession?.id),
+    ).resolves.toMatchObject({
+      id: result.user.id,
+      username: 'session_admin',
+      role: USER_ROLES.ADMIN,
+    });
+
+    await connection.model(BrowserSession.name).findByIdAndUpdate(browserSession?.id, {
+      revokedAt: new Date(),
+    });
+    await expect(
+      service.findActiveBrowserUser(result.user.id, browserSession?.id),
+    ).resolves.toBeNull();
+  });
+
   it('allows initialization to reuse soft-deleted usernames and Agent names', async () => {
     const deletedUser = await connection.model(User.name).create({
       username: 'reusable_admin',

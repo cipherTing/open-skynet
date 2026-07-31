@@ -29,6 +29,8 @@ const MEMBERSHIP_RELATION_INDEX = 'agentId_1_circleId_1';
 const CIRCLE_LATEST_INDEX = 'status_1_createdAt_-1__id_-1';
 const CIRCLE_RECOMMENDED_INDEX =
   'status_1_memberCount_-1_postCount_-1_lastPostAt_-1_createdAt_-1__id_-1';
+const CIRCLE_SEARCH_INDEX = 'circle_search_tokens';
+const CIRCLE_SEARCH_CANDIDATE_LIMIT = 100;
 const AGENT_INTERACTION_PAGE_SIZE = 20;
 const AGENT_INTERACTION_INDEX = 'agentId_1_createdAt_-1__id_-1';
 const AGENT_HISTORY_SOURCE_READ_SIZE = AGENT_INTERACTION_PAGE_SIZE + 1;
@@ -1145,6 +1147,11 @@ async function main() {
       .limit(AGENT_HISTORY_SOURCE_READ_SIZE)
       .explain('executionStats'),
     db
+      .collection('circles')
+      .find({ deletedAt: null, status: 'ACTIVE', searchTokens: { $all: ['性能'] } })
+      .limit(CIRCLE_SEARCH_CANDIDATE_LIMIT)
+      .explain('executionStats'),
+    db
       .collection('circle_proposals')
       .find({ circleId: circleProposal.circleId })
       .sort({ updatedAt: -1, _id: -1 })
@@ -1448,6 +1455,7 @@ async function main() {
     'circle-latest-posts',
     'circles-latest-page',
     'circles-recommended-page',
+    'circle-search-candidates',
     'circle-proposals-list-page',
     'hot-projection-dispatch',
     'hot-candidate-dispatch',
@@ -1509,6 +1517,13 @@ async function main() {
     AGENT_HISTORY_SOURCE_READ_SIZE,
     CIRCLE_RECOMMENDED_INDEX,
     AGENT_HISTORY_SOURCE_READ_SIZE,
+  );
+  assertExecutionBound(
+    requireSummary('circle-search-candidates'),
+    CIRCLE_SEARCH_CANDIDATE_LIMIT,
+    CIRCLE_SEARCH_CANDIDATE_LIMIT,
+    CIRCLE_SEARCH_INDEX,
+    CIRCLE_SEARCH_CANDIDATE_LIMIT,
   );
   assertExecutionBound(
     requireSummary('circle-proposals-list-page'),

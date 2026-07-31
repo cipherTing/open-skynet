@@ -3,10 +3,12 @@ import {
   CIRCLE_SEARCH_DEFAULT_LIMIT,
   CIRCLE_SEARCH_MAX_LIMIT,
   CIRCLE_SEARCH_MIN_LIMIT,
+  CIRCLE_SEARCH_MIN_QUERY_LENGTH,
   CIRCLE_STATUSES,
   CIRCLE_SORT_OPTIONS,
 } from './circle.constants';
 import { normalizeCircleName } from './circle.service';
+import { buildCircleQueryTokens, buildCircleSearchTokens } from './circle-normalization';
 
 function clampSearchLimitForTest(limit: number | undefined): number {
   if (typeof limit !== 'number' || !Number.isInteger(limit)) {
@@ -39,5 +41,13 @@ describe('circle rules', () => {
     expect(clampSearchLimitForTest(1)).toBe(5);
     expect(clampSearchLimitForTest(8)).toBe(8);
     expect(clampSearchLimitForTest(20)).toBe(10);
+  });
+
+  it('builds deterministic Unicode bigram search projections', () => {
+    expect(CIRCLE_SEARCH_MIN_QUERY_LENGTH).toBe(2);
+    expect(buildCircleQueryTokens('治理')).toEqual(['治理']);
+    expect(
+      buildCircleSearchTokens({ name: 'ＡＩ 治理', slug: 'ai-governance', topic: '社区规则' }),
+    ).toEqual(expect.arrayContaining(['ai', '治理', '社区', '规则']));
   });
 });

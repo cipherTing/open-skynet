@@ -446,4 +446,55 @@ describe('CircleService creation and memberships', () => {
     expect(second.items.map((circle) => circle.id)).toEqual([circles[2].id]);
     expect(second.nextCursor).toBeNull();
   });
+
+  it('searches indexed circle substrings and ranks exact names before topic matches', async () => {
+    await connection.model(Circle.name).create([
+      {
+        slug: 'agent-governance',
+        name: 'Agent 治理',
+        normalizedName: 'agent 治理',
+        topic: '讨论社区规则与公共裁决',
+        createdByType: 'SYSTEM',
+        createdByAgentId: null,
+        rules: [],
+        status: 'ACTIVE',
+      },
+      {
+        slug: 'community-lab',
+        name: '社区实验室',
+        normalizedName: '社区实验室',
+        topic: '研究 Agent 治理如何保持透明',
+        createdByType: 'SYSTEM',
+        createdByAgentId: null,
+        rules: [],
+        status: 'ACTIVE',
+      },
+      {
+        slug: 'split-token-example',
+        name: '甲乙',
+        normalizedName: '甲乙',
+        topic: '乙丙',
+        createdByType: 'SYSTEM',
+        createdByAgentId: null,
+        rules: [],
+        status: 'ACTIVE',
+      },
+    ]);
+
+    const exact = await service.searchCircles({ q: 'Agent 治理', limit: 5 });
+    expect(exact.items.map((circle) => circle.name)).toEqual(['Agent 治理', '社区实验室']);
+    expect(exact.exactNameMatch?.name).toBe('Agent 治理');
+
+    const substring = await service.searchCircles({ q: '治理如', limit: 5 });
+    expect(substring.items.map((circle) => circle.name)).toEqual(['社区实验室']);
+
+    const crossFieldTokens = await service.searchCircles({ q: '甲乙丙', limit: 5 });
+    expect(crossFieldTokens.items).toEqual([]);
+  });
+
+  it('rejects normalized one-character circle searches', async () => {
+    await expect(service.searchCircles({ q: 'Ａ' })).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'CIRCLE_SEARCH_QUERY_TOO_SHORT' }),
+    });
+  });
 });

@@ -27,7 +27,9 @@ import {
   CIRCLE_RULE_MAX_COUNT,
   CIRCLE_RULE_MAX_LENGTH,
   CIRCLE_SEARCH_DEFAULT_LIMIT,
+  CIRCLE_SEARCH_CANDIDATE_LIMIT,
   CIRCLE_SEARCH_MAX_LIMIT,
+  CIRCLE_SEARCH_MIN_QUERY_LENGTH,
   CIRCLE_SEARCH_MIN_LIMIT,
   CIRCLE_SORT_OPTIONS,
   CIRCLE_STATUSES,
@@ -46,7 +48,11 @@ import { GovernanceCase } from '@/database/schemas/governance-case.schema';
 import { GOVERNANCE_CASE_STATUS, GOVERNANCE_TARGET_TYPES } from '@/governance/governance.constants';
 import { addDays, getShanghaiDayKey, getShanghaiDayStart } from '@/progression/progression.service';
 import { ListCircleMaintenanceLogsDto } from './dto/list-circle-maintenance-logs.dto';
-import { normalizeCircleVisibleText } from './circle-normalization';
+import {
+  buildCircleQueryTokens,
+  normalizeCircleSearchText,
+  normalizeCircleVisibleText,
+} from './circle-normalization';
 import { apiMessage } from '@/common/i18n/api-message';
 import { translateApiText } from '@/common/i18n/api-language';
 import { circleErrors, commonErrors } from '@/common/errors/business-errors';
@@ -116,16 +122,23 @@ function ensureValidObjectId(id: string, errorFactory: () => Error): void {
   }
 }
 
-function escapeRegex(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 function clampSearchLimit(limit: number | undefined): number {
   if (typeof limit !== 'number' || !Number.isInteger(limit)) {
     return CIRCLE_SEARCH_DEFAULT_LIMIT;
   }
   return Math.min(CIRCLE_SEARCH_MAX_LIMIT, Math.max(CIRCLE_SEARCH_MIN_LIMIT, limit));
 }
+
+const CIRCLE_SEARCH_MATCH_RANKS = {
+  EXACT_NAME: 0,
+  NAME_PREFIX: 1,
+  NAME_SUBSTRING: 2,
+  SLUG: 3,
+  TOPIC: 4,
+} as const;
+
+type CircleSearchMatchRank =
+  (typeof CIRCLE_SEARCH_MATCH_RANKS)[keyof typeof CIRCLE_SEARCH_MATCH_RANKS];
 
 function metadataString(metadata: CircleMaintenanceLog['metadata'], key: string): string | null {
   const value = metadata[key];
@@ -401,23 +414,18 @@ export class CircleService {
     if (!normalizedQuery) {
       return { items: [], exactNameMatch: null };
     }
-
-    const safeRaw = escapeRegex(rawQuery);
-    const safeNormalized = escapeRegex(normalizedQuery);
-    const asciiLike = /^[a-z0-9-]+$/i.test(rawQuery);
+    if (Array.from(normalizedQuery).length < CIRCLE_SEARCH_MIN_QUERY_LENGTH) {
+      throw circleErrors.searchQueryTooShort();
+    }
+    const searchTokens = buildCircleQueryTokens(normalizedQuery);
     const where: FilterQuery<Circle> = {
       deletedAt: null,
       status: CIRCLE_STATUSES.ACTIVE,
-      $or: [
-        { name: { $regex: safeRaw, $options: 'i' } },
-        { normalizedName: { $regex: safeNormalized, $options: 'i' } },
-        { topic: { $regex: safeRaw, $options: 'i' } },
-        ...(asciiLike ? [{ slug: { $regex: safeRaw, $options: 'i' } }] : []),
-      ],
+      searchTokens: { $all: searchTokens },
     };
 
     const [matches, exactMatch] = await Promise.all([
-      this.circleModel.find(where).limit(50),
+      this.circleModel.find(where).limit(CIRCLE_SEARCH_CANDIDATE_LIMIT),
       this.circleModel.findOne({
         normalizedName: normalizedQuery,
         deletedAt: null,
@@ -429,15 +437,12 @@ export class CircleService {
       ...(exactMatch ? [exactMatch.id] : []),
     ]);
     const ranked = matches
-      .map((circle) => ({
-        circle,
-        rank: this.rankSearchMatch(circle, rawQuery, normalizedQuery),
-      }))
+      .flatMap((circle) => {
+        const rank = this.rankSearchMatch(circle, rawQuery, normalizedQuery);
+        return rank === null ? [] : [{ circle, rank }];
+      })
       .sort((left, right) => {
         if (left.rank !== right.rank) return left.rank - right.rank;
-        if (right.circle.memberCount !== left.circle.memberCount) {
-          return right.circle.memberCount - left.circle.memberCount;
-        }
         return left.circle.id.localeCompare(right.circle.id);
       })
       .slice(0, limit)
@@ -1297,17 +1302,23 @@ export class CircleService {
     return `${base}-${new Types.ObjectId().toString().slice(-6)}`.slice(0, 56);
   }
 
-  private rankSearchMatch(circle: Circle, rawQuery: string, normalizedQuery: string): number {
+  private rankSearchMatch(
+    circle: Circle,
+    rawQuery: string,
+    normalizedQuery: string,
+  ): CircleSearchMatchRank | null {
     const normalizedName = circle.normalizedName;
     const lowerSlug = circle.slug.toLocaleLowerCase('und');
-    const normalizedTopic = normalizeCircleName(circle.topic);
-    const lowerRaw = rawQuery.toLocaleLowerCase('und');
-    if (normalizedName === normalizedQuery) return 0;
-    if (normalizedName.startsWith(normalizedQuery)) return 1;
-    if (normalizedName.includes(normalizedQuery)) return 2;
-    if (lowerSlug.startsWith(lowerRaw) || lowerSlug.includes(lowerRaw)) return 3;
-    if (normalizedTopic.includes(normalizedQuery)) return 4;
-    return 5;
+    const normalizedTopic = normalizeCircleSearchText(circle.topic);
+    const lowerRaw = normalizeCircleSearchText(rawQuery);
+    if (normalizedName === normalizedQuery) return CIRCLE_SEARCH_MATCH_RANKS.EXACT_NAME;
+    if (normalizedName.startsWith(normalizedQuery)) return CIRCLE_SEARCH_MATCH_RANKS.NAME_PREFIX;
+    if (normalizedName.includes(normalizedQuery)) return CIRCLE_SEARCH_MATCH_RANKS.NAME_SUBSTRING;
+    if (lowerSlug.startsWith(lowerRaw) || lowerSlug.includes(lowerRaw)) {
+      return CIRCLE_SEARCH_MATCH_RANKS.SLUG;
+    }
+    if (normalizedTopic.includes(normalizedQuery)) return CIRCLE_SEARCH_MATCH_RANKS.TOPIC;
+    return null;
   }
 
   private async recordMaintenanceLog(

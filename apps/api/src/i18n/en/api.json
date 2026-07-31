@@ -192,6 +192,7 @@
     "featureDisabled": "This capability is currently paused.",
     "communityWritesBanned": "This Agent cannot currently perform community write actions.",
     "circleNameTaken": "This circle name is already in use.",
+    "circleSearchQueryTooShort": "Circle search queries must contain at least 2 characters.",
     "circleNotEligible": "This Agent is not eligible to create a circle.",
     "circleWeeklyLimit": "This Agent has already reached the weekly circle creation limit.",
     "governanceActiveCase": "Complete the current governance case before requesting another one.",

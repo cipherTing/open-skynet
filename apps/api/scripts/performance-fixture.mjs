@@ -162,6 +162,27 @@ function objectId() {
   return new mongoose.Types.ObjectId();
 }
 
+function normalizeCircleSearchText(value) {
+  return value
+    .normalize('NFKC')
+    .replace(/[\u200B-\u200D\uFEFF]/gu, '')
+    .trim()
+    .replace(/\s+/gu, ' ')
+    .toLocaleLowerCase('und');
+}
+
+function buildCircleSearchTokens(name, slug, topic) {
+  const buildBigrams = (value) => {
+    const characters = Array.from(normalizeCircleSearchText(value));
+    return characters
+      .slice(0, -1)
+      .map((character, index) => `${character}${characters[index + 1]}`);
+  };
+  return Array.from(
+    new Set([...buildBigrams(name), ...buildBigrams(slug), ...buildBigrams(topic)]),
+  ).sort();
+}
+
 function getMongoConnectionOptions() {
   const username = process.env.MONGO_USERNAME?.trim();
   const password = process.env.MONGO_PASSWORD?.trim();
@@ -219,6 +240,12 @@ async function createIndexes(db) {
       },
       { partialFilterExpression: { deletedAt: null } },
     ),
+    db
+      .collection('circles')
+      .createIndex(
+        { status: 1, deletedAt: 1, searchTokens: 1 },
+        { name: 'circle_search_tokens' },
+      ),
     db
       .collection('posts')
       .createIndex(
@@ -453,37 +480,51 @@ async function main() {
   );
   await insertBatches(
     db.collection('circles'),
-    circleIds.map((id, index) => ({
-      _id: id,
-      slug: `perf-${index}`,
-      name: `性能圈子 ${index}`,
-      topic: '性能验证',
-      status: index === 0 ? 'BANNED' : 'ACTIVE',
-      visibilityVersion: index === 0 ? 2 : 1,
-      memberCount: index % 100,
-      postCount: index % 250,
-      lastPostAt: new Date(now - index * 30_000),
-      deletedAt: null,
-      createdAt: new Date(now - index * 60_000),
-      updatedAt: new Date(now - index * 60_000),
-    })),
+    circleIds.map((id, index) => {
+      const slug = `perf-${index}`;
+      const name = `性能圈子 ${index}`;
+      const topic = '性能验证';
+      return {
+        _id: id,
+        slug,
+        name,
+        normalizedName: normalizeCircleSearchText(name),
+        topic,
+        searchTokens: buildCircleSearchTokens(name, slug, topic),
+        status: index === 0 ? 'BANNED' : 'ACTIVE',
+        visibilityVersion: index === 0 ? 2 : 1,
+        memberCount: index % 100,
+        postCount: index % 250,
+        lastPostAt: new Date(now - index * 30_000),
+        deletedAt: null,
+        createdAt: new Date(now - index * 60_000),
+        updatedAt: new Date(now - index * 60_000),
+      };
+    }),
   );
   await insertBatches(
     db.collection('circles'),
-    agentHistoryCircleIds.map((id, index) => ({
-      _id: id,
-      slug: `agent-history-${index}`,
-      name: `Agent 历史圈子 ${index}`,
-      topic: 'Agent 圈子历史性能验证',
-      status: 'ACTIVE',
-      visibilityVersion: 1,
-      memberCount: index % 100,
-      postCount: index % 250,
-      lastPostAt: new Date(now - index),
-      deletedAt: null,
-      createdAt: new Date(now - index),
-      updatedAt: new Date(now - index),
-    })),
+    agentHistoryCircleIds.map((id, index) => {
+      const slug = `agent-history-${index}`;
+      const name = `Agent 历史圈子 ${index}`;
+      const topic = 'Agent 圈子历史性能验证';
+      return {
+        _id: id,
+        slug,
+        name,
+        normalizedName: normalizeCircleSearchText(name),
+        topic,
+        searchTokens: buildCircleSearchTokens(name, slug, topic),
+        status: 'ACTIVE',
+        visibilityVersion: 1,
+        memberCount: index % 100,
+        postCount: index % 250,
+        lastPostAt: new Date(now - index),
+        deletedAt: null,
+        createdAt: new Date(now - index),
+        updatedAt: new Date(now - index),
+      };
+    }),
   );
   const profileCircleMemberships = circleIds.map((circleId, index) => ({
     _id: objectId(),

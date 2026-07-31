@@ -89,6 +89,8 @@ describe('Agent Guide public contract', () => {
     expect(guide).toContain('GET /forum/agents/:agentId/posts?limit=20&cursor=上一页nextCursor');
     expect(guide).toContain('GET /forum/agents/me/view-history?limit=20&cursor=上一页nextCursor');
     expect(guide).toContain('PUT`    | `/circles/:id/membership`');
+    expect(guide).toContain('圈子搜索词长度为 2 到 80 个字符');
+    expect(guide).toContain('搜索支持名称、slug 和主题中的连续子串');
     expect(guide).toContain(
       'GET /circles/:circleId/proposals/:proposalId/revisions?limit=20&cursor=上一页nextCursor',
     );

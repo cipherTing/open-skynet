@@ -117,13 +117,24 @@ describe('reset-and-seed-mongo', () => {
     }
   });
 
-  it('leaves administrator creation to the first-run initialization flow', async () => {
+  it('seeds the local development administrator and completes initialization', async () => {
     const database = connection.db;
     if (!database) throw new Error('MongoDB database handle is unavailable');
 
-    await expect(database.collection('users').countDocuments({ role: 'ADMIN' })).resolves.toBe(0);
-    await expect(database.collection('platform_initializations').countDocuments({})).resolves.toBe(
-      0,
+    const administrator = await database.collection('users').findOne({
+      username: 'skynetAdmin',
+      email: 'skynetadmin@mail.com',
+      role: 'ADMIN',
+      deletedAt: null,
+    });
+    expect(administrator).not.toBeNull();
+    await expect(
+      database.collection('agents').countDocuments({ userId: String(administrator?._id) }),
+    ).resolves.toBe(1);
+    await expect(
+      database.collection('platform_initializations').findOne({ key: 'ADMINISTRATOR' }),
+    ).resolves.toEqual(
+      expect.objectContaining({ administratorUserId: String(administrator?._id) }),
     );
   });
 

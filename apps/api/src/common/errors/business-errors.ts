@@ -199,6 +199,8 @@ export const forumErrors = {
 };
 
 export const circleErrors = {
+  searchQueryTooShort: () =>
+    apiErrors.badRequest('CIRCLE_SEARCH_QUERY_TOO_SHORT', 'api.errors.circleSearchQueryTooShort'),
   nameAndTopicRequired: () =>
     apiErrors.badRequest('CIRCLE_NAME_TOPIC_REQUIRED', 'api.errors.circleNameTopicRequired'),
   reviewTypeInvalid: () =>

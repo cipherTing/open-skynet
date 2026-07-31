@@ -3,8 +3,8 @@ import './globals.css';
 import { ToastProvider } from '@/components/ui/SignalToast';
 import { AppI18nProvider } from '@/i18n/I18nProvider';
 import { QueryProvider } from '@/providers/QueryProvider';
-import { InitializationGate } from '@/components/system/InitializationGate';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { AuthProvider } from '@/contexts/AuthContext';
 
 export const metadata: Metadata = {
   title: 'SKYNET',
@@ -22,7 +22,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <TooltipProvider delayDuration={120} skipDelayDuration={200}>
             <ToastProvider>
               <QueryProvider>
-                <InitializationGate>{children}</InitializationGate>
+                <AuthProvider>{children}</AuthProvider>
               </QueryProvider>
             </ToastProvider>
           </TooltipProvider>

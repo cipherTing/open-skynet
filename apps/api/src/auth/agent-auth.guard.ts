@@ -3,23 +3,26 @@ import { InjectModel } from '@nestjs/mongoose';
 import type { Request } from 'express';
 import { Model } from 'mongoose';
 import { Agent } from '@/database/schemas/agent.schema';
-import { User } from '@/database/schemas/user.schema';
+import { User, type UserRole } from '@/database/schemas/user.schema';
 import type { JwtAuthUser } from './interfaces/jwt-auth-user.interface';
 import { digestAgentKey, isUserSuspended } from './auth-security';
-import {
-  SECURITY_EVENT_REASONS,
-  SECURITY_EVENT_TYPES,
-  SecurityEventService,
-} from '@/system/security-event.service';
 
 type AgentAuthRequest = Request & { user?: JwtAuthUser };
+
+interface AgentAuthProjection {
+  agentId: string;
+  userId: string;
+  username: string;
+  role: UserRole;
+  suspendedAt: Date | null;
+  suspendedUntil: Date | null;
+}
 
 @Injectable()
 export class AgentAuthGuard implements CanActivate {
   constructor(
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
     @InjectModel(User.name) private readonly userModel: Model<User>,
-    private readonly securityEventService: SecurityEventService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -32,42 +35,69 @@ export class AgentAuthGuard implements CanActivate {
     }
 
     const digest = digestAgentKey(token);
-    const agent = await this.agentModel.findOne({ deletedAt: null, secretKeyDigest: digest });
-
-    if (!agent) {
-      await this.recordRejectedKey(request);
-      return false;
-    }
-
-    const user = await this.userModel.findById(agent.userId);
-    if (!user || user.deletedAt) {
-      await this.recordRejectedKey(request);
-      return false;
-    }
-    if (isUserSuspended(user)) {
-      await this.recordRejectedKey(request);
-      return false;
-    }
+    const matches = await this.agentModel.aggregate<AgentAuthProjection>([
+      { $match: { deletedAt: null, secretKeyDigest: digest } },
+      {
+        $lookup: {
+          from: this.userModel.collection.name,
+          let: {
+            ownerUserId: {
+              $convert: { input: '$userId', to: 'objectId', onError: null, onNull: null },
+            },
+          },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ['$_id', '$$ownerUserId'] },
+                    { $eq: ['$deletedAt', null] },
+                  ],
+                },
+              },
+            },
+            {
+              $project: {
+                _id: 0,
+                id: { $toString: '$_id' },
+                username: 1,
+                role: 1,
+                suspendedAt: 1,
+                suspendedUntil: 1,
+              },
+            },
+          ],
+          as: 'owner',
+        },
+      },
+      { $unwind: '$owner' },
+      {
+        $project: {
+          _id: 0,
+          agentId: { $toString: '$_id' },
+          userId: '$owner.id',
+          username: '$owner.username',
+          role: '$owner.role',
+          suspendedAt: '$owner.suspendedAt',
+          suspendedUntil: '$owner.suspendedUntil',
+        },
+      },
+      { $limit: 1 },
+    ]);
+    const match = matches[0];
+    if (!match || isUserSuspended(match)) return false;
 
     const authUser: JwtAuthUser = {
-      userId: user.id,
-      agentId: agent.id,
-      username: user.username,
+      userId: match.userId,
+      agentId: match.agentId,
+      username: match.username,
       dbTokenVersion: 0,
       payloadTokenVersion: 0,
-      role: user.role,
+      role: match.role,
       authType: 'agent',
     };
     request.user = authUser;
 
     return true;
-  }
-
-  private recordRejectedKey(request: Request): Promise<void> {
-    return this.securityEventService.record({
-      type: SECURITY_EVENT_TYPES.AGENT_KEY_REJECTED,
-      request,
-      reason: SECURITY_EVENT_REASONS.UNKNOWN_OR_INACTIVE_KEY,
-    });
   }
 }

@@ -7,21 +7,19 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import { AppBootstrapLoading } from '@/components/ui/AppBootstrapLoading';
 import { ErrorState } from '@/components/ui/LoadingState';
-import { AuthProvider, useAuth } from '@/contexts/AuthContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { OwnerOperationProvider } from '@/contexts/OwnerOperationContext';
 import { RouteNetworkCanvas } from '@/components/effects/RouteNetworkCanvas';
 import { SystemAnnouncementBar } from '@/components/system/SystemAnnouncementBar';
 import { authApi } from '@/lib/api';
 import { authKeys } from '@/lib/query-keys';
 
-const MINIMUM_BOOTSTRAP_MS = 1_000;
 const PAGE_FADE_MS = 100;
 
 export function InitializationGate({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
   const pathname = usePathname();
   const router = useRouter();
-  const [minimumDelayElapsed, setMinimumDelayElapsed] = useState(false);
   const statusQuery = useQuery({
     queryKey: authKeys.initialization(),
     queryFn: authApi.initializationStatus,
@@ -33,12 +31,7 @@ export function InitializationGate({ children }: { children: ReactNode }) {
   const isInitializationRoute = pathname === '/initialization';
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setMinimumDelayElapsed(true), MINIMUM_BOOTSTRAP_MS);
-    return () => window.clearTimeout(timer);
-  }, []);
-
-  useEffect(() => {
-    if (!minimumDelayElapsed || initialized === undefined) return;
+    if (initialized === undefined) return;
     if (!initialized && !isInitializationRoute) {
       router.replace('/initialization');
       return;
@@ -46,9 +39,9 @@ export function InitializationGate({ children }: { children: ReactNode }) {
     if (initialized && isInitializationRoute) {
       router.replace('/workspace');
     }
-  }, [initialized, isInitializationRoute, minimumDelayElapsed, router]);
+  }, [initialized, isInitializationRoute, router]);
 
-  if (!minimumDelayElapsed || statusQuery.isPending) return <AppBootstrapLoading />;
+  if (statusQuery.isPending) return <AppBootstrapLoading />;
   if (statusQuery.isError && initialized === undefined) {
     return (
       <div className="flex h-dvh items-center justify-center px-4">
@@ -68,9 +61,7 @@ export function InitializationGate({ children }: { children: ReactNode }) {
 
   return (
     <PageFade>
-      <AuthProvider>
-        <SessionScopedApplication>{children}</SessionScopedApplication>
-      </AuthProvider>
+      <SessionScopedApplication>{children}</SessionScopedApplication>
     </PageFade>
   );
 }

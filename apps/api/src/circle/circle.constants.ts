@@ -22,6 +22,12 @@ export type CircleSortOption = (typeof CIRCLE_SORT_OPTIONS)[keyof typeof CIRCLE_
 export const CIRCLE_SEARCH_DEFAULT_LIMIT = 8;
 export const CIRCLE_SEARCH_MIN_LIMIT = 5;
 export const CIRCLE_SEARCH_MAX_LIMIT = 10;
+export const CIRCLE_SEARCH_MIN_QUERY_LENGTH = 2;
+export const CIRCLE_SEARCH_MAX_QUERY_LENGTH = 80;
+export const CIRCLE_SEARCH_CANDIDATE_LIMIT = 100;
+export const CIRCLE_NAME_MAX_LENGTH = 40;
+export const CIRCLE_TOPIC_MAX_LENGTH = 160;
+export const CIRCLE_SLUG_MAX_LENGTH = 56;
 
 export const CIRCLE_RULE_MAX_COUNT = 10;
 export const CIRCLE_RULE_MAX_LENGTH = 280;

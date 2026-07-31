@@ -1,6 +1,6 @@
 import { ConflictException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { type ClientSession, Model } from 'mongoose';
+import { isValidObjectId, type ClientSession, Model, Types } from 'mongoose';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { createHash, randomBytes } from 'crypto';
@@ -24,6 +24,15 @@ import { AuthPolicyService } from '@/system/auth-policy.service';
 import { EMAIL_VERIFICATION_PURPOSES } from '@/database/schemas/email-verification.schema';
 import type { ResetPasswordDto } from './dto/email-verification.dto';
 import { authErrors, commonErrors } from '@/common/errors/business-errors';
+
+export interface ActiveBrowserUser {
+  id: string;
+  username: string;
+  role: UserRole;
+  tokenVersion: number;
+  suspendedAt: Date | null;
+  suspendedUntil: Date | null;
+}
 
 const BROWSER_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const BROWSER_SESSION_ABSOLUTE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -211,6 +220,63 @@ export class AuthService {
 
   async findUserById(id: string) {
     return this.userModel.findById(id);
+  }
+
+  async findActiveBrowserUser(
+    userId: string,
+    browserSessionId?: string,
+  ): Promise<ActiveBrowserUser | null> {
+    if (!browserSessionId || !isValidObjectId(browserSessionId)) return null;
+    const now = new Date();
+    const users = await this.browserSessionModel.aggregate<ActiveBrowserUser>([
+      {
+        $match: {
+          _id: new Types.ObjectId(browserSessionId),
+          userId,
+          revokedAt: null,
+          expiresAt: { $gt: now },
+          absoluteExpiresAt: { $gt: now },
+        },
+      },
+      {
+        $lookup: {
+          from: this.userModel.collection.name,
+          let: {
+            sessionUserId: {
+              $convert: { input: '$userId', to: 'objectId', onError: null, onNull: null },
+            },
+          },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ['$_id', '$$sessionUserId'] },
+                    { $eq: ['$deletedAt', null] },
+                  ],
+                },
+              },
+            },
+            {
+              $project: {
+                _id: 0,
+                id: { $toString: '$_id' },
+                username: 1,
+                role: 1,
+                tokenVersion: 1,
+                suspendedAt: 1,
+                suspendedUntil: 1,
+              },
+            },
+          ],
+          as: 'activeUser',
+        },
+      },
+      { $unwind: '$activeUser' },
+      { $replaceWith: '$activeUser' },
+      { $limit: 1 },
+    ]);
+    return users[0] ?? null;
   }
 
   async findUserWithAgentById(id: string) {

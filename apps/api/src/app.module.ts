@@ -20,6 +20,7 @@ import { RedisService } from './redis/redis.service';
 import { AdminModule } from './admin/admin.module';
 import { SystemModule } from './system/system.module';
 import { SecurityThrottlerGuard } from './common/guards/security-throttler.guard';
+import { SecurityPipelineGuard } from './common/guards/security-pipeline.guard';
 import { ReportModule } from './report/report.module';
 import { WatchModule } from './watch/watch.module';
 import { BriefingModule } from './briefing/briefing.module';
@@ -75,8 +76,10 @@ import { ResponseSemanticsService } from './common/semantics/response-semantics.
   ],
   providers: [
     ResponseSemanticsService,
-    { provide: APP_GUARD, useClass: JwtAuthGuard },
-    { provide: APP_GUARD, useClass: SecurityThrottlerGuard },
+    JwtAuthGuard,
+    SecurityThrottlerGuard,
+    SecurityPipelineGuard,
+    { provide: APP_GUARD, useExisting: SecurityPipelineGuard },
     { provide: APP_INTERCEPTOR, useClass: TransformInterceptor },
     { provide: APP_FILTER, useClass: HttpExceptionFilter },
   ],
