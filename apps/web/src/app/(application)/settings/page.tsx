@@ -15,7 +15,6 @@ import { useToast } from '@/components/ui/SignalToast';
 import { useUtcNow } from '@/components/home/terminal/terminal-hooks';
 import { TButton, TPanel } from '@/components/ui/terminal';
 import { Switch } from '@/components/ui/switch';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOwnerOperation } from '@/contexts/OwnerOperationContext';
 import { userApi, ApiError } from '@/lib/api';
@@ -33,45 +32,18 @@ type KeyInfoState =
   | { status: 'ready'; data: KeyInfo | null }
   | { status: 'error'; data: null };
 
-/** SYS.CONFIG 章节索引：左轨导航与滚动定位共用同一份定义。 */
-const CONFIG_SECTIONS = [
-  {
-    id: 'sec-account',
-    index: 'SEC.01',
-    titleKey: 'settingsSys.sections.account',
-    code: '// IDENTITY',
-  },
-  {
-    id: 'sec-permission',
-    index: 'SEC.02',
-    titleKey: 'settingsSys.sections.permission',
-    code: '// AUTH.SCOPE',
-  },
-  {
-    id: 'sec-privacy',
-    index: 'SEC.03',
-    titleKey: 'settingsSys.sections.privacy',
-    code: '// VISIBILITY',
-  },
-  { id: 'sec-key', index: 'SEC.04', titleKey: 'settingsSys.sections.key', code: '// KEY.MGMT' },
-] as const;
+/** 当前设置只有一个页面；页面内部的表单区不参与分页。 */
+const SETTINGS_PAGE_TAB = {
+  id: 'settings',
+  titleKey: 'settings.pageTitle',
+} as const;
 
-/** SYS.CONFIG 章节标：[SEC.xx] 荧光绿等宽标号 + 白色标题 + 暗绿系统代号 + 1px hairline。 */
-function SectionMarker({ index, title, code }: { index: string; title: string; code: string }) {
+function SettingsSectionHeader({ title }: { title: string }) {
   return (
     <div className="mb-4 flex items-center gap-3">
-      <span className="font-mono text-[11px] font-semibold tracking-[0.15em] text-[var(--t-accent)]">
-        [{index}]
-      </span>
       <h2 className="font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-white">
         {title}
       </h2>
-      <span
-        aria-hidden
-        className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]"
-      >
-        {code}
-      </span>
       <span aria-hidden className="h-px flex-1 bg-[var(--t-noise)]" />
     </div>
   );
@@ -302,34 +274,7 @@ function SettingsPageContent({
     }
   };
 
-  // 章节索引：滚动定位高亮（IntersectionObserver）+ 点击瞬时跳转（禁平滑滚动）
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [activeSection, setActiveSection] = useState<string>(CONFIG_SECTIONS[0].id);
-
-  useEffect(() => {
-    const root = scrollRef.current;
-    if (!root) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            setActiveSection(entry.target.id);
-          }
-        }
-      },
-      { root, rootMargin: '-20% 0px -70% 0px', threshold: 0 },
-    );
-    for (const section of CONFIG_SECTIONS) {
-      const el = document.getElementById(section.id);
-      if (el) observer.observe(el);
-    }
-    return () => observer.disconnect();
-  }, []);
-
-  const scrollToSection = (id: string) => {
-    setActiveSection(id);
-    document.getElementById(id)?.scrollIntoView({ block: 'start', behavior: 'auto' });
-  };
 
   const utcText = utcNow
     ? [utcNow.getUTCHours(), utcNow.getUTCMinutes(), utcNow.getUTCSeconds()]
@@ -341,80 +286,42 @@ function SettingsPageContent({
     <div className="relative flex h-full min-h-0 w-full flex-col overflow-hidden">
       <PageHeader titleKey="settings.pageTitle" />
 
-      {/* 窄屏章节切换：TTabs 横排，steps 硬切指示条 */}
-      <ToggleGroup
-        type="single"
-        value={activeSection}
-        onValueChange={(value) => {
-          if (CONFIG_SECTIONS.some((section) => section.id === value)) scrollToSection(value);
-        }}
+      {/* 只有一个设置页面；移动端保留同一个页签，不把表单区当成分页。 */}
+      <div
+        role="tablist"
         aria-label={t('settings.pageTitle')}
-        className="flex-none overflow-x-auto border-x-0 border-t-0 md:hidden"
+        className="flex flex-none border-b border-[var(--t-noise)] md:hidden"
       >
-        {CONFIG_SECTIONS.map((section) => (
-          <ToggleGroupItem key={section.id} value={section.id} className="shrink-0">
-            {section.index} {t(section.titleKey)}
-          </ToggleGroupItem>
-        ))}
-      </ToggleGroup>
+        <button
+          type="button"
+          role="tab"
+          aria-selected="true"
+          className="border-b-2 border-[var(--t-accent)] bg-[var(--t-panel)] px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.15em] text-white"
+        >
+          {t(SETTINGS_PAGE_TAB.titleKey)}
+        </button>
+      </div>
 
       <main className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-        {/* 左侧章节索引轨 */}
+        {/* 左侧页面页签；页面内部的表单区不在这里单独导航。 */}
         <aside className="hidden w-[224px] flex-none flex-col border-r border-[var(--t-noise)] bg-black md:flex">
           <div className="flex items-baseline justify-between gap-2 border-b border-[var(--t-noise)] px-4 py-3">
             <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
               SYS.CONFIG
             </span>
-            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
-              INDEX ×{CONFIG_SECTIONS.length}
-            </span>
           </div>
           <nav aria-label={t('settings.pageTitle')} className="flex flex-col py-1">
-            {CONFIG_SECTIONS.map((section) => {
-              const isActive = section.id === activeSection;
-              return (
-                <button
-                  key={section.id}
-                  type="button"
-                  onClick={() => scrollToSection(section.id)}
-                  aria-current={isActive}
-                  className={cn(
-                    'group relative flex items-baseline gap-2.5 px-4 py-2.5 text-left',
-                    'transition-colors duration-100 [transition-timing-function:steps(2,end)]',
-                    'focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--t-accent)]',
-                    isActive ? 'bg-[var(--t-panel)]' : 'hover:bg-[var(--t-panel)]',
-                  )}
-                >
-                  <span
-                    aria-hidden
-                    className={cn(
-                      'absolute inset-y-0 left-0 w-[2px]',
-                      isActive ? 'bg-[var(--t-accent)]' : 'bg-transparent',
-                    )}
-                  />
-                  <span
-                    className={cn(
-                      'font-mono text-[10px] tracking-[0.15em]',
-                      isActive
-                        ? 'text-[var(--t-accent)]'
-                        : 'text-[var(--t-faint)] group-hover:text-white/60',
-                    )}
-                  >
-                    {section.index}
-                  </span>
-                  <span
-                    className={cn(
-                      'font-mono text-[11px] uppercase tracking-[0.15em]',
-                      isActive ? 'text-white' : 'text-[var(--t-faint)] group-hover:text-white/70',
-                    )}
-                  >
-                    {t(section.titleKey)}
-                  </span>
-                </button>
-              );
-            })}
+            <button
+              type="button"
+              role="tab"
+              aria-selected="true"
+              className="relative flex items-baseline gap-2.5 bg-[var(--t-panel)] px-4 py-3 text-left font-mono text-[11px] uppercase tracking-[0.15em] text-white focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--t-accent)]"
+            >
+              <span aria-hidden className="absolute inset-y-0 left-0 w-[2px] bg-[var(--t-accent)]" />
+              <span className="text-[var(--t-accent)]">{t(SETTINGS_PAGE_TAB.titleKey)}</span>
+            </button>
           </nav>
-          {/* 索引轨底部：边缘元数据（UTC 时钟 / 节点状态） */}
+          {/* 左侧栏底部：边缘元数据（UTC 时钟 / 节点状态） */}
           <div className="mt-auto space-y-1.5 border-t border-[var(--t-noise)] px-4 py-3">
             <p className="flex items-center justify-between gap-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
               <span>UTC</span>
@@ -445,9 +352,6 @@ function SettingsPageContent({
                 <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
                   SYS.CONFIG // NODE
                 </p>
-                <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
-                  SEC ×{CONFIG_SECTIONS.length}
-                </p>
               </div>
               <h1 className="mt-2 text-2xl font-bold tracking-tight text-white">
                 {t('settings.title')}
@@ -458,13 +362,8 @@ function SettingsPageContent({
               </p>
             </header>
 
-            {/* SEC.01 账户 */}
-            <section id="sec-account" className="mb-10 scroll-mt-6">
-              <SectionMarker
-                index="SEC.01"
-                title={t('settingsSys.sections.account')}
-                code="// IDENTITY"
-              />
+            <section className="mb-10">
+              <SettingsSectionHeader title={t('settingsSys.sections.account')} />
               <TPanel>
                 <div className="flex flex-col gap-6 sm:flex-row">
                   {/* 左侧：头像与状态 */}
@@ -542,13 +441,8 @@ function SettingsPageContent({
               </TPanel>
             </section>
 
-            {/* SEC.02 权限 */}
-            <section id="sec-permission" className="mb-10 scroll-mt-6">
-              <SectionMarker
-                index="SEC.02"
-                title={t('settingsSys.sections.permission')}
-                code="// AUTH.SCOPE"
-              />
+            <section className="mb-10">
+              <SettingsSectionHeader title={t('settingsSys.sections.permission')} />
               <TPanel>
                 <ownerOperationForm.AppField name="ownerOperationEnabled">
                   {(field) => (
@@ -583,13 +477,8 @@ function SettingsPageContent({
               </TPanel>
             </section>
 
-            {/* SEC.03 隐私 */}
-            <section id="sec-privacy" className="mb-10 scroll-mt-6">
-              <SectionMarker
-                index="SEC.03"
-                title={t('settingsSys.sections.privacy')}
-                code="// VISIBILITY"
-              />
+            <section className="mb-10">
+              <SettingsSectionHeader title={t('settingsSys.sections.privacy')} />
               <TPanel>
                 <privacyForm.AppField name="favoritesPublic">
                   {(field) => (
@@ -624,13 +513,8 @@ function SettingsPageContent({
               </TPanel>
             </section>
 
-            {/* SEC.04 密钥 */}
-            <section id="sec-key" className="scroll-mt-6">
-              <SectionMarker
-                index="SEC.04"
-                title={t('settingsSys.sections.key')}
-                code="// KEY.MGMT"
-              />
+            <section>
+              <SettingsSectionHeader title={t('settingsSys.sections.key')} />
               <TPanel>
                 <div className="space-y-5">
                   {/* 当前密钥：只读等宽代码块 + 图标化复制 */}

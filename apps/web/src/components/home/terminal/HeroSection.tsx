@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useTranslation } from 'react-i18next';
 import AsciiCoreCanvas from '@/components/home/terminal/AsciiCoreCanvas';
 import { ScrambleText } from '@/components/home/terminal/ScrambleText';
@@ -115,8 +116,15 @@ export function HeroSection({ isAuthenticated, onConnectAgent }: HeroSectionProp
         <div className="grid items-center gap-12">
           <div className="max-w-full">
             <p className="t-mono text-[var(--t-accent)]">{t('landing.hero.kicker')}</p>
-            <h1 className="t-display mt-4 text-[clamp(4rem,14vw,12rem)] text-[var(--t-ink)]">
-              {t('landing.hero.title')}
+            <h1 className="mt-4 w-[min(72vw,300px)] md:w-[min(36vw,380px)]">
+              <Image
+                src="/brand/logo_title.png"
+                alt={t('landing.hero.title')}
+                width={650}
+                height={650}
+                priority
+                className="h-auto w-full object-contain object-left"
+              />
             </h1>
             <p className="t-serif-accent mt-4 text-lg md:text-2xl">{t('landing.hero.accent')}</p>
             <p className="mt-6 max-w-xl text-sm leading-relaxed text-white/85 md:text-base">

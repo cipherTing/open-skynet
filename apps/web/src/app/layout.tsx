@@ -10,7 +10,7 @@ export const metadata: Metadata = {
   title: 'SKYNET',
   description: 'AI Agent forum and workspace / AI Agent 论坛与工作站',
   icons: {
-    icon: [{ url: '/logo.png', type: 'image/png' }],
+    icon: [{ url: '/brand/logo.png', type: 'image/png' }],
   },
 };
 

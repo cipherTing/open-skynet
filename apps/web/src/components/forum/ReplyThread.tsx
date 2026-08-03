@@ -18,7 +18,7 @@ import { usePageScrollViewport } from '@/components/layout/PageScrollViewport';
 import { ApiError, forumApi } from '@/lib/api';
 import { notifyProgressionUpdated } from '@/lib/progression-events';
 import { Timecode } from '@/components/ui/terminal';
-import { VirtualList } from '@/components/ui/VirtualList';
+import { Virtuoso } from 'react-virtuoso';
 import { useOwnerOperation } from '@/contexts/OwnerOperationContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/components/ui/SignalToast';
@@ -33,6 +33,7 @@ import type {
 } from '@skynet/shared';
 
 const CHILD_REPLY_ESTIMATED_HEIGHT = 164;
+const CHILD_REPLY_VIEWPORT_EXTENSION = { top: 0, bottom: 900 } as const;
 
 interface ReplyThreadProps {
   reply: ForumReply;
@@ -539,35 +540,37 @@ export function ReplyThread({
       {/* 嵌套回复：缩进竖线 */}
       {shouldRenderChildren && (
         <div className="ml-4 border-l border-[var(--t-noise)] py-2 pl-3 sm:ml-6 sm:pl-4">
-          <VirtualList
-            items={children}
-            scrollElement={scrollElement}
-            getItemKey={(child) => child.id}
-            estimateSize={() => CHILD_REPLY_ESTIMATED_HEIGHT}
-            layoutVersion={`${reply.id}:${children.length}:${effectivePaging.nextCursor ?? 'end'}`}
-            itemClassName="pb-1"
-            tail={
-              effectivePaging.nextCursor ? (
-                <div className="px-1 py-2">
-                  <button
-                    type="button"
-                    disabled={childrenBusy}
-                    onClick={() => void handleLoadMoreChildren()}
-                    className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)] disabled:cursor-wait disabled:opacity-50"
-                  >
-                    {childrenBusy
-                      ? t('replyThread.loadingMoreChildren')
-                      : t('replyThread.loadMoreChildren', {
-                          count: Math.max(
-                            0,
-                            (reply.childCount ?? children.length) - children.length,
-                          ),
-                        })}
-                  </button>
-                </div>
-              ) : null
-            }
-            renderItem={(child) => (
+          <Virtuoso
+            data={children}
+            customScrollParent={scrollElement ?? undefined}
+            computeItemKey={(_, child) => child.id}
+            defaultItemHeight={CHILD_REPLY_ESTIMATED_HEIGHT}
+            increaseViewportBy={CHILD_REPLY_VIEWPORT_EXTENSION}
+            followOutput={false}
+            scrollIntoViewOnChange={() => false}
+            components={{
+              Footer: () =>
+                effectivePaging.nextCursor ? (
+                  <div className="px-1 py-2">
+                    <button
+                      type="button"
+                      disabled={childrenBusy}
+                      onClick={() => void handleLoadMoreChildren()}
+                      className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)] disabled:cursor-wait disabled:opacity-50"
+                    >
+                      {childrenBusy
+                        ? t('replyThread.loadingMoreChildren')
+                        : t('replyThread.loadMoreChildren', {
+                            count: Math.max(
+                              0,
+                              (reply.childCount ?? children.length) - children.length,
+                            ),
+                          })}
+                    </button>
+                  </div>
+                ) : null,
+            }}
+            itemContent={(_, child) => (
               <ChildReplyItem
                 child={child}
                 postId={postId}

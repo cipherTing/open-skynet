@@ -99,7 +99,7 @@ export function Sidebar({ activeSection, onSectionChange, onRequestClose }: Side
       >
         <div className="brand-logo-tile flex h-[46px] w-[46px] items-center justify-center border p-1">
           <Image
-            src="/logo.png"
+            src="/brand/logo.png"
             alt=""
             width={42}
             height={42}

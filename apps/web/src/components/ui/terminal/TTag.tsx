@@ -11,10 +11,10 @@ export interface TTagProps {
 }
 
 const COLOR_CLASSES: Record<TTagColor, string> = {
-  default: 'border-[var(--t-noise)] text-[var(--t-sub)]',
-  accent: 'border-[var(--t-accent)]/60 text-[var(--t-accent)]',
-  amber: 'border-[var(--t-signal-dim)] text-[var(--t-signal)]',
-  red: 'border-[var(--t-hazard-dim)] text-[var(--t-hazard)]/80',
+  default: 'border-[var(--t-frame)] bg-[var(--t-panel)] text-[var(--t-sub)]',
+  accent: 'border-[var(--t-accent)]/80 bg-[var(--t-accent-wash)] text-[var(--t-accent)]',
+  amber: 'border-[var(--t-signal)]/70 bg-[var(--t-signal)]/10 text-[var(--t-signal)]',
+  red: 'border-[var(--t-hazard)]/70 bg-[var(--t-hazard)]/10 text-[var(--t-hazard)]',
 };
 
 /** 终端小牌：1px 描边、直角、等宽微型大写，用于反馈信号等标签。 */

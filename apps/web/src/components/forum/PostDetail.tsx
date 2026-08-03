@@ -21,8 +21,8 @@ import { ReplyInput } from './ReplyInput';
 import { ErrorState } from '@/components/ui/LoadingState';
 import { AuthRequiredDialog, AuthRequiredState } from '@/components/ui/AuthRequiredDialog';
 import { TEmpty, TSkeleton, Timecode } from '@/components/ui/terminal';
-import { VirtualList } from '@/components/ui/VirtualList';
 import { usePageScrollViewport } from '@/components/layout/PageScrollViewport';
+import { Virtuoso } from 'react-virtuoso';
 import { ApiError, forumApi } from '@/lib/api';
 import { forumKeys, watchKeys } from '@/lib/query-keys';
 import { notifyProgressionUpdated } from '@/lib/progression-events';
@@ -57,6 +57,7 @@ interface RevisionBoundReplyQuote {
 }
 
 const REPLY_THREAD_ESTIMATED_HEIGHT = 220;
+const REPLY_FEED_VIEWPORT_EXTENSION = { top: 0, bottom: 1400 } as const;
 const SELECTED_REPLY_EXIT_TRANSITION_PROPERTY = 'grid-template-rows';
 const REDUCED_MOTION_MEDIA_QUERY = '(prefers-reduced-motion: reduce)';
 const UNKNOWN_POST_ERROR_CODE = 'UNKNOWN_POST_ERROR';
@@ -535,7 +536,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
         </div>
 
         {/* 元数据栅格：1px 暗绿分隔 */}
-        <div className="relative grid grid-cols-2 gap-px border-b border-[var(--t-frame)] bg-[var(--t-noise2)] sm:grid-cols-4">
+        <div className="relative grid grid-cols-2 gap-px border-b border-[var(--t-frame)] bg-[var(--t-noise2)] sm:grid-cols-3">
           <div className="bg-[var(--t-panel)] px-4 py-2.5 sm:px-6">
             <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-[var(--t-faint)]">
               {t('post.meta.author')}
@@ -576,18 +577,6 @@ function PostDetailContent({ postId }: PostDetailProps) {
                 compact
                 href={`/circles/${encodeURIComponent(post.circle.slug)}`}
               />
-            </p>
-          </div>
-          <div className="bg-[var(--t-panel)] px-4 py-2.5 sm:px-6">
-            <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-[var(--t-faint)]">
-              {t('post.meta.status')}
-            </p>
-            <p
-              className={`mt-1.5 font-mono text-[11px] uppercase tracking-[0.15em] ${
-                post.activeGovernanceCase ? 'text-[var(--t-accent)]' : 'text-white/70'
-              }`}
-            >
-              {post.activeGovernanceCase ? t('post.meta.statusCase') : t('post.meta.statusActive')}
             </p>
           </div>
         </div>
@@ -733,36 +722,42 @@ function PostDetailContent({ postId }: PostDetailProps) {
           )}
 
           {replies.length > 0 ? (
-            <VirtualList
-              items={replies}
-              scrollElement={scrollElement}
-              getItemKey={(reply) => reply.id}
-              estimateSize={() => REPLY_THREAD_ESTIMATED_HEIGHT}
-              onNearEnd={handleRepliesNearEnd}
-              layoutVersion={`${selectionKey ?? 'none'}:${selectedReplyLayoutVersion}`}
-              tail={
-                repliesQuery.isFetchingNextPage ? (
-                  <div className="pt-5 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
-                    {t('forum.loadingMoreReplies')}
+            <Virtuoso
+              data={replies}
+              customScrollParent={scrollElement ?? undefined}
+              computeItemKey={(_, reply) => reply.id}
+              defaultItemHeight={REPLY_THREAD_ESTIMATED_HEIGHT}
+              increaseViewportBy={REPLY_FEED_VIEWPORT_EXTENSION}
+              endReached={handleRepliesNearEnd}
+              followOutput={false}
+              scrollIntoViewOnChange={() => false}
+              components={{
+                Footer: () => (
+                  <div className="pb-5 pt-3">
+                    {repliesQuery.isFetchingNextPage ? (
+                      <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                        {t('forum.loadingMoreReplies')}
+                      </div>
+                    ) : repliesQuery.isError ? (
+                      <div className="border border-danger/40 border-l-2 border-l-danger bg-danger/10 px-4 py-3 text-center font-mono text-[12px] tracking-wide text-danger">
+                        <p>{t('forum.repliesLoadFailed')}</p>
+                        <button
+                          type="button"
+                          onClick={() => void retryReplies()}
+                          className="mt-2 text-accent transition-colors hover:text-accent-dim"
+                        >
+                          {t('app.retry')}
+                        </button>
+                      </div>
+                    ) : !repliesQuery.hasNextPage ? (
+                      <div className="py-2 text-center font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                        {t('forum.replyEnd')}
+                      </div>
+                    ) : null}
                   </div>
-                ) : repliesQuery.isError ? (
-                  <div className="mt-3 border border-danger/40 border-l-2 border-l-danger bg-danger/10 px-4 py-3 text-center font-mono text-[12px] tracking-wide text-danger">
-                    <p>{t('forum.repliesLoadFailed')}</p>
-                    <button
-                      type="button"
-                      onClick={() => void retryReplies()}
-                      className="mt-2 text-accent transition-colors hover:text-accent-dim"
-                    >
-                      {t('app.retry')}
-                    </button>
-                  </div>
-                ) : !repliesQuery.hasNextPage ? (
-                  <div className="py-5 text-center font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
-                    {t('forum.replyEnd')}
-                  </div>
-                ) : null
-              }
-              renderItem={(reply) => (
+                ),
+              }}
+              itemContent={(_, reply) => (
                 isForumDeletedReply(reply) ? (
                   <DeletedReplyPlaceholder
                     reply={reply}

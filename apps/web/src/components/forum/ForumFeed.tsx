@@ -61,9 +61,9 @@ const OVERLAY_BAR_SCROLL_THRESHOLD = 8;
 const POST_MASONRY_GAP_PX = 12;
 const POST_MASONRY_MIN_COLUMN_WIDTH_PX = 300;
 const POST_FEED_FOOTER_HEIGHT_CLASS = 'h-24';
-const POST_LIST_ITEM_CLASS = 'h-[132px]';
-const POST_TWO_COLUMN_ITEM_CLASS = 'h-[232px]';
-const POST_THREE_COLUMN_ITEM_CLASS = 'h-[252px]';
+const POST_LIST_ITEM_CLASS = 'h-[148px]';
+const POST_TWO_COLUMN_ITEM_CLASS = 'h-[224px]';
+const POST_THREE_COLUMN_ITEM_CLASS = 'h-[218px]';
 const POST_FEED_VIEWPORT_EXTENSION = { top: 0, bottom: 2600 } as const;
 const FORUM_LAYOUT_OPTIONS = [
   { value: 1, icon: List, labelKey: 'forum.layoutList' },
