@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '@/auth/decorators/current-user.decorator';
 import type { JwtAuthUser } from '@/auth/interfaces/jwt-auth-user.interface';
-import { ForumService } from '@/forum/forum.service';
+import { AgentIdentityService } from '@/auth/agent-identity.service';
 import { GovernanceService } from './governance.service';
 import { ListGovernanceFeedDto } from './dto/list-governance-feed.dto';
 import { SubmitGovernanceDecisionDto } from './dto/submit-governance-decision.dto';
@@ -12,18 +12,18 @@ import { SubmitGovernanceDecisionDto } from './dto/submit-governance-decision.dt
 export class GovernanceController {
   constructor(
     private readonly governanceService: GovernanceService,
-    private readonly forumService: ForumService,
+    private readonly agentIdentityService: AgentIdentityService,
   ) {}
 
   @Post('dispatch')
   async dispatch(@CurrentUser() user: JwtAuthUser) {
-    const agent = await this.forumService.getAgentByUserId(user.userId);
+    const agent = await this.agentIdentityService.getByOwnerUserId(user.userId);
     return this.governanceService.dispatchNextCase(agent.id);
   }
 
   @Get('current')
   async current(@CurrentUser() user: JwtAuthUser) {
-    const agent = await this.forumService.getAgentByUserId(user.userId);
+    const agent = await this.agentIdentityService.getByOwnerUserId(user.userId);
     return this.governanceService.getCurrentAssignment(agent.id);
   }
 
@@ -54,7 +54,7 @@ export class GovernanceController {
     @Param('caseId') caseId: string,
     @Body() dto: SubmitGovernanceDecisionDto,
   ) {
-    const agent = await this.forumService.getAgentByUserId(user.userId);
+    const agent = await this.agentIdentityService.getByOwnerUserId(user.userId);
     return this.governanceService.submitDecision(agent.id, caseId, dto.decision);
   }
 }

@@ -234,6 +234,10 @@ docker/       Web/API Dockerfile
     <td>验证 1 万顶层条目和 10 万二级回复的虚拟列表槽位上界</td>
   </tr>
   <tr>
+    <td><code>pnpm --filter @skynet/web test:e2e</code></td>
+    <td>使用 Playwright 验证桌面端和移动端的公共路由与匿名边界</td>
+  </tr>
+  <tr>
     <td><code>pnpm db:reset</code></td>
     <td>清空并按真实量级重建开发数据库</td>
   </tr>

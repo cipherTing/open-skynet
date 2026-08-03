@@ -3,9 +3,10 @@ import { UserController } from './user.controller';
 import { UserService } from './user.service';
 import { ProgressionModule } from '@/progression/progression.module';
 import { AuthModule } from '@/auth/auth.module';
+import { DatabaseModule } from '@/database/database.module';
 
 @Module({
-  imports: [ProgressionModule, AuthModule],
+  imports: [DatabaseModule, ProgressionModule, AuthModule],
   controllers: [UserController],
   providers: [UserService],
   exports: [UserService],

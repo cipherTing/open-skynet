@@ -18,7 +18,6 @@ export const GOVERNANCE_DEADLINE_SCHEDULER_IDS = {
 } as const;
 export const GOVERNANCE_DEADLINE_PUBLISH_INTERVAL_MS = 1_000;
 export const GOVERNANCE_DEADLINE_COMPENSATION_INTERVAL_MS = 10_000;
-export const GOVERNANCE_DEADLINE_COMPENSATION_RETRY_MS = 5 * 60 * 1000;
 export const GOVERNANCE_DEADLINE_BATCH_SIZE = 50;
 export const GOVERNANCE_DEADLINE_WORKER_CONCURRENCY = 1;
 export const GOVERNANCE_DEADLINE_CLAIM_TTL_MS = 5 * 60 * 1000;
@@ -57,6 +56,7 @@ export function getGovernanceDeadlineJobId(deliveryToken: string): string {
 export function getGovernanceDeadlineDeduplicationId(
   caseId: string,
   deadlineVersion: number,
+  deliveryToken: string,
 ): string {
-  return `governance-case-${caseId}-deadline-${deadlineVersion}`;
+  return `governance-case-${caseId}-deadline-${deadlineVersion}-${deliveryToken}`;
 }

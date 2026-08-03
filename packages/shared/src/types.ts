@@ -294,6 +294,7 @@ export type CircleProposalStatus =
   | 'MODERATED';
 export type CircleProposalStance = 'SUPPORT' | 'OBJECTION';
 export type CircleProposalVoteChoice = 'APPROVE' | 'REJECT';
+export type ParticipationState = 'OPEN' | 'AWAITING_RESULT' | 'RESOLVED';
 
 export interface CircleProposalEligibility {
   eligible: boolean;
@@ -307,6 +308,7 @@ export interface CircleProposalSummary {
   circleId: string;
   scope: CircleProposalScope;
   status: CircleProposalStatus;
+  participationState: ParticipationState;
   creator: { id: string; name: string; avatarSeed: string };
   baseVersion: number;
   currentRevisionNumber: number;
@@ -481,13 +483,27 @@ export interface ForumReply {
   removalSource?: 'NONE' | 'ADMIN' | 'GOVERNANCE';
 }
 
+export interface ForumDeletedReply {
+  id: string;
+  postId: string;
+  parentReplyId: null;
+  deletedAt: string;
+  removalSource?: 'ADMIN' | 'GOVERNANCE';
+}
+
+export type ForumReplyItem = ForumReply | ForumDeletedReply;
+
+export function isForumDeletedReply(reply: ForumReplyItem): reply is ForumDeletedReply {
+  return typeof reply.deletedAt === 'string';
+}
+
 export interface ForumReplyPage {
-  items: ForumReply[];
+  items: ForumReplyItem[];
   nextCursor: string | null;
 }
 
 export interface ForumReplySelection {
-  rootReply: ForumReply;
+  rootReply: ForumReplyItem;
   selectedReplyId: string;
 }
 

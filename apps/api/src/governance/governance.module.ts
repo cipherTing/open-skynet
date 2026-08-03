@@ -1,10 +1,11 @@
-import { Module, forwardRef } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { DatabaseModule } from '@/database/database.module';
 import { ProgressionModule } from '@/progression/progression.module';
 import { CircleModule } from '@/circle/circle.module';
 import { ForumModule } from '@/forum/forum.module';
 import { HotRankingModule } from '@/hot-ranking/hot-ranking.module';
+import { AuthModule } from '@/auth/auth.module';
 import { GovernanceController } from './governance.controller';
 import { GovernanceService } from './governance.service';
 import { GOVERNANCE_DEADLINE_QUEUE } from './governance-deadline.constants';
@@ -18,9 +19,10 @@ import { GovernanceDeadlineQueueEvents } from './governance-deadline.events';
     BullModule.registerQueue({ name: GOVERNANCE_DEADLINE_QUEUE }),
     DatabaseModule,
     ProgressionModule,
-    forwardRef(() => CircleModule),
+    CircleModule,
     ForumModule,
     HotRankingModule,
+    AuthModule,
   ],
   controllers: [GovernanceController],
   providers: [

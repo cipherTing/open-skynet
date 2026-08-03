@@ -60,12 +60,12 @@ import {
   CIRCLE_PROPOSAL_DEADLINE_JOB_PRIORITY,
   CIRCLE_PROPOSAL_DEADLINE_PUBLISH_INTERVAL_MS,
   CIRCLE_PROPOSAL_DEADLINE_COMPENSATION_INTERVAL_MS,
-  CIRCLE_PROPOSAL_DEADLINE_COMPENSATION_RETRY_MS,
   CIRCLE_PROPOSAL_DEADLINE_CONTROL_JOB_PRIORITY,
   CIRCLE_PROPOSAL_DEADLINE_JOB_ATTEMPTS,
   getCircleProposalDeadlineDeduplicationId,
   type CircleProposalDeadlineJob,
 } from './circle-proposal-deadline.constants';
+import { getDeadlineRecoveryDelayMs } from '@/common/queue/deadline-recovery';
 import { CircleProposalDeadlinePublisher } from './circle-proposal-deadline.publisher';
 import { CircleProposalDeadlineProcessor } from './circle-proposal-deadline.processor';
 import { CircleProposalDeadlineService } from './circle-proposal-deadline.service';
@@ -838,6 +838,7 @@ describe('CircleProposalService write boundaries', () => {
         deadlineCompensationClaimToken: null,
         deadlineCompensationClaimExpiresAt: null,
         deadlineCompensationDeliveryToken: null,
+        deadlineRecoveryFailureCount: 1,
         deadlineClaimVersion: null,
         deadlineClaimToken: null,
         deadlineClaimExpiresAt: null,
@@ -949,6 +950,7 @@ describe('CircleProposalService write boundaries', () => {
           deadlineCompensationClaimToken: null,
           deadlineCompensationClaimExpiresAt: null,
           deadlineCompensationDeliveryToken: null,
+          deadlineRecoveryFailureCount: 1,
         },
       },
     );
@@ -979,6 +981,7 @@ describe('CircleProposalService write boundaries', () => {
       id: getCircleProposalDeadlineDeduplicationId(
         firstDelivery.data.proposalId,
         firstDelivery.data.deadlineVersion,
+        firstDelivery.data.deliveryToken,
       ),
     });
   });
@@ -1023,6 +1026,7 @@ describe('CircleProposalService write boundaries', () => {
           votingDeadlineAt: overdueAt,
           nextTransitionAt: overdueAt,
           deadlineCompensationDispatchAt: overdueAt,
+          deadlineRecoveryFailureCount: 1,
         },
       },
     );
@@ -1075,7 +1079,12 @@ describe('CircleProposalService write boundaries', () => {
     } as Job<CircleProposalDeadlineJob>;
 
     await expect(deadlineProcessor.process(job)).rejects.toThrow('settlement failed');
-    expect(releaseSpy).toHaveBeenCalledWith(proposalId, 3, deliveryToken);
+    expect(releaseSpy).toHaveBeenCalledWith(
+      proposalId,
+      3,
+      deliveryToken,
+      expect.any(Error),
+    );
   });
 
   it('makes a failed compensation delivery immediately eligible without clearing another delivery', async () => {
@@ -1121,10 +1130,10 @@ describe('CircleProposalService write boundaries', () => {
       throw new Error('失败补偿任务没有恢复可投递时间');
     }
     expect(released.deadlineCompensationDispatchAt.getTime()).toBeGreaterThanOrEqual(
-      releaseStartedAt + CIRCLE_PROPOSAL_DEADLINE_COMPENSATION_RETRY_MS,
+      releaseStartedAt + getDeadlineRecoveryDelayMs(1),
     );
     expect(released.deadlineCompensationDispatchAt.getTime()).toBeLessThanOrEqual(
-      releaseFinishedAt + CIRCLE_PROPOSAL_DEADLINE_COMPENSATION_RETRY_MS,
+      releaseFinishedAt + getDeadlineRecoveryDelayMs(1),
     );
   });
 

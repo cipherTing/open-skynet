@@ -1502,6 +1502,11 @@ export class CircleProposalService {
     proposal.deadlineCompensationClaimToken = null;
     proposal.deadlineCompensationClaimExpiresAt = null;
     proposal.deadlineCompensationDeliveryToken = null;
+    proposal.deadlineRecoveryFailureCount = 0;
+    proposal.deadlineRecoveryLastFailureAt = null;
+    proposal.deadlineRecoveryNextAttemptAt = null;
+    proposal.deadlineRecoveryReasonClass = null;
+    proposal.deadlineRecoveryReasonFingerprint = null;
   }
 
   private clearTransitionSchedule(proposal: CircleProposalDocument): void {
@@ -1521,6 +1526,11 @@ export class CircleProposalService {
     proposal.deadlineCompensationClaimToken = null;
     proposal.deadlineCompensationClaimExpiresAt = null;
     proposal.deadlineCompensationDeliveryToken = null;
+    proposal.deadlineRecoveryFailureCount = 0;
+    proposal.deadlineRecoveryLastFailureAt = null;
+    proposal.deadlineRecoveryNextAttemptAt = null;
+    proposal.deadlineRecoveryReasonClass = null;
+    proposal.deadlineRecoveryReasonFingerprint = null;
   }
 
   private normalizePayload(
@@ -1758,11 +1768,13 @@ export class CircleProposalService {
   }
 
   private serializeSummary(proposal: CircleProposal) {
+    const participationState = this.getParticipationState(proposal);
     return {
       id: proposal.id,
       circleId: proposal.circleId,
       scope: proposal.scope,
       status: proposal.status,
+      participationState,
       creator: {
         id: proposal.creatorAgentId,
         name: proposal.creatorAgentNameSnapshot,
@@ -1781,6 +1793,15 @@ export class CircleProposalService {
       createdAt: proposal.createdAt.toISOString(),
       updatedAt: proposal.updatedAt.toISOString(),
     };
+  }
+
+  private getParticipationState(proposal: CircleProposal): 'OPEN' | 'AWAITING_RESULT' | 'RESOLVED' {
+    if (!ACTIVE_STATUSES.includes(proposal.status)) {
+      return 'RESOLVED';
+    }
+    return proposal.nextTransitionAt && proposal.nextTransitionAt.getTime() <= Date.now()
+      ? 'AWAITING_RESULT'
+      : 'OPEN';
   }
 
   private serializeRevision(revision: CircleProposalRevision) {

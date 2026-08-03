@@ -34,6 +34,25 @@ export interface CircleReviewPayload {
 }
 
 export type ContentReviewPayload = PostReviewPayload | CircleReviewPayload;
+
+export function isPostContentReviewRequest(
+  request: Pick<ContentReviewRequest, 'type' | 'payload'>,
+): request is Pick<ContentReviewRequest, 'type'> & {
+  type: typeof CONTENT_REVIEW_TYPES.POST;
+  payload: PostReviewPayload;
+} {
+  return request.type === CONTENT_REVIEW_TYPES.POST;
+}
+
+export function isCircleContentReviewRequest(
+  request: Pick<ContentReviewRequest, 'type' | 'payload'>,
+): request is Pick<ContentReviewRequest, 'type'> & {
+  type: typeof CONTENT_REVIEW_TYPES.CIRCLE;
+  payload: CircleReviewPayload;
+} {
+  return request.type === CONTENT_REVIEW_TYPES.CIRCLE;
+}
+
 export type ContentReviewRequestDocument = HydratedDocument<ContentReviewRequest>;
 
 @Schema({

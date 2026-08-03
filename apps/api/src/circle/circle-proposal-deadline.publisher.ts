@@ -12,7 +12,6 @@ import {
   CIRCLE_PROPOSAL_DEADLINE_COMPLETED_RETENTION,
   CIRCLE_PROPOSAL_DEADLINE_COMPENSATION_INTERVAL_MS,
   CIRCLE_PROPOSAL_DEADLINE_COMPENSATION_CONTINUATION_DEDUPLICATION_ID,
-  CIRCLE_PROPOSAL_DEADLINE_COMPENSATION_RETRY_MS,
   CIRCLE_PROPOSAL_DEADLINE_CONTROL_JOB_PRIORITY,
   CIRCLE_PROPOSAL_DEADLINE_FAILED_RETENTION,
   CIRCLE_PROPOSAL_DEADLINE_JOB_ATTEMPTS,
@@ -155,6 +154,13 @@ export class CircleProposalDeadlinePublisher implements OnModuleInit {
                 deadlineScheduleClaimToken: null,
                 deadlineScheduleClaimExpiresAt: null,
                 deadlineScheduleDeliveryToken: null,
+                deadlineCompensationDispatchAt: null,
+                deadlineCompensationDeliveryToken: delivery.deliveryToken,
+                deadlineRecoveryFailureCount: 0,
+                deadlineRecoveryLastFailureAt: null,
+                deadlineRecoveryNextAttemptAt: null,
+                deadlineRecoveryReasonClass: null,
+                deadlineRecoveryReasonFingerprint: null,
               },
             },
           },
@@ -173,6 +179,7 @@ export class CircleProposalDeadlinePublisher implements OnModuleInit {
         status: { $in: ACTIVE_CIRCLE_PROPOSAL_STATUSES },
         activeGovernanceCaseId: null,
         nextTransitionAt: { $lte: now },
+        deadlineRecoveryFailureCount: { $gt: 0 },
         $and: [
           {
             $or: [{ deadlineClaimExpiresAt: null }, { deadlineClaimExpiresAt: { $lte: now } }],
@@ -194,7 +201,6 @@ export class CircleProposalDeadlinePublisher implements OnModuleInit {
 
     const batchClaimToken = randomUUID();
     const claimExpiresAt = new Date(now.getTime() + CIRCLE_PROPOSAL_DEADLINE_PUBLISH_CLAIM_TTL_MS);
-    const nextDispatchAt = new Date(now.getTime() + CIRCLE_PROPOSAL_DEADLINE_COMPENSATION_RETRY_MS);
     const deliveryLeaseExpiresAt = new Date(now.getTime() + CIRCLE_PROPOSAL_DEADLINE_CLAIM_TTL_MS);
     const deliveryTokenById = new Map(
       candidates.map((candidate) => [candidate._id.toString(), randomUUID()]),
@@ -208,6 +214,7 @@ export class CircleProposalDeadlinePublisher implements OnModuleInit {
             activeGovernanceCaseId: null,
             deadlineVersion: candidate.deadlineVersion,
             nextTransitionAt: { $lte: now },
+            deadlineRecoveryFailureCount: { $gt: 0 },
             $and: [
               {
                 $or: [{ deadlineClaimExpiresAt: null }, { deadlineClaimExpiresAt: { $lte: now } }],
@@ -223,7 +230,7 @@ export class CircleProposalDeadlinePublisher implements OnModuleInit {
           },
           update: {
             $set: {
-              deadlineCompensationDispatchAt: nextDispatchAt,
+              deadlineCompensationDispatchAt: null,
               deadlineCompensationClaimToken: batchClaimToken,
               deadlineCompensationClaimExpiresAt: claimExpiresAt,
               deadlineCompensationDeliveryToken: deliveryTokenById.get(candidate._id.toString()),
@@ -254,6 +261,7 @@ export class CircleProposalDeadlinePublisher implements OnModuleInit {
         { deadlineCompensationClaimToken: batchClaimToken },
         {
           $set: {
+            deadlineCompensationDispatchAt: deliveryLeaseExpiresAt,
             deadlineCompensationClaimToken: null,
             deadlineCompensationClaimExpiresAt: deliveryLeaseExpiresAt,
           },
@@ -305,6 +313,7 @@ export class CircleProposalDeadlinePublisher implements OnModuleInit {
             id: getCircleProposalDeadlineDeduplicationId(
               delivery._id.toString(),
               delivery.deadlineVersion,
+              delivery.deliveryToken,
             ),
           },
           removeOnComplete: CIRCLE_PROPOSAL_DEADLINE_COMPLETED_RETENTION,

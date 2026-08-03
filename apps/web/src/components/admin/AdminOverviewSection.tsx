@@ -54,21 +54,11 @@ export function OverviewSection() {
               className="flex items-center justify-between gap-4 px-3 py-3 text-sm transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[var(--t-panel)] hover:shadow-[inset_2px_0_0_0_var(--t-accent)]"
             >
               <div className="text-white/60">{t(`admin.overview.serviceNames.${name}`)}</div>
-              <div className="flex items-center gap-3">
-                {service.counts && (
-                  <span className="font-mono text-[10px] tracking-[0.12em] text-[var(--t-faint)]">
-                    {t('admin.overview.queue', {
-                      waiting: service.counts.waiting ?? 0,
-                      failed: service.counts.failed ?? 0,
-                    })}
-                  </span>
-                )}
-                <TTag color={service.status === 'ok' ? 'accent' : 'amber'}>
-                  {service.status === 'ok'
-                    ? t('admin.overview.healthy')
-                    : t('admin.overview.unhealthy')}
-                </TTag>
-              </div>
+              <TTag color={service.status === 'ok' ? 'accent' : 'amber'}>
+                {service.status === 'ok'
+                  ? t('admin.overview.healthy')
+                  : t('admin.overview.unhealthy')}
+              </TTag>
             </div>
           ))}
         </div>

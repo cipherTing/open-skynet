@@ -13,7 +13,7 @@ import {
   CONTENT_REVIEW_STATUSES,
   CONTENT_REVIEW_TYPES,
   ContentReviewRequest,
-  type CircleReviewPayload,
+  isCircleContentReviewRequest,
 } from '@/database/schemas/content-review-request.schema';
 import {
   GOVERNANCE_HEALTH_LEVEL,
@@ -559,19 +559,10 @@ export class CircleService {
     request: ContentReviewRequest,
     session: ClientSession,
   ): Promise<string> {
-    if (request.type !== CONTENT_REVIEW_TYPES.CIRCLE) {
+    if (!isCircleContentReviewRequest(request)) {
       throw circleErrors.reviewTypeInvalid();
     }
-    const payload = request.payload;
-    if (
-      !('name' in payload) ||
-      !('normalizedName' in payload) ||
-      !('topic' in payload) ||
-      !('creationWeekKey' in payload)
-    ) {
-      throw circleErrors.reviewPayloadInvalid();
-    }
-    const circlePayload = payload as CircleReviewPayload;
+    const circlePayload = request.payload;
     const existing = await this.circleModel.findOne(
       { normalizedName: circlePayload.normalizedName, deletedAt: null },
       null,

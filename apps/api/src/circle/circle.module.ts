@@ -1,7 +1,6 @@
-import { Module, forwardRef } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { DatabaseModule } from '@/database/database.module';
-import { ForumModule } from '@/forum/forum.module';
 import { CircleController } from './circle.controller';
 import { CircleService } from './circle.service';
 import { CircleProposalController } from './circle-proposal.controller';
@@ -22,7 +21,6 @@ import { PostVisibilityModule } from '@/post-visibility/post-visibility.module';
     HotRankingModule,
     PostVisibilityModule,
     BullModule.registerQueue({ name: CIRCLE_PROPOSAL_DEADLINE_QUEUE }),
-    forwardRef(() => ForumModule),
   ],
   controllers: [CircleController, CircleProposalController],
   providers: [

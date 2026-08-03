@@ -16,7 +16,7 @@ import { ReportDialog } from './ReportDialog';
 import { PostTags } from './PostTags';
 import { PostRevisionActions } from './PostRevisionActions';
 import { GovernanceCaseStamp } from '@/components/governance/GovernanceCaseStamp';
-import { ReplyThread } from './ReplyThread';
+import { DeletedReplyPlaceholder, ReplyThread } from './ReplyThread';
 import { ReplyInput } from './ReplyInput';
 import { ErrorState } from '@/components/ui/LoadingState';
 import { AuthRequiredDialog, AuthRequiredState } from '@/components/ui/AuthRequiredDialog';
@@ -31,6 +31,7 @@ import { useOwnerOperation } from '@/contexts/OwnerOperationContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/components/ui/SignalToast';
 import { useCursorPaginationRetry } from '@/hooks/useCursorPaginationRetry';
+import { isForumDeletedReply } from '@skynet/shared';
 import type {
   FeedbackType,
   ForumPost,
@@ -58,6 +59,7 @@ interface RevisionBoundReplyQuote {
 const REPLY_THREAD_ESTIMATED_HEIGHT = 220;
 const SELECTED_REPLY_EXIT_TRANSITION_PROPERTY = 'grid-template-rows';
 const REDUCED_MOTION_MEDIA_QUERY = '(prefers-reduced-motion: reduce)';
+const UNKNOWN_POST_ERROR_CODE = 'UNKNOWN_POST_ERROR';
 
 export function PostDetail({ postId }: PostDetailProps) {
   return <PostDetailContent key={postId} postId={postId} />;
@@ -144,14 +146,22 @@ function SelectedReplyPanel({
               {t('replyThread.selectedLoadFailed')}
             </p>
           ) : (
-            <ReplyThread
-              reply={selection.rootReply}
-              postId={postId}
-              highlightedReplyId={selection.selectedReplyId}
-              domIdPrefix="selected-reply"
-              onReplyCreated={onReplyCreated}
-              onReplyUpdated={onReplyUpdated}
-            />
+            isForumDeletedReply(selection.rootReply) ? (
+              <DeletedReplyPlaceholder
+                reply={selection.rootReply}
+                highlightedReplyId={selection.selectedReplyId}
+                domIdPrefix="selected-reply"
+              />
+            ) : (
+              <ReplyThread
+                reply={selection.rootReply}
+                postId={postId}
+                highlightedReplyId={selection.selectedReplyId}
+                domIdPrefix="selected-reply"
+                onReplyCreated={onReplyCreated}
+                onReplyUpdated={onReplyUpdated}
+              />
+            )
           )}
         </div>
       </div>
@@ -170,6 +180,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
   const [favoriteBusy, setFavoriteBusy] = useState(false);
   const [watchBusy, setWatchBusy] = useState(false);
   const activePostIdRef = useRef(postId);
+  const postErrorToastKeyRef = useRef<string | null>(null);
   const trackedViewPostIdRef = useRef<string | null>(null);
   const postContentRef = useRef<HTMLDivElement | null>(null);
   const [replyQuote, setReplyQuote] = useState<RevisionBoundReplyQuote | null>(null);
@@ -185,6 +196,20 @@ function PostDetailContent({ postId }: PostDetailProps) {
     queryFn: () => forumApi.getPost(postId),
     enabled: !authLoading && isAuthenticated,
   });
+  useEffect(() => {
+    if (!postQuery.isError) {
+      postErrorToastKeyRef.current = null;
+      return;
+    }
+    const toastKey = `${postId}:${postQuery.error instanceof ApiError ? postQuery.error.code : UNKNOWN_POST_ERROR_CODE}`;
+    if (postErrorToastKeyRef.current === toastKey) return;
+    postErrorToastKeyRef.current = toastKey;
+    toast.error(
+      postQuery.error instanceof ApiError
+        ? postQuery.error.message
+        : t('forum.postLost', { id: postId }),
+    );
+  }, [postId, postQuery.error, postQuery.isError, t, toast]);
   const repliesQueryKey = forumKeys.replies(viewerKey, postId);
   const repliesQuery = useInfiniteQuery({
     queryKey: repliesQueryKey,
@@ -738,13 +763,20 @@ function PostDetailContent({ postId }: PostDetailProps) {
                 ) : null
               }
               renderItem={(reply) => (
-                <ReplyThread
-                  reply={reply}
-                  postId={postId}
-                  highlightedReplyId={highlightedReplyId}
-                  onReplyCreated={refreshReplyCreatedData}
-                  onReplyUpdated={refreshReplyData}
-                />
+                isForumDeletedReply(reply) ? (
+                  <DeletedReplyPlaceholder
+                    reply={reply}
+                    highlightedReplyId={highlightedReplyId}
+                  />
+                ) : (
+                  <ReplyThread
+                    reply={reply}
+                    postId={postId}
+                    highlightedReplyId={highlightedReplyId}
+                    onReplyCreated={refreshReplyCreatedData}
+                    onReplyUpdated={refreshReplyData}
+                  />
+                )
               )}
             />
           ) : null}

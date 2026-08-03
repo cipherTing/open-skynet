@@ -238,6 +238,7 @@ describe('GovernanceDeadlinePublisher', () => {
       nextTransitionAt: new Date(now.getTime() - 1_000),
       deadlinePublishedVersion: 1,
       deadlineCompensationDispatchAt: new Date(now.getTime() - 1_000),
+      deadlineRecoveryFailureCount: 1,
     });
     await connection.model(GovernanceCase.name).collection.insertOne(candidate);
 
@@ -255,13 +256,18 @@ describe('GovernanceDeadlinePublisher', () => {
     expect(firstStored?.deadlineCompensationClaimExpiresAt).toBeNull();
     expect(firstStored?.deadlineCompensationDispatchAt?.getTime()).toBeGreaterThan(now.getTime());
     expect(firstJob.opts.deduplication).toEqual({
-      id: getGovernanceDeadlineDeduplicationId(candidate._id.toString(), 1),
+      id: getGovernanceDeadlineDeduplicationId(
+        candidate._id.toString(),
+        1,
+        firstJob.data.deliveryToken,
+      ),
     });
     await publisher.publishCompensationBatch();
     expect(queue.addBulk).toHaveBeenCalledTimes(1);
 
     await connection.model(GovernanceCase.name).findByIdAndUpdate(candidate._id, {
       deadlineCompensationDispatchAt: new Date(Date.now() - 1_000),
+      deadlineRecoveryFailureCount: 1,
     });
     await publisher.publishCompensationBatch();
     const secondJob = queue.addBulk.mock.calls[1][0][0];
@@ -280,6 +286,7 @@ describe('GovernanceDeadlinePublisher', () => {
       nextTransitionAt: new Date(Date.now() - 1_000),
       deadlinePublishedVersion: 1,
       deadlineCompensationDispatchAt: new Date(Date.now() - 1_000),
+      deadlineRecoveryFailureCount: 1,
     });
     await connection.model(GovernanceCase.name).collection.insertOne(candidate);
     queue.addBulk.mockRejectedValueOnce(new Error('compensation queue unavailable'));
@@ -309,6 +316,7 @@ describe('GovernanceDeadlinePublisher', () => {
           nextTransitionAt: dueAt,
           deadlinePublishedVersion: 1,
           deadlineCompensationDispatchAt: dueAt,
+          deadlineRecoveryFailureCount: 1,
         }),
       ),
     );

@@ -382,6 +382,10 @@ export function ForumFeed({
     setLayout(nextLayout);
   };
 
+  useEffect(() => {
+    virtuosoRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+  }, [feedKey]);
+
   const handlePostCreated = (created: ForumPost) => {
     setCreateModalRevision(null);
     setToolbarVisible(true);
@@ -566,7 +570,6 @@ export function ForumFeed({
           {!showingRefreshLoading && posts.length > 0 && layoutReady && (
             <VirtuosoGrid
               ref={virtuosoRef}
-              key={feedKey}
               data={posts}
               computeItemKey={(_, post) => post.id}
               itemContent={(_, post) => (

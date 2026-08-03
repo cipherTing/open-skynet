@@ -212,9 +212,17 @@ export type BrowserAuthPayload = {
 };
 
 type SkynetAxiosRequestConfig = AxiosRequestConfig & {
-  skipAuthRefresh?: boolean;
+  authRefreshPolicy?: AuthRefreshPolicy;
   authRetry?: boolean;
 };
+
+export const AUTH_REFRESH_POLICIES = {
+  RETRY_ON_UNAUTHORIZED: 'retry-on-unauthorized',
+  SKIP: 'skip',
+} as const;
+
+type AuthRefreshPolicy =
+  (typeof AUTH_REFRESH_POLICIES)[keyof typeof AUTH_REFRESH_POLICIES];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -294,15 +302,6 @@ function isAuthExpiredStatus(statusCode: number): boolean {
   return statusCode === 401 || statusCode === 403;
 }
 
-function isAuthRefreshExcluded(endpoint?: string): boolean {
-  if (!endpoint) return true;
-  return (
-    endpoint.includes('/auth/login') ||
-    endpoint.includes('/auth/register') ||
-    endpoint.includes('/auth/refresh')
-  );
-}
-
 function normalizeRequestHeaders(headers: HeadersInit | undefined): AxiosHeaders {
   const normalized = new AxiosHeaders();
   new Headers(headers).forEach((value, key) => {
@@ -361,8 +360,9 @@ async function refreshAccessToken(): Promise<string | null> {
         if (isAuthExpiredStatus(normalizedError.statusCode)) {
           clearAccessToken();
           emitAuthExpired();
+          return null;
         }
-        return null;
+        throw normalizedError;
       })
       .finally(() => {
         refreshPromise = null;
@@ -386,9 +386,8 @@ apiClient.interceptors.response.use(
     const shouldRefresh =
       error.response?.status === 401 &&
       originalConfig &&
-      !originalConfig.skipAuthRefresh &&
-      !originalConfig.authRetry &&
-      !isAuthRefreshExcluded(originalConfig.url);
+      originalConfig.authRefreshPolicy !== AUTH_REFRESH_POLICIES.SKIP &&
+      !originalConfig.authRetry;
 
     if (!shouldRefresh) {
       throw normalizeAxiosError(error);
@@ -413,7 +412,7 @@ apiClient.interceptors.response.use(
 export async function apiRequest<T>(
   endpoint: string,
   options: RequestInit = {},
-  requestConfig: Pick<SkynetAxiosRequestConfig, 'skipAuthRefresh'> = {},
+  requestConfig: Pick<SkynetAxiosRequestConfig, 'authRefreshPolicy'> = {},
 ): Promise<T> {
   const headers = normalizeRequestHeaders(options.headers);
 
@@ -423,7 +422,7 @@ export async function apiRequest<T>(
     data: options.body,
     headers,
     signal: options.signal ?? undefined,
-    skipAuthRefresh: requestConfig.skipAuthRefresh,
+    authRefreshPolicy: requestConfig.authRefreshPolicy,
   };
 
   const response = await apiClient.request<unknown>(axiosConfig);
@@ -439,7 +438,11 @@ export const systemApi = {
 // Auth
 export const authApi = {
   initializationStatus: () =>
-    apiRequest<{ initialized: boolean }>('/auth/initialization', {}, { skipAuthRefresh: true }),
+    apiRequest<{ initialized: boolean }>(
+      '/auth/initialization',
+      {},
+      { authRefreshPolicy: AUTH_REFRESH_POLICIES.SKIP },
+    ),
   initializeAdministrator: (data: {
     username: string;
     email: string;
@@ -450,7 +453,7 @@ export const authApi = {
     apiRequest<BrowserAuthPayload>(
       '/auth/initialization',
       { method: 'POST', body: JSON.stringify(data) },
-      { skipAuthRefresh: true },
+      { authRefreshPolicy: AUTH_REFRESH_POLICIES.SKIP },
     ),
   register: (data: {
     username: string;
@@ -462,20 +465,28 @@ export const authApi = {
     verificationCode: string;
     invitationCode?: string;
   }) =>
-    apiRequest<{ user: User; agent: Agent | null; token: string }>('/auth/register', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
+    apiRequest<{ user: User; agent: Agent | null; token: string }>(
+      '/auth/register',
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      },
+      { authRefreshPolicy: AUTH_REFRESH_POLICIES.SKIP },
+    ),
   login: (data: { identity: string; password: string; turnstileToken?: string }) =>
-    apiRequest<{ user: User; agent: Agent | null; token: string }>('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
+    apiRequest<{ user: User; agent: Agent | null; token: string }>(
+      '/auth/login',
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      },
+      { authRefreshPolicy: AUTH_REFRESH_POLICIES.SKIP },
+    ),
   refresh: () =>
     apiRequest<{ user: User; agent: Agent | null; token: string }>(
       '/auth/refresh',
       { method: 'POST' },
-      { skipAuthRefresh: true },
+      { authRefreshPolicy: AUTH_REFRESH_POLICIES.SKIP },
     ),
   me: () => apiRequest<{ user: User | null; agent: Agent | null }>('/auth/me'),
   logout: () =>
@@ -488,7 +499,11 @@ export const authApi = {
       turnstileEnabled: boolean;
       turnstileSiteKey: string;
       version: number;
-    }>('/auth/config', {}, { skipAuthRefresh: true }),
+    }>(
+      '/auth/config',
+      {},
+      { authRefreshPolicy: AUTH_REFRESH_POLICIES.SKIP },
+    ),
   sendEmailVerification: (data: {
     email: string;
     purpose: 'REGISTER' | 'RESET_PASSWORD';
@@ -500,7 +515,7 @@ export const authApi = {
         method: 'POST',
         body: JSON.stringify(data),
       },
-      { skipAuthRefresh: true },
+      { authRefreshPolicy: AUTH_REFRESH_POLICIES.SKIP },
     ),
   resetPassword: (data: {
     email: string;
@@ -514,7 +529,7 @@ export const authApi = {
         method: 'POST',
         body: JSON.stringify(data),
       },
-      { skipAuthRefresh: true },
+      { authRefreshPolicy: AUTH_REFRESH_POLICIES.SKIP },
     ),
 };
 

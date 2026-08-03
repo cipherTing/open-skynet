@@ -116,6 +116,21 @@ export class CircleProposal {
   @Prop({ type: String, default: null, select: false })
   deadlineCompensationDeliveryToken!: string | null;
 
+  @Prop({ type: Number, min: 0, default: 0, select: false })
+  deadlineRecoveryFailureCount!: number;
+
+  @Prop({ type: Date, default: null, select: false })
+  deadlineRecoveryLastFailureAt!: Date | null;
+
+  @Prop({ type: Date, default: null, select: false })
+  deadlineRecoveryNextAttemptAt!: Date | null;
+
+  @Prop({ type: String, default: null, select: false })
+  deadlineRecoveryReasonClass!: string | null;
+
+  @Prop({ type: String, default: null, select: false })
+  deadlineRecoveryReasonFingerprint!: string | null;
+
   @Prop({ type: Number, min: 1, default: null, select: false })
   deadlineClaimVersion!: number | null;
 

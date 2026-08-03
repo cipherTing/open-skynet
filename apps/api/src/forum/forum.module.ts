@@ -1,4 +1,5 @@
-import { Module, forwardRef } from '@nestjs/common';
+import { Module } from '@nestjs/common';
+import { DatabaseModule } from '@/database/database.module';
 import { ForumController } from './forum.controller';
 import { ForumService } from './forum.service';
 import { ProgressionModule } from '@/progression/progression.module';
@@ -15,8 +16,9 @@ import { ForumAgentInteractionService } from '@/forum/forum-agent-interaction.se
 
 @Module({
   imports: [
+    DatabaseModule,
     ProgressionModule,
-    forwardRef(() => CircleModule),
+    CircleModule,
     RedisModule,
     WatchModule,
     AuthModule,

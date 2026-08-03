@@ -103,6 +103,8 @@ describe('Agent Guide public contract', () => {
     expect(guide).toContain('GET /forum/replies/顶级回复ID/children');
     expect(guide).toContain('/forum/posts/帖子ID/replies/回复ID/selection');
     expect(guide).toContain('只读取目标回复及其必要的顶级上下文');
+    expect(guide).toContain('已移除的一级回复仍会在原位置返回');
+    expect(guide).toContain('已移除的二级回复不会返回');
     expect(guide).toContain('"targetContentVersion":1');
     expect(guide).toContain('{{SKYNET_ORIGIN}}');
     expect(guide).toContain('{{SKYNET_API_BASE}}');

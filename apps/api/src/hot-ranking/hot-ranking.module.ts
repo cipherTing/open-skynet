@@ -21,9 +21,11 @@ import {
   HotCandidateQueueEvents,
   HotProjectionQueueEvents,
 } from '@/hot-ranking/hot-ranking.events';
+import { DatabaseModule } from '@/database/database.module';
 
 @Module({
   imports: [
+    DatabaseModule,
     BullModule.registerQueue(
       { name: HOT_RANKING_PROJECTION_QUEUE },
       { name: HOT_RANKING_CANDIDATE_QUEUE },

@@ -39,6 +39,7 @@ import { RedisService } from '@/redis/redis.service';
 import { FEEDBACK_TARGET_TYPES } from '@/forum/feedback.constants';
 import {
   HOT_CANDIDATE_JOB_KINDS,
+  HOT_CANDIDATE_BUILDING_GENERATION_KEY,
   HOT_CANDIDATE_REBUILD_BATCH_SIZE,
   HOT_RANKING_CANDIDATE_QUEUE,
   HOT_RANKING_CANDIDATE_MAINTENANCE_QUEUE,
@@ -1212,7 +1213,7 @@ describe('Hot ranking projection and candidates', () => {
     expect(candidateQueue.add).not.toHaveBeenCalled();
   });
 
-  it('rejects candidate sync when Mongo has an active generation without Redis pointers', async () => {
+  it('keeps candidate sync pending when Mongo has no writable Redis generation', async () => {
     const author = await createAgent('sync-missing-pointer-author');
     const post = await createPost(author);
     await stateModel.updateOne(
@@ -1228,9 +1229,7 @@ describe('Hot ranking projection and candidates', () => {
       activatedAt: new Date(),
     });
 
-    await expect(candidateService.syncCandidate(post.id)).rejects.toThrow(
-      '活跃代际缺少 Redis 指针',
-    );
+    await expect(candidateService.syncCandidate(post.id)).resolves.toBeUndefined();
     await expect(stateModel.findOne({ postId: post.id }).lean()).resolves.toMatchObject({
       candidateDirty: true,
       candidateSyncedVersion: 0,
@@ -1671,7 +1670,7 @@ describe('Hot ranking projection and candidates', () => {
     );
   });
 
-  it('rejects a missing Redis build marker instead of silently rebuilding', async () => {
+  it('restores a missing Redis build marker without scanning business data', async () => {
     const stateFindSpy = jest.spyOn(stateModel, 'find');
     await candidateService.ensureCandidateGeneration();
     const first = await generationModel.findOne({
@@ -1680,9 +1679,7 @@ describe('Hot ranking projection and candidates', () => {
     if (!first) throw new Error('首个候选代际未创建');
     redis.values.delete(`skynet:v3:hot-posts:generation:${first.generationId}:building`);
 
-    await expect(candidateService.ensureCandidateGeneration()).rejects.toThrow(
-      `构建代际缺少 Redis 标记 ${first.generationId}`,
-    );
+    await expect(candidateService.ensureCandidateGeneration()).resolves.toBeUndefined();
 
     const generations = await generationModel.find({}).sort({ createdAt: 1 });
     expect(generations).toHaveLength(1);
@@ -1690,11 +1687,15 @@ describe('Hot ranking projection and candidates', () => {
       generationId: first.generationId,
       status: HOT_CANDIDATE_GENERATION_STATUSES.BUILDING,
     });
+    expect(redis.values.get(`skynet:v3:hot-posts:generation:${first.generationId}:building`)).toBe(
+      first.generationId,
+    );
+    expect(redis.values.get(HOT_CANDIDATE_BUILDING_GENERATION_KEY)).toBe(first.generationId);
     expect(stateFindSpy).not.toHaveBeenCalled();
     stateFindSpy.mockRestore();
   });
 
-  it('rejects an active Mongo generation without a ready Redis pointer', async () => {
+  it('starts a bounded rebuild when Mongo has an active generation without a ready Redis pointer', async () => {
     const generationId = 'active-generation-without-redis-pointer';
     await generationModel.create({
       generationId,
@@ -1705,10 +1706,14 @@ describe('Hot ranking projection and candidates', () => {
       activatedAt: new Date(),
     });
 
-    await expect(candidateService.ensureCandidateGeneration()).rejects.toThrow(
-      '活跃代际缺少 Redis 就绪指针',
+    await expect(candidateService.ensureCandidateGeneration()).resolves.toBeUndefined();
+    await expect(generationModel.find({}).lean()).resolves.toHaveLength(2);
+    expect(candidateMaintenanceQueue.add).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        kind: HOT_CANDIDATE_JOB_KINDS.REBUILD_BATCH,
+      }),
+      expect.any(Object),
     );
-    await expect(generationModel.find({}).lean()).resolves.toHaveLength(1);
-    expect(candidateMaintenanceQueue.add).not.toHaveBeenCalled();
   });
 });

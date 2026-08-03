@@ -32,7 +32,11 @@ export class CircleProposalDeadlineProcessor extends WorkerHost {
         return;
       }
       if (job.data.kind === CIRCLE_PROPOSAL_DEADLINE_JOB_KINDS.ADVANCE_PROPOSAL) {
-        await this.deadlineService.processProposal(job.data.proposalId, job.data.deadlineVersion);
+        await this.deadlineService.processProposal(
+          job.data.proposalId,
+          job.data.deadlineVersion,
+          job.data.deliveryToken,
+        );
         return;
       }
       throw new Error('共建提案截止队列任务类型无效');
@@ -46,6 +50,7 @@ export class CircleProposalDeadlineProcessor extends WorkerHost {
           job.data.proposalId,
           job.data.deadlineVersion,
           job.data.deliveryToken,
+          failure,
         );
       }
       throw failure;

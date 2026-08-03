@@ -15,7 +15,11 @@ import { Reply } from '@/database/schemas/reply.schema';
 import { Circle } from '@/database/schemas/circle.schema';
 import { CircleProposal } from '@/database/schemas/circle-proposal.schema';
 import { GovernanceCase } from '@/database/schemas/governance-case.schema';
-import { ContentReviewRequest } from '@/database/schemas/content-review-request.schema';
+import {
+  ContentReviewRequest,
+  isCircleContentReviewRequest,
+  isPostContentReviewRequest,
+} from '@/database/schemas/content-review-request.schema';
 import { InvitationCode } from '@/database/schemas/invitation-code.schema';
 import type { ListAdminAuditLogsDto } from './dto/list-admin-audit-logs.dto';
 import { translateApiText } from '@/common/i18n/api-language';
@@ -220,12 +224,11 @@ export class AdminAuditService {
       targetLabelMap.set(`GOVERNANCE_CASE:${governanceCase._id.toString()}`, label);
     }
     for (const review of reviews) {
-      const label =
-        review.type === 'POST' && 'title' in review.payload
-          ? review.payload.title
-          : review.type === 'CIRCLE' && 'name' in review.payload
-            ? review.payload.name
-            : translateApiText('api.labels.deletedContentReview', 'Deleted content review');
+      const label = isPostContentReviewRequest(review)
+        ? review.payload.title
+        : isCircleContentReviewRequest(review)
+          ? review.payload.name
+          : translateApiText('api.labels.deletedContentReview', 'Deleted content review');
       targetLabelMap.set(`CONTENT_REVIEW:${review._id.toString()}`, label);
     }
     for (const invitation of invitations) {
@@ -389,12 +392,13 @@ export class AdminAuditService {
     }
     if (targetType === 'CONTENT_REVIEW') {
       const review = await this.contentReviewModel.findById(targetId).select('type payload').lean();
-      const label =
-        review?.type === 'POST' && 'title' in review.payload
+      const label = review
+        ? isPostContentReviewRequest(review)
           ? review.payload.title
-          : review?.type === 'CIRCLE' && 'name' in review.payload
+          : isCircleContentReviewRequest(review)
             ? review.payload.name
-            : translateApiText('api.labels.deletedContentReview', 'Deleted content review');
+            : translateApiText('api.labels.deletedContentReview', 'Deleted content review')
+        : translateApiText('api.labels.deletedContentReview', 'Deleted content review');
       return { id: targetId, type: targetType, label };
     }
     if (targetType === 'INVITATION_CODE') {

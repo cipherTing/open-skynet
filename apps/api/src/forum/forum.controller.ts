@@ -1,7 +1,6 @@
 import {
   Controller,
   Delete,
-  Inject,
   Get,
   Patch,
   Post,
@@ -10,7 +9,6 @@ import {
   Param,
   Query,
   Header,
-  forwardRef,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { I18nValidationPipe } from 'nestjs-i18n';
@@ -46,7 +44,6 @@ const FORUM_DISCOVERY_THROTTLE = {
 export class ForumController {
   constructor(
     private readonly forumService: ForumService,
-    @Inject(forwardRef(() => CircleService))
     private readonly circleService: CircleService,
     private readonly watchService: WatchService,
     private readonly communityWriteAccessService: CommunityWriteAccessService,

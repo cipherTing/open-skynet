@@ -6,9 +6,10 @@ import { PostVisibilityProjectionService } from '@/post-visibility/post-visibili
 import { PostVisibilityPublisher } from '@/post-visibility/post-visibility.publisher';
 import { PostVisibilityQueueEvents } from '@/post-visibility/post-visibility.events';
 import { PostVisibilityService } from '@/post-visibility/post-visibility.service';
+import { DatabaseModule } from '@/database/database.module';
 
 @Module({
-  imports: [BullModule.registerQueue({ name: POST_VISIBILITY_QUEUE })],
+  imports: [DatabaseModule, BullModule.registerQueue({ name: POST_VISIBILITY_QUEUE })],
   providers: [
     PostVisibilityService,
     PostVisibilityPublisher,

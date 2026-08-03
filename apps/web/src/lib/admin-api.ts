@@ -120,7 +120,6 @@ export interface AdminOverview {
       status: 'ok' | 'error';
       latencyMs?: number;
       message?: string;
-      counts?: Record<string, number>;
     }
   >;
   process: { uptimeSeconds: number; nodeVersion: string };

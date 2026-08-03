@@ -7,10 +7,11 @@ import { PublicAccessService } from './public-access.service';
 import { AuthPolicyService } from './auth-policy.service';
 import { TurnstileService } from './turnstile.service';
 import { MailModule } from './mail.module';
+import { DatabaseModule } from '@/database/database.module';
 
 @Global()
 @Module({
-  imports: [MailModule],
+  imports: [DatabaseModule, MailModule],
   controllers: [SystemController],
   providers: [
     AnnouncementService,

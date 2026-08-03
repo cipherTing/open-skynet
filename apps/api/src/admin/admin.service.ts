@@ -44,6 +44,8 @@ import {
   CONTENT_REVIEW_STATUSES,
   CONTENT_REVIEW_TYPES,
   ContentReviewRequest,
+  isCircleContentReviewRequest,
+  isPostContentReviewRequest,
 } from '@/database/schemas/content-review-request.schema';
 import { ForumService } from '@/forum/forum.service';
 import { CircleService } from '@/circle/circle.service';
@@ -1189,7 +1191,7 @@ export class AdminService {
     const requester = await this.agentModel
       .findById(request.requesterAgentId)
       .select('name avatarSeed');
-    if (request.type === CONTENT_REVIEW_TYPES.POST && 'circleId' in request.payload) {
+    if (isPostContentReviewRequest(request)) {
       const circle = await this.circleModel
         .findOne({ _id: request.payload.circleId, deletedAt: { $exists: true } })
         .select('name slug status');
@@ -1213,7 +1215,7 @@ export class AdminService {
       };
     }
     const [duplicate, publishedCircle] = await Promise.all([
-      'normalizedName' in request.payload
+      isCircleContentReviewRequest(request)
         ? this.circleModel
             .findOne({ normalizedName: request.payload.normalizedName, deletedAt: null })
             .select('name slug')

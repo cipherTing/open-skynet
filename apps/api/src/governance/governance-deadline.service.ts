@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { GovernanceCase } from '@/database/schemas/governance-case.schema';
@@ -7,12 +7,15 @@ import { DatabaseService } from '@/database/database.service';
 import { ACTIVE_GOVERNANCE_CASE_STATUSES } from './governance.constants';
 import {
   GOVERNANCE_DEADLINE_CLAIM_TTL_MS,
-  GOVERNANCE_DEADLINE_COMPENSATION_RETRY_MS,
 } from './governance-deadline.constants';
 import { GovernanceService } from './governance.service';
+import { getDeadlineRecoveryDelayMs } from '@/common/queue/deadline-recovery';
+import { summarizeQueueFailureReason } from '@/common/queue/queue-event-log';
 
 @Injectable()
 export class GovernanceDeadlineService {
+  private readonly logger = new Logger(GovernanceDeadlineService.name);
+
   constructor(
     @InjectModel(GovernanceCase.name)
     private readonly caseModel: Model<GovernanceCase>,
@@ -20,7 +23,11 @@ export class GovernanceDeadlineService {
     private readonly governanceService: GovernanceService,
   ) {}
 
-  async processCase(caseId: string, deadlineVersion: number): Promise<boolean> {
+  async processCase(
+    caseId: string,
+    deadlineVersion: number,
+    deliveryToken?: string,
+  ): Promise<boolean> {
     const now = new Date();
     const claimToken = randomUUID();
     const claimExpiresAt = new Date(now.getTime() + GOVERNANCE_DEADLINE_CLAIM_TTL_MS);
@@ -30,6 +37,7 @@ export class GovernanceDeadlineService {
         status: { $in: ACTIVE_GOVERNANCE_CASE_STATUSES },
         deadlineVersion,
         nextTransitionAt: { $lte: now },
+        ...(deliveryToken ? { deadlineCompensationDeliveryToken: deliveryToken } : {}),
         $or: [{ deadlineClaimExpiresAt: null }, { deadlineClaimExpiresAt: { $lte: now } }],
       },
       {
@@ -65,15 +73,30 @@ export class GovernanceDeadlineService {
     caseId: string,
     deadlineVersion: number,
     deliveryToken: string,
+    error?: unknown,
   ): Promise<void> {
+    const current = await this.caseModel
+      .findOne({
+        _id: caseId,
+        deadlineVersion,
+        deadlineCompensationDeliveryToken: deliveryToken,
+      })
+      .select('+deadlineRecoveryFailureCount')
+      .lean<{ deadlineRecoveryFailureCount?: number }>();
+    if (!current) return;
+    const failureCount = (current.deadlineRecoveryFailureCount ?? 0) + 1;
     const nextCompensationDispatchAt = new Date(
-      Date.now() + GOVERNANCE_DEADLINE_COMPENSATION_RETRY_MS,
+      Date.now() + getDeadlineRecoveryDelayMs(failureCount),
+    );
+    const summary = summarizeQueueFailureReason(
+      error instanceof Error ? error.message : String(error ?? 'UnknownError'),
     );
     await this.caseModel.updateOne(
       {
         _id: caseId,
         deadlineVersion,
         deadlineCompensationDeliveryToken: deliveryToken,
+        deadlineRecoveryFailureCount: failureCount - 1,
       },
       {
         $set: {
@@ -81,9 +104,20 @@ export class GovernanceDeadlineService {
           deadlineCompensationClaimToken: null,
           deadlineCompensationClaimExpiresAt: null,
           deadlineCompensationDeliveryToken: null,
+          deadlineRecoveryLastFailureAt: new Date(),
+          deadlineRecoveryNextAttemptAt: nextCompensationDispatchAt,
+          deadlineRecoveryReasonClass: summary.reasonClass,
+          deadlineRecoveryReasonFingerprint: summary.fingerprint,
+        },
+        $inc: {
+          deadlineRecoveryFailureCount: 1,
         },
       },
     );
+    const message =
+      `治理截止任务进入自动恢复 queue=governance-deadline caseId=${caseId} deadlineVersion=${deadlineVersion} failureCount=${failureCount} nextAttemptAt=${nextCompensationDispatchAt.toISOString()} reasonClass=${summary.reasonClass} reasonFingerprint=${summary.fingerprint}`;
+    if (failureCount === 1) this.logger.error(message);
+    else this.logger.warn(message);
   }
 
   private async releaseClaim(

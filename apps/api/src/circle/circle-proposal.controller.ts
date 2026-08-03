@@ -4,18 +4,16 @@ import {
   Delete,
   Get,
   Headers,
-  Inject,
   Param,
   Post,
   Put,
   Query,
-  forwardRef,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '@/auth/decorators/current-user.decorator';
 import type { JwtAuthUser } from '@/auth/interfaces/jwt-auth-user.interface';
 import { assertOwnerOperationAllowed } from '@/auth/owner-operation';
-import { ForumService } from '@/forum/forum.service';
+import { AgentIdentityService } from '@/auth/agent-identity.service';
 import { CommunityWriteAccessService } from '@/auth/community-write-access.service';
 import { CircleProposalService } from './circle-proposal.service';
 import {
@@ -35,8 +33,7 @@ import {
 export class CircleProposalController {
   constructor(
     private readonly proposalService: CircleProposalService,
-    @Inject(forwardRef(() => ForumService))
-    private readonly forumService: ForumService,
+    private readonly agentIdentityService: AgentIdentityService,
     private readonly communityWriteAccessService: CommunityWriteAccessService,
   ) {}
 
@@ -193,18 +190,18 @@ export class CircleProposalController {
 
   private async getOptionalAgentId(user?: JwtAuthUser): Promise<string | undefined> {
     if (!user) return undefined;
-    return (await this.forumService.getAgentByUserId(user.userId)).id;
+    return (await this.agentIdentityService.getByOwnerUserId(user.userId)).id;
   }
 
   private async getWritableAgentId(user: JwtAuthUser): Promise<string> {
-    const agent = await this.forumService.getAgentByUserId(user.userId);
+    const agent = await this.agentIdentityService.getByOwnerUserId(user.userId);
     assertOwnerOperationAllowed(user, agent);
     await this.communityWriteAccessService.assertAllowed(agent.id);
     return agent.id;
   }
 
   private async getOperableAgentId(user: JwtAuthUser): Promise<string> {
-    const agent = await this.forumService.getAgentByUserId(user.userId);
+    const agent = await this.agentIdentityService.getByOwnerUserId(user.userId);
     assertOwnerOperationAllowed(user, agent);
     return agent.id;
   }

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { InjectQueue } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
@@ -140,6 +140,8 @@ function cleanupJobId(generationId: string, generationVersion: number): string {
 
 @Injectable()
 export class HotCandidateIndexService {
+  private readonly logger = new Logger(HotCandidateIndexService.name);
+
   constructor(
     @InjectQueue(HOT_RANKING_CANDIDATE_QUEUE)
     private readonly queue: Queue<HotCandidateJob>,
@@ -266,13 +268,24 @@ export class HotCandidateIndexService {
 
   async ensureCandidateGeneration(): Promise<void> {
     await this.dispatchRetiredGenerationCleanup();
-    const readyGeneration = await this.findReadyGeneration();
-    if (!readyGeneration) {
-      const activeGenerationExists = await this.generationModel.exists({
-        status: HOT_CANDIDATE_GENERATION_STATUSES.ACTIVE,
-      });
-      if (activeGenerationExists) {
-        throw new Error('热帖候选索引状态不一致：活跃代际缺少 Redis 就绪指针');
+    let readyGeneration = await this.findReadyGeneration();
+    if (readyGeneration) {
+      const readyDocument = await this.generationModel
+        .findOne({ generationId: readyGeneration })
+        .select('generationId status')
+        .lean<{ generationId: string; status: string }>();
+      if (
+        !readyDocument ||
+        (readyDocument.status !== HOT_CANDIDATE_GENERATION_STATUSES.ACTIVE &&
+          readyDocument.status !== HOT_CANDIDATE_GENERATION_STATUSES.BUILDING)
+      ) {
+        this.logger.warn(
+          `清理无效热帖候选就绪指针 generationId=${readyGeneration}`,
+        );
+        await this.redisService
+          .getClient()
+          .unlink(HOT_CANDIDATE_ACTIVE_GENERATION_KEY, candidateReadyKey(readyGeneration));
+        readyGeneration = null;
       }
     }
     const readyIsHealthy =
@@ -285,7 +298,17 @@ export class HotCandidateIndexService {
     if (building) {
       const marker = await redis.get(candidateBuildMarkerKey(building.generationId));
       if (marker !== building.generationId) {
-        throw new Error(`热帖候选索引状态不一致：构建代际缺少 Redis 标记 ${building.generationId}`);
+        this.logger.warn(
+          `恢复热帖候选构建标记 generationId=${building.generationId}`,
+        );
+        await redis.set(candidateBuildMarkerKey(building.generationId), building.generationId);
+        await redis.sadd(
+          candidateManifestKey(building.generationId),
+          candidateBuildMarkerKey(building.generationId),
+          candidateReadyKey(building.generationId),
+          globalCandidateKey(building.generationId),
+          candidateMetadataKey(building.generationId),
+        );
       }
     }
 
@@ -432,16 +455,10 @@ export class HotCandidateIndexService {
 
   private async findWritableGenerationIds(): Promise<string[]> {
     const redis = this.redisService.getClient();
-    const [activeGeneration, buildingGeneration] = await Promise.all([
+    let [activeGeneration, buildingGeneration] = await Promise.all([
       this.findReadyGeneration(),
       redis.get(HOT_CANDIDATE_BUILDING_GENERATION_KEY),
     ]);
-    if (
-      buildingGeneration &&
-      (await redis.get(candidateBuildMarkerKey(buildingGeneration))) !== buildingGeneration
-    ) {
-      throw new Error(`热帖候选索引状态不一致：构建代际缺少 Redis 标记 ${buildingGeneration}`);
-    }
 
     const generationIds = [
       ...new Set([activeGeneration, buildingGeneration].filter((id): id is string => Boolean(id))),
@@ -478,36 +495,50 @@ export class HotCandidateIndexService {
         (activeDocument.status !== HOT_CANDIDATE_GENERATION_STATUSES.ACTIVE &&
           activeDocument.status !== HOT_CANDIDATE_GENERATION_STATUSES.BUILDING)
       ) {
-        throw new Error(
-          `热帖候选索引状态不一致：Redis 活跃代际无有效 MongoDB 状态 ${activeGeneration}`,
+        this.logger.warn(
+          `清理无效热帖候选活跃指针 generationId=${activeGeneration}`,
         );
+        await redis.unlink(HOT_CANDIDATE_ACTIVE_GENERATION_KEY, candidateReadyKey(activeGeneration));
+        activeGeneration = null;
       }
-    } else if (
-      activeDocuments.some(
-        (document) => document.status === HOT_CANDIDATE_GENERATION_STATUSES.ACTIVE,
-      )
-    ) {
-      throw new Error('热帖候选索引状态不一致：活跃代际缺少 Redis 指针');
     }
 
     if (buildingGeneration) {
       const buildingDocument = documentByGenerationId.get(buildingGeneration);
       if (buildingDocument?.status !== HOT_CANDIDATE_GENERATION_STATUSES.BUILDING) {
-        throw new Error(
-          `热帖候选索引状态不一致：Redis 构建代际无有效 MongoDB 状态 ${buildingGeneration}`,
+        this.logger.warn(
+          `清理无效热帖候选构建指针 generationId=${buildingGeneration}`,
         );
+        await redis.unlink(
+          HOT_CANDIDATE_BUILDING_GENERATION_KEY,
+          candidateBuildMarkerKey(buildingGeneration),
+        );
+        buildingGeneration = null;
+      } else if ((await redis.get(candidateBuildMarkerKey(buildingGeneration))) !== buildingGeneration) {
+        this.logger.warn(
+          `恢复热帖候选构建标记 generationId=${buildingGeneration}`,
+        );
+        await redis.set(candidateBuildMarkerKey(buildingGeneration), buildingGeneration);
       }
-    } else if (
-      activeDocuments.some(
-        (document) =>
-          document.status === HOT_CANDIDATE_GENERATION_STATUSES.BUILDING &&
-          document.generationId !== activeGeneration,
-      )
-    ) {
-      throw new Error('热帖候选索引状态不一致：构建代际缺少 Redis 指针');
+    } else {
+      const orphanBuilding = activeDocuments.find(
+        (document) => document.status === HOT_CANDIDATE_GENERATION_STATUSES.BUILDING,
+      );
+      if (orphanBuilding) {
+        this.logger.warn(
+          `恢复热帖候选构建指针 generationId=${orphanBuilding.generationId}`,
+        );
+        buildingGeneration = orphanBuilding.generationId;
+        await redis.set(HOT_CANDIDATE_BUILDING_GENERATION_KEY, buildingGeneration);
+        await redis.set(candidateBuildMarkerKey(buildingGeneration), buildingGeneration);
+      }
     }
 
-    return generationIds;
+    return [
+      ...new Set(
+        [activeGeneration, buildingGeneration].filter((id): id is string => Boolean(id)),
+      ),
+    ];
   }
 
   private async applyCandidateMember(

@@ -11,7 +11,6 @@ import {
   GOVERNANCE_DEADLINE_COMPLETED_RETENTION,
   GOVERNANCE_DEADLINE_COMPENSATION_INTERVAL_MS,
   GOVERNANCE_DEADLINE_COMPENSATION_CONTINUATION_DEDUPLICATION_ID,
-  GOVERNANCE_DEADLINE_COMPENSATION_RETRY_MS,
   GOVERNANCE_DEADLINE_CONTROL_JOB_PRIORITY,
   GOVERNANCE_DEADLINE_FAILED_RETENTION,
   GOVERNANCE_DEADLINE_JOB_ATTEMPTS,
@@ -153,6 +152,13 @@ export class GovernanceDeadlinePublisher implements OnModuleInit {
                 deadlineScheduleClaimToken: null,
                 deadlineScheduleClaimExpiresAt: null,
                 deadlineScheduleDeliveryToken: null,
+                deadlineCompensationDispatchAt: null,
+                deadlineCompensationDeliveryToken: delivery.deliveryToken,
+                deadlineRecoveryFailureCount: 0,
+                deadlineRecoveryLastFailureAt: null,
+                deadlineRecoveryNextAttemptAt: null,
+                deadlineRecoveryReasonClass: null,
+                deadlineRecoveryReasonFingerprint: null,
               },
             },
           },
@@ -170,6 +176,7 @@ export class GovernanceDeadlinePublisher implements OnModuleInit {
       .find({
         status: { $in: ACTIVE_GOVERNANCE_CASE_STATUSES },
         nextTransitionAt: { $lte: now },
+        deadlineRecoveryFailureCount: { $gt: 0 },
         deadlineCompensationDispatchAt: { $lte: now },
         $and: [
           {
@@ -191,9 +198,6 @@ export class GovernanceDeadlinePublisher implements OnModuleInit {
 
     const batchClaimToken = randomUUID();
     const claimExpiresAt = new Date(now.getTime() + GOVERNANCE_DEADLINE_PUBLISH_CLAIM_TTL_MS);
-    const nextCompensationDispatchAt = new Date(
-      now.getTime() + GOVERNANCE_DEADLINE_COMPENSATION_RETRY_MS,
-    );
     const pendingDeliveries = candidates.map((candidate) => ({
       ...candidate,
       deliveryToken: randomUUID(),
@@ -206,6 +210,7 @@ export class GovernanceDeadlinePublisher implements OnModuleInit {
             status: { $in: ACTIVE_GOVERNANCE_CASE_STATUSES },
             deadlineVersion: delivery.deadlineVersion,
             nextTransitionAt: { $lte: now },
+            deadlineRecoveryFailureCount: { $gt: 0 },
             deadlineCompensationDispatchAt: { $lte: now },
             $and: [
               {
@@ -264,7 +269,9 @@ export class GovernanceDeadlinePublisher implements OnModuleInit {
       { deadlineCompensationClaimToken: batchClaimToken },
       {
         $set: {
-          deadlineCompensationDispatchAt: nextCompensationDispatchAt,
+          deadlineCompensationDispatchAt: new Date(
+            now.getTime() + GOVERNANCE_DEADLINE_PUBLISH_CLAIM_TTL_MS,
+          ),
           deadlineCompensationClaimToken: null,
           deadlineCompensationClaimExpiresAt: null,
         },
@@ -294,6 +301,7 @@ export class GovernanceDeadlinePublisher implements OnModuleInit {
             id: getGovernanceDeadlineDeduplicationId(
               delivery._id.toString(),
               delivery.deadlineVersion,
+              delivery.deliveryToken,
             ),
           },
           backoff: {

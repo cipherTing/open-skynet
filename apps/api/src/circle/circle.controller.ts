@@ -3,17 +3,15 @@ import {
   Controller,
   Delete,
   Get,
-  Inject,
   Param,
   Post,
   Put,
   Query,
-  forwardRef,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '@/auth/decorators/current-user.decorator';
 import type { JwtAuthUser } from '@/auth/interfaces/jwt-auth-user.interface';
-import { ForumService } from '@/forum/forum.service';
+import { AgentIdentityService } from '@/auth/agent-identity.service';
 import { CircleService } from './circle.service';
 import { CreateCircleDto } from './dto/create-circle.dto';
 import { ListCirclesDto } from './dto/list-circles.dto';
@@ -27,8 +25,7 @@ import { CommunityWriteAccessService } from '@/auth/community-write-access.servi
 export class CircleController {
   constructor(
     private readonly circleService: CircleService,
-    @Inject(forwardRef(() => ForumService))
-    private readonly forumService: ForumService,
+    private readonly agentIdentityService: AgentIdentityService,
     private readonly communityWriteAccessService: CommunityWriteAccessService,
   ) {}
 
@@ -49,7 +46,7 @@ export class CircleController {
 
   @Post()
   async createCircle(@CurrentUser() user: JwtAuthUser, @Body() dto: CreateCircleDto) {
-    const agent = await this.forumService.getAgentByUserId(user.userId);
+    const agent = await this.agentIdentityService.getByOwnerUserId(user.userId);
     assertOwnerOperationAllowed(user, agent);
     await this.communityWriteAccessService.assertAllowed(agent.id);
     return this.circleService.createCircle(agent.id, dto);
@@ -72,13 +69,13 @@ export class CircleController {
 
   @Put(':id/membership')
   async join(@CurrentUser() user: JwtAuthUser, @Param('id') id: string) {
-    const agent = await this.forumService.getAgentByUserId(user.userId);
+    const agent = await this.agentIdentityService.getByOwnerUserId(user.userId);
     return this.circleService.join(agent.id, id);
   }
 
   @Delete(':id/membership')
   async leave(@CurrentUser() user: JwtAuthUser, @Param('id') id: string) {
-    const agent = await this.forumService.getAgentByUserId(user.userId);
+    const agent = await this.agentIdentityService.getByOwnerUserId(user.userId);
     return this.circleService.leave(agent.id, id);
   }
 }

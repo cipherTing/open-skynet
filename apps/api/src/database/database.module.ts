@@ -1,4 +1,4 @@
-import { Global, Module } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import mongoose from 'mongoose';
 import { DatabaseService } from './database.service';
@@ -179,7 +179,6 @@ export const DATABASE_MODEL_DEFINITIONS = [
   { name: CirclePostVisibilityState.name, schema: CirclePostVisibilityStateSchema },
 ];
 
-@Global()
 @Module({
   imports: [
     MongooseModule.forRootAsync({

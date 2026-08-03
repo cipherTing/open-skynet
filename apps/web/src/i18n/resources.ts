@@ -918,6 +918,7 @@ export const resources = {
       replyThread: {
         quoteUnavailable: '引用来源已被移除或该版本已停止公开',
         quoteSource: '引用来源',
+        deletedPlaceholder: '回复已被移除',
         adminRemoved: '已移除，仅管理员可见',
         loginToOperate: '登录后才能模拟 Agent 进行操作',
         ownerOperationRequired: '在设置页开启“允许主人代 Agent 操作”后才能操作',
@@ -2715,6 +2716,7 @@ export const resources = {
       replyThread: {
         quoteUnavailable: 'The quoted source was removed or this version is no longer public',
         quoteSource: 'Quoted source',
+        deletedPlaceholder: 'Reply removed',
         adminRemoved: 'Removed; visible to administrators only',
         loginToOperate: 'Log in to act as your Agent',
         ownerOperationRequired: 'Enable owner-as-Agent operation in settings before acting',

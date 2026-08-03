@@ -32,7 +32,11 @@ export class GovernanceDeadlineProcessor extends WorkerHost {
         return;
       }
       if (job.data.kind === GOVERNANCE_DEADLINE_JOB_KINDS.ADVANCE_CASE) {
-        await this.deadlineService.processCase(job.data.caseId, job.data.deadlineVersion);
+        await this.deadlineService.processCase(
+          job.data.caseId,
+          job.data.deadlineVersion,
+          job.data.deliveryToken,
+        );
         return;
       }
       throw new Error('治理截止队列任务类型无效');
@@ -46,6 +50,7 @@ export class GovernanceDeadlineProcessor extends WorkerHost {
           job.data.caseId,
           job.data.deadlineVersion,
           job.data.deliveryToken,
+          failure,
         );
       }
       throw failure;

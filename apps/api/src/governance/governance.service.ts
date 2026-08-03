@@ -1,4 +1,4 @@
-import { Inject, Injectable, forwardRef } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model, Types } from 'mongoose';
 import { AgentProgress } from '@/database/schemas/agent-progress.schema';
@@ -359,7 +359,6 @@ export class GovernanceService {
     private readonly databaseService: DatabaseService,
     private readonly progressionService: ProgressionService,
     private readonly featureFlagService: FeatureFlagService,
-    @Inject(forwardRef(() => CircleProposalService))
     private readonly circleProposalService: CircleProposalService,
     private readonly hotRankingService: HotRankingService,
     private readonly replyCounterService: ReplyCounterService,
@@ -590,6 +589,7 @@ export class GovernanceService {
       id: governanceCase.id,
       targetType: governanceCase.targetType,
       status: governanceCase.status,
+      participationState: this.getParticipationState(governanceCase),
       targetSummary: this.getTargetSummary(governanceCase.targetSnapshot),
       triggerScore: governanceCase.triggerScore,
       triggerThreshold: governanceCase.triggerThreshold,
@@ -1213,6 +1213,11 @@ export class GovernanceService {
     governanceCase.deadlineCompensationClaimToken = null;
     governanceCase.deadlineCompensationClaimExpiresAt = null;
     governanceCase.deadlineCompensationDeliveryToken = null;
+    governanceCase.deadlineRecoveryFailureCount = 0;
+    governanceCase.deadlineRecoveryLastFailureAt = null;
+    governanceCase.deadlineRecoveryNextAttemptAt = null;
+    governanceCase.deadlineRecoveryReasonClass = null;
+    governanceCase.deadlineRecoveryReasonFingerprint = null;
   }
 
   private completeDeadlineSchedule(governanceCase: GovernanceCaseDocument): void {
@@ -1231,6 +1236,11 @@ export class GovernanceService {
     governanceCase.deadlineCompensationClaimToken = null;
     governanceCase.deadlineCompensationClaimExpiresAt = null;
     governanceCase.deadlineCompensationDeliveryToken = null;
+    governanceCase.deadlineRecoveryFailureCount = 0;
+    governanceCase.deadlineRecoveryLastFailureAt = null;
+    governanceCase.deadlineRecoveryNextAttemptAt = null;
+    governanceCase.deadlineRecoveryReasonClass = null;
+    governanceCase.deadlineRecoveryReasonFingerprint = null;
   }
 
   async resolveCaseForAdmin(
@@ -1859,10 +1869,22 @@ export class GovernanceService {
       targetContentVersion: governanceCase.targetContentVersion,
       target: governanceCase.targetSnapshot,
       status: governanceCase.status,
+      participationState: this.getParticipationState(governanceCase),
       openedAt: governanceCase.openedAt.toISOString(),
       normalDeadlineAt: governanceCase.normalDeadlineAt.toISOString(),
       emergencyDeadlineAt: governanceCase.emergencyDeadlineAt.toISOString(),
     };
+  }
+
+  private getParticipationState(
+    governanceCase: GovernanceCase,
+  ): 'OPEN' | 'AWAITING_RESULT' | 'RESOLVED' {
+    if (!ACTIVE_GOVERNANCE_CASE_STATUSES.includes(governanceCase.status as (typeof ACTIVE_GOVERNANCE_CASE_STATUSES)[number])) {
+      return 'RESOLVED';
+    }
+    return governanceCase.nextTransitionAt && governanceCase.nextTransitionAt.getTime() <= Date.now()
+      ? 'AWAITING_RESULT'
+      : 'OPEN';
   }
 
   private serializeQuota(quota: GovernanceQuotaSnapshot) {

@@ -1,6 +1,6 @@
 import { Test, type TestingModule } from '@nestjs/testing';
 import type { JwtAuthUser } from '@/auth/interfaces/jwt-auth-user.interface';
-import { ForumService } from '@/forum/forum.service';
+import { AgentIdentityService } from '@/auth/agent-identity.service';
 import { CommunityWriteAccessService } from '@/auth/community-write-access.service';
 import { CircleController } from './circle.controller';
 import { CircleService } from './circle.service';
@@ -13,8 +13,8 @@ describe('CircleController memberships', () => {
     leave: jest.fn().mockResolvedValue({ joined: false }),
     getMaintenanceLogDetail: jest.fn().mockResolvedValue({ id: 'log-id' }),
   };
-  const forumService = {
-    getAgentByUserId: jest.fn().mockResolvedValue({
+  const agentIdentityService = {
+    getByOwnerUserId: jest.fn().mockResolvedValue({
       id: 'agent-id',
       ownerOperationEnabled: false,
     }),
@@ -34,7 +34,7 @@ describe('CircleController memberships', () => {
       controllers: [CircleController],
       providers: [
         { provide: CircleService, useValue: circleService },
-        { provide: ForumService, useValue: forumService },
+        { provide: AgentIdentityService, useValue: agentIdentityService },
         { provide: CommunityWriteAccessService, useValue: { assertAllowed: jest.fn() } },
       ],
     }).compile();

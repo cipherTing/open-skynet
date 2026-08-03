@@ -48,6 +48,14 @@ import { ForumStatisticsService } from '@/forum/forum-statistics.service';
 import { ForumAgentInteractionService } from '@/forum/forum-agent-interaction.service';
 import { FEEDBACK_TARGET_TYPES } from '@/forum/feedback.constants';
 
+type ForumServiceReplyItem = Awaited<ReturnType<ForumService['listReplies']>>['items'][number];
+
+function isVisibleForumServiceReply(
+  reply: ForumServiceReplyItem,
+): reply is Extract<ForumServiceReplyItem, { content: string }> {
+  return reply.deletedAt === null;
+}
+
 describe('ForumService circle feeds', () => {
   jest.setTimeout(60_000);
   let mongod: MongoMemoryReplSet;
@@ -976,7 +984,8 @@ describe('ForumService circle feeds', () => {
       publicContentHideReason: '旧版本包含访问密钥',
     });
     const replies = await service.listReplies(post.id, {});
-    expect(replies.items[0]?.quote).toMatchObject({
+    const visibleReply = replies.items.find(isVisibleForumServiceReply);
+    expect(visibleReply?.quote).toMatchObject({
       available: false,
       text: null,
       sourceAuthor: null,
@@ -1023,14 +1032,15 @@ describe('ForumService circle feeds', () => {
     }
 
     const firstPage = await service.listReplies(post.id, { limit: 2, childLimit: 2 });
-    expect(firstPage.items.map((reply) => reply.content)).toEqual(['top-0', 'top-1']);
-    expect(firstPage.items[0]).toMatchObject({ childCount: 5 });
-    expect(firstPage.items[0]?.children).toHaveLength(2);
-    expect(firstPage.items[0]?.childrenNextCursor).not.toBeNull();
+    const firstPageVisibleItems = firstPage.items.filter(isVisibleForumServiceReply);
+    expect(firstPageVisibleItems.map((reply) => reply.content)).toEqual(['top-0', 'top-1']);
+    expect(firstPageVisibleItems[0]).toMatchObject({ childCount: 5 });
+    expect(firstPageVisibleItems[0]?.children).toHaveLength(2);
+    expect(firstPageVisibleItems[0]?.childrenNextCursor).not.toBeNull();
     expect(firstPage.nextCursor).not.toBeNull();
-    expect(firstPage.items[0]).not.toHaveProperty('authorOwnerUserIdSnapshot');
-    expect(firstPage.items[0]).not.toHaveProperty('authorId');
-    expect(firstPage.items[0]?.children?.[0]).not.toHaveProperty('authorOwnerUserIdSnapshot');
+    expect(firstPageVisibleItems[0]).not.toHaveProperty('authorOwnerUserIdSnapshot');
+    expect(firstPageVisibleItems[0]).not.toHaveProperty('authorId');
+    expect(firstPageVisibleItems[0]?.children?.[0]).not.toHaveProperty('authorOwnerUserIdSnapshot');
     if (!firstPage.nextCursor) throw new Error('第一页缺少顶级回复游标');
 
     const secondPage = await service.listReplies(post.id, {
@@ -1038,14 +1048,18 @@ describe('ForumService circle feeds', () => {
       childLimit: 2,
       cursor: firstPage.nextCursor,
     });
-    expect(secondPage.items.map((reply) => reply.content)).toEqual(['top-2', 'top-3']);
+    expect(secondPage.items.filter(isVisibleForumServiceReply).map((reply) => reply.content)).toEqual(
+      ['top-2', 'top-3'],
+    );
     expect(secondPage.nextCursor).toBeNull();
 
     const childPage = await service.listChildReplies(topReplies[0].id, {
       limit: 2,
-      cursor: firstPage.items[0]?.childrenNextCursor ?? undefined,
+      cursor: firstPageVisibleItems[0]?.childrenNextCursor ?? undefined,
     });
-    expect(childPage.items.map((reply) => reply.content)).toEqual(['child-0-2', 'child-0-3']);
+    expect(childPage.items.filter(isVisibleForumServiceReply).map((reply) => reply.content)).toEqual(
+      ['child-0-2', 'child-0-3'],
+    );
     expect(childPage.nextCursor).not.toBeNull();
   });
 
@@ -1125,15 +1139,101 @@ describe('ForumService circle feeds', () => {
     await expect(
       service.getReplySelection(otherPost.id, removedReply.id, undefined, true),
     ).rejects.toBeInstanceOf(NotFoundException);
-    await expect(service.getReplySelection(post.id, removedReply.id)).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
+    const publicSelection = await service.getReplySelection(post.id, removedReply.id);
+    expect(publicSelection).toMatchObject({
+      selectedReplyId: removedReply.id,
+      rootReply: { id: removedReply.id, deletedAt: expect.any(Date), children: [] },
+    });
+    expect(publicSelection.rootReply).not.toHaveProperty('content');
+    expect(publicSelection.rootReply).not.toHaveProperty('author');
     await expect(
       service.getReplySelection(post.id, removedReply.id, undefined, true),
     ).resolves.toMatchObject({
       selectedReplyId: removedReply.id,
       rootReply: { id: removedReply.id, deletedAt: expect.any(Date), children: [] },
     });
+  });
+
+  it('keeps deleted root replies as placeholders and filters deleted children only', async () => {
+    const circle = await createCircle('deleted-reply-visibility');
+    const author = await createAgent('deleted-reply-visibility-author');
+    const post = await createPost(circle.id, author.id, 1);
+    const replyModel = connection.model(Reply.name);
+    const deletedRoot = await replyModel.create({
+      content: 'deleted root content',
+      postId: post.id,
+      authorId: author.id,
+      authorOwnerUserIdSnapshot: author.userId,
+      parentReplyId: null,
+      circleRulesVersion: 1,
+      createdAt: new Date(Date.UTC(2026, 6, 1, 4, 0)),
+      deletedAt: new Date(Date.UTC(2026, 6, 1, 4, 1)),
+      removalSource: 'ADMIN',
+    });
+    const visibleRoot = await replyModel.create({
+      content: 'visible root content',
+      postId: post.id,
+      authorId: author.id,
+      authorOwnerUserIdSnapshot: author.userId,
+      parentReplyId: null,
+      childReplyCount: 3,
+      circleRulesVersion: 1,
+      createdAt: new Date(Date.UTC(2026, 6, 1, 4, 2)),
+    });
+    const childRows = await replyModel.insertMany([
+      {
+        content: 'visible child one',
+        postId: post.id,
+        authorId: author.id,
+        authorOwnerUserIdSnapshot: author.userId,
+        parentReplyId: visibleRoot.id,
+        circleRulesVersion: 1,
+        createdAt: new Date(Date.UTC(2026, 6, 1, 4, 3)),
+      },
+      {
+        content: 'deleted child content',
+        postId: post.id,
+        authorId: author.id,
+        authorOwnerUserIdSnapshot: author.userId,
+        parentReplyId: visibleRoot.id,
+        circleRulesVersion: 1,
+        createdAt: new Date(Date.UTC(2026, 6, 1, 4, 4)),
+        deletedAt: new Date(Date.UTC(2026, 6, 1, 4, 5)),
+        removalSource: 'GOVERNANCE',
+      },
+      {
+        content: 'visible child two',
+        postId: post.id,
+        authorId: author.id,
+        authorOwnerUserIdSnapshot: author.userId,
+        parentReplyId: visibleRoot.id,
+        circleRulesVersion: 1,
+        createdAt: new Date(Date.UTC(2026, 6, 1, 4, 6)),
+      },
+    ]);
+
+    const page = await service.listReplies(post.id, { limit: 10, childLimit: 10 });
+    expect(page.items.map((reply) => reply.id)).toEqual([deletedRoot.id, visibleRoot.id]);
+    const deletedItem = page.items[0];
+    expect(deletedItem).toMatchObject({
+      id: deletedRoot.id,
+      parentReplyId: null,
+      deletedAt: expect.any(Date),
+    });
+    expect(deletedItem).not.toHaveProperty('content');
+    expect(deletedItem).not.toHaveProperty('author');
+    const visibleItem = page.items.find(isVisibleForumServiceReply);
+    expect(visibleItem?.children?.map((reply) => reply.id)).toEqual([
+      childRows[0].id,
+      childRows[2].id,
+    ]);
+    expect(visibleItem?.children?.map((reply) => reply.content)).toEqual([
+      'visible child one',
+      'visible child two',
+    ]);
+    await expect(
+      service.getReplySelection(post.id, childRows[1].id),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('counts distinct real community actors instead of completed daily tasks', async () => {

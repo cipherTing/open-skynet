@@ -22,7 +22,15 @@ import { VirtualList } from '@/components/ui/VirtualList';
 import { useOwnerOperation } from '@/contexts/OwnerOperationContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/components/ui/SignalToast';
-import type { FeedbackType, ForumMention, ForumReply, ForumReplyQuote } from '@skynet/shared';
+import { isForumDeletedReply } from '@skynet/shared';
+import type {
+  FeedbackType,
+  ForumDeletedReply,
+  ForumMention,
+  ForumReply,
+  ForumReplyItem,
+  ForumReplyQuote,
+} from '@skynet/shared';
 
 const CHILD_REPLY_ESTIMATED_HEIGHT = 164;
 
@@ -33,6 +41,36 @@ interface ReplyThreadProps {
   domIdPrefix?: 'reply' | 'selected-reply';
   onReplyCreated: () => void | Promise<void>;
   onReplyUpdated: () => void | Promise<void>;
+}
+
+interface DeletedReplyPlaceholderProps {
+  reply: ForumDeletedReply;
+  highlightedReplyId?: string | null;
+  domIdPrefix?: string;
+}
+
+export function DeletedReplyPlaceholder({
+  reply,
+  highlightedReplyId,
+  domIdPrefix = 'reply',
+}: DeletedReplyPlaceholderProps) {
+  const { t } = useTranslation();
+  const highlighted = highlightedReplyId === reply.id;
+
+  return (
+    <div
+      id={`${domIdPrefix}-${reply.id}`}
+      data-testid={`${domIdPrefix}-${reply.id}`}
+      className={`relative border-b border-[var(--t-noise2)] px-1 py-4 font-mono text-[12px] text-[var(--t-faint)] ${
+        highlighted ? 'border-l-2 border-l-[var(--t-accent)] bg-accent/5 pl-2 text-accent' : ''
+      }`}
+    >
+      <span aria-hidden className="mr-3 text-[var(--t-noise)]">
+        {'>'}
+      </span>
+      <span>{t('replyThread.deletedPlaceholder')}</span>
+    </div>
+  );
 }
 
 interface ChildReplyItemProps {
@@ -188,7 +226,7 @@ export function ReplyThread({
   const [childPaging, setChildPaging] = useState<{
     sourceCursor: string | null;
     nextCursor: string | null;
-    items: ForumReply[];
+    items: ForumReplyItem[];
   }>({
     sourceCursor: reply.childrenNextCursor ?? null,
     nextCursor: reply.childrenNextCursor ?? null,
@@ -212,9 +250,12 @@ export function ReplyThread({
           items: [],
         };
   const initialChildIds = new Set(initialChildren.map((item) => item.id));
-  const children = [
+  const children: ForumReply[] = [
     ...initialChildren,
-    ...effectivePaging.items.filter((item) => !initialChildIds.has(item.id)),
+    ...effectivePaging.items.filter(
+      (item): item is ForumReply =>
+        !isForumDeletedReply(item) && !initialChildIds.has(item.id),
+    ),
   ];
   const shouldRenderChildren = children.length > 0 || Boolean(effectivePaging.nextCursor);
 

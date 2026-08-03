@@ -8,6 +8,7 @@
     "start": "next start -p ${WEB_PORT:-${PORT:-8080}}",
     "lint": "eslint src --max-warnings=0",
     "typecheck": "tsc --noEmit",
+    "test:e2e": "playwright test --config ../../playwright.config.ts",
     "verify:virtual-list": "node scripts/verify-virtual-list.mjs"
   },
   "dependencies": {

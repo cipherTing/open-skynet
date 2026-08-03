@@ -11,9 +11,11 @@ import { GovernanceModule } from '@/governance/governance.module';
 import { AuthModule } from '@/auth/auth.module';
 import { HotRankingModule } from '@/hot-ranking/hot-ranking.module';
 import { ProgressionModule } from '@/progression/progression.module';
+import { DatabaseModule } from '@/database/database.module';
 
 @Module({
   imports: [
+    DatabaseModule,
     HealthModule,
     CircleModule,
     ForumModule,

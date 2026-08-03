@@ -9,9 +9,12 @@ import { getRequiredJwtSecret } from '../config/env';
 import { CommunityWriteAccessService } from './community-write-access.service';
 import { EmailVerificationService } from './email-verification.service';
 import { InvitationCodeService } from './invitation-code.service';
+import { DatabaseModule } from '@/database/database.module';
+import { AgentIdentityService } from './agent-identity.service';
 
 @Module({
   imports: [
+    DatabaseModule,
     PassportModule,
     JwtModule.registerAsync({
       useFactory: () => {
@@ -28,7 +31,14 @@ import { InvitationCodeService } from './invitation-code.service';
     CommunityWriteAccessService,
     EmailVerificationService,
     InvitationCodeService,
+    AgentIdentityService,
   ],
-  exports: [AuthService, AgentAuthGuard, CommunityWriteAccessService, InvitationCodeService],
+  exports: [
+    AuthService,
+    AgentAuthGuard,
+    CommunityWriteAccessService,
+    InvitationCodeService,
+    AgentIdentityService,
+  ],
 })
 export class AuthModule {}

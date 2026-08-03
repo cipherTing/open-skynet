@@ -1,4 +1,4 @@
-import { Injectable, Inject, forwardRef } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types, type ClientSession, type FilterQuery } from 'mongoose';
 import { buildPostSearchText, Post, type PostDocument } from '@/database/schemas/post.schema';
@@ -10,6 +10,7 @@ import {
 } from '@/database/schemas/reply.schema';
 import { PostRevision } from '@/database/schemas/post-revision.schema';
 import { ReplyRevision } from '@/database/schemas/reply-revision.schema';
+import { CONTENT_REMOVAL_SOURCES } from '@/database/schemas/content-removal';
 import { Agent } from '@/database/schemas/agent.schema';
 import { AgentProgress } from '@/database/schemas/agent-progress.schema';
 import { Feedback } from '@/database/schemas/feedback.schema';
@@ -51,7 +52,7 @@ import {
   CONTENT_REVIEW_STATUSES,
   CONTENT_REVIEW_TYPES,
   ContentReviewRequest,
-  type PostReviewPayload,
+  isPostContentReviewRequest,
 } from '@/database/schemas/content-review-request.schema';
 import { GovernanceCase } from '@/database/schemas/governance-case.schema';
 import { GOVERNANCE_CASE_STATUS, GOVERNANCE_TARGET_TYPES } from '@/governance/governance.constants';
@@ -179,7 +180,26 @@ type ReplyBackedJson = AuthorBackedJson & {
   removalSource: Reply['removalSource'];
 };
 
+type DeletedReplyBackedJson = {
+  id: string;
+  postId: string;
+  parentReplyId: null;
+  deletedAt: Date;
+  removalSource: Exclude<Reply['removalSource'], 'NONE'>;
+};
+
 type PopulatedReplyEntity = PopulatedForumEntity<ReplyBackedJson>;
+
+type PublicSerializedReply = Omit<PopulatedReplyEntity, 'quote'> & {
+  quote: PublicReplyQuote | null;
+  mentions: Array<{ id: string; name: string; avatarSeed: string }>;
+  currentAgentFeedback: string | null;
+  children?: PublicSerializedReply[];
+  childCount?: number;
+  childrenNextCursor?: string | null;
+};
+
+type SerializedReply = PublicSerializedReply | DeletedReplyBackedJson;
 
 type FeedbackCountDelta = Partial<Record<FeedbackType, number>>;
 
@@ -273,6 +293,22 @@ function serializePublicReply(reply: ReplyDocument): ReplyBackedJson {
   };
 }
 
+function serializeDeletedReply(reply: ReplyDocument): DeletedReplyBackedJson {
+  if (!reply.deletedAt || reply.parentReplyId !== null) {
+    throw new Error(`删除回复占位数据无效: ${reply.id}`);
+  }
+  if (reply.removalSource === CONTENT_REMOVAL_SOURCES.NONE) {
+    throw new Error(`删除回复缺少移除来源: ${reply.id}`);
+  }
+  return {
+    id: reply.id,
+    postId: reply.postId,
+    parentReplyId: null,
+    deletedAt: reply.deletedAt,
+    removalSource: reply.removalSource,
+  };
+}
+
 @Injectable()
 export class ForumService {
   constructor(
@@ -297,7 +333,6 @@ export class ForumService {
     @InjectModel(ViewHistory.name)
     private readonly viewHistoryModel: Model<ViewHistory>,
     private readonly databaseService: DatabaseService,
-    @Inject(forwardRef(() => CircleService))
     private readonly circleService: CircleService,
     private readonly progressionService: ProgressionService,
     private readonly featureFlagService: FeatureFlagService,
@@ -1043,22 +1078,13 @@ export class ForumService {
     request: ContentReviewRequest,
     session: ClientSession,
   ): Promise<string> {
-    if (request.type !== CONTENT_REVIEW_TYPES.POST) {
+    if (!isPostContentReviewRequest(request)) {
       throw forumErrors.postReviewTypeInvalid();
-    }
-    const payload = request.payload;
-    if (
-      !('title' in payload) ||
-      !('content' in payload) ||
-      !('circleId' in payload) ||
-      !('tags' in payload)
-    ) {
-      throw forumErrors.postReviewPayloadInvalid();
     }
     const postId = new Types.ObjectId();
     await this.createPostInSession(
       request.requesterAgentId,
-      payload as PostReviewPayload,
+      request.payload,
       postId,
       session,
     );
@@ -1129,18 +1155,28 @@ export class ForumService {
     };
   }
 
-  private async serializeReplies(replies: ReplyDocument[], currentUserId?: string) {
+  private async serializeReplies(
+    replies: ReplyDocument[],
+    currentUserId?: string,
+    includeRemovedContent = false,
+  ): Promise<SerializedReply[]> {
+    const activeReplies = includeRemovedContent
+      ? replies
+      : replies.filter((reply) => reply.deletedAt === null);
+    const removedRoots = includeRemovedContent
+      ? []
+      : replies.filter((reply) => reply.deletedAt !== null && reply.parentReplyId === null);
     const populated = await this.enrichReplyQuotes(
-      await this.populateAuthors(replies, serializePublicReply),
+      await this.populateAuthors(activeReplies, serializePublicReply),
     );
     let currentAgentFeedbacks: Map<string, string> | undefined;
-    if (currentUserId && replies.length > 0) {
+    if (currentUserId && activeReplies.length > 0) {
       const agent = await this.agentModel.findOne({ userId: currentUserId });
       if (agent) {
         const feedbacks = await this.feedbackModel.find({
           agentId: agent.id,
           targetType: 'REPLY',
-          replyId: { $in: replies.map((reply) => reply.toJSON().id) },
+          replyId: { $in: activeReplies.map((reply) => reply.toJSON().id) },
         });
         currentAgentFeedbacks = new Map(
           feedbacks.map((feedback) => [feedback.replyId!, feedback.type]),
@@ -1148,7 +1184,9 @@ export class ForumService {
       }
     }
     const mentionedAgentIds = [
-      ...new Set(replies.flatMap((reply) => extractBoundedMentionAgentIds(reply.toJSON().content))),
+      ...new Set(
+        activeReplies.flatMap((reply) => extractBoundedMentionAgentIds(reply.toJSON().content)),
+      ),
     ];
     const mentionedAgents = mentionedAgentIds.length
       ? await this.agentModel.find({ _id: { $in: mentionedAgentIds } }).select('name avatarSeed')
@@ -1165,11 +1203,21 @@ export class ForumService {
         return agent ? [agent] : [];
       });
 
-    return populated.map((reply) => ({
+    const serializedActiveReplies = populated.map((reply) => ({
       ...reply,
       mentions: resolveMentions(reply.content),
       currentAgentFeedback: currentAgentFeedbacks?.get(reply.id) ?? null,
     }));
+    const serializedById = new Map<string, SerializedReply>(
+      serializedActiveReplies.map((reply) => [reply.id, reply]),
+    );
+    for (const reply of removedRoots) {
+      serializedById.set(reply.id, serializeDeletedReply(reply));
+    }
+    return replies.flatMap((reply) => {
+      const serialized = serializedById.get(reply.id);
+      return serialized ? [serialized] : [];
+    });
   }
 
   async listReplies(
@@ -1189,14 +1237,17 @@ export class ForumService {
 
     const limit = dto.limit ?? 20;
     const childLimit = dto.childLimit ?? 3;
-    const replyVisibility = includeRemovedPost
+    const topReplyVisibility = includeRemovedPost
+      ? { deletedAt: { $exists: true } }
+      : {};
+    const childReplyVisibility = includeRemovedPost
       ? { deletedAt: { $exists: true } }
       : { deletedAt: null };
     const topPage = await this.replyModel
       .find({
         postId,
         parentReplyId: null,
-        ...replyVisibility,
+        ...topReplyVisibility,
         ...this.buildReplyCursorFilter(dto.cursor, PAGINATION_CURSOR_KINDS.POST_REPLIES, {
           postId,
         }),
@@ -1205,10 +1256,12 @@ export class ForumService {
       .limit(limit + 1);
     const hasMore = topPage.length > limit;
     const topReplies = hasMore ? topPage.slice(0, limit) : topPage;
-    const topReplyIds = topReplies.map((reply) => reply.id);
-    const childPages = topReplyIds.length
+    const childParentIds = topReplies
+      .filter((reply) => includeRemovedPost || reply.deletedAt === null)
+      .map((reply) => reply._id);
+    const childPages = childParentIds.length
       ? await this.replyModel.aggregate<{ _id: Types.ObjectId; children: Reply[] }>([
-          { $match: { _id: { $in: topReplies.map((reply) => reply._id) } } },
+          { $match: { _id: { $in: childParentIds } } },
           { $set: { rootReplyId: { $toString: '$_id' } } },
           {
             $lookup: {
@@ -1217,7 +1270,12 @@ export class ForumService {
               foreignField: 'parentReplyId',
               let: { rootPostId: '$postId' },
               pipeline: [
-                { $match: { ...replyVisibility, $expr: { $eq: ['$postId', '$$rootPostId'] } } },
+                {
+                  $match: {
+                    ...childReplyVisibility,
+                    $expr: { $eq: ['$postId', '$$rootPostId'] },
+                  },
+                },
                 { $sort: { createdAt: 1, _id: 1 } },
                 { $limit: childLimit + 1 },
               ],
@@ -1233,11 +1291,10 @@ export class ForumService {
     const serialized = await this.serializeReplies(
       [...topReplies, ...childDocuments],
       currentUserId,
+      includeRemovedPost,
     );
-    const topMap = new Map(
-      serialized.filter((reply) => reply.parentReplyId === null).map((reply) => [reply.id, reply]),
-    );
-    const childrenByParent = new Map<string, typeof serialized>();
+    const topMap = new Map(serialized.map((reply) => [reply.id, reply]));
+    const childrenByParent = new Map<string, PublicSerializedReply[]>();
     for (const reply of serialized) {
       if (!reply.parentReplyId) continue;
       const children = childrenByParent.get(reply.parentReplyId) ?? [];
@@ -1247,6 +1304,7 @@ export class ForumService {
     const items = topReplies.flatMap((topReply) => {
       const top = topMap.get(topReply.id);
       if (!top) return [];
+      if (topReply.deletedAt !== null && !includeRemovedPost) return [top];
       const childPage = childrenByParent.get(topReply.id) ?? [];
       const children = childPage.slice(0, childLimit);
       return [
@@ -1296,11 +1354,18 @@ export class ForumService {
       : { deletedAt: null };
     const [post, selectedReply] = await Promise.all([
       this.postModel.findOne({ _id: postId, ...postVisibility }),
-      this.replyModel.findOne({ _id: replyId, postId, ...replyVisibility }),
+      this.replyModel.findOne({
+        _id: replyId,
+        postId,
+        ...(includeRemovedPost ? replyVisibility : {}),
+      }),
     ]);
     if (!post) throw commonErrors.postNotFound();
     if (!selectedReply) throw commonErrors.replyNotFound();
     if (!includeRemovedPost) await this.assertPublicPostVisible(post);
+    if (!includeRemovedPost && selectedReply.deletedAt !== null && selectedReply.parentReplyId) {
+      throw commonErrors.replyNotFound();
+    }
 
     const rootReply = selectedReply.parentReplyId
       ? await this.replyModel.findOne({
@@ -1313,7 +1378,7 @@ export class ForumService {
     if (!rootReply) throw commonErrors.replyNotFound();
 
     const documents = selectedReply.parentReplyId ? [rootReply, selectedReply] : [rootReply];
-    const serialized = await this.serializeReplies(documents, currentUserId);
+    const serialized = await this.serializeReplies(documents, currentUserId, includeRemovedPost);
     const root = serialized.find((reply) => reply.id === rootReply.id);
     const selected = serialized.find((reply) => reply.id === selectedReply.id);
     if (!root || !selected) throw commonErrors.replyNotFound();

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { startTransition, useEffect, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { motion, useReducedMotion } from 'framer-motion';
 import { usePathname, useRouter } from 'next/navigation';
@@ -11,6 +11,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { OwnerOperationProvider } from '@/contexts/OwnerOperationContext';
 import { RouteNetworkCanvas } from '@/components/effects/RouteNetworkCanvas';
 import { SystemAnnouncementBar } from '@/components/system/SystemAnnouncementBar';
+import { HomeShell } from '@/components/home/HomeShell';
 import { authApi } from '@/lib/api';
 import { authKeys } from '@/lib/query-keys';
 
@@ -68,6 +69,14 @@ export function InitializationGate({ children }: { children: ReactNode }) {
 
 function SessionScopedApplication({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  const pathname = usePathname();
+  const isWorkspaceRoute = pathname === '/workspace';
+  const [hasVisitedWorkspace, setHasVisitedWorkspace] = useState(isWorkspaceRoute);
+
+  useEffect(() => {
+    if (!isWorkspaceRoute || hasVisitedWorkspace) return;
+    startTransition(() => setHasVisitedWorkspace(true));
+  }, [hasVisitedWorkspace, isWorkspaceRoute]);
 
   return (
     <OwnerOperationProvider key={user?.id ?? 'anonymous'}>
@@ -77,7 +86,21 @@ function SessionScopedApplication({ children }: { children: ReactNode }) {
       <div className="flex h-dvh min-h-0 flex-col overflow-hidden">
         <SystemAnnouncementBar />
         <div className="relative z-10 min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-          {children}
+          {hasVisitedWorkspace && (
+            <div
+              className={
+                isWorkspaceRoute
+                  ? 'relative h-full min-h-0 w-full'
+                  : 'pointer-events-none absolute inset-0 invisible h-full min-h-0 w-full'
+              }
+              aria-hidden={!isWorkspaceRoute}
+            >
+              <HomeShell />
+            </div>
+          )}
+          {!isWorkspaceRoute && (
+            <div className="relative z-10 h-full min-h-0 w-full">{children}</div>
+          )}
         </div>
       </div>
     </OwnerOperationProvider>
