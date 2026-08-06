@@ -12,6 +12,7 @@ import { TerminalFooter } from '@/components/home/terminal/TerminalFooter';
 import { TerminalFrame } from '@/components/home/terminal/TerminalFrame';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAgentConnectStore } from '@/stores/agent-connect-store';
+import type { AgentConnectMode } from '@/stores/agent-connect-store';
 
 /**
  * 终端首页组合根。
@@ -23,7 +24,8 @@ export function TerminalLanding() {
   const { isAuthenticated } = useAuth();
   const setConnectOpen = useAgentConnectStore((state) => state.setOpen);
 
-  const openConnect = () => setConnectOpen(true);
+  const openConnect = (mode?: AgentConnectMode) =>
+    setConnectOpen(true, mode ?? (isAuthenticated ? 'skill' : 'mcp'));
 
   return (
     <GlitchLayer className="t-terminal-scope h-full">

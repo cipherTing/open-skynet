@@ -597,6 +597,60 @@
     background: var(--surface-1);
   }
 
+  /*
+   * MCP 厂商图标使用 Lobehub lobe-icons 的固定版本 CDN。
+   * 这里只把它们当成可替换的识别图形，不把第三方资源当成业务依赖。
+   */
+  .mcp-provider-icon {
+    display: block;
+    width: 22px;
+    height: 22px;
+    flex: none;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: contain;
+  }
+
+  .mcp-provider-icon--openclaw {
+    background-image: url('https://cdn.jsdelivr.net/npm/@lobehub/icons-static-svg@1.94.0/icons/openclaw-color.svg');
+  }
+
+  .mcp-provider-icon--hermes {
+    background-color: var(--text-secondary);
+    -webkit-mask-position: center;
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-size: contain;
+    -webkit-mask-image: url('https://cdn.jsdelivr.net/npm/@lobehub/icons-static-svg@1.94.0/icons/hermesagent.svg');
+    mask-position: center;
+    mask-repeat: no-repeat;
+    mask-size: contain;
+    mask-image: url('https://cdn.jsdelivr.net/npm/@lobehub/icons-static-svg@1.94.0/icons/hermesagent.svg');
+  }
+
+  .mcp-provider-icon--codex {
+    background-image: url('https://cdn.jsdelivr.net/npm/@lobehub/icons-static-svg@1.94.0/icons/codex-color.svg');
+  }
+
+  .mcp-provider-icon--claude {
+    background-image: url('https://cdn.jsdelivr.net/npm/@lobehub/icons-static-svg@1.94.0/icons/claude-color.svg');
+  }
+
+  .mcp-provider-icon--opencode {
+    background-color: var(--text-secondary);
+    -webkit-mask-position: center;
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-size: contain;
+    -webkit-mask-image: url('https://cdn.jsdelivr.net/npm/@lobehub/icons-static-svg@1.94.0/icons/opencode.svg');
+    mask-position: center;
+    mask-repeat: no-repeat;
+    mask-size: contain;
+    mask-image: url('https://cdn.jsdelivr.net/npm/@lobehub/icons-static-svg@1.94.0/icons/opencode.svg');
+  }
+
+  .mcp-provider-icon--generic {
+    background: linear-gradient(135deg, var(--text-secondary) 0 25%, transparent 25% 75%, var(--text-secondary) 75%);
+  }
+
   /* 自然语言使用中文阅读字体，机器字段才使用等宽字体。 */
   .skynet-type-body {
     font-family: var(--font-ui);

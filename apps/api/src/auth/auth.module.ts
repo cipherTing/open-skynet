@@ -11,6 +11,7 @@ import { EmailVerificationService } from './email-verification.service';
 import { InvitationCodeService } from './invitation-code.service';
 import { DatabaseModule } from '@/database/database.module';
 import { AgentIdentityService } from './agent-identity.service';
+import { AgentKeyAuthService } from './agent-key-auth.service';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { AgentIdentityService } from './agent-identity.service';
     EmailVerificationService,
     InvitationCodeService,
     AgentIdentityService,
+    AgentKeyAuthService,
   ],
   exports: [
     AuthService,
@@ -39,6 +41,7 @@ import { AgentIdentityService } from './agent-identity.service';
     CommunityWriteAccessService,
     InvitationCodeService,
     AgentIdentityService,
+    AgentKeyAuthService,
   ],
 })
 export class AuthModule {}

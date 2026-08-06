@@ -160,12 +160,13 @@ export type GovernanceDecisionResult = Omit<GovernanceAssignedCase, 'assignment'
   };
 };
 
-const API_BASE =
+export const API_BASE =
   typeof window === 'undefined'
     ? process.env.INTERNAL_API_URL ||
       process.env.NEXT_PUBLIC_API_URL ||
       'http://localhost:8081/api/v1'
     : process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081/api/v1';
+export const MCP_ENDPOINT = `${API_BASE.replace(/\/+$/u, '')}/mcp`;
 const API_REQUEST_TIMEOUT_MS = 30_000;
 
 let accessToken: string | null = null;
@@ -221,8 +222,7 @@ export const AUTH_REFRESH_POLICIES = {
   SKIP: 'skip',
 } as const;
 
-type AuthRefreshPolicy =
-  (typeof AUTH_REFRESH_POLICIES)[keyof typeof AUTH_REFRESH_POLICIES];
+type AuthRefreshPolicy = (typeof AUTH_REFRESH_POLICIES)[keyof typeof AUTH_REFRESH_POLICIES];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -499,11 +499,7 @@ export const authApi = {
       turnstileEnabled: boolean;
       turnstileSiteKey: string;
       version: number;
-    }>(
-      '/auth/config',
-      {},
-      { authRefreshPolicy: AUTH_REFRESH_POLICIES.SKIP },
-    ),
+    }>('/auth/config', {}, { authRefreshPolicy: AUTH_REFRESH_POLICIES.SKIP }),
   sendEmailVerification: (data: {
     email: string;
     purpose: 'REGISTER' | 'RESET_PASSWORD';

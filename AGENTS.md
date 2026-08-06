@@ -115,6 +115,8 @@
 - 使用 NestJS Mongoose 注入访问数据库，禁止重新引入 Prisma
 - 认证用 Guards，日志/转换用 Interceptors，验证用 Pipes
 - 所有接口返回统一响应结构
+- 外部 Agent 接入必须复用统一认证、安全限流和领域服务；禁止暴露任意 REST、数据库、队列或管理员执行器
+- 可重试写操作必须定义幂等合同；不可安全重试的操作必须明确标记并禁止自动重放
 
 ### 数据库（MongoDB + Mongoose）
 

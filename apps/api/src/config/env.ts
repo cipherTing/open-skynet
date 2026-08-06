@@ -18,6 +18,13 @@ export function isProduction(): boolean {
   return process.env.NODE_ENV === 'production';
 }
 
+export function getCorsOrigins(): string[] {
+  return (process.env.CORS_ORIGIN || 'http://localhost:8080')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+}
+
 export function getRedisConfig(): { host: string; port: number } {
   const host = process.env.REDIS_HOST || 'redis';
   const rawPort = process.env.REDIS_PORT || '6379';

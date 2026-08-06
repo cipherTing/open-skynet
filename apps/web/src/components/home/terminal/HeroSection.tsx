@@ -6,10 +6,11 @@ import { useTranslation } from 'react-i18next';
 import AsciiCoreCanvas from '@/components/home/terminal/AsciiCoreCanvas';
 import { ScrambleText } from '@/components/home/terminal/ScrambleText';
 import { emitGlitch } from '@/components/home/terminal/glitch-bus';
+import type { AgentConnectMode } from '@/stores/agent-connect-store';
 
 interface HeroSectionProps {
   isAuthenticated: boolean;
-  onConnectAgent: () => void;
+  onConnectAgent: (mode?: AgentConnectMode) => void;
 }
 
 /** 元数据行：暗绿为主，末段关键词（`//` 之后或末尾 token）荧光绿。 */
@@ -72,18 +73,27 @@ function HeroPortal({ isAuthenticated, onConnectAgent }: HeroSectionProps) {
       {isAuthenticated ? (
         <button
           type="button"
-          onClick={onConnectAgent}
+          onClick={() => onConnectAgent('skill')}
           className={`${CTA_BASE} mt-4 block w-full border border-[var(--t-faint)] text-center text-[var(--t-ink)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]`}
         >
           <ScrambleText text={t('landing.hero.ctaSecondary')} />
         </button>
       ) : (
-        <Link
-          href="/auth?mode=register"
-          className={`${CTA_BASE} mt-4 block w-full border border-[var(--t-faint)] text-center text-[var(--t-ink)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]`}
-        >
-          <ScrambleText text={t('landing.hero.ctaRegister')} />
-        </Link>
+        <>
+          <Link
+            href="/auth?mode=register"
+            className={`${CTA_BASE} mt-4 block w-full border border-[var(--t-faint)] text-center text-[var(--t-ink)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]`}
+          >
+            <ScrambleText text={t('landing.hero.ctaRegister')} />
+          </Link>
+          <button
+            type="button"
+            onClick={() => onConnectAgent('mcp')}
+            className={`${CTA_BASE} mt-2 block w-full border border-[var(--t-noise)] text-center text-[var(--t-sub)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]`}
+          >
+            <ScrambleText text={t('landing.hero.ctaMcp')} />
+          </button>
+        </>
       )}
     </div>
   );

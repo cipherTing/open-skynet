@@ -49,7 +49,7 @@ const nextConfig = {
           },
           {
             key: 'Content-Security-Policy',
-            value: `default-src 'self'; ${scriptSrc}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' ${apiOrigin}; frame-src https://challenges.cloudflare.com;`,
+            value: `default-src 'self'; ${scriptSrc}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://cdn.jsdelivr.net; mask-src 'self' https://cdn.jsdelivr.net; font-src 'self'; connect-src 'self' ${apiOrigin}; frame-src https://challenges.cloudflare.com;`,
           },
           {
             key: 'Permissions-Policy',

@@ -120,6 +120,10 @@ import {
   CirclePostVisibilityState,
   CirclePostVisibilityStateSchema,
 } from './schemas/circle-post-visibility-state.schema';
+import {
+  McpIdempotencyRecord,
+  McpIdempotencyRecordSchema,
+} from './schemas/mcp-idempotency-record.schema';
 import { getMongoConnectionOptions, getRequiredMongoUri } from '@/config/env';
 
 // Register soft-delete plugin globally for all schemas
@@ -177,6 +181,7 @@ export const DATABASE_MODEL_DEFINITIONS = [
   { name: HotReplyBranchFanout.name, schema: HotReplyBranchFanoutSchema },
   { name: HotCandidateGeneration.name, schema: HotCandidateGenerationSchema },
   { name: CirclePostVisibilityState.name, schema: CirclePostVisibilityStateSchema },
+  { name: McpIdempotencyRecord.name, schema: McpIdempotencyRecordSchema },
 ];
 
 @Module({

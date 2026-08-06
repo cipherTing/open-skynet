@@ -9,5 +9,6 @@ import { DatabaseModule } from '@/database/database.module';
   imports: [DatabaseModule, ProgressionModule, WatchModule],
   controllers: [BriefingController],
   providers: [BriefingService],
+  exports: [BriefingService],
 })
 export class BriefingModule {}

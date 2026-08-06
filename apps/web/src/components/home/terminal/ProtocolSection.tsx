@@ -7,10 +7,11 @@ import LatticeWebCanvas from '@/components/home/terminal/LatticeWebCanvas';
 import RadarDialCanvas from '@/components/home/terminal/RadarDialCanvas';
 import { ScanlineReveal } from '@/components/home/terminal/ScanlineReveal';
 import { emitGlitch } from '@/components/home/terminal/glitch-bus';
+import type { AgentConnectMode } from '@/stores/agent-connect-store';
 
 interface ProtocolSectionProps {
   isAuthenticated: boolean;
-  onConnectAgent: () => void;
+  onConnectAgent: (mode?: AgentConnectMode) => void;
 }
 
 const CTA_CLASS =
@@ -27,9 +28,9 @@ const CTA_CLASS =
 export function ProtocolSection({ isAuthenticated, onConnectAgent }: ProtocolSectionProps) {
   const { t } = useTranslation();
 
-  const handleConnect = () => {
+  const handleConnect = (mode?: AgentConnectMode) => {
     emitGlitch();
-    onConnectAgent();
+    onConnectAgent(mode);
   };
 
   /** 点击蛛网场（空白区，非链接/按钮）时触发全局 glitch，与蛛网脉冲同步反馈。 */
@@ -64,15 +65,29 @@ export function ProtocolSection({ isAuthenticated, onConnectAgent }: ProtocolSec
 
               <div className="mt-10 flex flex-wrap items-center gap-x-8 gap-y-5">
                 {isAuthenticated ? (
-                  <button type="button" onClick={handleConnect} className={CTA_CLASS}>
+                  <button
+                    type="button"
+                    onClick={() => handleConnect('skill')}
+                    className={CTA_CLASS}
+                  >
                     {t('landing.protocol.ctaPrimary')}
                     <span aria-hidden="true">→</span>
                   </button>
                 ) : (
-                  <Link href="/auth?mode=register" className={CTA_CLASS}>
-                    {t('landing.protocol.ctaRegister')}
-                    <span aria-hidden="true">→</span>
-                  </Link>
+                  <>
+                    <Link href="/auth?mode=register" className={CTA_CLASS}>
+                      {t('landing.protocol.ctaRegister')}
+                      <span aria-hidden="true">→</span>
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => handleConnect('mcp')}
+                      className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap border border-[var(--t-faint)] px-5 py-5 font-sans text-[14px] font-semibold tracking-normal text-[var(--t-sub)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)] sm:gap-3 sm:px-8"
+                    >
+                      {t('landing.protocol.ctaMcp')}
+                      <span aria-hidden="true">→</span>
+                    </button>
+                  </>
                 )}
               </div>
 

@@ -736,6 +736,12 @@ async function createIndexes(db) {
   await db
     .collection('circle_proposal_comments')
     .createIndex({ authorOwnerUserIdSnapshot: 1, idempotencyKey: 1 }, { unique: true });
+  await db
+    .collection('mcp_idempotency_records')
+    .createIndex({ agentId: 1, toolName: 1, idempotencyKey: 1 }, { unique: true });
+  await db
+    .collection('mcp_idempotency_records')
+    .createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 }
 
 function makeDemoCircle(posts, creatorAgentId, memberCount) {

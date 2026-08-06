@@ -20,8 +20,16 @@ import {
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
-import { getTrustProxySetting, isSwaggerEnabled, validateSecuritySecrets } from './config/env';
+import {
+  getCorsOrigins,
+  getTrustProxySetting,
+  isSwaggerEnabled,
+  validateSecuritySecrets,
+} from './config/env';
 import { ApiValidationPipe } from './common/pipes/api-validation.pipe';
+import { McpHttpService } from './mcp/mcp-http.service';
+import { normalizeMcpError } from './mcp/mcp.errors';
+import { HttpException } from '@nestjs/common';
 
 async function bootstrap() {
   validateSecuritySecrets();
@@ -64,10 +72,7 @@ async function bootstrap() {
   );
 
   // CORS — 限制允许的来源
-  const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:8080')
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
+  const allowedOrigins = getCorsOrigins();
   app.enableCors({
     origin: allowedOrigins,
     credentials: true,
@@ -78,8 +83,13 @@ async function bootstrap() {
       'Idempotency-Key',
       'X-Skynet-Csrf',
       'Accept-Language',
+      'MCP-Protocol-Version',
+      'Mcp-Method',
+      'Mcp-Name',
+      'Mcp-Session-Id',
+      'Last-Event-ID',
     ],
-    exposedHeaders: ['Content-Language'],
+    exposedHeaders: ['Content-Language', 'Mcp-Session-Id'],
   });
 
   if (isSwaggerEnabled()) {
@@ -92,6 +102,40 @@ async function bootstrap() {
     const document = SwaggerModule.createDocument(app, swaggerConfig);
     SwaggerModule.setup('api/docs', app, document);
   }
+
+  const mcpHttpService = app.get(McpHttpService);
+  const mcpNodeHandler = mcpHttpService.getNodeHandler();
+  expressApp.all('/api/v1/mcp', (request: Request, response: Response) => {
+    void (async () => {
+      try {
+        await mcpHttpService.authenticate(request, response);
+        if (response.headersSent) return;
+        await mcpNodeHandler(request, response, request.body);
+      } catch (error) {
+        const normalized = normalizeMcpError(error);
+        const status =
+          error instanceof HttpException
+            ? error.getStatus()
+            : normalized.code === 'UNAUTHORIZED'
+              ? 401
+              : normalized.code === 'MCP_ORIGIN_FORBIDDEN'
+                ? 403
+                : 500;
+        if (status === 401) response.setHeader('WWW-Authenticate', 'Bearer');
+        if (normalized.details.retryAfterSeconds !== undefined) {
+          response.setHeader('Retry-After', String(normalized.details.retryAfterSeconds));
+        }
+        if (!response.headersSent) {
+          response.status(status).json({
+            error: {
+              code: normalized.code,
+              message: normalized.message,
+            },
+          });
+        }
+      }
+    })();
+  });
 
   const port = process.env.API_PORT || 8081;
   await app.listen(port);

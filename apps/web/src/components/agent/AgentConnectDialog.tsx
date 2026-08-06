@@ -1,15 +1,18 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { Bot, Check, Copy, KeyRound } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { userApi, ApiError } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/components/ui/SignalToast';
-import { useAgentConnectStore } from '@/stores/agent-connect-store';
+import { useAgentConnectStore, type AgentConnectMode } from '@/stores/agent-connect-store';
 import { TerminalDialog } from '@/components/ui/TerminalDialog';
 import { TerminalTooltip } from '@/components/ui/tooltip';
+import { TTabContent, TTabs } from '@/components/ui/terminal';
+import { McpConnectPanel } from './McpConnectPanel';
 
 function localDateKey(): string {
   const now = new Date();
@@ -31,7 +34,9 @@ function ConnectStep({ index, text }: { index: number; text: string }) {
       <span className="flex-none font-sans text-[12px] font-medium tracking-normal text-[var(--t-accent)]">
         STEP {String(index).padStart(2, '0')}
       </span>
-      <span className="min-w-0 font-sans text-[12px] leading-5 tracking-normal text-text-secondary">{text}</span>
+      <span className="min-w-0 font-sans text-[12px] leading-5 tracking-normal text-text-secondary">
+        {text}
+      </span>
     </li>
   );
 }
@@ -41,6 +46,7 @@ export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolea
   const toast = useToast();
   const { user, agent, isAuthenticated } = useAuth();
   const open = useAgentConnectStore((state) => state.open);
+  const requestedMode = useAgentConnectStore((state) => state.mode);
   const setOpen = useAgentConnectStore((state) => state.setOpen);
   const [link, setLink] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
@@ -49,6 +55,7 @@ export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolea
   );
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const accessMode: AgentConnectMode = requestedMode;
   const keyQuery = useQuery({
     queryKey: ['agent-connect', 'key-info', agent?.id],
     queryFn: userApi.getKeyInfo,
@@ -104,14 +111,16 @@ export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolea
     <TerminalDialog
       open={open}
       onOpenChange={(next) => {
-        setOpen(next);
         if (!next) {
           setLink('');
+          setOpen(false, 'skill');
+          return;
         }
+        setOpen(true);
       }}
       title={t('circleDialogs.agentConnectTitle')}
       description={t('agentConnect.description')}
-      code="AGENT.LINK"
+      code={accessMode === 'mcp' ? 'AGENT.MCP' : 'AGENT.LINK'}
       size="md"
       contentClassName={CUT_PANEL_CLASS}
     >
@@ -122,112 +131,143 @@ export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolea
         <p className="text-sm leading-6 text-text-secondary">{t('agentConnect.description')}</p>
       </div>
 
-      <ol className="mt-5 space-y-2 border-l border-[var(--t-noise)] pl-4">
-        <ConnectStep index={1} text={t('agentConnect.stepCommand')} />
-        <ConnectStep index={2} text={t('agentConnect.stepSend')} />
-      </ol>
+      <TTabs
+        active={accessMode}
+        onChange={(next) => {
+          if (next === 'skill' || next === 'mcp') setOpen(true, next);
+        }}
+        items={[
+          { id: 'skill', label: t('agentConnect.modeSkill') },
+          { id: 'mcp', label: t('agentConnect.modeMcp') },
+        ]}
+        className="mt-5"
+      >
+        <TTabContent value="skill" className="mt-4 outline-none">
+          <ol className="space-y-2 border-l border-[var(--t-noise)] pl-4">
+            <ConnectStep index={1} text={t('agentConnect.stepCommand')} />
+            <ConnectStep index={2} text={t('agentConnect.stepSend')} />
+          </ol>
 
-      {!link ? (
-        <div className="mt-5 space-y-3">
-          {keyQuery.isError && (
-            <div className="flex items-center justify-between gap-3 border border-danger/30 bg-danger/10 px-3 py-2 font-sans text-[12px] leading-5 tracking-normal text-danger">
-              <span>{t('agentConnect.keyStatusFailed')}</span>
+          {!isAuthenticated ? (
+            <div className="mt-5 space-y-3 border border-[var(--t-noise)] bg-black p-4">
+              <p className="font-sans text-[13px] font-semibold tracking-normal text-white">
+                {t('agentConnect.loginRequiredTitle')}
+              </p>
+              <p className="font-sans text-[12px] leading-5 tracking-normal text-text-secondary">
+                {t('agentConnect.loginRequiredDescription')}
+              </p>
+              <Link href="/auth?mode=login" className="t-btn t-btn--primary h-9 w-full">
+                <KeyRound className="h-4 w-4" />
+                {t('agentConnect.loginRequiredAction')}
+              </Link>
+            </div>
+          ) : !link ? (
+            <div className="mt-5 space-y-3">
+              {keyQuery.isError && (
+                <div className="flex items-center justify-between gap-3 border border-danger/30 bg-danger/10 px-3 py-2 font-sans text-[12px] leading-5 tracking-normal text-danger">
+                  <span>{t('agentConnect.keyStatusFailed')}</span>
+                  <button
+                    type="button"
+                    onClick={() => void keyQuery.refetch()}
+                    className="font-bold hover:text-accent"
+                  >
+                    {t('app.retry')}
+                  </button>
+                </div>
+              )}
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
+                    {t('agentConnect.revisitIntervalLabel')}
+                  </span>
+                  <TerminalTooltip
+                    content={t('agentConnect.revisitIntervalTooltip')}
+                    side="top"
+                    align="start"
+                    contentClassName="border-[var(--t-noise)] bg-[var(--t-panel)] text-[var(--t-sub)]"
+                  >
+                    <button
+                      type="button"
+                      aria-label={t('agentConnect.revisitIntervalTooltip')}
+                      className="flex h-3.5 w-3.5 items-center justify-center border border-[var(--t-noise)] font-mono text-[9px] leading-none text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]"
+                    >
+                      ?
+                    </button>
+                  </TerminalTooltip>
+                </div>
+                <div className="grid grid-cols-4 border border-[var(--t-noise)]">
+                  {REVISIT_INTERVAL_OPTIONS.map((hours) => {
+                    const active = hours === revisitIntervalHours;
+                    return (
+                      <button
+                        key={hours}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => setRevisitIntervalHours(hours)}
+                        className={`h-8 font-sans text-[12px] tabular-nums tracking-normal transition-colors [transition-timing-function:steps(2,end)] ${
+                          active
+                            ? 'bg-[var(--t-accent)] text-black'
+                            : 'text-[var(--t-sub)] hover:text-[var(--t-accent)]'
+                        }`}
+                      >
+                        {t('agentConnect.revisitIntervalOption', { hours })}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
               <button
                 type="button"
-                onClick={() => void keyQuery.refetch()}
-                className="font-bold hover:text-accent"
+                disabled={busy || keyQuery.isPending || keyQuery.isError}
+                onClick={() => void generateLink()}
+                className="t-btn t-btn--primary h-10 w-full"
               >
-                {t('app.retry')}
+                <KeyRound className="h-4 w-4" />
+                {busy
+                  ? t('agentConnect.generating')
+                  : hasKey
+                    ? t('agentConnect.generateLink')
+                    : t('agentConnect.createKeyAndLink')}
+              </button>
+              {!hasKey && (
+                <button
+                  type="button"
+                  onClick={hideToday}
+                  className="w-full text-center font-sans text-[12px] tracking-normal text-text-tertiary hover:text-accent"
+                >
+                  {t('agentConnect.hideToday')}
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="mt-5 space-y-3">
+              <div className="border border-[var(--t-noise)] bg-black p-3">
+                <div className="mb-2 font-sans text-[12px] font-semibold tracking-normal text-accent">
+                  {t('agentConnect.linkReady')}
+                </div>
+                <code className="block overflow-x-auto whitespace-pre font-mono text-xs leading-5 text-info">
+                  {connectCommand}
+                </code>
+              </div>
+              <p className="font-sans text-[12px] tracking-normal text-text-tertiary">
+                {t('agentConnect.expiresAt', { time: new Date(expiresAt).toLocaleTimeString() })}
+              </p>
+              <button
+                type="button"
+                onClick={() => void copy()}
+                className="t-btn t-btn--ghost h-10 w-full"
+              >
+                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                {copied ? t('app.copied') : t('agentConnect.copyLink')}
               </button>
             </div>
           )}
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-1.5">
-              <span className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
-                {t('agentConnect.revisitIntervalLabel')}
-              </span>
-              <TerminalTooltip
-                content={t('agentConnect.revisitIntervalTooltip')}
-                side="top"
-                align="start"
-                contentClassName="border-[var(--t-noise)] bg-[var(--t-panel)] text-[var(--t-sub)]"
-              >
-                <button
-                  type="button"
-                  aria-label={t('agentConnect.revisitIntervalTooltip')}
-                  className="flex h-3.5 w-3.5 items-center justify-center border border-[var(--t-noise)] font-mono text-[9px] leading-none text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]"
-                >
-                  ?
-                </button>
-              </TerminalTooltip>
-            </div>
-            <div className="grid grid-cols-4 border border-[var(--t-noise)]">
-              {REVISIT_INTERVAL_OPTIONS.map((hours) => {
-                const active = hours === revisitIntervalHours;
-                return (
-                  <button
-                    key={hours}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => setRevisitIntervalHours(hours)}
-                    className={`h-8 font-sans text-[12px] tabular-nums tracking-normal transition-colors [transition-timing-function:steps(2,end)] ${
-                      active
-                        ? 'bg-[var(--t-accent)] text-black'
-                        : 'text-[var(--t-sub)] hover:text-[var(--t-accent)]'
-                    }`}
-                  >
-                    {t('agentConnect.revisitIntervalOption', { hours })}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <button
-            type="button"
-            disabled={busy || keyQuery.isPending || keyQuery.isError}
-            onClick={() => void generateLink()}
-            className="t-btn t-btn--primary h-10 w-full"
-          >
-            <KeyRound className="h-4 w-4" />
-            {busy
-              ? t('agentConnect.generating')
-              : hasKey
-                ? t('agentConnect.generateLink')
-                : t('agentConnect.createKeyAndLink')}
-          </button>
-          {!hasKey && (
-            <button
-              type="button"
-              onClick={hideToday}
-              className="w-full text-center font-sans text-[12px] tracking-normal text-text-tertiary hover:text-accent"
-            >
-              {t('agentConnect.hideToday')}
-            </button>
-          )}
-        </div>
-      ) : (
-        <div className="mt-5 space-y-3">
-          <div className="border border-[var(--t-noise)] bg-black p-3">
-            <div className="mb-2 font-sans text-[12px] font-semibold tracking-normal text-accent">
-              {t('agentConnect.linkReady')}
-            </div>
-            <code className="block overflow-x-auto whitespace-pre font-mono text-xs leading-5 text-info">
-              {connectCommand}
-            </code>
-          </div>
-          <p className="font-sans text-[12px] tracking-normal text-text-tertiary">
-            {t('agentConnect.expiresAt', { time: new Date(expiresAt).toLocaleTimeString() })}
-          </p>
-          <button
-            type="button"
-            onClick={() => void copy()}
-            className="t-btn t-btn--ghost h-10 w-full"
-          >
-            {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-            {copied ? t('app.copied') : t('agentConnect.copyLink')}
-          </button>
-        </div>
-      )}
+        </TTabContent>
+
+        <TTabContent value="mcp" className="mt-4 outline-none">
+          <McpConnectPanel isAuthenticated={isAuthenticated} hasKey={hasKey} />
+        </TTabContent>
+      </TTabs>
     </TerminalDialog>
   );
 }
