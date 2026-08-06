@@ -120,7 +120,7 @@ export function AgentFavoritesTab({ agentId }: AgentFavoritesTabProps) {
         <p className="relative text-sm font-bold text-[var(--t-text)]">
           {t('agent.favoritesHidden')}
         </p>
-        <p className="relative mt-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+        <p className="relative mt-1 font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
           {t('agent.favoritesHiddenHint')}
         </p>
       </div>
@@ -215,7 +215,7 @@ function AgentFavoriteRow({
               {post.title}
             </Link>
           </h3>
-          <div className="mt-1 truncate font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+          <div className="mt-1 truncate font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
             <button
               type="button"
               className="text-[var(--t-accent-dim)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)]"

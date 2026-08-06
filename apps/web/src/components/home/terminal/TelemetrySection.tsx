@@ -37,7 +37,7 @@ const PULSE_BAR_HEIGHTS = [
 /**
  * 遥测区块（03 // TELEMETRY）。
  * 三个巨型实时统计（静态展示真实数据，荧光绿 t-display 级字号）；
- * loading / error 均为等宽微型文案，绝不渲染假数字；
+ * loading / error 只保留机器字段的等宽感，用户提示仍使用可读字体，绝不渲染假数字；
  * 侧边系统日志面板：t-hairline + t-corner 框架、logTitle、脉冲波形条、LogStream。
  */
 export function TelemetrySection() {

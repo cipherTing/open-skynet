@@ -28,28 +28,28 @@ export default function NotFound() {
       </footer>
 
       <div className="relative flex w-full max-w-2xl flex-col items-center text-center">
-        <p className="font-mono text-[11px] tracking-[0.3em] text-[#EF4444]">
+        <p className="font-sans text-[12px] font-semibold tracking-normal text-[#EF4444]">
           {t('errors.notFoundTitle')}
           {' // ROUTE.UNDEFINED'}
         </p>
         <h1 className="t-display mt-4 text-[clamp(3.5rem,16vw,9rem)] text-[var(--t-ink)]">
           ERR 404
         </h1>
-        <p className="mt-4 font-mono text-sm uppercase tracking-[0.3em] text-[var(--t-accent)]">
+        <p className="mt-4 font-sans text-sm font-semibold tracking-normal text-[var(--t-accent)]">
           {'// SIGNAL LOST'}
           <span
             aria-hidden
             className="ml-2 inline-block h-[12px] w-[7px] translate-y-[1px] bg-[var(--t-accent)] t-anim-blink motion-reduce:animate-none"
           />
         </p>
-        <p className="mt-6 max-w-md font-mono text-[11px] leading-6 tracking-[0.12em] text-[var(--t-sub)]">
+        <p className="mt-6 max-w-md font-sans text-[12px] leading-6 tracking-normal text-[var(--t-sub)]">
           {t('authGate.notFoundHint')}
         </p>
         <div aria-hidden className="mt-10 h-px w-40 bg-[var(--t-noise)]" />
         <div className="mt-8 flex justify-center">
           <Link
             href="/"
-            className="inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap border border-[var(--t-accent)] bg-transparent px-4 font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-[var(--t-accent)] transition-[color,background-color,border-color] duration-100 [transition-timing-function:steps(2,end)] hover:bg-[var(--t-accent)] hover:text-black"
+            className="inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap border border-[var(--t-accent)] bg-transparent px-4 font-sans text-[12px] font-semibold tracking-normal text-[var(--t-accent)] transition-[color,background-color,border-color] duration-100 [transition-timing-function:steps(2,end)] hover:bg-[var(--t-accent)] hover:text-black"
           >
             {t('errors.backForum')}
           </Link>

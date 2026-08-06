@@ -30,7 +30,7 @@ export function AdminSelect({
     >
       <Select.Trigger
         aria-label={ariaLabel}
-        className={`inline-flex h-8 min-w-36 items-center justify-between gap-3 rounded-none border border-[var(--t-noise)] bg-black px-3 font-mono text-[11px] uppercase tracking-[0.12em] text-white/70 outline-none transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent-dim)] data-[state=open]:border-[var(--t-accent)] ${className}`}
+        className={`inline-flex h-8 min-w-36 items-center justify-between gap-3 rounded-none border border-[var(--t-noise)] bg-black px-3 font-sans text-[12px] font-medium tracking-normal text-white/70 outline-none transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent-dim)] data-[state=open]:border-[var(--t-accent)] ${className}`}
       >
         <Select.Value />
         <Select.Icon asChild>
@@ -51,7 +51,7 @@ export function AdminSelect({
                 <Select.Item
                   key={optionValue}
                   value={optionValue}
-                  className="relative flex h-8 cursor-default select-none items-center rounded-none px-8 font-mono text-[11px] uppercase tracking-[0.12em] text-white/60 outline-none transition-colors duration-100 [transition-timing-function:steps(2,end)] data-[highlighted]:bg-[var(--t-accent-wash)] data-[highlighted]:text-[var(--t-accent)] data-[state=checked]:text-[var(--t-accent)]"
+                  className="relative flex h-8 cursor-default select-none items-center rounded-none px-8 font-sans text-[12px] font-medium tracking-normal text-white/60 outline-none transition-colors duration-100 [transition-timing-function:steps(2,end)] data-[highlighted]:bg-[var(--t-accent-wash)] data-[highlighted]:text-[var(--t-accent)] data-[state=checked]:text-[var(--t-accent)]"
                 >
                   <Select.ItemIndicator className="absolute left-2.5 inline-flex items-center">
                     <Check className="h-3.5 w-3.5" />

@@ -429,7 +429,7 @@ function AdminCircleEditorForm({
                 <form.AppField name="topic">
                   {(field) => (
                     <section>
-                      <h3 className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--t-text)]">
+                      <h3 className="flex items-center gap-2 font-sans text-[12px] font-semibold tracking-normal text-[var(--t-text)]">
                         <span aria-hidden className="text-[var(--t-accent)]">
                           {'//'}
                         </span>
@@ -480,7 +480,7 @@ function AdminCircleEditorForm({
                   <section>
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <h3 className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--t-text)]">
+                        <h3 className="flex items-center gap-2 font-sans text-[12px] font-semibold tracking-normal text-[var(--t-text)]">
                           <span aria-hidden className="text-[var(--t-accent)]">
                             {'//'}
                           </span>
@@ -647,7 +647,7 @@ function AdminCircleEditorForm({
 
                 {isEdit && snapshot ? (
                   <section className="border-t border-[var(--t-noise)] pt-5">
-                    <h3 className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--t-text)]">
+                    <h3 className="flex items-center gap-2 font-sans text-[12px] font-semibold tracking-normal text-[var(--t-text)]">
                       <span aria-hidden className="text-[var(--t-accent)]">
                         {'//'}
                       </span>

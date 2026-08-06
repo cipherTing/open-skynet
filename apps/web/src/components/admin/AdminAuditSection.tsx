@@ -153,7 +153,7 @@ export function AuditSection() {
           />
           <Link
             href="/admin?section=security"
-            className="inline-flex items-center gap-2 rounded-none border border-[var(--t-noise)] px-3 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-[var(--t-sub)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]"
+            className="inline-flex items-center gap-2 rounded-none border border-[var(--t-noise)] px-3 py-2 font-sans text-[12px] tracking-normal text-[var(--t-sub)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]"
           >
             <ShieldAlert className="h-3.5 w-3.5" />
             {t('admin.audit.securityEvents')}

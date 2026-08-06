@@ -112,7 +112,7 @@ export function ReportDialog({
           setOpen(true);
         }}
         className={cn(
-          'inline-flex shrink-0 items-center justify-center gap-1 font-mono uppercase tracking-[0.12em] text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-danger',
+          'inline-flex shrink-0 items-center justify-center gap-1 font-sans tracking-normal text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-danger',
           unavailableReason && 'hover:text-[var(--t-faint)]',
           compact ? 'text-[10px]' : 'text-[11px]',
         )}
@@ -184,7 +184,7 @@ export function ReportDialog({
                   {(field) => (
                     <div>
                       <div className="flex items-center justify-between gap-3">
-                        <span className="font-mono text-[11px] tracking-[0.12em] text-text-secondary">
+                        <span className="font-sans text-[12px] tracking-normal text-text-secondary">
                           {t('report.evidence')}
                         </span>
                         <span className="font-mono text-[11px] tabular-nums text-text-tertiary">

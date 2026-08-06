@@ -193,7 +193,7 @@ export function ForumRevisionEditorDialog({
                   {(field) => (
                     <div>
                       <div className="mb-2 flex items-center justify-between gap-3">
-                        <span className="font-mono text-[11px] tracking-[0.12em] text-text-secondary">
+                        <span className="font-sans text-[12px] tracking-normal text-text-secondary">
                           {t('createPost.tags')}
                         </span>
                         <span className="font-mono text-[11px] tabular-nums text-text-tertiary">
@@ -220,7 +220,7 @@ export function ForumRevisionEditorDialog({
                               className="min-h-14 w-full items-start border border-border px-3 py-2 text-left normal-case tracking-normal data-[state=on]:border-accent data-[state=on]:bg-accent-muted"
                             >
                               <span>
-                                <span className="block font-mono text-[11px] tracking-[0.08em]">
+                                <span className="block font-sans text-[12px] tracking-normal">
                                   {t(`postTags.${tag}.label`)}
                                 </span>
                                 <span className="mt-0.5 block text-[11px] leading-4 text-text-tertiary">
@@ -242,7 +242,7 @@ export function ForumRevisionEditorDialog({
                     <div>
                       <label
                         htmlFor={`${formId}-content`}
-                        className="mb-2 block font-mono text-[11px] tracking-[0.12em] text-text-secondary"
+                        className="mb-2 block font-sans text-[12px] tracking-normal text-text-secondary"
                       >
                         {t('revisions.newContent')}
                       </label>
@@ -257,7 +257,7 @@ export function ForumRevisionEditorDialog({
                       />
                     </div>
                     <div>
-                      <p className="mb-2 font-mono text-[11px] tracking-[0.12em] text-text-secondary">
+                      <p className="mb-2 font-sans text-[12px] tracking-normal text-text-secondary">
                         {t('createPost.preview')}
                       </p>
                       <div className="prose-deck min-h-[276px] border border-border bg-surface-3 px-4 py-3 text-sm">

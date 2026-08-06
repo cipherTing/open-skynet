@@ -67,31 +67,31 @@ function LevelPlate({
 }) {
   if (!level) {
     return (
-      <span className="inline-flex items-center border border-[var(--t-noise)] px-2 py-1 font-mono text-[10px] uppercase leading-none tracking-[0.15em] text-[var(--t-faint)]">
+      <span className="inline-flex items-center border border-[var(--t-noise)] px-2 py-1 font-sans text-[11px] font-medium leading-none tracking-normal text-[var(--t-faint)]">
         {inactiveLabel}
       </span>
     );
   }
   return (
-    <span className="inline-flex items-stretch border border-[var(--t-accent-dim)] font-mono leading-none">
-      <span className="flex items-center bg-[var(--t-accent)] px-1.5 py-1 text-[10px] font-bold tracking-[0.15em] text-black">
+    <span className="inline-flex items-stretch border border-[var(--t-accent-dim)] font-sans leading-none">
+      <span className="flex items-center bg-[var(--t-accent)] px-1.5 py-1 font-mono text-[10px] font-bold tracking-normal text-black">
         LV{level.level}
       </span>
-      <span className="flex items-center px-2 py-1 text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)]">
+      <span className="flex items-center px-2 py-1 text-[11px] font-medium tracking-normal text-[var(--t-accent)]">
         {levelName}
       </span>
     </span>
   );
 }
 
-/** 元数据栅格单元：10px 暗绿标签 + 等宽读数。 */
+/** 元数据栅格单元：中文可读标签 + 对应读数。 */
 function MetaCell({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="border-b border-r border-[var(--t-noise)] px-4 py-2.5 sm:px-5">
-      <dt className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+      <dt className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
         {label}
       </dt>
-      <dd className="mt-1 truncate font-mono text-xs tracking-[0.08em] text-[var(--t-text)]">
+      <dd className="mt-1 truncate font-sans text-[12px] tracking-normal text-[var(--t-text)]">
         {children}
       </dd>
     </div>
@@ -151,7 +151,7 @@ export function AgentHero({ agent, isOwnAgent }: AgentHeroProps) {
                   className="t-ambient-scan pointer-events-none absolute inset-1.5"
                 />
               </div>
-              <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+              <div className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                 IMG.SCAN // <span className="text-[var(--t-accent)]">{fileCode}</span>
               </div>
             </div>
@@ -159,7 +159,7 @@ export function AgentHero({ agent, isOwnAgent }: AgentHeroProps) {
             {/* 主信息区 */}
             <div className="min-w-0 flex-1">
               {/* 档案编号 */}
-              <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+              <div className="mb-2 font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                 {t('agent.fileNo')} <span className="text-[var(--t-accent)]">{fileCode}</span>
                 <span aria-hidden className="mx-2 text-[var(--t-faint)]">
                   {'//'}
@@ -187,7 +187,7 @@ export function AgentHero({ agent, isOwnAgent }: AgentHeroProps) {
                   contentClassName="w-72 py-3 px-3"
                   content={
                     <div className="space-y-2">
-                      <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                      <div className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                         {t('agent.health.title')}
                       </div>
                       <div className="flex items-center gap-2 text-sm font-bold text-[var(--t-text)]">
@@ -224,7 +224,7 @@ export function AgentHero({ agent, isOwnAgent }: AgentHeroProps) {
                   content={
                     <div className="space-y-2">
                       <div className="mx-1 border border-[var(--t-accent-dim)] bg-[var(--t-accent-wash)] px-3 py-2">
-                        <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                        <div className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                           {t('agent.currentLevel')}
                         </div>
                         <div className="mt-1 flex items-baseline gap-2">
@@ -290,7 +290,7 @@ export function AgentHero({ agent, isOwnAgent }: AgentHeroProps) {
                 </TerminalTooltip>
 
                 {/* 经验值 */}
-                <span className="inline-flex items-baseline gap-1.5 font-mono text-[10px] uppercase tracking-[0.15em]">
+                <span className="inline-flex items-baseline gap-1.5 font-sans text-[12px] font-medium tracking-normal">
                   <span className="text-[var(--t-faint)]">XP</span>
                   <MetricValue
                     value={level?.xpTotal ?? 0}
@@ -308,7 +308,7 @@ export function AgentHero({ agent, isOwnAgent }: AgentHeroProps) {
               {/* 等级进度：1px 直角进度条（仅本人可见精确进度） */}
               {isOwnAgent && level && (
                 <div className="mt-4 max-w-md">
-                  <div className="mb-1 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.15em]">
+                  <div className="mb-1 flex items-center justify-between font-sans text-[12px] font-medium tracking-normal">
                     <span className="text-[var(--t-faint)]">{t('agent.levelProgress')}</span>
                     {levelProgress === null ? (
                       <span className="font-bold text-[var(--t-accent)]">MAX</span>
@@ -332,7 +332,7 @@ export function AgentHero({ agent, isOwnAgent }: AgentHeroProps) {
           </div>
         </div>
 
-        {/* 等宽元数据栅格：1px hairline 分隔的读数单元 */}
+        {/* 元数据栅格：1px hairline 分隔的读数单元 */}
         <dl className="relative grid grid-cols-2 border-t border-[var(--t-noise)] sm:grid-cols-3 lg:grid-cols-5">
           <MetaCell label={t('agentTerm.metaUnitId')}>
             <span className="text-[var(--t-accent)]">{fileCode}</span>

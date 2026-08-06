@@ -58,7 +58,7 @@ function FieldShell({
     <>
       <span
         id={labelId}
-        className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]"
+        className="font-sans text-[12px] font-semibold tracking-normal text-[var(--t-faint)]"
       >
         {label}
       </span>
@@ -88,7 +88,7 @@ function FieldShell({
         <p
           id={errorId}
           role="alert"
-          className="mt-1 font-mono text-[10px] leading-5 text-[var(--t-hazard)]"
+          className="mt-1 font-sans text-[11px] leading-5 text-[var(--t-hazard)]"
         >
           {messages[0]}
         </p>
@@ -236,7 +236,7 @@ function FormSwitchField({
       <div className="flex items-center justify-between gap-4">
         <label
           htmlFor={id}
-          className="font-mono text-[11px] uppercase tracking-[0.15em] text-white/85"
+          className="font-sans text-[12px] font-semibold tracking-normal text-white/85"
         >
           {label}
         </label>
@@ -371,7 +371,7 @@ function FormRadioGroupField({
         {options.map((option) => (
           <label
             key={option.value}
-            className="inline-flex items-center gap-2.5 font-mono text-[11px] uppercase tracking-[0.15em] text-white/85"
+            className="inline-flex items-center gap-2.5 font-sans text-[12px] font-semibold tracking-normal text-white/85"
           >
             <RadioGroupItem value={option.value} disabled={option.disabled} />
             {option.label}

@@ -28,7 +28,7 @@ function formatInteger(value: number): string {
 const STEPS_SPIN_CLASS = '[animation:t-spin-step_0.8s_steps(8)_infinite]';
 
 /**
- * 信号面板（右栏）：遥测面板化——等宽 10px 标签 + 静态真实数值 + 1px hairline 分区。
+ * 信号面板（右栏）：可读标签 + 等宽真实数值 + 1px hairline 分区。
  * 禁止卡片套卡片：外框仅一层 t-corner，内部全靠 hairline 分层。
  */
 export function SignalPanelContent() {
@@ -49,10 +49,10 @@ export function SignalPanelContent() {
       <div className="flex h-full min-h-0 flex-col p-3">
         <div className="t-corner relative flex h-full min-h-0 flex-col border border-[var(--t-noise)] bg-[var(--t-panel)]">
           <header className="flex flex-none items-center justify-between gap-2 border-b border-[var(--t-noise)] px-3 py-2">
-            <span className="truncate font-mono text-[10px] uppercase tracking-[0.15em] text-white">
+            <span className="truncate font-sans text-[12px] font-medium tracking-normal text-white">
               {t('sidebar.signalPanel')}
             </span>
-            <span className="flex flex-none items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+            <span className="flex flex-none items-center gap-1.5 font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
               <span
                 aria-hidden="true"
                 className={`h-1.5 w-1.5 ${
@@ -90,13 +90,13 @@ export function SignalPanelContent() {
 
             {postPanelQuery.isError ? (
               <section className="border-b border-[var(--t-hazard-dim)] px-3 py-3">
-                <p className="font-mono text-[11px] tracking-[0.08em] text-[var(--t-hazard)]/80">
+                <p className="font-sans text-[12px] leading-5 tracking-normal text-[var(--t-hazard)]/80">
                   {t('postPanel.summarySyncFailed')}
                 </p>
                 <button
                   type="button"
                   onClick={() => void postPanelQuery.refetch()}
-                  className="mt-2 inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-sub)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)]"
+                  className="mt-2 inline-flex items-center gap-1 font-sans text-[12px] font-medium tracking-normal text-[var(--t-sub)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)]"
                 >
                   <RotateCw className="h-3 w-3" />
                   {t('app.retry')}
@@ -110,7 +110,7 @@ export function SignalPanelContent() {
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <Zap className="h-3.5 w-3.5 text-[var(--t-faint)]" />
-                    <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                    <span className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                       {t('postPanel.latestPosts')}
                     </span>
                   </div>
@@ -121,7 +121,7 @@ export function SignalPanelContent() {
                 {postPanelQuery.isLoading && !postPanel ? (
                   <TSkeleton rows={3} />
                 ) : postPanel && postPanel.latestPosts.items.length === 0 ? (
-                  <p className="border border-dashed border-[var(--t-noise)] px-3 py-4 text-center font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                  <p className="border border-dashed border-[var(--t-noise)] px-3 py-4 text-center font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                     {t('postPanel.noLatestPosts')}
                   </p>
                 ) : (
@@ -167,7 +167,7 @@ function PanelMetric({
 }) {
   return (
     <div className="bg-black p-3">
-      <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--t-faint)]">
+      <p className="font-sans text-[11px] font-medium tracking-normal text-[var(--t-faint)]">
         {label}
       </p>
       <p className="mt-2 font-mono text-xl font-bold tabular-nums leading-none text-[var(--t-accent)]">
@@ -204,7 +204,7 @@ function LatestPostItem({
         aria-hidden
         className="absolute inset-y-0 left-0 w-[2px] bg-[var(--t-accent)] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
       />
-      <span className="flex items-center gap-1.5 font-mono text-[10px] tracking-[0.12em] text-[var(--t-faint)]">
+      <span className="flex items-center gap-1.5 font-sans text-[11px] tracking-normal text-[var(--t-faint)]">
         <Timecode date={post.createdAt} />
         <span aria-hidden>·</span>
         <span className="truncate text-[var(--t-accent)]/70 transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]">
@@ -214,7 +214,7 @@ function LatestPostItem({
       <span className="mt-1 line-clamp-2 block text-xs font-medium leading-relaxed text-[var(--t-text)]/85 transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-white">
         {post.title}
       </span>
-      <span className="mt-1 block font-mono text-[9px] uppercase tracking-[0.15em] text-[var(--t-faint)] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]">
+      <span className="mt-1 block font-sans text-[11px] font-medium tracking-normal text-[var(--t-faint)] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]">
         {t('postPanel.openPost')}
       </span>
     </Link>
@@ -251,7 +251,7 @@ function AgentStatusPanel() {
       <section className="border-b border-[var(--t-noise)] px-3 py-3">
         <Link
           href="/auth?mode=login"
-          className="flex items-center gap-2 border border-[var(--t-noise)] bg-black px-3 py-3 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--t-sub)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]"
+          className="flex items-center gap-2 border border-[var(--t-noise)] bg-black px-3 py-3 font-sans text-[12px] tracking-normal text-[var(--t-sub)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]"
         >
           <LogIn className="h-4 w-4 shrink-0 text-[var(--t-accent)]" />
           <span>{t('postPanel.loginForStatus')}</span>
@@ -270,7 +270,7 @@ function AgentStatusPanel() {
 
   if (!agent) {
     return (
-      <section className="border-b border-[var(--t-noise)] px-3 py-3 font-mono text-[11px] tracking-[0.08em] text-[var(--t-faint)]">
+      <section className="border-b border-[var(--t-noise)] px-3 py-3 font-sans text-[12px] leading-5 tracking-normal text-[var(--t-faint)]">
         {t('postPanel.noAgent')}
       </section>
     );
@@ -287,13 +287,13 @@ function AgentStatusPanel() {
   if (errorKey && !progression) {
     return (
       <section className="border-b border-[var(--t-hazard-dim)] px-3 py-3">
-        <p className="font-mono text-[11px] tracking-[0.08em] text-[var(--t-hazard)]/80">
+        <p className="font-sans text-[12px] leading-5 tracking-normal text-[var(--t-hazard)]/80">
           {t(errorKey)}
         </p>
         <button
           type="button"
           onClick={() => void progressionQuery.refetch()}
-          className="mt-2 inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-sub)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)]"
+          className="mt-2 inline-flex items-center gap-1 font-sans text-[12px] font-medium tracking-normal text-[var(--t-sub)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)]"
         >
           <RotateCw className="h-3 w-3" />
           {t('app.retry')}
@@ -313,7 +313,7 @@ function AgentStatusPanel() {
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <BatteryCharging className="h-3.5 w-3.5 text-[var(--t-accent)]" />
-          <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+          <span className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
             {t('postPanel.myStatus')}
           </span>
         </div>
@@ -329,7 +329,7 @@ function AgentStatusPanel() {
       </div>
 
       <div className="flex items-baseline justify-between gap-3">
-        <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--t-faint)]">
+        <span className="font-sans text-[11px] font-medium tracking-normal text-[var(--t-faint)]">
           {t('postPanel.stamina')}
         </span>
         <span className="font-mono text-sm font-bold tabular-nums text-[var(--t-accent)]">
@@ -343,7 +343,7 @@ function AgentStatusPanel() {
         aria-label={t('postPanel.staminaLabel')}
         className="agent-stamina-progress mt-2 h-1 w-full border border-[var(--t-noise)]"
       />
-      <p className="mt-2 font-mono text-[10px] leading-relaxed tracking-[0.08em] text-[var(--t-faint)]">
+      <p className="mt-2 font-sans text-[11px] leading-5 tracking-normal text-[var(--t-faint)]">
         {t('postPanel.staminaRecovery', {
           daily: stamina.dailyRecovery,
           hour: stamina.recoveryPerHour.toFixed(1),
@@ -351,7 +351,7 @@ function AgentStatusPanel() {
       </p>
 
       <div className="mt-3 flex items-center justify-between gap-2">
-        <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--t-faint)]">
+        <span className="font-sans text-[11px] font-medium tracking-normal text-[var(--t-faint)]">
           {t('postPanel.dailyTasks')}
         </span>
         <span className="font-mono text-[11px] font-bold tabular-nums text-[var(--t-accent)]">
@@ -373,7 +373,7 @@ function AgentStatusPanel() {
             />
           ))
         ) : (
-          <p className="py-2 font-mono text-[10px] tracking-[0.08em] text-[var(--t-faint)]">
+          <p className="py-2 font-sans text-[11px] tracking-normal text-[var(--t-faint)]">
             {t('postPanel.noDailyTasks')}
           </p>
         )}
@@ -399,10 +399,10 @@ function DailyTaskItem({
       <div className="font-bold text-text-primary">{task.title}</div>
       <div className="leading-relaxed text-text-secondary">{task.description}</div>
       <div className="leading-relaxed text-text-secondary">{taskDetail}</div>
-      <div className="font-mono text-[11px] text-text-tertiary">
+      <div className="font-sans text-[12px] tabular-nums tracking-normal text-text-tertiary">
         {t('postPanel.progress', { progress: task.progress, target: task.target })}
       </div>
-      <div className="font-mono text-[11px] text-accent">
+      <div className="font-sans text-[12px] tabular-nums tracking-normal text-accent">
         {t('postPanel.reward', { xp: task.rewardXp })}
       </div>
       <div className="border-t border-border-subtle pt-1 text-[11px] text-text-tertiary">

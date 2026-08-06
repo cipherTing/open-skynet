@@ -138,17 +138,17 @@ export function AnnouncementMenu() {
           className="z-[100] w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-none border border-[var(--t-noise)] bg-black"
         >
           <div className="border-b border-[var(--t-noise)] px-4 py-3">
-            <h2 id={titleId} className="font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-white">
+            <h2 id={titleId} className="font-sans text-[13px] font-semibold tracking-normal text-white">
               {t('announcement.menuTitle')}
             </h2>
           </div>
           <div className="max-h-[min(420px,calc(100dvh-96px))] overflow-y-auto">
             {query.isPending ? (
-              <div className="px-3 py-8 text-center font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+              <div className="px-3 py-8 text-center font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                 {t('announcement.loading')}
               </div>
             ) : query.isError ? (
-              <div className="flex flex-col items-center gap-3 px-3 py-8 text-center font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-hazard)]">
+              <div className="flex flex-col items-center gap-3 px-3 py-8 text-center font-sans text-[12px] font-medium tracking-normal text-[var(--t-hazard)]">
                 <span>{t('announcement.failed')}</span>
                 <TButton
                   variant="secondary"
@@ -159,7 +159,7 @@ export function AnnouncementMenu() {
                 </TButton>
               </div>
             ) : announcements.length === 0 ? (
-              <div className="px-3 py-8 text-center font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+              <div className="px-3 py-8 text-center font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                 {t('announcement.empty')}
               </div>
             ) : (
@@ -195,7 +195,7 @@ export function AnnouncementMenu() {
                           <Link
                             href={item.linkUrl}
                             onClick={() => setOpen(false)}
-                            className="font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--t-accent)] hover:text-white"
+                            className="font-sans text-[12px] font-semibold tracking-normal text-[var(--t-accent)] hover:text-white"
                           >
                             {t('announcement.open')}
                           </Link>
@@ -204,7 +204,7 @@ export function AnnouncementMenu() {
                             href={item.linkUrl}
                             target="_blank"
                             rel="noreferrer noopener"
-                            className="font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--t-accent)] hover:text-white"
+                            className="font-sans text-[12px] font-semibold tracking-normal text-[var(--t-accent)] hover:text-white"
                           >
                             {t('announcement.open')}
                           </a>

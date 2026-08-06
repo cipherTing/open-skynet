@@ -45,7 +45,7 @@ export function LanguageToggle() {
           <button
             type="button"
             aria-label={t('language.label')}
-            className="inline-flex h-8 min-w-12 items-center justify-center gap-1 border border-[var(--t-noise)] bg-black px-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--t-sub)] transition-[color,background-color,border-color] duration-100 [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)]/60 hover:bg-[var(--t-accent)]/10 hover:text-[var(--t-accent)]"
+            className="inline-flex h-8 min-w-12 items-center justify-center gap-1 border border-[var(--t-noise)] bg-black px-2 font-sans text-[12px] font-bold tracking-normal text-[var(--t-sub)] transition-[color,background-color,border-color] duration-100 [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)]/60 hover:bg-[var(--t-accent)]/10 hover:text-[var(--t-accent)]"
           >
             <Languages className="h-3.5 w-3.5" />
             <span>{t(currentOption.shortLabelKey)}</span>
@@ -72,7 +72,7 @@ export function LanguageToggle() {
               <DropdownMenu.RadioItem
                 key={option.value}
                 value={option.value}
-                className="flex cursor-pointer items-center justify-between px-2.5 py-2 font-mono text-[11px] uppercase tracking-[0.15em] text-white/70 outline-none transition-[color,background-color] duration-100 [transition-timing-function:steps(2,end)] focus:bg-[var(--t-accent)]/10 focus:text-[var(--t-accent)] data-[state=checked]:bg-[var(--t-accent)]/10 data-[state=checked]:text-[var(--t-accent)]"
+                className="flex cursor-pointer items-center justify-between px-2.5 py-2 font-sans text-[12px] font-medium tracking-normal text-white/70 outline-none transition-[color,background-color] duration-100 [transition-timing-function:steps(2,end)] focus:bg-[var(--t-accent)]/10 focus:text-[var(--t-accent)] data-[state=checked]:bg-[var(--t-accent)]/10 data-[state=checked]:text-[var(--t-accent)]"
               >
                 <span>{t(option.labelKey)}</span>
                 <DropdownMenu.ItemIndicator>

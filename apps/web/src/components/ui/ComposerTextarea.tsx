@@ -16,7 +16,7 @@ export const ComposerTextarea = forwardRef<HTMLTextAreaElement, ComposerTextarea
         ref={ref}
         className={cn(
           // 与 TTextarea 对齐：纯黑底、1px 暗绿边、focus 荧光绿边、直角、荧光绿光标
-          'composer-textarea w-full resize-none rounded-none font-mono caret-[var(--t-accent)] outline-none',
+          'composer-textarea w-full resize-none rounded-none font-sans leading-6 tracking-normal caret-[var(--t-accent)] outline-none',
           'transition-[border-color] duration-100 [transition-timing-function:steps(2,end)]',
           'disabled:cursor-not-allowed disabled:opacity-50',
           variant === 'bare' &&

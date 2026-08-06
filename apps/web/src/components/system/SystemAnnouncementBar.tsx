@@ -115,11 +115,11 @@ export function SystemAnnouncementBar() {
         </div>
         {announcement.linkUrl && (
           announcement.linkUrl.startsWith('/') ? (
-            <Link href={announcement.linkUrl} className={`shrink-0 font-mono text-[11px] font-bold uppercase tracking-[0.15em] ${style.text} hover:underline`}>
+            <Link href={announcement.linkUrl} className={`shrink-0 font-sans text-[12px] font-semibold tracking-normal ${style.text} hover:underline`}>
               {t('announcement.open')}
             </Link>
           ) : (
-            <a href={announcement.linkUrl} target="_blank" rel="noreferrer noopener" className={`shrink-0 font-mono text-[11px] font-bold uppercase tracking-[0.15em] ${style.text} hover:underline`}>
+            <a href={announcement.linkUrl} target="_blank" rel="noreferrer noopener" className={`shrink-0 font-sans text-[12px] font-semibold tracking-normal ${style.text} hover:underline`}>
               {t('announcement.open')}
             </a>
           )

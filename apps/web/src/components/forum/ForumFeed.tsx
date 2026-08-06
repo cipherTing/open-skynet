@@ -195,6 +195,9 @@ export function ForumFeed({
   } = postsQuery;
   const loading = isPending || isFetchingNextPage;
   const showingRefreshLoading = refreshingFeed && isFetching;
+  const showingInitialLoading =
+    posts.length === 0 && (refreshingFeed || isPending || isFetching);
+  const showingLoadingState = showingRefreshLoading || showingInitialLoading;
   const hasMore = hasNextPage === true;
   const resetRequired = isPaginationCursorError(postsQuery.error);
   const errorMessage = isError
@@ -417,8 +420,8 @@ export function ForumFeed({
     setCreateModalRevision(ownerOperationRevision);
   };
 
-  const hasInitialError = Boolean(errorMessage && !loading && posts.length === 0);
-  const isEmpty = !loading && posts.length === 0 && !errorMessage;
+  const hasInitialError = Boolean(errorMessage && !showingLoadingState && posts.length === 0);
+  const isEmpty = !showingLoadingState && posts.length === 0 && !errorMessage;
 
   if (!authLoading && circle && !isAuthenticated) {
     return (
@@ -444,7 +447,7 @@ export function ForumFeed({
             >
               <span
                 aria-hidden
-                className="flex items-center px-2 font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--t-faint)]"
+                className="flex items-center px-2 font-sans text-[11px] font-medium tracking-normal text-[var(--t-faint)]"
               >
                 {t('feed.freqLabel')}
               </span>
@@ -565,9 +568,9 @@ export function ForumFeed({
             </div>
           )}
 
-          {showingRefreshLoading && <FeedLoadingState label={t(loadingLabelKey)} />}
+          {showingLoadingState && <FeedLoadingState label={t(loadingLabelKey)} />}
 
-          {!showingRefreshLoading && posts.length > 0 && layoutReady && (
+          {!showingLoadingState && posts.length > 0 && layoutReady && (
             <VirtuosoGrid
               ref={virtuosoRef}
               data={posts}
@@ -668,17 +671,11 @@ function ForumFeedGridHeader({ context }: { context: ForumFeedGridContext }) {
     <>
       <div aria-hidden className="forum-feed-toolbar-spacer" />
       <div className="mb-2 flex items-center gap-3 px-1">
-        <span className="font-mono text-[11px] tracking-[0.2em] text-[var(--t-accent)]">
-          CH.01
-        </span>
-        <span className="font-mono text-[11px] tracking-[0.2em] text-[var(--t-faint)]">
-          {'//'}
-        </span>
         <span className="text-[13px] font-bold tracking-wide text-text-primary">
           {context.chapterLabel}
         </span>
         <span aria-hidden className="h-px flex-1 bg-[var(--t-noise)]" />
-        <span className="font-mono text-[10px] tracking-[0.2em] text-[var(--t-faint)]">
+        <span className="font-sans text-[11px] font-medium tabular-nums tracking-normal text-[var(--t-faint)]">
           {context.recordCountLabel}
         </span>
       </div>
@@ -718,7 +715,7 @@ function ForumFeedTail({
   }
   if (errorMessage) {
     return (
-      <div className="flex h-full items-center justify-between border border-danger/30 border-l-2 border-l-danger bg-danger/10 px-4 py-3 font-mono text-[11px] tracking-deck-tight text-danger">
+      <div className="flex h-full items-center justify-between border border-danger/30 border-l-2 border-l-danger bg-danger/10 px-4 py-3 font-sans text-[12px] leading-5 tracking-normal text-danger">
         <span className="line-clamp-2 min-w-0">{errorMessage}</span>
         <button
           type="button"
@@ -736,14 +733,14 @@ function ForumFeedTail({
       <button
         type="button"
         onClick={onRequireAuth}
-        className="flex h-full w-full items-center justify-center text-center font-mono text-[11px] tracking-deck-normal text-[var(--t-accent)] transition-colors hover:text-white"
+        className="flex h-full w-full items-center justify-center text-center font-sans text-[12px] tracking-normal text-[var(--t-accent)] transition-colors hover:text-white"
       >
         {authLabel}
       </button>
     );
   }
   return (
-    <div className="flex h-full items-center justify-center text-center font-mono text-[11px] tracking-deck-normal text-text-tertiary">
+    <div className="flex h-full items-center justify-center text-center font-sans text-[12px] tracking-normal text-text-tertiary">
       <div className="flex items-center justify-center gap-3">
         <div className="h-px w-8 bg-[var(--t-noise)]" aria-hidden />
         <span>{endLabel}</span>

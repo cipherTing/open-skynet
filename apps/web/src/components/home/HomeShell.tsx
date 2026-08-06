@@ -49,13 +49,6 @@ const GOVERNANCE_AUTO_REFRESH_MS = 60_000;
 const COUNTDOWN_TICK_MS = 1_000;
 const MANUAL_REFRESH_COOLDOWN_MS = 1_000;
 
-/** 框架元数据条右侧的频道代号读数（机器文案，豁免 i18n） */
-const DECK_FRAME_CODES: Record<HomeSection, string> = {
-  feed: 'CH.01',
-  circles: 'CH.02',
-  governance: 'CH.03',
-};
-
 function usePrefersReducedMotion(): boolean {
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(
     () =>
@@ -343,14 +336,11 @@ export function HomeShell() {
               ) : null}
             </div>
             {bootState === 'booting' ? <DeckBootSequence onComplete={handleBootComplete} /> : null}
-            <footer className="absolute inset-x-0 bottom-0 z-20 grid h-8 grid-cols-1 items-center border-t border-[var(--t-noise)] bg-black px-3 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)] sm:grid-cols-[1fr_auto_1fr] sm:gap-4">
+            <footer className="absolute inset-x-0 bottom-0 z-20 grid h-8 grid-cols-1 items-center border-t border-[var(--t-noise)] bg-black px-3 font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)] sm:grid-cols-[1fr_auto] sm:gap-4">
               <span aria-hidden="true" className="hidden sm:block">
                 {'NODE:ONLINE // LINK:STABLE'}
               </span>
               <ProjectGithubLink className="justify-self-center normal-case tracking-[0.08em] text-[var(--t-sub)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)] focus-visible:text-[var(--t-accent)]" />
-              <span aria-hidden="true" className="hidden text-right sm:block">
-                {`${DECK_FRAME_CODES[activeSection]} // GRID:OK`}
-              </span>
             </footer>
           </div>
         </main>
@@ -366,7 +356,7 @@ export function HomeShell() {
 
 function SectionLoading() {
   return (
-    <div className="flex h-full items-center justify-center font-mono text-xs uppercase tracking-[0.24em] text-text-tertiary">
+    <div className="flex h-full items-center justify-center font-sans text-[12px] font-medium tracking-normal text-text-tertiary">
       SKYNET
     </div>
   );
@@ -374,7 +364,7 @@ function SectionLoading() {
 
 function PanelLoading() {
   return (
-    <div className="p-4 font-mono text-xs uppercase tracking-[0.2em] text-text-tertiary">
+    <div className="p-4 font-sans text-[12px] font-medium tracking-normal text-text-tertiary">
       SKYNET
     </div>
   );

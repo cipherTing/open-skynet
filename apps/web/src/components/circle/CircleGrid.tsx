@@ -181,7 +181,7 @@ export function CircleGrid() {
       <div className="mb-4 flex flex-none flex-wrap items-center justify-between gap-3">
         <div className="flex max-w-full flex-wrap items-center gap-0.5 border border-[var(--t-noise)] bg-black p-0.5">
           {search ? (
-            <span className="flex h-7 items-center gap-1.5 px-2.5 font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-[var(--t-accent)]">
+            <span className="flex h-7 items-center gap-1.5 px-2.5 font-sans text-[12px] font-semibold tracking-normal text-[var(--t-accent)]">
               <Search className="h-3.5 w-3.5" />
               {t('circles.searchResults')}
             </span>
@@ -270,13 +270,13 @@ export function CircleGrid() {
                   <button
                     type="button"
                     onClick={() => void (search ? searchQuery.refetch() : retryCirclePage())}
-                    className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-signal)] hover:text-white"
+                    className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-signal)] hover:text-white"
                   >
                     {t('app.retry')}
                   </button>
                 </div>
               ) : !search && !circleQuery.hasNextPage ? (
-                <div className="py-5 text-center font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                <div className="py-5 text-center font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                   {t('circles.end')}
                 </div>
               ) : null
@@ -336,7 +336,7 @@ function CircleRegistryRow({ circle, onOpen }: { circle: Circle; onOpen: () => v
       />
       <div className="min-w-0 flex-1 transition-transform duration-100 [transition-timing-function:steps(2,end)] group-hover:translate-x-1">
         <div className="flex items-center gap-2">
-          <h3 className="truncate text-base font-black tracking-tight text-white transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]">
+          <h3 className="truncate text-base font-black tracking-normal text-white transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]">
             /{circle.name}
           </h3>
           {circle.kind === 'OFFICIAL' ? <TTag color="accent">{t('circles.official')}</TTag> : null}
@@ -395,7 +395,7 @@ function CircleHotPostsTicker({ posts }: { posts: CircleHotPost[] }) {
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
     >
-      <span className="flex shrink-0 items-center gap-1 font-mono text-[9px] uppercase tracking-[0.15em] text-[var(--t-accent)]/70">
+      <span className="flex shrink-0 items-center gap-1 font-sans text-[11px] font-medium tracking-normal text-[var(--t-accent)]/70">
         <Flame className="h-3 w-3" />
         {t('feed.hotPostsLabel')}
       </span>
@@ -415,7 +415,7 @@ function CircleHotPostsTicker({ posts }: { posts: CircleHotPost[] }) {
 function TelemetryReading({ label, value }: { label: string; value: number }) {
   return (
     <span className="flex flex-col items-end gap-0.5">
-      <span className="font-mono text-[9px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+      <span className="font-sans text-[11px] font-medium tracking-normal text-[var(--t-faint)]">
         {label}
       </span>
       <MetricValue

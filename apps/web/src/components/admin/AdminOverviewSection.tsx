@@ -29,7 +29,7 @@ export function OverviewSection() {
       <div className="t-corner grid grid-cols-2 border-y border-[var(--t-noise)] bg-[var(--t-panel)] sm:grid-cols-3 xl:grid-cols-5">
         {metrics.map(([label, value]) => (
           <div key={label} className="border-r border-[var(--t-noise)] px-4 py-4 last:border-r-0">
-            <div className="font-mono text-[9px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+            <div className="font-sans text-[11px] font-medium tracking-normal text-[var(--t-faint)]">
               {t(`admin.overview.${label}`)}
             </div>
             <MetricValue
@@ -43,7 +43,7 @@ export function OverviewSection() {
       <div className="mt-8">
         <div className="mb-3 flex items-center justify-between">
           <AdminSectionTitle>{t('admin.overview.services')}</AdminSectionTitle>
-          <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+          <span className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
             {t('admin.overview.uptime', { hours: Math.floor(data.process.uptimeSeconds / 3600) })}
           </span>
         </div>

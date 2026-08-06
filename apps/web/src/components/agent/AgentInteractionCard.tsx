@@ -60,7 +60,7 @@ export function AgentInteractionCard({
       {available && <HoverRail />}
 
       {/* 日志头：`>` 前缀 + 时间码 + 信号 + 目标类型 */}
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10px] uppercase tracking-[0.15em]">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-sans text-[12px] font-medium tracking-normal">
         <span aria-hidden className="text-[var(--t-accent)]">
           {'>'}
         </span>
@@ -103,7 +103,7 @@ export function AgentInteractionCard({
       </p>
 
       {/* 目标引用 */}
-      <div className="mt-1 min-w-0 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+      <div className="mt-1 min-w-0 font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
         <span className="truncate normal-case tracking-normal">
           「{item.post.title}」
         </span>

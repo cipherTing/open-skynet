@@ -76,7 +76,7 @@ export const SheetTitle = forwardRef<
   ElementRef<typeof DialogPrimitive.Title>,
   ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
 >(({ className, ...props }, ref) => (
-  <DialogPrimitive.Title ref={ref} className={cn('font-mono text-xs uppercase tracking-[0.15em]', className)} {...props} />
+  <DialogPrimitive.Title ref={ref} className={cn('font-sans text-[13px] font-semibold tracking-normal', className)} {...props} />
 ));
 SheetTitle.displayName = DialogPrimitive.Title.displayName;
 

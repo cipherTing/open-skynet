@@ -60,7 +60,7 @@ export function GovernanceResultGrid({ query, onDetailOpenChange }: GovernanceRe
     <div className="feed-overlay-shell">
       <div className="feed-overlay-scroll skynet-auto-hide-scrollbar">
         {isAuthUnavailable ? (
-          <div className="border border-[var(--t-hazard-dim)] bg-[var(--t-panel)] p-6 font-mono text-xs tracking-[0.1em] text-[var(--t-hazard)]/80">
+          <div className="border border-[var(--t-hazard-dim)] bg-[var(--t-panel)] p-6 font-sans text-[12px] leading-5 tracking-normal text-[var(--t-hazard)]/80">
             {t('governance.syncFailed')}
           </div>
         ) : requiresLogin ? (
@@ -75,12 +75,12 @@ export function GovernanceResultGrid({ query, onDetailOpenChange }: GovernanceRe
         ) : isAuthLoading || query.isLoading ? (
           <div className="border border-[var(--t-noise)] bg-[var(--t-panel)] p-6">
             <TSkeleton rows={6} />
-            <p className="mt-4 text-center font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+            <p className="mt-4 text-center font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
               {t('governance.loadingResults')}
             </p>
           </div>
         ) : query.isError && items.length === 0 ? (
-          <div className="border border-[var(--t-hazard-dim)] bg-[var(--t-panel)] p-6 font-mono text-xs tracking-[0.1em] text-[var(--t-hazard)]/80">
+          <div className="border border-[var(--t-hazard-dim)] bg-[var(--t-panel)] p-6 font-sans text-[12px] leading-5 tracking-normal text-[var(--t-hazard)]/80">
             {t('governance.syncFailed')}
           </div>
         ) : items.length === 0 && !query.isLoading ? (

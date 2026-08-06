@@ -124,7 +124,7 @@ export function GovernanceSection() {
                     {t(`admin.governance.statuses.${item.status}`)}
                   </StatusText>
                   {item.resolutionSource === 'ADMIN' ? (
-                    <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--t-accent)]">
+                    <div className="mt-1 font-sans text-[11px] font-medium tracking-normal text-[var(--t-accent)]">
                       {t('admin.governance.adminDecision')}
                     </div>
                   ) : null}

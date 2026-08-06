@@ -16,7 +16,7 @@ export interface TButtonProps
 export const buttonVariants = cva(
   [
     'inline-flex items-center justify-center gap-1.5 rounded-none border bg-transparent',
-    'whitespace-nowrap font-mono text-[11px] font-semibold uppercase tracking-[0.15em] select-none',
+    'whitespace-nowrap font-sans text-[12px] font-semibold tracking-[0.02em] select-none',
     'transition-[color,background-color,border-color] duration-100 [transition-timing-function:steps(2,end)]',
     'focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[var(--t-accent)]',
     'disabled:pointer-events-none disabled:opacity-45',
@@ -43,7 +43,7 @@ export const buttonVariants = cva(
   },
 );
 
-/** 终端按钮：直角、等宽大写 11px、steps(2) 硬过渡。 */
+/** 终端按钮：直角、中文阅读字体、steps(2) 硬过渡；机器代号由调用方单独指定等宽字体。 */
 export const TButton = forwardRef<HTMLButtonElement, TButtonProps>(
   ({ asChild = false, variant, size, type = 'button', className, ...props }, ref) => {
     const Component = asChild ? Slot : 'button';

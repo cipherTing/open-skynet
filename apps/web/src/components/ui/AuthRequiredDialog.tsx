@@ -14,7 +14,7 @@ interface AuthRequiredDialogProps {
 }
 
 const ACTION_CLASS =
-  'inline-flex h-9 items-center justify-center gap-1.5 border px-4 font-mono text-[11px] font-semibold uppercase tracking-[0.15em] transition-[color,background-color,border-color] duration-100 [transition-timing-function:steps(2,end)] focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[var(--t-accent)]';
+  'inline-flex h-9 items-center justify-center gap-1.5 border px-4 font-sans text-[12px] font-semibold tracking-normal transition-[color,background-color,border-color] duration-100 [transition-timing-function:steps(2,end)] focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[var(--t-accent)]';
 
 export function AuthRequiredDialog({
   open,
@@ -81,7 +81,7 @@ export function AuthRequiredState({
         className,
       )}
     >
-      <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-accent)]">
+      <p className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-accent)]">
         {title ?? t('feed.authRequiredTitle')}
       </p>
       <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-white/60">
@@ -90,7 +90,7 @@ export function AuthRequiredState({
       <button
         type="button"
         onClick={onOpen}
-        className="mt-5 inline-flex h-9 items-center justify-center border border-[var(--t-accent)] px-4 font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-[var(--t-accent)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[var(--t-accent)] hover:text-black focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[var(--t-accent)]"
+        className="mt-5 inline-flex h-9 items-center justify-center border border-[var(--t-accent)] px-4 font-sans text-[12px] font-semibold tracking-normal text-[var(--t-accent)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[var(--t-accent)] hover:text-black focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[var(--t-accent)]"
       >
         {t('feed.authRequiredLogin')}
       </button>

@@ -146,7 +146,7 @@ export function FeedbackBar({
               type="button"
               onClick={(event) => event.stopPropagation()}
               className={cn(
-                'inline-flex items-center justify-center gap-1.5 border border-[var(--t-noise)] bg-transparent font-mono text-text-secondary',
+                'inline-flex items-center justify-center gap-1.5 border border-[var(--t-noise)] bg-transparent font-sans tracking-normal text-text-secondary',
                 'transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-accent/60 hover:bg-accent/5 hover:text-[var(--t-accent)]',
                 !canInteract &&
                   'text-text-tertiary hover:border-[var(--t-noise)] hover:bg-transparent hover:text-text-secondary',
@@ -164,7 +164,7 @@ export function FeedbackBar({
             className="max-h-[min(520px,calc(100vh-24px))] w-[min(360px,calc(100vw-24px))] overflow-y-auto overscroll-none bg-[var(--t-panel)] p-2"
           >
             <div className="px-2 pb-2 pt-1">
-              <div className="font-mono text-[10px] font-semibold uppercase tracking-deck-wide text-accent">
+              <div className="font-sans text-[11px] font-semibold tracking-normal text-accent">
                 {t('feedback.choose')}
               </div>
               <div className="mt-0.5 text-[11px] leading-relaxed text-text-tertiary">
@@ -195,14 +195,14 @@ export function FeedbackBar({
                       {item.emoji}
                     </span>
                     <span className="min-w-0">
-                      <span className="block font-mono text-[12px] font-semibold text-text-primary">
+                      <span className="block font-sans text-[12px] font-semibold tracking-normal text-text-primary">
                         {t(`feedback.items.${item.type}.label`)}
                       </span>
                       <span className="mt-0.5 block text-[11px] leading-snug text-text-tertiary">
                         {t(`feedback.items.${item.type}.description`)}
                       </span>
                     </span>
-                    <span className="flex items-center gap-1 font-mono text-[11px] text-text-secondary">
+                    <span className="flex items-center gap-1 font-sans text-[11px] tabular-nums text-text-secondary">
                       {formatNumber(count)}
                       {selected ? <Check className="h-3.5 w-3.5 text-accent" /> : null}
                     </span>

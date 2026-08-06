@@ -66,7 +66,7 @@ const [
   readFile(new URL('../src/components/forum/ForumFeed.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/components/forum/PostCard.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/components/forum/PostDetail.tsx', import.meta.url), 'utf8'),
-  readFile(new URL('../src/app/post/[id]/loading.tsx', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/(application)/post/[id]/loading.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/components/forum/ReplyThread.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/contexts/OwnerOperationContext.tsx', import.meta.url), 'utf8'),
   readFile(new URL('../src/app/globals.css', import.meta.url), 'utf8'),
@@ -117,7 +117,9 @@ assert.match(forumFeedSource, /ref=\{virtuosoRef\}/u);
 assert.match(forumFeedSource, /refetchOnMount: false/u);
 assert.match(forumFeedSource, /endReached=\{isAuthenticated \? handleNearEnd : undefined\}/u);
 assert.match(forumFeedSource, /components=\{FORUM_FEED_GRID_COMPONENTS\}/u);
-assert.match(forumFeedSource, /key=\{feedKey\}/u);
+// feedKey scopes the query and auth prompt only; the Virtuoso instance must not
+// be keyed by it, otherwise filters and navigation would destroy scroll state.
+assert.doesNotMatch(forumFeedSource, /<VirtuosoGrid[\s\S]*?key=\{feedKey\}/u);
 assert.doesNotMatch(
   forumFeedSource,
   /captureTopPostIndex|scrollToIndex|layoutRestore|initialTopMostItemIndex|readyStateChanged|overscan=/u,
@@ -125,11 +127,11 @@ assert.doesNotMatch(
 assert.match(forumFeedSource, /POST_LIST_ITEM_CLASS/u);
 assert.match(forumFeedSource, /POST_TWO_COLUMN_ITEM_CLASS/u);
 assert.match(forumFeedSource, /POST_THREE_COLUMN_ITEM_CLASS/u);
-assert.match(forumFeedSource, /const POST_LIST_ITEM_CLASS = 'h-\[132px\]';/u);
-assert.match(forumFeedSource, /const POST_TWO_COLUMN_ITEM_CLASS = 'h-\[232px\]';/u);
-assert.match(forumFeedSource, /const POST_THREE_COLUMN_ITEM_CLASS = 'h-\[252px\]';/u);
-assert.match(postCardSource, /line-clamp-2 font-bold text-xl/u);
-assert.match(postCardSource, /mt-auto line-clamp-2/u);
+assert.match(forumFeedSource, /const POST_LIST_ITEM_CLASS = 'h-\[148px\]';/u);
+assert.match(forumFeedSource, /const POST_TWO_COLUMN_ITEM_CLASS = 'h-\[224px\]';/u);
+assert.match(forumFeedSource, /const POST_THREE_COLUMN_ITEM_CLASS = 'h-\[218px\]';/u);
+assert.match(postCardSource, /line-clamp-2 font-bold tracking-normal text-white/u);
+assert.match(postCardSource, /previewClass: 'mt-1 line-clamp-2/u);
 assert.doesNotMatch(forumFeedSource, /<VirtualList/u);
 assert.doesNotMatch(forumFeedSource, /POST_.*ESTIMATED_HEIGHT/u);
 assert.doesNotMatch(forumFeedSource, /paddingEnd=/u);
@@ -153,7 +155,8 @@ assert.doesNotMatch(postDetailSource, /max-w-3xl/u);
 assert.match(postDetailLoadingSource, /max-w-5xl/u);
 assert.match(postDetailLoadingSource, /border-\[var\(--t-frame\)\]/u);
 assert.match(replyThreadSource, /const CHILD_REPLY_ESTIMATED_HEIGHT = 164;/u);
-assert.match(replyThreadSource, /<VirtualList/u);
+assert.match(replyThreadSource, /<Virtuoso/u);
+assert.doesNotMatch(replyThreadSource, /<VirtualList/u);
 assert.doesNotMatch(replyThreadSource, /disabled=\{ownerOperationBlocked\}/u);
 assert.match(replyThreadSource, /replyInputRevision === ownerOperationRevision/u);
 assert.match(ownerOperationSource, /setOwnerOperationRevision\(\(revision\) => revision \+ 1\)/u);

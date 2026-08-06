@@ -62,7 +62,7 @@ export function DeletedReplyPlaceholder({
     <div
       id={`${domIdPrefix}-${reply.id}`}
       data-testid={`${domIdPrefix}-${reply.id}`}
-      className={`relative border-b border-[var(--t-noise2)] px-1 py-4 font-mono text-[12px] text-[var(--t-faint)] ${
+      className={`relative border-b border-[var(--t-noise2)] px-1 py-4 font-sans text-[13px] leading-6 tracking-normal text-[var(--t-faint)] ${
         highlighted ? 'border-l-2 border-l-[var(--t-accent)] bg-accent/5 pl-2 text-accent' : ''
       }`}
     >
@@ -106,7 +106,7 @@ function ReplyQuoteBlock({
   if (!quote) return null;
   if (!quote.available || !quote.text) {
     return (
-      <div className="mb-2.5 border border-[var(--t-noise)] px-3 py-2 font-mono text-[10px] tracking-[0.1em] text-[var(--t-faint)]">
+      <div className="mb-2.5 border border-[var(--t-noise)] px-3 py-2 font-sans text-[12px] leading-5 tracking-normal text-[var(--t-faint)]">
         {'> '}
         {t('replyThread.quoteUnavailable')}
       </div>
@@ -121,7 +121,7 @@ function ReplyQuoteBlock({
       href={href}
       className="mb-2.5 block border-l-2 border-l-[var(--t-faint)] bg-[var(--t-panel)] px-3 py-2 text-[11px] text-text-secondary transition-colors [transition-timing-function:steps(2,end)] hover:border-l-[var(--t-accent)]"
     >
-      <span className="block font-mono text-[10px] tracking-[0.12em] text-[var(--t-accent)]">
+      <span className="block font-sans text-[11px] tracking-normal text-[var(--t-accent)]">
         {'>> '}
         {quote.sourceAuthor?.name ?? t('replyThread.quoteSource')}
       </span>
@@ -452,7 +452,7 @@ export function ReplyThread({
               </span>
             )}
             {removed ? (
-              <span className="font-mono text-[10px] font-bold text-danger">
+              <span className="font-sans text-[11px] font-semibold text-danger">
                 {t('replyThread.adminRemoved')}
               </span>
             ) : null}
@@ -502,7 +502,7 @@ export function ReplyThread({
                       <button
                         type="button"
                         onClick={handleQuoteSelection}
-                        className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)]"
+                        className="inline-flex items-center gap-1 font-sans text-[11px] tracking-normal text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)]"
                       >
                         <Quote className="h-3 w-3" />
                         {t('replyInput.quoteSelection')}
@@ -511,7 +511,7 @@ export function ReplyThread({
                         type="button"
                         aria-expanded={isReplyInputVisible}
                         onClick={handleReplyToggle}
-                        className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)]"
+                        className="inline-flex items-center gap-1 font-sans text-[11px] tracking-normal text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)]"
                       >
                         <Reply className="h-3 w-3" />
                         {t('replyThread.reply')}
@@ -556,7 +556,7 @@ export function ReplyThread({
                       type="button"
                       disabled={childrenBusy}
                       onClick={() => void handleLoadMoreChildren()}
-                      className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)] disabled:cursor-wait disabled:opacity-50"
+                      className="font-sans text-[11px] tracking-normal text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)] disabled:cursor-wait disabled:opacity-50"
                     >
                       {childrenBusy
                         ? t('replyThread.loadingMoreChildren')
@@ -696,7 +696,7 @@ function ChildReplyItem({
             </span>
           )}
           {removed ? (
-            <span className="font-mono text-[10px] font-bold text-danger">
+            <span className="font-sans text-[11px] font-semibold text-danger">
               {t('replyThread.adminRemoved')}
             </span>
           ) : null}

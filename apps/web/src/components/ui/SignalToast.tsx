@@ -58,7 +58,7 @@ function ToastFrame({
     <div
       className={cn(
         'flex max-w-[calc(100vw-32px)] items-center gap-2 border bg-surface-2 px-4 py-3',
-        'font-mono text-[12px] shadow-none',
+        'font-sans text-[12px] leading-5 tracking-normal shadow-none',
         TONE_CLASS[tone],
       )}
       role="status"
@@ -147,7 +147,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         toastOptions={{
           unstyled: true,
           classNames: {
-            toast: cn('font-mono', UI_LAYER_CLASS.toast),
+            toast: UI_LAYER_CLASS.toast,
           },
         }}
       />

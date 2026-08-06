@@ -143,6 +143,10 @@
      全站强制暗色终端主题，无明暗切换
      ============================================================ */
   :root {
+    --font-ui: 'Noto Sans SC Variable', 'Source Han Sans SC', 'PingFang SC', 'Microsoft YaHei',
+      'Noto Sans CJK SC', 'Helvetica Neue', Arial, sans-serif;
+    --font-mono: 'SF Mono', 'SFMono-Regular', 'Cascadia Code', 'Menlo', 'Monaco', 'Fira Code',
+      'Noto Sans SC Variable', 'Courier New', monospace;
     --bg-canvas: #070a07;
     --bg-app: #090d09;
     --surface-1: #0d120d;
@@ -227,6 +231,19 @@
     font-size: 15px;
     line-height: 1.7;
     letter-spacing: 0.01em;
+    font-family: var(
+      --font-ui,
+      'Noto Sans SC Variable',
+      'Source Han Sans SC',
+      'PingFang SC',
+      'Microsoft YaHei',
+      'Noto Sans CJK SC',
+      'Helvetica Neue',
+      Arial,
+      sans-serif
+    );
+    font-kerning: normal;
+    font-synthesis: none;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -282,7 +299,7 @@
 
 @layer components {
   /* ============================================================
-     TerminalDialog 按钮系统（.t-btn 系）：直角、mono 11px
+     TerminalDialog 按钮系统（.t-btn 系）：直角、中文可读、短标签
      ============================================================ */
   .t-btn {
     display: inline-flex;
@@ -294,19 +311,10 @@
     border: 1px solid var(--border-default);
     background: transparent;
     color: var(--text-primary);
-    font-family: var(
-      --font-mono,
-      'SF Mono',
-      'SFMono-Regular',
-      'Menlo',
-      'Monaco',
-      'Courier New',
-      monospace
-    );
-    font-size: 11px;
+    font-family: var(--font-ui);
+    font-size: 12px;
     font-weight: 600;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
+    letter-spacing: 0.02em;
     white-space: nowrap;
     cursor: pointer;
     user-select: none;
@@ -588,9 +596,48 @@
     border-color: var(--border-strong);
     background: var(--surface-1);
   }
+
+  /* 自然语言使用中文阅读字体，机器字段才使用等宽字体。 */
+  .skynet-type-body {
+    font-family: var(--font-ui);
+    font-size: 0.9375rem;
+    line-height: 1.75;
+    letter-spacing: 0.01em;
+  }
+
+  .skynet-type-title {
+    font-family: var(--font-ui);
+    font-weight: 700;
+    line-height: 1.35;
+    letter-spacing: 0;
+  }
+
+  .skynet-type-label {
+    font-family: var(--font-ui);
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.4;
+    letter-spacing: 0.02em;
+  }
+
+  .skynet-type-meta {
+    font-family: var(--font-ui);
+    font-size: 0.75rem;
+    line-height: 1.5;
+    letter-spacing: 0;
+  }
+
+  .skynet-type-code {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    line-height: 1.5;
+    letter-spacing: 0.06em;
+    font-variant-numeric: tabular-nums;
+  }
 }
 
 .prose-deck {
+  font-family: var(--font-ui);
   font-size: 15px;
   line-height: 1.7;
   color: var(--text-primary);
@@ -614,15 +661,7 @@
   border-radius: 0;
   padding: 1px 5px;
   font-size: 0.9em;
-  font-family: var(
-    --font-mono,
-    'SF Mono',
-    'SFMono-Regular',
-    'Menlo',
-    'Monaco',
-    'Courier New',
-    monospace
-  );
+  font-family: var(--font-mono);
 }
 .prose-deck pre code {
   background: transparent;
@@ -774,9 +813,7 @@
 
 /* 等宽微型遥测文本 */
 .t-mono {
-  font-family:
-    'SF Mono', 'SFMono-Regular', 'Cascadia Code', 'Menlo', 'Monaco', 'Fira Code', 'Courier New',
-    monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.15em;
   line-height: 1.6;
@@ -785,12 +822,17 @@
 
 /* 巨型标题 */
 .t-display {
-  font-family:
-    'Arial Black', 'Helvetica Neue', Impact, 'Source Han Sans SC', 'PingFang SC', sans-serif;
-  font-weight: 900;
-  letter-spacing: -0.04em;
-  line-height: 0.85;
+  font-family: var(--font-ui);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 0.95;
   text-transform: uppercase;
+}
+
+:lang(zh) .t-display {
+  letter-spacing: 0;
+  line-height: 1.05;
+  text-transform: none;
 }
 
 /* 衬线斜体点缀句 */

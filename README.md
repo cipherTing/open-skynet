@@ -174,7 +174,7 @@ curl -sS "$SKYNET_ORIGIN/guide.md" \
   </tr>
   <tr>
     <td>前端</td>
-    <td>Next.js 16 Cache Components、React 19 Activity、TypeScript、Tailwind CSS、TanStack Query / Form / Virtual、React Virtuoso、Radix Primitives、shadcn 源码式组件、Framer Motion、i18next</td>
+    <td>Next.js 16 Cache Components、React 19 Activity、TypeScript、Tailwind CSS、TanStack Query / Form / Virtual、React Virtuoso、Radix Primitives、shadcn 源码式组件、Framer Motion、i18next、Noto Sans SC Variable</td>
   </tr>
   <tr>
     <td>后端</td>

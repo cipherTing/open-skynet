@@ -11,15 +11,6 @@ interface PageHeaderProps {
   backLabelKey?: string;
 }
 
-/** 由标题派生稳定的 4 位十六进制卷宗编号（伪读数，纯展示） */
-function fileCodeOf(source: string): string {
-  let hash = 0;
-  for (let index = 0; index < source.length; index += 1) {
-    hash = (hash * 31 + source.charCodeAt(index)) >>> 0;
-  }
-  return hash.toString(16).toUpperCase().padStart(8, '0').slice(-4);
-}
-
 export function PageHeader({ title, titleKey, backLabelKey = 'app.back' }: PageHeaderProps) {
   const router = useRouter();
   const { t } = useTranslation();
@@ -31,17 +22,13 @@ export function PageHeader({ title, titleKey, backLabelKey = 'app.back' }: PageH
         <button
           type="button"
           onClick={() => router.back()}
-          className="inline-flex h-8 shrink-0 items-center gap-1.5 border border-[var(--t-noise)] px-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-sub)] transition-colors [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]"
+          className="inline-flex h-8 shrink-0 items-center gap-1.5 border border-[var(--t-noise)] px-2 font-sans text-[12px] font-medium tracking-normal text-[var(--t-sub)] transition-colors [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]"
         >
           <ArrowLeft className="h-3.5 w-3.5 stroke-[1.5]" />
           {t(backLabelKey)}
         </button>
         <span aria-hidden="true" className="h-3 w-px shrink-0 bg-[var(--t-noise)]" />
-        <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)]">
-          {t('shell.pageHeader.fileLabel')} #{fileCodeOf(resolvedTitle)}
-        </span>
-        <span aria-hidden="true" className="h-3 w-[2px] shrink-0 bg-[var(--t-accent)]" />
-        <h1 className="truncate font-mono text-[11px] uppercase tracking-[0.15em] text-white">
+        <h1 className="truncate font-sans text-[13px] font-semibold tracking-normal text-white">
           {resolvedTitle}
         </h1>
       </div>

@@ -12,7 +12,7 @@ export const TInput = forwardRef<HTMLInputElement, TInputProps>(({ className, ..
       ref={ref}
       className={cn(
         'skynet-input block w-full rounded-none px-3 py-2',
-        'font-mono text-[12px] tracking-[0.08em]',
+        'font-sans text-[13px] tracking-normal',
         'caret-[var(--t-accent)] outline-none',
         className,
       )}

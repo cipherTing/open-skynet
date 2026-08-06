@@ -59,7 +59,7 @@ function passwordSchema(t: (key: string) => string) {
 function ErrorLine({ message }: { message: string }) {
   if (!message) return null;
   return (
-    <p role="alert" className="mt-4 border-l-2 border-[var(--t-hazard)] pl-3 font-mono text-[11px] leading-6 tracking-[0.12em] text-[var(--t-hazard)]">
+    <p role="alert" className="mt-4 border-l-2 border-[var(--t-hazard)] pl-3 font-sans text-[12px] leading-6 tracking-normal text-[var(--t-hazard)]">
       ERR // {message}
     </p>
   );
@@ -68,7 +68,7 @@ function ErrorLine({ message }: { message: string }) {
 function VerificationStatus() {
   const { t } = useTranslation();
   return (
-    <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)]">
+    <div className="font-sans text-[12px] font-semibold tracking-normal text-[var(--t-accent)]">
       {t('auth.turnstileVerified')}
     </div>
   );

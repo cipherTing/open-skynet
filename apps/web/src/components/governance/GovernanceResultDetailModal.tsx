@@ -144,7 +144,7 @@ function ReplySnapshot({
               aria-hidden
               className="absolute -left-4 top-6 w-4 border-t border-[var(--t-noise)]"
             />
-            <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+            <p className="mb-2 font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
               {t('governance.detail.parentReply')}
             </p>
             <p className="mb-2 font-mono text-[10px] tracking-[0.12em] text-[var(--t-faint)]">
@@ -242,11 +242,11 @@ function VoteSummary({ result }: { result: GovernanceResultFeedItem }) {
   );
 }
 
-/** 裁决摘要单元格：gap-px 发丝网格的一格，等宽 10px 标签 + 加粗读数。 */
+/** 裁决摘要单元格：gap-px 发丝网格的一格，可读标签 + 加粗读数。 */
 function VerdictCell({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="bg-black p-3">
-      <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+      <p className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
         {label}
       </p>
       <div className="mt-2">{children}</div>
@@ -289,11 +289,11 @@ export function GovernanceResultDetailModal({
           </div>
 
           <TPanel>
-            <GovernanceChapterTitle chapter="CH.01" title={t('governance.detail.verdictSummary')} />
+            <GovernanceChapterTitle title={t('governance.detail.verdictSummary')} />
             <section className="mt-4 grid gap-px border border-[var(--t-noise)] bg-[var(--t-noise)] sm:grid-cols-3">
               <VerdictCell label={t('governance.detail.verdictSummary')}>
                 <p
-                  className={`font-mono text-sm font-bold ${
+                  className={`font-sans text-sm font-semibold tracking-normal ${
                     displayResult.result === 'violation'
                       ? 'text-[var(--t-hazard)]'
                       : 'text-[var(--t-accent)]'
@@ -303,7 +303,7 @@ export function GovernanceResultDetailModal({
                 </p>
               </VerdictCell>
               <VerdictCell label={t('governance.targetType')}>
-                <p className="flex items-center gap-2 font-mono text-sm font-bold text-white/85">
+                <p className="flex items-center gap-2 font-sans text-sm font-semibold tracking-normal text-white/85">
                   {displayResult.targetType === 'POST' ? (
                     <FileText className="h-4 w-4" />
                   ) : displayResult.targetType === 'CIRCLE_PROPOSAL' ? (
@@ -323,7 +323,7 @@ export function GovernanceResultDetailModal({
           </TPanel>
 
           <TPanel>
-            <GovernanceChapterTitle chapter="CH.02" title={t('governance.detail.voteSummary')} />
+            <GovernanceChapterTitle title={t('governance.detail.voteSummary')} />
             <div className="mt-4">
               <VoteSummary result={displayResult} />
             </div>
@@ -331,7 +331,6 @@ export function GovernanceResultDetailModal({
 
           <TPanel>
             <GovernanceChapterTitle
-              chapter="CH.03"
               title={
                 displayResult.resolutionSource === 'ADMIN'
                   ? t('governance.detail.adminDecision')
@@ -349,14 +348,14 @@ export function GovernanceResultDetailModal({
           </TPanel>
 
           <TPanel>
-            <GovernanceChapterTitle chapter="CH.04" title={t('governance.detail.targetSnapshot')} />
+            <GovernanceChapterTitle title={t('governance.detail.targetSnapshot')} />
             <div className="mt-4">
               {detailQuery.isLoading ? (
-                <p className="font-mono text-sm text-[var(--t-sub)]">
+                <p className="font-sans text-sm leading-5 tracking-normal text-[var(--t-sub)]">
                   {t('governance.detail.loadingDetail')}
                 </p>
               ) : detailQuery.isError ? (
-                <p className="border border-[var(--t-hazard-dim)] px-3 py-2 font-mono text-sm text-[var(--t-hazard)]/80">
+                <p className="border border-[var(--t-hazard-dim)] px-3 py-2 font-sans text-sm leading-5 tracking-normal text-[var(--t-hazard)]/80">
                   {t('governance.detail.loadFailed')}
                 </p>
               ) : detail ? (
@@ -366,7 +365,7 @@ export function GovernanceResultDetailModal({
           </TPanel>
 
           <TPanel>
-            <GovernanceChapterTitle chapter="CH.05" title={t('governance.detail.timeline')} />
+            <GovernanceChapterTitle title={t('governance.detail.timeline')} />
             <div className="mt-4">
               <GovernanceTimeline events={detail?.timelineEvents ?? []} />
             </div>

@@ -102,7 +102,7 @@ export function AdminGovernanceCaseDialog({
         <div className="mt-6 space-y-7">
           <section className="grid gap-4 border-y border-[var(--t-noise)] py-4 sm:grid-cols-2 lg:grid-cols-4">
             <div>
-              <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+              <div className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                 {t('admin.governance.status')}
               </div>
               <div className="mt-1 text-sm font-bold text-[var(--t-text)]">
@@ -110,7 +110,7 @@ export function AdminGovernanceCaseDialog({
               </div>
             </div>
             <div>
-              <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+              <div className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                 {t('admin.governance.reportCount')}
               </div>
               <div className="mt-1 text-sm font-bold text-[var(--t-text)]">
@@ -118,7 +118,7 @@ export function AdminGovernanceCaseDialog({
               </div>
             </div>
             <div>
-              <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+              <div className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                 {t('admin.governance.voteCount')}
               </div>
               <div className="mt-1 text-sm font-bold text-[var(--t-text)]">
@@ -126,7 +126,7 @@ export function AdminGovernanceCaseDialog({
               </div>
             </div>
             <div>
-              <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+              <div className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                 {t('admin.governance.currentDeadline')}
               </div>
               <div className="mt-1 text-sm font-bold text-[var(--t-text)]">
@@ -156,7 +156,7 @@ export function AdminGovernanceCaseDialog({
               ) : detail.targetSnapshot.kind === 'REPLY' ? (
                 <div className="space-y-5">
                   <div>
-                    <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                    <div className="mb-2 font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                       {t('admin.governance.originalPost')}
                     </div>
                     <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -171,7 +171,7 @@ export function AdminGovernanceCaseDialog({
                   </div>
                   {detail.targetSnapshot.parentReply ? (
                     <div>
-                      <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                      <div className="mb-2 font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                         {t('admin.governance.parentReply')}
                       </div>
                       <div className="mb-2 text-[10px] text-[var(--t-sub)]">
@@ -183,7 +183,7 @@ export function AdminGovernanceCaseDialog({
                     </div>
                   ) : null}
                   <div>
-                    <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)]">
+                    <div className="mb-2 font-sans text-[12px] font-medium tracking-normal text-[var(--t-accent)]">
                       {t('admin.governance.reportedReply')}
                     </div>
                     <div className="mb-2 text-[10px] text-[var(--t-sub)]">
@@ -216,7 +216,7 @@ export function AdminGovernanceCaseDialog({
 
           <section className="grid gap-6 md:grid-cols-2">
             <div>
-              <h3 className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--t-text)]">
+              <h3 className="flex items-center gap-2 font-sans text-[12px] font-semibold tracking-normal text-[var(--t-text)]">
                 <span aria-hidden className="text-[var(--t-accent)]">
                   {'//'}
                 </span>
@@ -239,7 +239,7 @@ export function AdminGovernanceCaseDialog({
               </div>
             </div>
             <div>
-              <h3 className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--t-text)]">
+              <h3 className="flex items-center gap-2 font-sans text-[12px] font-semibold tracking-normal text-[var(--t-text)]">
                 <span aria-hidden className="text-[var(--t-accent)]">
                   {'//'}
                 </span>
@@ -267,7 +267,7 @@ export function AdminGovernanceCaseDialog({
           </section>
 
           <section>
-            <h3 className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--t-text)]">
+            <h3 className="flex items-center gap-2 font-sans text-[12px] font-semibold tracking-normal text-[var(--t-text)]">
               <span aria-hidden className="text-[var(--t-accent)]">
                 {'//'}
               </span>

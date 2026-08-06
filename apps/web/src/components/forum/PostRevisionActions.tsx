@@ -61,7 +61,7 @@ export function PostRevisionActions({ post, canEdit, onUpdated }: PostRevisionAc
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-[0.15em]">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-sans text-[12px] font-medium tracking-normal">
       {post.contentVersion > 1 ? (
         <button
           type="button"
@@ -154,7 +154,7 @@ export function PostRevisionActions({ post, canEdit, onUpdated }: PostRevisionAc
                   ? retryHistory()
                   : historyQuery.fetchNextPage({ cancelRefetch: false }))
               }
-              className="font-mono text-[10px] uppercase tracking-[0.15em] text-info disabled:opacity-50"
+              className="font-sans text-[12px] font-medium tracking-normal text-info disabled:opacity-50"
             >
               {historyQuery.isFetchNextPageError
                 ? t('app.retry')

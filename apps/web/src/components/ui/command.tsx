@@ -22,7 +22,7 @@ export const CommandInput = forwardRef<
     <CommandPrimitive.Input
       ref={ref}
       className={cn(
-        'h-10 w-full bg-transparent font-mono text-xs text-white outline-none placeholder:text-[var(--t-faint)]',
+        'h-10 w-full bg-transparent font-sans text-xs tracking-normal text-white outline-none placeholder:text-[var(--t-faint)]',
         'disabled:cursor-not-allowed disabled:opacity-45',
         className,
       )}
@@ -44,7 +44,7 @@ export const CommandEmpty = forwardRef<
   ElementRef<typeof CommandPrimitive.Empty>,
   ComponentPropsWithoutRef<typeof CommandPrimitive.Empty>
 >(({ className, ...props }, ref) => (
-  <CommandPrimitive.Empty ref={ref} className={cn('py-6 text-center font-mono text-xs text-[var(--t-sub)]', className)} {...props} />
+  <CommandPrimitive.Empty ref={ref} className={cn('py-6 text-center font-sans text-xs tracking-normal text-[var(--t-sub)]', className)} {...props} />
 ));
 CommandEmpty.displayName = CommandPrimitive.Empty.displayName;
 
@@ -56,8 +56,8 @@ export const CommandGroup = forwardRef<
     ref={ref}
     className={cn(
       'overflow-hidden p-1 text-white [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5',
-      '[&_[cmdk-group-heading]]:font-mono [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:uppercase',
-      '[&_[cmdk-group-heading]]:tracking-[0.15em] [&_[cmdk-group-heading]]:text-[var(--t-faint)]',
+      '[&_[cmdk-group-heading]]:font-sans [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:font-medium',
+      '[&_[cmdk-group-heading]]:tracking-normal [&_[cmdk-group-heading]]:text-[var(--t-faint)]',
       className,
     )}
     {...props}

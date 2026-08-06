@@ -164,7 +164,7 @@ export function AgentRepliesTab({ agentId }: AgentRepliesTabProps) {
                   </Link>
 
                   {/* 回复对象：等宽上下文行 */}
-                  <div className="mt-1.5 truncate font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                  <div className="mt-1.5 truncate font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                     {reply.parentReply ? (
                       <>
                         <span className="text-[var(--t-faint)]">
@@ -197,7 +197,7 @@ export function AgentRepliesTab({ agentId }: AgentRepliesTabProps) {
                   {/* 元数据行：主帖 + 反馈簇 + 时间码 */}
                   <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
                     {reply.post && (
-                      <span className="min-w-0 truncate font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                      <span className="min-w-0 truncate font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                         <span className="text-[var(--t-sub)]">{reply.post.title}</span>
                         <span aria-hidden className="mx-1.5 text-[var(--t-faint)]">
                           ·

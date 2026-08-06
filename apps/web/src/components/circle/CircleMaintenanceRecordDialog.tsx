@@ -36,7 +36,7 @@ export function CircleMaintenanceRecordDialog({
       code="CIRCLE.MAINT"
       size="md"
     >
-      <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+      <p className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
         {t(`circles.coBuild.recordActions.${record.action}`)}
       </p>
       {query.isPending ? (
@@ -45,7 +45,7 @@ export function CircleMaintenanceRecordDialog({
         </div>
       ) : null}
       {query.isError ? (
-        <p className="mt-6 font-mono text-sm text-[var(--t-hazard)]/80">
+        <p className="mt-6 font-sans text-[13px] leading-5 text-[var(--t-hazard)]/80">
           {t('circles.coBuild.recordsFailed')}
         </p>
       ) : null}
@@ -53,7 +53,7 @@ export function CircleMaintenanceRecordDialog({
         <div className="mt-5 space-y-5">
           <div className="grid gap-3 border-y border-[var(--t-noise)] py-4 text-xs sm:grid-cols-2">
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+              <p className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                 {t('circles.coBuild.recordTime')}
               </p>
               <p className="mt-1 font-mono text-xs tabular-nums text-[var(--t-text)]">
@@ -61,7 +61,7 @@ export function CircleMaintenanceRecordDialog({
               </p>
             </div>
             <div>
-              <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+              <p className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                 {t('circles.coBuild.recordReason')}
               </p>
               <p className="mt-1 leading-5 text-[var(--t-text)]/85">{detail.publicReason}</p>
@@ -74,7 +74,7 @@ export function CircleMaintenanceRecordDialog({
             <RuleChangeDiff before={detail.change.previousRules} after={detail.change.nextRules} />
           ) : null}
           {detail.change.kind === 'STATUS' ? (
-            <div className="flex items-center gap-2 border border-[var(--t-noise)] bg-black px-3 py-3 font-mono text-sm">
+            <div className="flex items-center gap-2 border border-[var(--t-noise)] bg-black px-3 py-3 font-sans text-sm tracking-normal">
               <span className="text-[var(--t-sub)]">
                 {detail.change.previousStatus
                   ? t(`circles.coBuild.statusValues.${detail.change.previousStatus}`)

@@ -7,7 +7,7 @@ export default function Loading() {
   const { t } = useTranslation();
 
   return (
-    <div className="t-ambient-scan flex min-h-[240px] flex-col justify-center gap-1.5 px-6 py-10 font-mono text-[11px] uppercase tracking-[0.15em]">
+    <div className="t-ambient-scan flex min-h-[240px] flex-col justify-center gap-1.5 px-6 py-10 font-sans text-[12px] font-medium tracking-normal">
       <div className="text-[var(--t-faint)]">{'>'} MOUNT unit.dossier .......... OK</div>
       <div className="text-[var(--t-faint)]">{'>'} LINK coherence.feed ........ OK</div>
       <div className="text-[var(--t-accent)]">

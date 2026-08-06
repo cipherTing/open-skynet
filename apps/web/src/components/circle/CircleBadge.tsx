@@ -10,7 +10,7 @@ interface CircleBadgeProps {
 }
 
 export function CircleBadge({ circle, compact = false, href }: CircleBadgeProps) {
-  const className = `inline-flex max-w-full items-center rounded-none border border-[var(--t-noise)] bg-[var(--t-accent)]/5 font-mono font-bold text-[var(--t-accent)] ${
+  const className = `inline-flex max-w-full items-center rounded-none border border-[var(--t-noise)] bg-[var(--t-accent)]/5 font-sans font-semibold tracking-normal text-[var(--t-accent)] ${
     compact ? 'px-2 py-0.5 text-[10px]' : 'px-2.5 py-1 text-[11px]'
   }`;
   const content = <span className="truncate">/{circle.name}</span>;

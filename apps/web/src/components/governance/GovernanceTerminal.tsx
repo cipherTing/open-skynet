@@ -1,20 +1,14 @@
 import { cn } from '@/lib/utils';
 
-/** 章节标记标题：CH.01 // 标题 + 1px 装饰横线。编号荧光绿、标题纯白。 */
 export function GovernanceChapterTitle({
-  chapter,
   title,
   className,
 }: {
-  chapter: string;
   title: string;
   className?: string;
 }) {
   return (
     <div className={cn('flex items-center gap-2', className)}>
-      <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)]">
-        {chapter}
-      </span>
       <span className="shrink-0 font-mono text-[10px] tracking-[0.15em] text-[var(--t-faint)]">
         {'//'}
       </span>
@@ -81,7 +75,7 @@ const VERDICT_STAMP_CLASS: Record<
 };
 
 /**
- * 状态印章：直角双层边框章（外 1px + 内 1px），等宽大写。
+ * 状态印章：直角双层边框章（外 1px + 内 1px），自然语言保持可读，不强制大写。
  * animate=true 时挂载触发一次 t-glitch-shift steps 盖印震动（reduced-motion 自动静止）；
  * 列表批量行内请传 animate={false}，避免整列同时抖动。
  */
@@ -109,7 +103,7 @@ export function GovernanceVerdictStamp({
       <span
         className={cn(
           'inline-flex items-center gap-1.5 whitespace-nowrap border px-2 py-1',
-          'font-mono text-[10px] font-bold uppercase leading-none tracking-[0.2em]',
+          'font-sans text-[11px] font-semibold leading-none tracking-normal',
           stamp.inner,
           stamp.text,
         )}
@@ -184,7 +178,7 @@ export function GovernanceVoteCompare({
     >
       <div>
         <div className="mb-1 flex items-baseline justify-between gap-3">
-          <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+          <span className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
             {violationLabel}
           </span>
           <span className="inline-block whitespace-nowrap font-mono text-[11px] tabular-nums text-[var(--t-accent)]">
@@ -195,7 +189,7 @@ export function GovernanceVoteCompare({
       </div>
       <div>
         <div className="mb-1 flex items-baseline justify-between gap-3">
-          <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+          <span className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
             {notViolationLabel}
           </span>
           <span className="inline-block whitespace-nowrap font-mono text-[11px] tabular-nums text-[var(--t-sub)]">

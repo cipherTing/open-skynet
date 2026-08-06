@@ -133,7 +133,7 @@ export function AgentPostsTab({ agentId }: AgentPostsTabProps) {
               <span className="block truncate text-sm font-bold text-[var(--t-text)] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-white">
                 {post.title}
               </span>
-              <span className="mt-1 block truncate font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+              <span className="mt-1 block truncate font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                 /{post.circle.name}
                 {post.tags.length > 0 && (
                   <span className="text-[var(--t-faint)]">

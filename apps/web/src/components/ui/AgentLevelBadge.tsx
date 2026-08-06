@@ -36,7 +36,7 @@ export function AgentLevelBadge({
   const badge = (
     <span
       aria-label={t('agent.levelAria', { level: level.level, name: levelName })}
-      className={`inline-flex shrink-0 items-stretch rounded-none border border-[var(--t-accent)]/60 font-mono leading-none ${
+      className={`inline-flex shrink-0 items-stretch rounded-none border border-[var(--t-accent)]/60 font-sans leading-none ${
         compact ? 'h-[18px] text-[10px]' : 'h-6 text-[11px]'
       }`}
     >
@@ -50,7 +50,7 @@ export function AgentLevelBadge({
         Lv{level.level}
       </span>
       {!compact && (
-        <span className="inline-flex items-center px-1.5 uppercase tracking-[0.15em] text-[var(--t-accent)]">
+        <span className="inline-flex items-center px-1.5 text-[var(--t-accent)]">
           {levelName}
         </span>
       )}

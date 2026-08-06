@@ -14,7 +14,7 @@ function formatInteger(value: number): string {
 }
 
 /**
- * 治理遥测面板（右栏）：等宽 10px 标签 + 静态等宽数值 + 1px hairline 分区。
+ * 治理遥测面板（右栏）：可读标签 + 静态等宽数值 + 1px hairline 分区。
  * 禁止卡片套卡片：所有分区仅靠 hairline 与留白分层。
  */
 export function GovernancePanelContent() {
@@ -33,10 +33,10 @@ export function GovernancePanelContent() {
   return (
     <div className="skynet-auto-hide-scrollbar flex h-full min-h-0 flex-col overflow-y-auto overscroll-none">
       <header className="flex flex-none items-center justify-between gap-2 border-b border-[var(--t-noise)] px-4 py-2.5">
-        <span className="truncate font-mono text-[10px] uppercase tracking-[0.15em] text-white">
+        <span className="truncate font-sans text-[12px] font-medium tracking-normal text-white">
           {t('governance.panel.title')}
         </span>
-        <span className="flex flex-none items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+        <span className="flex flex-none items-center gap-1.5 font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
           <span
             aria-hidden="true"
             className={`h-1.5 w-1.5 ${
@@ -53,7 +53,7 @@ export function GovernancePanelContent() {
           {t('governance.panel.description')}
         </p>
         {statsQuery.dataUpdatedAt > 0 ? (
-          <p className="mt-2 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+          <p className="mt-2 flex items-center gap-2 font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
             SYNC
             <Timecode date={new Date(statsQuery.dataUpdatedAt)} />
           </p>
@@ -61,15 +61,15 @@ export function GovernancePanelContent() {
       </section>
 
       {isAuthLoading ? (
-        <section className="border-b border-[var(--t-noise)] px-4 py-4 font-mono text-[11px] leading-5 tracking-[0.08em] text-[var(--t-sub)]">
+        <section className="border-b border-[var(--t-noise)] px-4 py-4 font-sans text-[12px] leading-5 tracking-normal text-[var(--t-sub)]">
           {t('governance.panel.syncing')}
         </section>
       ) : isAuthUnavailable ? (
-        <section className="border-b border-[var(--t-hazard-dim)] px-4 py-4 font-mono text-[11px] tracking-[0.08em] text-[var(--t-hazard)]/80">
+        <section className="border-b border-[var(--t-hazard-dim)] px-4 py-4 font-sans text-[12px] leading-5 tracking-normal text-[var(--t-hazard)]/80">
           {t('governance.panel.syncFailed')}
         </section>
       ) : requiresLogin ? (
-        <section className="border-b border-[var(--t-noise)] px-4 py-4 font-mono text-[11px] leading-5 tracking-[0.08em] text-[var(--t-accent)]/80">
+        <section className="border-b border-[var(--t-noise)] px-4 py-4 font-sans text-[12px] leading-5 tracking-normal text-[var(--t-accent)]/80">
           {t('governance.loginRequiredDescription')}
         </section>
       ) : (
@@ -105,7 +105,7 @@ export function GovernancePanelContent() {
           </section>
 
           <section className="px-4 py-4">
-            <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+            <p className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
               {t('governance.panel.recentDistribution')}
             </p>
             <div className="mt-3 divide-y divide-[var(--t-noise2)] border-y border-[var(--t-noise2)]">
@@ -131,7 +131,7 @@ export function GovernancePanelContent() {
           </section>
 
           {statsQuery.isError ? (
-            <section className="border-t border-[var(--t-hazard-dim)] px-4 py-4 font-mono text-[11px] tracking-[0.08em] text-[var(--t-hazard)]/80">
+            <section className="border-t border-[var(--t-hazard-dim)] px-4 py-4 font-sans text-[12px] leading-5 tracking-normal text-[var(--t-hazard)]/80">
               {t('governance.panel.syncFailed')}
             </section>
           ) : null}
@@ -166,7 +166,7 @@ function PanelStat({
     <div className="bg-black p-3">
       <div className="flex items-center gap-1.5">
         <Icon className="h-3 w-3 text-[var(--t-faint)]" />
-        <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--t-faint)]">
+        <p className="font-sans text-[11px] font-medium tracking-normal text-[var(--t-faint)]">
           {label}
         </p>
       </div>

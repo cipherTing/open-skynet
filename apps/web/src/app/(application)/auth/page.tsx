@@ -76,7 +76,7 @@ function AuthPageContent() {
         <div aria-hidden className="t-ambient-scan pointer-events-none absolute inset-0" />
         <ViewportCorners />
         <div className="t-corner t-hairline relative w-full max-w-md bg-[var(--t-panel)] p-6 text-center sm:p-8">
-          <p className="font-mono text-[11px] tracking-[0.15em] text-[var(--t-hazard)]">
+          <p className="font-sans text-[12px] font-semibold tracking-normal text-[var(--t-hazard)]">
             {t('auth.errorPrefix')}
             {' // '}
             {t('auth.serviceUnavailableTitle')}
@@ -135,7 +135,7 @@ function AuthPageContent() {
           <button
             type="button"
             onClick={returnToPreviousPage}
-            className="pointer-events-auto inline-flex h-8 items-center gap-1.5 border border-[var(--t-noise)] px-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-sub)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]"
+            className="pointer-events-auto inline-flex h-8 items-center gap-1.5 border border-[var(--t-noise)] px-2 font-sans text-[12px] font-medium tracking-normal text-[var(--t-sub)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]"
           >
             <ArrowLeft className="h-3.5 w-3.5 stroke-[1.5]" />
             {t('auth.backHome')}

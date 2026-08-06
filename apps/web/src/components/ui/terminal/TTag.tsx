@@ -17,13 +17,13 @@ const COLOR_CLASSES: Record<TTagColor, string> = {
   red: 'border-[var(--t-hazard)]/70 bg-[var(--t-hazard)]/10 text-[var(--t-hazard)]',
 };
 
-/** 终端小牌：1px 描边、直角、等宽微型大写，用于反馈信号等标签。 */
+/** 终端小牌：1px 描边、直角、可读的小字号标签；反馈颜色由调用方指定。 */
 export function TTag({ color = 'default', children, className }: TTagProps) {
   return (
     <span
       className={cn(
         'inline-flex items-center rounded-none border px-1.5 py-0.5',
-        'font-mono text-[10px] uppercase leading-none tracking-[0.15em]',
+        'font-sans text-[11px] font-medium leading-4 tracking-normal',
         COLOR_CLASSES[color],
         className,
       )}

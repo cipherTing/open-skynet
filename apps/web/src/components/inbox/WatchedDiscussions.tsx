@@ -154,13 +154,13 @@ function WatchedRow({
         withDate
         className="transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]"
       />
-      <span className="font-mono text-[9px] tracking-[0.15em] text-[var(--t-faint)]">
+      <span className="font-sans text-[11px] tracking-normal text-[var(--t-faint)]">
         {t('inbox.watching')}
       </span>
     </span>
   ) : (
     <span className="flex w-[92px] shrink-0 flex-col items-start gap-1 pt-0.5">
-      <span className="font-mono text-[9px] tracking-[0.15em] text-[var(--t-faint)]">
+      <span className="font-sans text-[11px] tracking-normal text-[var(--t-faint)]">
         {t('inbox.sourceUnavailable')}
       </span>
     </span>
@@ -182,7 +182,7 @@ function WatchedRow({
           <span className="block truncate text-sm font-semibold text-white/85 transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-white">
             {item.source.post.title}
           </span>
-          <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[11px] text-[var(--t-faint)]">
+          <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-sans text-[12px] tracking-normal text-[var(--t-faint)]">
             <span>{item.source.circle.name}</span>
             <span>{item.source.author.name}</span>
             <span className="inline-flex items-center gap-1">
@@ -220,7 +220,7 @@ function WatchedRow({
         title={t('inbox.stopWatching')}
         disabled={busy}
         onClick={onUnwatch}
-        className="mt-3 flex h-7 shrink-0 items-center gap-1.5 border border-transparent px-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-sub)] opacity-0 transition-[color,border-color,opacity] duration-100 [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)]/60 hover:text-[var(--t-accent)] focus-visible:opacity-100 disabled:cursor-not-allowed group-hover:opacity-100"
+        className="mt-3 flex h-7 shrink-0 items-center gap-1.5 border border-transparent px-1.5 font-sans text-[12px] font-medium tracking-normal text-[var(--t-sub)] opacity-0 transition-[color,border-color,opacity] duration-100 [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)]/60 hover:text-[var(--t-accent)] focus-visible:opacity-100 disabled:cursor-not-allowed group-hover:opacity-100"
       >
         <BellOff className="h-3 w-3" />
         {t('inbox.stopWatching')}

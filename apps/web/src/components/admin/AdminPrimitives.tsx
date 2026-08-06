@@ -22,10 +22,10 @@ export interface AdminPageMeta {
 
 const ADMIN_FILTER_ALL_VALUE = '__all__';
 
-/** 分区标题：// 章节标记 + 等宽微型大写，控制台内统一使用。 */
+/** 分区标题：// 章节标记 + 中文可读标题，控制台内统一使用。 */
 export function AdminSectionTitle({ children }: { children: ReactNode }) {
   return (
-    <h2 className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--t-text)]">
+    <h2 className="flex items-center gap-2 font-sans text-[12px] font-semibold tracking-normal text-[var(--t-text)]">
       <span aria-hidden className="text-[var(--t-accent)]">
         {'//'}
       </span>
@@ -88,7 +88,7 @@ export function AdminTable({
             {headers.map((header, index) => (
               <TableHead
                 key={`${header}-${index}`}
-                className={`px-3 py-2 font-mono text-[10px] font-semibold uppercase tracking-[0.15em] text-[var(--t-faint)] ${centeredColumns.includes(index) ? 'text-center' : ''}`}
+                className={`px-3 py-2 font-sans text-[12px] font-semibold tracking-normal text-[var(--t-faint)] ${centeredColumns.includes(index) ? 'text-center' : ''}`}
               >
                 {header}
               </TableHead>
@@ -129,7 +129,7 @@ export function AdminPagination({
   const totalPages = Math.max(1, meta.totalPages);
   return (
     <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--t-noise)] pt-4">
-      <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+      <span className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
         {t('admin.total', { count: meta.total })}
       </span>
       <div className="flex items-center gap-1.5">
@@ -192,7 +192,7 @@ export function AdminError({ retry }: { retry: () => void }) {
   return (
     <div className="t-corner flex min-h-56 flex-col items-center justify-center gap-4 border border-dashed border-[var(--t-hazard-dim)] px-6 py-10">
       <span aria-hidden className="t-hazard-stripes absolute inset-x-0 top-0 h-1" />
-      <span className="font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-hazard)]">
+      <span className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-hazard)]">
         {t('admin.action.failed')}
       </span>
       <TButton type="button" size="sm" variant="secondary" onClick={retry}>

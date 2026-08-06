@@ -45,7 +45,7 @@ export function PostTagFilter({
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className="t-corner w-72 bg-[var(--t-panel)] p-3">
-        <div className="mb-2 font-mono text-[10px] uppercase tracking-deck-wide text-[var(--t-faint)]">
+        <div className="mb-2 font-sans text-[11px] font-medium tracking-normal text-[var(--t-faint)]">
           {t('forum.chooseTags')}
         </div>
         <ToggleGroup
@@ -72,7 +72,7 @@ export function PostTagFilter({
           <button
             type="button"
             onClick={() => setDraft([])}
-            className="px-2 py-1 font-mono text-[11px] text-text-tertiary transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-text-primary"
+            className="px-2 py-1 font-sans text-[12px] tracking-normal text-text-tertiary transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-text-primary"
           >
             {t('forum.clearSelection')}
           </button>

@@ -24,14 +24,14 @@ const CUT_PANEL_CLASS =
 const REVISIT_INTERVAL_OPTIONS = [1, 6, 12, 24] as const;
 const DEFAULT_REVISIT_INTERVAL_HOURS = 6;
 
-/** 终端步骤指示：STEP 0n 等宽荧光标签 + 说明。 */
+/** 终端步骤指示：STEP 0n 状态标签 + 可读说明。 */
 function ConnectStep({ index, text }: { index: number; text: string }) {
   return (
     <li className="flex items-baseline gap-2.5">
-      <span className="flex-none font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)]">
+      <span className="flex-none font-sans text-[12px] font-medium tracking-normal text-[var(--t-accent)]">
         STEP {String(index).padStart(2, '0')}
       </span>
-      <span className="min-w-0 font-mono text-xs leading-5 text-text-secondary">{text}</span>
+      <span className="min-w-0 font-sans text-[12px] leading-5 tracking-normal text-text-secondary">{text}</span>
     </li>
   );
 }
@@ -130,7 +130,7 @@ export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolea
       {!link ? (
         <div className="mt-5 space-y-3">
           {keyQuery.isError && (
-            <div className="flex items-center justify-between gap-3 border border-danger/30 bg-danger/10 px-3 py-2 font-mono text-xs text-danger">
+            <div className="flex items-center justify-between gap-3 border border-danger/30 bg-danger/10 px-3 py-2 font-sans text-[12px] leading-5 tracking-normal text-danger">
               <span>{t('agentConnect.keyStatusFailed')}</span>
               <button
                 type="button"
@@ -143,7 +143,7 @@ export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolea
           )}
           <div className="space-y-1.5">
             <div className="flex items-center gap-1.5">
-              <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+              <span className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                 {t('agentConnect.revisitIntervalLabel')}
               </span>
               <TerminalTooltip
@@ -170,7 +170,7 @@ export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolea
                     type="button"
                     aria-pressed={active}
                     onClick={() => setRevisitIntervalHours(hours)}
-                    className={`h-8 font-mono text-xs transition-colors [transition-timing-function:steps(2,end)] ${
+                    className={`h-8 font-sans text-[12px] tabular-nums tracking-normal transition-colors [transition-timing-function:steps(2,end)] ${
                       active
                         ? 'bg-[var(--t-accent)] text-black'
                         : 'text-[var(--t-sub)] hover:text-[var(--t-accent)]'
@@ -199,7 +199,7 @@ export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolea
             <button
               type="button"
               onClick={hideToday}
-              className="w-full text-center font-mono text-xs text-text-tertiary hover:text-accent"
+              className="w-full text-center font-sans text-[12px] tracking-normal text-text-tertiary hover:text-accent"
             >
               {t('agentConnect.hideToday')}
             </button>
@@ -208,14 +208,14 @@ export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolea
       ) : (
         <div className="mt-5 space-y-3">
           <div className="border border-[var(--t-noise)] bg-black p-3">
-            <div className="mb-2 font-mono text-[11px] uppercase tracking-[0.12em] text-accent">
+            <div className="mb-2 font-sans text-[12px] font-semibold tracking-normal text-accent">
               {t('agentConnect.linkReady')}
             </div>
             <code className="block overflow-x-auto whitespace-pre font-mono text-xs leading-5 text-info">
               {connectCommand}
             </code>
           </div>
-          <p className="font-mono text-xs text-text-tertiary">
+          <p className="font-sans text-[12px] tracking-normal text-text-tertiary">
             {t('agentConnect.expiresAt', { time: new Date(expiresAt).toLocaleTimeString() })}
           </p>
           <button

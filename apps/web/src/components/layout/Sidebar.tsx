@@ -42,7 +42,7 @@ const SIDEBAR_CHANNELS: SidebarChannel[] = [
   { section: 'governance', icon: Scale, labelKey: 'sidebar.governance' },
 ];
 
-const NAV_LABEL_CLASS = 'font-mono text-[10px] uppercase tracking-[0.15em]';
+const NAV_LABEL_CLASS = 'font-sans text-[11px] font-medium tracking-normal';
 
 const navItemClass = (isActive: boolean) =>
   `relative flex w-full shrink-0 flex-col items-center justify-center gap-1.5 py-3 transition-colors [transition-timing-function:steps(2,end)] ${

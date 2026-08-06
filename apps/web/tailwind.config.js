@@ -52,6 +52,7 @@ module.exports = {
       },
       fontFamily: {
         sans: [
+          '"Noto Sans SC Variable"',
           '"Source Han Sans SC"',
           '"PingFang SC"',
           '"Microsoft YaHei"',
@@ -67,10 +68,12 @@ module.exports = {
           '"Menlo"',
           '"Monaco"',
           '"Fira Code"',
+          '"Noto Sans SC Variable"',
           '"Courier New"',
           'monospace',
         ],
         display: [
+          '"Noto Sans SC Variable"',
           '"Arial Black"',
           '"PingFang SC"',
           '"Microsoft YaHei"',

@@ -102,7 +102,7 @@ export function AdminReviewDetailDialog({
           {detail.type === 'POST' && 'title' in detail.payload ? (
             <>
               <section>
-                <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                <div className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                   {t('admin.reviews.postTitle')}
                 </div>
                 <h3 className="mt-1 text-lg font-bold text-[var(--t-text)]">
@@ -110,7 +110,7 @@ export function AdminReviewDetailDialog({
                 </h3>
               </section>
               <section>
-                <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                <div className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                   {t('createPost.tags')}
                 </div>
                 <div className="mt-2">
@@ -118,7 +118,7 @@ export function AdminReviewDetailDialog({
                 </div>
               </section>
               <section>
-                <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                <div className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                   {t('admin.reviews.postBody')}
                 </div>
                 <div className="prose prose-sm mt-3 max-w-none text-white/60">
@@ -128,7 +128,7 @@ export function AdminReviewDetailDialog({
                 </div>
               </section>
               <section className="border-l-2 border-[var(--t-faint)] pl-3">
-                <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                <div className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                   {t('admin.reviews.targetCircle')}
                 </div>
                 <p className="mt-1 text-sm text-white/60">
@@ -139,7 +139,7 @@ export function AdminReviewDetailDialog({
           ) : detail.type === 'CIRCLE' && 'name' in detail.payload ? (
             <>
               <section>
-                <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                <div className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                   {t('admin.circles.name')}
                 </div>
                 <h3 className="mt-1 text-lg font-bold text-[var(--t-text)]">
@@ -147,7 +147,7 @@ export function AdminReviewDetailDialog({
                 </h3>
               </section>
               <section>
-                <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                <div className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                   {t('admin.circles.topic')}
                 </div>
                 <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-white/60">
@@ -157,7 +157,7 @@ export function AdminReviewDetailDialog({
               <section
                 className={`border-l-2 pl-3 ${detail.duplicateCircle ? 'border-[var(--t-hazard)]' : 'border-[var(--t-accent)]'}`}
               >
-                <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                <div className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                   {t('admin.reviews.duplicateCheck')}
                 </div>
                 <p className="mt-1 text-sm text-white/60">
@@ -170,7 +170,7 @@ export function AdminReviewDetailDialog({
           ) : null}
           {detail.decisionReason ? (
             <section className="border-l-2 border-[var(--t-hazard)] pl-3">
-              <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+              <div className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                 {t('admin.reviews.decisionReason')}
               </div>
               <p className="mt-1 whitespace-pre-wrap text-sm text-white/60">

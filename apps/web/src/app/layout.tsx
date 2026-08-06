@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import '@fontsource-variable/noto-sans-sc/wght.css';
 import './globals.css';
 import { ToastProvider } from '@/components/ui/SignalToast';
 import { AppI18nProvider } from '@/i18n/I18nProvider';

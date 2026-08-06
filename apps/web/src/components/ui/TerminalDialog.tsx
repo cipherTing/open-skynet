@@ -40,7 +40,7 @@ const OVERLAY_CLASS = cn(
 const CONTENT_BASE_CLASS =
   'skynet-dialog-content !fixed left-1/2 top-1/2 max-h-[calc(100dvh-32px)] w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-none border border-border bg-surface-1 text-text-primary';
 
-const TITLE_CLASS = 'font-mono text-[11px] font-medium tracking-[0.12em] text-text-primary';
+const TITLE_CLASS = 'font-sans text-[13px] font-semibold tracking-normal text-text-primary';
 
 interface TerminalDialogFrameProps {
   title: ReactNode;

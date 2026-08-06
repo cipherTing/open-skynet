@@ -331,7 +331,7 @@ export function CircleProposalDetailPage({
               aria-hidden
               className={`absolute left-0 top-0 h-full w-[3px] ${proposalRailClass(proposal.status, hasObjection)}`}
             />
-            <div className="flex justify-end border-b border-[var(--t-noise2)] py-2.5 pl-6 pr-5 font-mono text-[10px] tracking-[0.15em] text-[var(--t-faint)]">
+            <div className="flex justify-end border-b border-[var(--t-noise2)] py-2.5 pl-6 pr-5 font-sans text-[11px] tracking-normal text-[var(--t-faint)]">
               <span className="inline-flex items-center gap-1.5">
                 <Timecode date={proposal.updatedAt} withDate />
               </span>
@@ -340,11 +340,11 @@ export function CircleProposalDetailPage({
             {/* 卷宗题：范围大标题 + 状态印章 */}
             <div className="flex items-center justify-between gap-3 py-5 pl-6 pr-5">
               <div className="flex min-w-0 flex-wrap items-center gap-3">
-                <h1 className="text-2xl font-black tracking-tight text-white sm:text-3xl">
+                <h1 className="text-2xl font-black tracking-normal text-white sm:text-3xl">
                   {t(`circles.coBuild.scopes.${proposal.scope}`)}
                 </h1>
                 <span
-                  className={`border px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.15em] ${
+                  className={`border px-2 py-1 font-sans text-[12px] font-semibold tracking-normal ${
                     isVotingPhase
                       ? 'border-[var(--t-accent)]/60 text-[var(--t-accent)]'
                       : 'border-[var(--t-noise)] text-[var(--t-faint)]'
@@ -404,7 +404,7 @@ export function CircleProposalDetailPage({
           </header>
 
           {proposal.eligibility && !canFormal ? (
-            <p className="mt-4 border border-[var(--t-signal-dim)] bg-[var(--t-signal)]/10 px-3 py-2 font-mono text-[11px] tracking-[0.08em] text-[var(--t-signal)]">
+            <p className="mt-4 border border-[var(--t-signal-dim)] bg-[var(--t-signal)]/10 px-3 py-2 font-sans text-[12px] leading-5 tracking-normal text-[var(--t-signal)]">
               {proposal.eligibility.reason}
             </p>
           ) : null}
@@ -441,7 +441,7 @@ export function CircleProposalDetailPage({
                   type="button"
                   disabled={!canFormal || action.isPending}
                   onClick={() => setObjectionOpen((value) => !value)}
-                  className="inline-flex h-9 items-center gap-1.5 border border-[var(--t-signal-dim)] px-4 font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-[var(--t-signal)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[var(--t-signal)]/10 disabled:cursor-not-allowed disabled:opacity-45"
+                  className="inline-flex h-9 items-center gap-1.5 border border-[var(--t-signal-dim)] px-4 font-sans text-[12px] font-semibold tracking-normal text-[var(--t-signal)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[var(--t-signal)]/10 disabled:cursor-not-allowed disabled:opacity-45"
                 >
                   <ThumbsDown className="h-3.5 w-3.5" />
                   {t('circles.coBuild.object')} {proposal.stance.objectionCount}
@@ -509,7 +509,7 @@ export function CircleProposalDetailPage({
                 type="button"
                 disabled={!objection.trim() || action.isPending}
                 onClick={() => action.mutate('object')}
-                className="mt-3 inline-flex h-9 items-center gap-1.5 border border-[var(--t-signal-dim)] bg-[var(--t-signal)]/15 px-4 font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-[var(--t-signal)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[var(--t-signal)]/25 disabled:cursor-not-allowed disabled:opacity-45"
+                className="mt-3 inline-flex h-9 items-center gap-1.5 border border-[var(--t-signal-dim)] bg-[var(--t-signal)]/15 px-4 font-sans text-[12px] font-semibold tracking-normal text-[var(--t-signal)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[var(--t-signal)]/25 disabled:cursor-not-allowed disabled:opacity-45"
               >
                 {action.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                 {t('circles.coBuild.submitObjection')}
@@ -518,7 +518,7 @@ export function CircleProposalDetailPage({
           ) : null}
 
           <section className="mt-8">
-            <h2 className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.15em] text-white">
+            <h2 className="flex items-center gap-2 font-sans text-[12px] font-medium tracking-normal text-white">
               <Scale className="h-3.5 w-3.5 text-[var(--t-faint)]" />
               {t('circles.coBuild.revisions')}
             </h2>
@@ -537,12 +537,12 @@ export function CircleProposalDetailPage({
                     <button
                       type="button"
                       onClick={() => void retryRevisions()}
-                      className="mt-3 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-signal)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
+                      className="mt-3 font-sans text-[12px] font-medium tracking-normal text-[var(--t-signal)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
                     >
                       {t('circles.coBuild.revisionsLoadFailed')}
                     </button>
                   ) : !revisionsQuery.hasNextPage ? (
-                    <p className="py-3 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                    <p className="py-3 font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                       {t('circles.coBuild.revisionsEnd')}
                     </p>
                   ) : null
@@ -562,7 +562,7 @@ export function CircleProposalDetailPage({
               <button
                 type="button"
                 onClick={() => void revisionsQuery.refetch()}
-                className="mt-3 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-signal)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
+                className="mt-3 font-sans text-[12px] font-medium tracking-normal text-[var(--t-signal)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
               >
                 {t('circles.coBuild.revisionsLoadFailed')}
               </button>
@@ -571,7 +571,7 @@ export function CircleProposalDetailPage({
 
           {!isVotingPhase ? (
             <section className="mt-8">
-              <h2 className="font-mono text-[11px] uppercase tracking-[0.15em] text-white">
+              <h2 className="font-sans text-[12px] font-medium tracking-normal text-white">
                 {t('circles.coBuild.voteResult')}
               </h2>
               <VoteProgress
@@ -593,7 +593,7 @@ export function CircleProposalDetailPage({
                   type="button"
                   aria-expanded={votersOpen}
                   onClick={() => setVotersOpen((value) => !value)}
-                  className="flex w-full items-center justify-between gap-3 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
+                  className="flex w-full items-center justify-between gap-3 font-sans text-[12px] font-medium tracking-normal text-[var(--t-accent)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
                 >
                   <span>
                     {t('circles.coBuild.publicVoters', {
@@ -613,7 +613,7 @@ export function CircleProposalDetailPage({
                       <button
                         type="button"
                         onClick={() => void votersQuery.refetch()}
-                        className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-signal)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
+                        className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-signal)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
                       >
                         {t('circles.coBuild.votersLoadFailed')}
                       </button>
@@ -633,12 +633,12 @@ export function CircleProposalDetailPage({
                             <button
                               type="button"
                               onClick={() => void retryVoters()}
-                              className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-signal)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
+                              className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-signal)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
                             >
                               {t('circles.coBuild.votersLoadFailed')}
                             </button>
                           ) : !votersQuery.hasNextPage ? (
-                            <p className="py-3 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                            <p className="py-3 font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                               {t('circles.coBuild.votersEnd')}
                             </p>
                           ) : null
@@ -655,8 +655,8 @@ export function CircleProposalDetailPage({
                               <span
                                 className={
                                   voter.choice === 'APPROVE'
-                                    ? 'font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)]'
-                                    : 'font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-signal)]'
+                                    ? 'font-sans text-[12px] font-medium tracking-normal text-[var(--t-accent)]'
+                                    : 'font-sans text-[12px] font-medium tracking-normal text-[var(--t-signal)]'
                                 }
                               >
                                 {t(`circles.coBuild.voteChoices.${voter.choice}`)}
@@ -674,7 +674,7 @@ export function CircleProposalDetailPage({
           ) : null}
 
           <section className="mt-8 border-t border-[var(--t-noise)] pt-6">
-            <h2 className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.15em] text-white">
+            <h2 className="flex items-center gap-2 font-sans text-[12px] font-medium tracking-normal text-white">
               <MessageSquare className="h-3.5 w-3.5 text-[var(--t-faint)]" />
               {t('circles.coBuild.comments')}
             </h2>
@@ -720,7 +720,7 @@ export function CircleProposalDetailPage({
               <button
                 type="button"
                 onClick={() => void retryComments()}
-                className="mt-4 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-signal)] hover:text-white"
+                className="mt-4 font-sans text-[12px] font-medium tracking-normal text-[var(--t-signal)] hover:text-white"
               >
                 {t('circles.coBuild.commentsLoadFailed')}
               </button>
@@ -777,11 +777,11 @@ export function CircleProposalDetailPage({
   );
 }
 
-/** 卷宗元数据单元格：等宽微型标签 + 读数。 */
+/** 卷宗元数据单元格：可读标签 + 读数。 */
 function ProposalMetaCell({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1 bg-[var(--t-panel)] px-4 py-3">
-      <span className="font-mono text-[9px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+      <span className="font-sans text-[11px] font-medium tracking-normal text-[var(--t-faint)]">
         {label}
       </span>
       {children}
@@ -806,7 +806,7 @@ function VoteProgress({
   const rejectBlocks = total === 0 ? 0 : PROGRESS_BLOCKS - approveBlocks;
   return (
     <div className="mt-4">
-      <div className="flex items-center justify-between gap-3 font-mono text-[9px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+      <div className="flex items-center justify-between gap-3 font-sans text-[11px] font-medium tracking-normal text-[var(--t-faint)]">
         <span>{caption}</span>
         <span>{summary}</span>
       </div>

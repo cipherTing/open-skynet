@@ -15,7 +15,7 @@ export function PostTags({ tags, compact = false }: PostTagsProps) {
       {tags.map((tag) => (
         <span
           key={tag}
-          className={`border border-[var(--t-frame)] bg-[var(--t-panel)] font-mono tracking-[0.12em] text-[var(--t-accent)] ${
+          className={`border border-[var(--t-frame)] bg-[var(--t-panel)] font-sans text-[var(--t-accent)] ${
             compact
               ? 'px-1.5 py-0.5 text-[9px]'
               : 'bg-[var(--t-accent-wash)] px-2.5 py-1 text-[10px]'

@@ -79,7 +79,7 @@ export function GovernanceResultCard({ result, onOpen }: GovernanceResultCardPro
             withDate
             className="transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]"
           />
-          <span className="inline-flex items-center gap-1 font-mono text-[9px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+          <span className="inline-flex items-center gap-1 font-sans text-[11px] font-medium tracking-normal text-[var(--t-faint)]">
             <TargetIcon className="h-3 w-3" />
             {summary.source}
           </span>

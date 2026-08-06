@@ -63,8 +63,8 @@ export function ErrorState({ title, message, actionLabel, onAction }: FeedbackSt
         <Radio className="h-4 w-4" />
       </div>
       <div>
-        {title && <p className="mb-1 font-mono text-[12px] font-bold uppercase tracking-[0.15em] text-[var(--t-hazard)]">{title}</p>}
-        <p className="font-mono text-[11px] tracking-[0.08em] text-[var(--t-sub)]">{message}</p>
+        {title && <p className="mb-1 font-sans text-[12px] font-semibold tracking-normal text-[var(--t-hazard)]">{title}</p>}
+        <p className="font-sans text-[12px] leading-5 tracking-normal text-[var(--t-sub)]">{message}</p>
       </div>
       {onAction && (
         <TButton variant="secondary" size="sm" onClick={onAction}>
@@ -125,7 +125,7 @@ function BootScreen({ label }: { label: string }) {
   );
 }
 
-/** 单行引导行：白色等宽字符，尾部 OK/PASS 状态荧光绿高亮 */
+/** 单行引导行：机器引导字符保持等宽，尾部 OK/PASS 状态使用荧光绿高亮。 */
 function BootLine({ line }: { line: string }) {
   const statusMatch = line.match(STATUS_PATTERN);
   return (
@@ -146,7 +146,7 @@ function BootLine({ line }: { line: string }) {
 function BootPromptLine({ label, dim = false }: { label: string; dim?: boolean }) {
   return (
     <p
-      className={`font-mono text-[11px] uppercase tracking-[0.15em] ${dim ? 'text-[var(--t-faint)]' : 'text-white'}`}
+      className={`font-sans text-[12px] font-medium tracking-normal ${dim ? 'text-[var(--t-faint)]' : 'text-white'}`}
     >
       <span className="text-[var(--t-accent)]">&gt;</span> {label}
       <span

@@ -125,7 +125,7 @@ function SelectedReplyPanel({
           className={`selected-reply-shell border p-2.5 ${selection ? 'selected-reply-pulse' : ''}`}
         >
           <div className="mb-2 flex items-center justify-between gap-3 px-1">
-            <span className="inline-flex items-center border border-border-accent bg-accent-muted px-2 py-1 font-mono text-[11px] text-accent">
+            <span className="inline-flex items-center border border-border-accent bg-accent-muted px-2 py-1 font-sans text-[12px] tracking-normal text-accent">
               {t('replyThread.selected')}
             </span>
             <button
@@ -143,7 +143,7 @@ function SelectedReplyPanel({
               <TSkeleton rows={3} />
             </div>
           ) : isError || !selection ? (
-            <p className="px-2 py-5 text-center font-mono text-xs font-semibold text-danger">
+            <p className="px-2 py-5 text-center font-sans text-[12px] font-semibold leading-5 text-danger">
               {t('replyThread.selectedLoadFailed')}
             </p>
           ) : (
@@ -538,7 +538,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
         {/* 元数据栅格：1px 暗绿分隔 */}
         <div className="relative grid grid-cols-2 gap-px border-b border-[var(--t-frame)] bg-[var(--t-noise2)] sm:grid-cols-3">
           <div className="bg-[var(--t-panel)] px-4 py-2.5 sm:px-6">
-            <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-[var(--t-faint)]">
+            <p className="font-sans text-[11px] font-medium tracking-normal text-[var(--t-faint)]">
               {t('post.meta.author')}
             </p>
             <button
@@ -560,7 +560,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
             </button>
           </div>
           <div className="bg-[var(--t-panel)] px-4 py-2.5 sm:px-6">
-            <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-[var(--t-faint)]">
+            <p className="font-sans text-[11px] font-medium tracking-normal text-[var(--t-faint)]">
               {t('post.meta.filed')}
             </p>
             <p className="mt-1.5">
@@ -568,7 +568,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
             </p>
           </div>
           <div className="bg-[var(--t-panel)] px-4 py-2.5 sm:px-6">
-            <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-[var(--t-faint)]">
+            <p className="font-sans text-[11px] font-medium tracking-normal text-[var(--t-faint)]">
               {t('post.meta.circle')}
             </p>
             <p className="mt-1.5">
@@ -583,7 +583,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
 
         {/* 巨型标题 */}
         <div className="relative px-4 py-6 sm:px-6 sm:py-8">
-          <h1 className="max-w-4xl text-[clamp(2rem,4vw,3.5rem)] font-black leading-[0.95] tracking-tight text-white [text-shadow:0_0_6px_color-mix(in_srgb,var(--t-accent)_22%,transparent)]">
+          <h1 className="max-w-4xl text-[clamp(2rem,4vw,3.5rem)] font-black leading-tight tracking-normal text-white [text-shadow:0_0_6px_color-mix(in_srgb,var(--t-accent)_22%,transparent)]">
             {post.title}
           </h1>
           <div className="mt-5">
@@ -591,13 +591,13 @@ function PostDetailContent({ postId }: PostDetailProps) {
           </div>
         </div>
 
-        {/* 等宽小字操作行 */}
+        {/* 小字号操作行 */}
         <div className="relative flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-[var(--t-frame)] px-4 py-2 sm:px-6">
           <button
             type="button"
             disabled={favoriteBusy}
             onClick={handleFavorite}
-            className={`inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.15em] transition-colors [transition-timing-function:steps(2,end)] disabled:cursor-not-allowed disabled:opacity-60 ${
+            className={`inline-flex items-center gap-1 font-sans text-[12px] font-medium tracking-normal transition-colors [transition-timing-function:steps(2,end)] disabled:cursor-not-allowed disabled:opacity-60 ${
               postFavorited
                 ? 'text-[var(--t-accent)]'
                 : 'text-[var(--t-faint)] hover:text-[var(--t-accent)]'
@@ -615,7 +615,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
             disabled={watchBusy}
             aria-disabled={!canWatchPost || undefined}
             onClick={handleWatch}
-            className={`inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.15em] transition-colors [transition-timing-function:steps(2,end)] disabled:cursor-not-allowed disabled:opacity-60 ${
+            className={`inline-flex items-center gap-1 font-sans text-[12px] font-medium tracking-normal transition-colors [transition-timing-function:steps(2,end)] disabled:cursor-not-allowed disabled:opacity-60 ${
               postWatching ? 'text-white' : 'text-[var(--t-faint)] hover:text-[var(--t-accent)]'
             }`}
           >
@@ -626,7 +626,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
             <button
               type="button"
               onClick={quoteSelectedPostText}
-              className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)]"
+              className="inline-flex items-center gap-1 font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)]"
             >
               <Quote className="h-3 w-3" />
               {t('replyInput.quoteSelection')}
@@ -735,11 +735,11 @@ function PostDetailContent({ postId }: PostDetailProps) {
                 Footer: () => (
                   <div className="pb-5 pt-3">
                     {repliesQuery.isFetchingNextPage ? (
-                      <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                      <div className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                         {t('forum.loadingMoreReplies')}
                       </div>
                     ) : repliesQuery.isError ? (
-                      <div className="border border-danger/40 border-l-2 border-l-danger bg-danger/10 px-4 py-3 text-center font-mono text-[12px] tracking-wide text-danger">
+                      <div className="border border-danger/40 border-l-2 border-l-danger bg-danger/10 px-4 py-3 text-center font-sans text-[12px] leading-5 tracking-normal text-danger">
                         <p>{t('forum.repliesLoadFailed')}</p>
                         <button
                           type="button"
@@ -750,7 +750,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
                         </button>
                       </div>
                     ) : !repliesQuery.hasNextPage ? (
-                      <div className="py-2 text-center font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                      <div className="py-2 text-center font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                         {t('forum.replyEnd')}
                       </div>
                     ) : null}
@@ -776,7 +776,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
             />
           ) : null}
           {repliesQuery.isError && replies.length === 0 && (
-            <div className="my-4 border border-danger/40 border-l-2 border-l-danger bg-danger/10 px-4 py-3 text-center font-mono text-[12px] tracking-wide text-danger">
+            <div className="my-4 border border-danger/40 border-l-2 border-l-danger bg-danger/10 px-4 py-3 text-center font-sans text-[12px] leading-5 tracking-normal text-danger">
               <p>{t('forum.repliesLoadFailed')}</p>
               <button
                 type="button"

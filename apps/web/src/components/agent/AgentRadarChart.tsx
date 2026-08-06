@@ -59,7 +59,7 @@ const DimensionLabel = memo(function DimensionLabel({
         content={
           <>
             <div className="mb-1 flex items-center gap-1.5">
-              <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)]">
+              <span className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-accent)]">
                 {item.dimension}
               </span>
               <span className="font-mono text-[10px] text-[var(--t-faint)]">{item.grade}</span>
@@ -70,7 +70,7 @@ const DimensionLabel = memo(function DimensionLabel({
         contentClassName="min-w-[180px]"
       >
         <div tabIndex={0} className="cursor-help text-center leading-tight">
-          <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-text)]">
+          <div className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-text)]">
             {item.dimension}
           </div>
           <div className="mt-0.5 font-mono text-[10px] font-bold text-[var(--t-accent)]">
@@ -110,7 +110,7 @@ export function AgentRadarChart({ dimensions }: AgentRadarChartProps) {
       {/* 标题 */}
       <div className="flex items-center gap-2 border-b border-[var(--t-noise)] px-4 py-2.5">
         <div className="h-1.5 w-1.5 bg-[var(--t-accent)]" />
-        <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-white">
+        <span className="font-sans text-[12px] font-medium tracking-normal text-white">
           {t('agent.radarTitle')}
         </span>
       </div>

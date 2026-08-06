@@ -41,7 +41,7 @@ const SETTINGS_PAGE_TAB = {
 function SettingsSectionHeader({ title }: { title: string }) {
   return (
     <div className="mb-4 flex items-center gap-3">
-      <h2 className="font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-white">
+      <h2 className="font-sans text-[13px] font-semibold tracking-normal text-white">
         {title}
       </h2>
       <span aria-hidden className="h-px flex-1 bg-[var(--t-noise)]" />
@@ -296,7 +296,7 @@ function SettingsPageContent({
           type="button"
           role="tab"
           aria-selected="true"
-          className="border-b-2 border-[var(--t-accent)] bg-[var(--t-panel)] px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.15em] text-white"
+          className="border-b-2 border-[var(--t-accent)] bg-[var(--t-panel)] px-4 py-2.5 font-sans text-[12px] font-medium tracking-normal text-white"
         >
           {t(SETTINGS_PAGE_TAB.titleKey)}
         </button>
@@ -306,7 +306,7 @@ function SettingsPageContent({
         {/* 左侧页面页签；页面内部的表单区不在这里单独导航。 */}
         <aside className="hidden w-[224px] flex-none flex-col border-r border-[var(--t-noise)] bg-black md:flex">
           <div className="flex items-baseline justify-between gap-2 border-b border-[var(--t-noise)] px-4 py-3">
-            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+            <span className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
               SYS.CONFIG
             </span>
           </div>
@@ -315,7 +315,7 @@ function SettingsPageContent({
               type="button"
               role="tab"
               aria-selected="true"
-              className="relative flex items-baseline gap-2.5 bg-[var(--t-panel)] px-4 py-3 text-left font-mono text-[11px] uppercase tracking-[0.15em] text-white focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--t-accent)]"
+              className="relative flex items-baseline gap-2.5 bg-[var(--t-panel)] px-4 py-3 text-left font-sans text-[12px] font-medium tracking-normal text-white focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--t-accent)]"
             >
               <span aria-hidden className="absolute inset-y-0 left-0 w-[2px] bg-[var(--t-accent)]" />
               <span className="text-[var(--t-accent)]">{t(SETTINGS_PAGE_TAB.titleKey)}</span>
@@ -323,11 +323,11 @@ function SettingsPageContent({
           </nav>
           {/* 左侧栏底部：边缘元数据（UTC 时钟 / 节点状态） */}
           <div className="mt-auto space-y-1.5 border-t border-[var(--t-noise)] px-4 py-3">
-            <p className="flex items-center justify-between gap-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+            <p className="flex items-center justify-between gap-2 font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
               <span>UTC</span>
               <span className="text-white/60">{utcText}</span>
             </p>
-            <p className="flex items-center justify-between gap-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+            <p className="flex items-center justify-between gap-2 font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
               <span>NODE</span>
               <span className="flex items-center gap-1.5 text-[var(--t-accent)]">
                 <span
@@ -349,11 +349,11 @@ function SettingsPageContent({
             {/* 页面标题 */}
             <header className="mb-10 border-b border-[var(--t-noise)] pb-5">
               <div className="flex items-baseline justify-between gap-3">
-                <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                <p className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                   SYS.CONFIG // NODE
                 </p>
               </div>
-              <h1 className="mt-2 text-2xl font-bold tracking-tight text-white">
+              <h1 className="mt-2 text-2xl font-bold tracking-normal text-white">
                 {t('settings.title')}
               </h1>
               <p className="mt-1 text-sm text-white/50">{t('settings.subtitle')}</p>
@@ -373,7 +373,7 @@ function SettingsPageContent({
                       agentName={agent.name}
                       size={72}
                     />
-                    <span className="font-mono text-[11px] tracking-[0.08em] text-white/70">
+                    <span className="font-sans text-[12px] tracking-normal text-white/70">
                       {agent.name}
                     </span>
                     <div className="flex items-center gap-1.5">
@@ -381,7 +381,7 @@ function SettingsPageContent({
                         aria-hidden
                         className="t-anim-blink h-1.5 w-1.5 bg-[var(--t-accent)] motion-reduce:animate-none"
                       />
-                      <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)]">
+                      <span className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-accent)]">
                         {t('settings.online')}
                       </span>
                     </div>
@@ -452,7 +452,7 @@ function SettingsPageContent({
                           <div className="flex items-center justify-between gap-4">
                             <label
                               htmlFor="settings-owner-operation"
-                              className="font-mono text-[11px] uppercase tracking-[0.15em] text-white/85"
+                              className="font-sans text-[12px] font-medium tracking-normal text-white/85"
                             >
                               {t('settings.ownerOperationTitle')}
                             </label>
@@ -488,7 +488,7 @@ function SettingsPageContent({
                           <div className="flex items-center justify-between gap-4">
                             <label
                               htmlFor="settings-favorites-public"
-                              className="font-mono text-[11px] uppercase tracking-[0.15em] text-white/85"
+                              className="font-sans text-[12px] font-medium tracking-normal text-white/85"
                             >
                               {t('settings.favoritesPublicTitle')}
                             </label>
@@ -520,7 +520,7 @@ function SettingsPageContent({
                   {/* 当前密钥：只读等宽代码块 + 图标化复制 */}
                   {keyLoaded && keyInfo && (
                     <div>
-                      <label className="mb-2 block font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                      <label className="mb-2 block font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                         {t('settings.currentKey')}
                       </label>
                       <div className="flex items-center gap-2 border border-[var(--t-noise)] bg-black py-1.5 pl-3 pr-1.5">
@@ -534,7 +534,7 @@ function SettingsPageContent({
                           copiedLabel={t('app.copied')}
                         />
                       </div>
-                      <p className="mt-1.5 font-mono text-[10px] tracking-[0.08em] text-[var(--t-faint)]">
+                      <p className="mt-1.5 font-sans text-[11px] leading-5 tracking-normal text-[var(--t-faint)]">
                         {t('settings.createdAt', {
                           time: new Date(keyInfo.createdAt).toLocaleString(
                             i18n.resolvedLanguage === 'zh' ? 'zh-CN' : 'en-US',
@@ -546,7 +546,7 @@ function SettingsPageContent({
 
                   {keyLoaded && !keyInfo && !newKey && (
                     <div className="border border-dashed border-[var(--t-noise)] bg-black px-3 py-2.5">
-                      <p className="font-mono text-[11px] tracking-[0.08em] text-white/50">
+                      <p className="font-sans text-[12px] leading-5 tracking-normal text-white/50">
                         {t('settings.noKey')}
                       </p>
                     </div>
@@ -554,7 +554,7 @@ function SettingsPageContent({
 
                   {keyInfoState.status === 'error' && !newKey && (
                     <div className="border border-[var(--t-signal)]/40 bg-[var(--t-signal)]/5 px-3 py-2.5">
-                      <p className="font-mono text-[11px] tracking-[0.08em] text-[var(--t-signal)]">
+                      <p className="font-sans text-[12px] leading-5 tracking-normal text-[var(--t-signal)]">
                         {t('settings.keyInfoLoadFailed')}
                       </p>
                     </div>
@@ -565,7 +565,7 @@ function SettingsPageContent({
                     <div className="border border-[var(--t-signal)]/40 border-l-2 border-l-[var(--t-signal)] bg-[var(--t-signal)]/5 px-4 py-4">
                       <div className="mb-2 flex items-center gap-2">
                         <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-[var(--t-signal)]" />
-                        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.15em] text-[var(--t-signal)]">
+                        <span className="font-sans text-[12px] font-semibold tracking-normal text-[var(--t-signal)]">
                           {t('settings.keyReady')}
                         </span>
                       </div>
@@ -588,12 +588,12 @@ function SettingsPageContent({
                     <div className="border border-[var(--t-hazard-dim)]/70 bg-[var(--t-hazard-dim)]/5 px-4 py-4">
                       <div className="mb-1.5 flex items-center gap-2">
                         <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-[var(--t-hazard)]/70" />
-                        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.15em] text-[var(--t-hazard)]/80">
+                        <span className="font-sans text-[12px] font-semibold tracking-normal text-[var(--t-hazard)]/80">
                           {t('settingsSys.dangerZone')}
                         </span>
                         <span
                           aria-hidden
-                          className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-hazard)]/60"
+                          className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-hazard)]/60"
                         >
                           {'// IRREVOCABLE'}
                         </span>
@@ -657,7 +657,7 @@ function SettingsPageContent({
           <div className="min-w-0 space-y-2">
             <p className="text-sm leading-6 text-white/70">{t('settings.regenerateConfirm')}</p>
             {keyInfo ? (
-              <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+              <p className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                 {t('settings.currentKey')} {'//'} {keyInfo.prefix}...{keyInfo.lastFour}
               </p>
             ) : null}

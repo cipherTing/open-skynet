@@ -228,7 +228,7 @@ export function AnnouncementsSection() {
                     compact
                   />
                 </td>
-                <td className="px-3 py-3 font-mono text-xs text-white/60">
+                <td className="px-3 py-3 font-sans text-xs text-white/60">
                   {t(`admin.announcements.kind.${item.kind}`)}
                 </td>
                 <td className="px-3 py-3">
@@ -514,7 +514,7 @@ function AnnouncementDateTimeField({
     <div>
       <span className="block text-xs font-medium text-white/60">{label}</span>
       <div className="mt-2 flex gap-2">
-        <label className="relative flex h-10 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-none border border-[var(--t-noise)] bg-[var(--t-panel)] px-3 font-mono text-[12px] text-[var(--t-text)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent-dim)] focus-within:border-[var(--t-accent)]">
+        <label className="relative flex h-10 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-none border border-[var(--t-noise)] bg-[var(--t-panel)] px-3 font-sans text-[12px] tracking-normal text-[var(--t-text)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent-dim)] focus-within:border-[var(--t-accent)]">
           <CalendarClock className="h-4 w-4 shrink-0 text-[var(--t-accent)]" />
           <span className="truncate">{formattedValue}</span>
           <input
@@ -797,7 +797,7 @@ export function FeatureFlagsSection() {
                   disabled={mutation.isPending}
                   onCheckedChange={() => mutation.mutate(flag)}
                 />
-                <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-[var(--t-sub)]">
+                <span className="font-sans text-[12px] font-semibold tracking-normal text-[var(--t-sub)]">
                   {flag.enabled
                     ? t('admin.featureFlags.enabled')
                     : t('admin.featureFlags.disabled')}
@@ -898,7 +898,7 @@ export function SecurityEventsSection() {
                 className="border-b border-[var(--t-noise)] align-top hover:bg-[var(--t-panel)]"
               >
                 <td className="px-3 py-3">
-                  <div className="font-mono text-xs text-[var(--t-text)]">
+                  <div className="font-sans text-xs tracking-normal text-[var(--t-text)]">
                     {t(`admin.security.types.${event.type}`, {
                       defaultValue: t('admin.security.unknown'),
                     })}
@@ -1075,7 +1075,7 @@ function AuthPolicyEditor({ policy }: { policy: AdminAuthPolicy }) {
             return (
               <div className="grid gap-5 lg:grid-cols-2">
                 <div className="space-y-4 border-t border-[var(--t-noise)] pt-4">
-                  <h3 className="font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--t-text)]">
+                  <h3 className="font-sans text-[12px] font-semibold tracking-normal text-[var(--t-text)]">
                     {t('admin.authPolicy.smtp')}
                   </h3>
                   <form.AppField name="smtpHost">
@@ -1160,7 +1160,7 @@ function AuthPolicyEditor({ policy }: { policy: AdminAuthPolicy }) {
                   </div>
                 </div>
                 <div className="space-y-4 border-t border-[var(--t-noise)] pt-4">
-                  <h3 className="font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--t-text)]">
+                  <h3 className="font-sans text-[12px] font-semibold tracking-normal text-[var(--t-text)]">
                     {t('admin.authPolicy.turnstile')}
                   </h3>
                   <form.AppField name="turnstileSiteKey">
@@ -1445,7 +1445,7 @@ export function InvitationCodesSection() {
 
 function AdminField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="block font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+    <label className="block font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
       {label}
       <span className="mt-2 block normal-case tracking-normal">{children}</span>
     </label>

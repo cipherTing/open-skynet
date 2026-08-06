@@ -159,7 +159,7 @@ function AdminWorkspace({ section }: { section: AdminSection }) {
         <nav className="flex-1 overflow-y-auto" aria-label={t('adminDialogs.secIndex')}>
           {SECTION_GROUPS.map((group) => (
             <div key={group.id} className="border-b border-[var(--t-noise2)] px-3 py-3 last:border-b-0">
-              <div className="mb-2 flex items-center gap-2 px-2 font-mono text-[9px] uppercase tracking-[0.25em] text-[var(--t-faint)]">
+              <div className="mb-2 flex items-center gap-2 px-2 font-sans text-[11px] font-medium tracking-normal text-[var(--t-faint)]">
                 <span aria-hidden className="text-[var(--t-faint)]">
                   {'//'}
                 </span>
@@ -204,7 +204,7 @@ function AdminWorkspace({ section }: { section: AdminSection }) {
             <div className="flex min-w-0 items-center gap-3">
               <Link
                 href="/workspace"
-                className="inline-flex h-8 shrink-0 items-center gap-1.5 border border-[var(--t-noise)] px-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-sub)] transition-colors [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]"
+                className="inline-flex h-8 shrink-0 items-center gap-1.5 border border-[var(--t-noise)] px-2 font-sans text-[12px] font-medium tracking-normal text-[var(--t-sub)] transition-colors [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]"
               >
                 <ArrowLeft className="h-3.5 w-3.5 stroke-[1.5]" />
                 {t('admin.backHome')}
@@ -242,7 +242,7 @@ function AdminWorkspace({ section }: { section: AdminSection }) {
                 type="button"
                 aria-current={section === id ? 'page' : undefined}
                 onClick={() => router.replace(`/admin?section=${id}`)}
-                className={`shrink-0 rounded-none px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-[0.12em] transition-colors duration-100 [transition-timing-function:steps(2,end)] ${
+                className={`shrink-0 rounded-none px-2.5 py-1.5 font-sans text-[12px] tracking-normal transition-colors duration-100 [transition-timing-function:steps(2,end)] ${
                   section === id
                     ? 'bg-[var(--t-accent-wash)] text-[var(--t-accent)] shadow-[inset_0_-2px_0_0_var(--t-accent)]'
                     : 'text-[var(--t-sub)] hover:text-white/85'

@@ -249,7 +249,7 @@ export function CreateCircleProposalModal({
                       {(field) => (
                         <div className="space-y-3">
                           <div>
-                            <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                            <p className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                               {t('circles.coBuild.currentTopic')}
                             </p>
                             <p className="mt-2 border border-[var(--t-noise)] bg-black px-3 py-2.5 text-sm leading-6 text-[var(--t-text)]/50">
@@ -349,7 +349,7 @@ function RuleEditor({
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
-        <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+        <p className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
           {t('circles.coBuild.currentRules')}
         </p>
         <TButton
@@ -369,7 +369,7 @@ function RuleEditor({
       </div>
       <div className="space-y-2">
         {rules.length === 0 ? (
-          <p className="border border-dashed border-[var(--t-noise)] px-3 py-5 text-center font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+          <p className="border border-dashed border-[var(--t-noise)] px-3 py-5 text-center font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
             {t('circles.coBuild.noProposedRules')}
           </p>
         ) : null}
@@ -381,7 +381,7 @@ function RuleEditor({
                   {String(index + 1).padStart(2, '0')}
                 </span>
                 <span
-                  className={`border px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.15em] ${
+                  className={`border px-2 py-0.5 font-sans text-[12px] font-medium tracking-normal ${
                     originalById.has(rule.id)
                       ? 'border-[var(--t-noise)] text-[var(--t-faint)]'
                       : 'border-[var(--t-accent)]/50 bg-[var(--t-accent)]/10 text-[var(--t-accent)]'
@@ -438,11 +438,11 @@ function RuleEditor({
                     {t('circles.coBuild.originalRule')}：{originalById.get(rule.id)?.text}
                   </p>
                 ) : (
-                  <p className="font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-accent)]">
+                  <p className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-accent)]">
                     {t('circles.coBuild.newRule')}
                   </p>
                 )}
-                <label className="block font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                <label className="block font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                   {originalById.has(rule.id)
                     ? t('circles.coBuild.changeTo')
                     : t('circles.coBuild.ruleContent')}
@@ -463,7 +463,7 @@ function RuleEditor({
                 <button
                   type="button"
                   onClick={() => stopEdit(rule.id)}
-                  className="font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-accent)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
+                  className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-accent)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
                 >
                   {t('circles.coBuild.finishEditing')}
                 </button>
@@ -479,13 +479,13 @@ function RuleEditor({
             className="border border-[var(--t-hazard-dim)] bg-[var(--t-hazard-dim)]/10 p-3"
           >
             <div className="flex items-center justify-between gap-3">
-              <span className="border border-[var(--t-hazard-dim)] bg-[var(--t-hazard-dim)]/20 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-hazard)]/80">
+              <span className="border border-[var(--t-hazard-dim)] bg-[var(--t-hazard-dim)]/20 px-2 py-0.5 font-sans text-[12px] font-medium tracking-normal text-[var(--t-hazard)]/80">
                 {t('circles.coBuild.ruleDeleted')}
               </span>
               <button
                 type="button"
                 onClick={() => restore(rule)}
-                className="font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-accent)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
+                className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-accent)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
               >
                 {t('circles.coBuild.restoreRule')}
               </button>

@@ -103,11 +103,11 @@ export function GovernanceCaseStamp({
             {t('governance.inReview.description')}
           </p>
           {query.isPending ? (
-            <p className="mt-6 font-mono text-sm text-[var(--t-sub)]">
+            <p className="mt-6 font-sans text-[13px] leading-5 text-[var(--t-sub)]">
               {t('governance.inReview.loading')}
             </p>
           ) : query.isError ? (
-            <p className="mt-6 font-mono text-sm text-[var(--t-hazard)]/80">
+            <p className="mt-6 font-sans text-[13px] leading-5 text-[var(--t-hazard)]/80">
               {t('governance.inReview.loadFailed')}
             </p>
           ) : query.data ? (
@@ -120,7 +120,7 @@ export function GovernanceCaseStamp({
               </div>
               <dl className="mt-4 grid grid-cols-2 gap-px border border-[var(--t-noise)] bg-[var(--t-noise)]">
                 <div className="bg-black p-3">
-                  <dt className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                  <dt className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                     {t('governance.inReview.status')}
                   </dt>
                   <dd className="mt-2">
@@ -132,7 +132,7 @@ export function GovernanceCaseStamp({
                   </dd>
                 </div>
                 <div className="bg-black p-3">
-                  <dt className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                  <dt className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                     {t('governance.inReview.trigger')}
                   </dt>
                   <dd className="mt-2 font-mono text-sm font-bold tabular-nums text-white/85">
@@ -140,7 +140,7 @@ export function GovernanceCaseStamp({
                   </dd>
                 </div>
                 <div className="bg-black p-3">
-                  <dt className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                  <dt className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                     {t('governance.inReview.openedAt')}
                   </dt>
                   <dd className="mt-2">
@@ -148,7 +148,7 @@ export function GovernanceCaseStamp({
                   </dd>
                 </div>
                 <div className="bg-black p-3">
-                  <dt className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                  <dt className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                     {t('governance.inReview.deadline')}
                   </dt>
                   <dd className="mt-2">

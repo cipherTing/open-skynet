@@ -111,7 +111,7 @@ export function TopBar({
   const resolvedBackLabel = backLabel ?? (backLabelKey ? t(backLabelKey) : '');
   const hasBackLink = Boolean(resolvedBackLabel && (backHref || preferHistoryBack));
   const backControlClassName =
-    'inline-flex min-w-0 items-center gap-1.5 border border-[var(--t-noise)] bg-black px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-sub)] transition-colors [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)] sm:max-w-none';
+    'inline-flex min-w-0 items-center gap-1.5 border border-[var(--t-noise)] bg-black px-2.5 py-1.5 font-sans text-[12px] font-medium tracking-normal text-[var(--t-sub)] transition-colors [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)] sm:max-w-none';
   const sectionLabel = isGovernanceMode
     ? t('governance.plazaTitle')
     : mode === 'circles'
@@ -205,11 +205,11 @@ export function TopBar({
           <div
             className={`${hasBackLink ? 'hidden sm:flex' : 'flex'} min-w-0 items-center gap-2.5`}
           >
-            <span className="flex-none font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)]">
+            <span className="flex-none font-sans text-[12px] font-medium tracking-normal text-[var(--t-accent)]">
               {SECTION_CODE[mode]}
             </span>
             <span aria-hidden="true" className="h-3 w-px flex-none bg-[var(--t-noise)]" />
-            <span className="truncate font-mono text-[11px] uppercase tracking-[0.15em] text-white">
+            <span className="truncate font-sans text-[13px] font-semibold tracking-normal text-white">
               {sectionLabel}
             </span>
           </div>
@@ -225,7 +225,7 @@ export function TopBar({
         >
           {governanceControls ? (
             <div className="flex min-w-0 items-center gap-2 border border-[var(--t-noise)] bg-black px-2 py-1.5 sm:px-2.5">
-              <span className="min-w-0 max-w-[12rem] truncate font-mono text-[11px] text-text-secondary sm:max-w-48">
+              <span className="min-w-0 max-w-[12rem] truncate font-sans text-[12px] tracking-normal text-text-secondary sm:max-w-48">
                 {governanceControls.statusLabel}
               </span>
               <progress
@@ -367,7 +367,7 @@ function CommunityTicker() {
     <div className="flex items-stretch border-t border-[var(--t-noise)] pointer-events-auto">
       <div className="flex flex-none items-center gap-2 border-r border-[var(--t-noise)] px-3 py-1">
         <span aria-hidden="true" className="t-anim-blink h-1.5 w-1.5 bg-[var(--t-accent)]" />
-        <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)]">
+        <span className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-accent)]">
           {t('app.ticker.label')}
         </span>
       </div>
@@ -378,7 +378,7 @@ function CommunityTicker() {
               {[0, 1, 2, 3].map((rep) => (
                 <span
                   key={rep}
-                  className="flex items-center whitespace-nowrap font-mono text-[10px] uppercase tracking-[0.15em]"
+                  className="flex items-center whitespace-nowrap font-sans text-[12px] font-medium tracking-normal"
                 >
                   {readings.map((reading) => (
                     <span key={reading.label} className="flex items-center">
@@ -453,7 +453,7 @@ function SearchForm({
       {error ? (
         <span
           id={errorId}
-          className="absolute right-0 top-full mt-1 whitespace-nowrap border border-[var(--t-noise)] bg-black px-2 py-1 font-mono text-[11px] text-warning"
+          className="absolute right-0 top-full mt-1 whitespace-nowrap border border-[var(--t-noise)] bg-black px-2 py-1 font-sans text-[12px] tracking-normal text-warning"
         >
           {error}
         </span>

@@ -28,7 +28,7 @@ export function Timecode({ date, withDate = false, className }: TimecodeProps) {
     <time
       dateTime={parsed.toISOString()}
       className={cn(
-        'whitespace-nowrap font-mono text-[10px] tracking-[0.15em] text-[var(--t-faint)]',
+        'whitespace-nowrap font-mono text-[11px] tracking-[0.08em] text-[var(--t-faint)]',
         className,
       )}
     >

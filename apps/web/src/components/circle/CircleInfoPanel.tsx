@@ -87,7 +87,7 @@ export function CircleInfoPanel({
     >
       <TPanel title={t('circles.detail.panelTitle')}>
         <div className="flex items-center justify-between gap-2">
-          <h2 className="min-w-0 truncate text-base font-black tracking-tight text-white">
+          <h2 className="min-w-0 truncate text-base font-black tracking-normal text-white">
             /{circle.name}
           </h2>
           {circle.kind === 'OFFICIAL' ? <TTag color="accent">{t('circles.official')}</TTag> : null}
@@ -108,7 +108,7 @@ export function CircleInfoPanel({
 
         <dl className="mt-4 divide-y divide-[var(--t-noise2)] border-y border-[var(--t-noise2)]">
           <div className="flex items-center justify-between gap-3 py-2">
-            <dt className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+            <dt className="flex items-center gap-1.5 font-sans text-[11px] font-medium tracking-normal text-[var(--t-faint)]">
               <Users className="h-3 w-3" />
               {t('circles.members')}
             </dt>
@@ -119,7 +119,7 @@ export function CircleInfoPanel({
             </dd>
           </div>
           <div className="flex items-center justify-between gap-3 py-2">
-            <dt className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+            <dt className="flex items-center gap-1.5 font-sans text-[11px] font-medium tracking-normal text-[var(--t-faint)]">
               <MessageSquare className="h-3 w-3" />
               {t('circles.posts')}
             </dt>
@@ -130,7 +130,7 @@ export function CircleInfoPanel({
             </dd>
           </div>
           <div className="flex items-center justify-between gap-3 py-2">
-            <dt className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+            <dt className="flex items-center gap-1.5 font-sans text-[11px] font-medium tracking-normal text-[var(--t-faint)]">
               <Clock className="h-3 w-3" />
               {t('circleRegistry.lastActive')}
             </dt>
@@ -146,7 +146,7 @@ export function CircleInfoPanel({
 
         <Link
           href={`/circles/${circle.slug}/co-build`}
-          className="mt-4 inline-flex h-8 w-full items-center justify-center gap-2 border border-[var(--t-noise)] font-mono text-[11px] font-semibold uppercase tracking-[0.15em] text-white/70 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[var(--t-faint)] hover:text-[var(--t-accent)]"
+          className="mt-4 inline-flex h-8 w-full items-center justify-center gap-2 border border-[var(--t-noise)] font-sans text-[12px] font-semibold tracking-normal text-white/70 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[var(--t-faint)] hover:text-[var(--t-accent)]"
         >
           <Scale className="h-3.5 w-3.5" />
           {t('circles.coBuild.open')}
@@ -186,14 +186,14 @@ export function CircleInfoPanel({
                 </Link>
               ))
             ) : (
-              <p className="py-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+              <p className="py-1 font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                 {t('circles.detail.noLatestPosts')}
               </p>
             )}
           </div>
 
           <div className="mt-4 border-t border-[var(--t-noise2)] pt-3">
-            <h3 className="font-mono text-[10px] uppercase tracking-[0.15em] text-white">
+            <h3 className="font-sans text-[12px] font-medium tracking-normal text-white">
               {t('circles.detail.governanceProgress')}
             </h3>
             <div className="mt-2 space-y-1.5">
@@ -206,7 +206,7 @@ export function CircleInfoPanel({
                   <span className="min-w-0 truncate">
                     {t(`circles.coBuild.scopes.${proposal.scope}`)}
                   </span>
-                  <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)] group-hover:text-[var(--t-accent)]">
+                  <span className="shrink-0 font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)] group-hover:text-[var(--t-accent)]">
                     {t(`circles.coBuild.statuses.${proposal.status}`)}
                   </span>
                 </Link>
@@ -221,7 +221,7 @@ export function CircleInfoPanel({
               ))}
               {!panelQuery.data.activeProposals.length &&
               !panelQuery.data.activeGovernanceCases.length ? (
-                <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                <p className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                   {t('circles.detail.noGovernanceProgress')}
                 </p>
               ) : null}

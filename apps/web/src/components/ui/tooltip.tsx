@@ -20,7 +20,7 @@ export const TooltipContent = forwardRef<
       collisionPadding={collisionPadding}
       className={cn(
         'skynet-floating-content max-w-[280px] border border-border bg-surface-2 px-3 py-2',
-        'font-mono text-[11px] leading-relaxed text-text-secondary shadow-none',
+        'font-sans text-[11px] leading-relaxed tracking-normal text-text-secondary shadow-none',
         UI_LAYER_CLASS.tooltip,
         className,
       )}

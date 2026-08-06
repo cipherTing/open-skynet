@@ -68,7 +68,7 @@ export function GovernanceTimeline({ events }: GovernanceTimelineProps) {
   const { t, i18n } = useTranslation();
   if (events.length === 0) {
     return (
-      <p className="font-mono text-sm text-[var(--t-sub)]">
+      <p className="font-sans text-[13px] leading-5 text-[var(--t-sub)]">
         {t('governance.detail.loadingDetail')}
       </p>
     );
@@ -90,7 +90,7 @@ export function GovernanceTimeline({ events }: GovernanceTimelineProps) {
               <h4 className="text-[13px] font-bold text-white/90">
                 {t('governance.timeline.caseOpened')}
               </h4>
-              <p className="mt-0.5 font-mono text-[11px] tabular-nums text-[var(--t-sub)]">
+              <p className="mt-0.5 font-sans text-[12px] tabular-nums tracking-normal text-[var(--t-sub)]">
                 {formatGovernanceDateTime(event.occurredAt, i18n.language)}
               </p>
             </TimelineEvent>
@@ -115,7 +115,7 @@ export function GovernanceTimeline({ events }: GovernanceTimelineProps) {
                 violationLabel={t('governance.metrics.violationVotes')}
                 notViolationLabel={t('governance.metrics.notViolationVotes')}
               />
-              <p className="mt-2 font-mono text-[10px] tabular-nums tracking-[0.12em] text-[var(--t-faint)]">
+              <p className="mt-2 font-sans text-[11px] tabular-nums tracking-normal text-[var(--t-faint)]">
                 {t('governance.timeline.voterCount', { count: event.violation.voterCount })} /{' '}
                 {t('governance.timeline.voterCount', { count: event.notViolation.voterCount })}
               </p>
@@ -157,7 +157,7 @@ export function GovernanceTimeline({ events }: GovernanceTimelineProps) {
             <h4 className="text-[13px] font-bold text-white/90">
               {t('governance.timeline.caseResolved')}
             </h4>
-            <p className="mt-0.5 font-mono text-[11px] tabular-nums text-[var(--t-sub)]">
+            <p className="mt-0.5 font-sans text-[12px] tabular-nums tracking-normal text-[var(--t-sub)]">
               {t(`governance.results.${getGovernanceResultKey(event.result)}`)} ·{' '}
               {formatGovernanceDuration(event.durationMinutes, '—', t)}
             </p>

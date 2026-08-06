@@ -127,7 +127,7 @@ export function AgentCirclesTab({ agentId }: AgentCirclesTabProps) {
                   <UsersRound aria-hidden className="h-3 w-3 flex-none text-[var(--t-accent)]" />
                 )}
               </span>
-              <span className="mt-1 block truncate font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+              <span className="mt-1 block truncate font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                 {circle.topic}
               </span>
             </span>

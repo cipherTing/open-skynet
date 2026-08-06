@@ -156,7 +156,7 @@ export function CircleCoBuildPage({ slug }: { slug: string }) {
         <div className="mx-auto max-w-6xl">
           <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
             <div>
-              <h1 className="text-2xl font-black tracking-tight text-white">/{circle.name}</h1>
+              <h1 className="text-2xl font-black tracking-normal text-white">/{circle.name}</h1>
             </div>
             <TButton variant="primary" onClick={() => setCreateOpen(true)}>
               <FilePlus2 className="h-3.5 w-3.5" />
@@ -171,7 +171,7 @@ export function CircleCoBuildPage({ slug }: { slug: string }) {
                 meta={t('circles.coBuild.topicVersion', { version: circle.topicVersion })}
               >
                 <p className="text-sm leading-7 text-[var(--t-text)]">{circle.topic}</p>
-                <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                <p className="mt-1 font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                   {circle.topicOrigin === 'CREATION'
                     ? t('circles.coBuild.creationTopic')
                     : t('circles.coBuild.communityTopic')}
@@ -187,7 +187,7 @@ export function CircleCoBuildPage({ slug }: { slug: string }) {
                       </p>
                     ))
                   ) : (
-                    <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                    <p className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                       {t('circles.coBuild.noRules')}
                     </p>
                   )}
@@ -195,14 +195,12 @@ export function CircleCoBuildPage({ slug }: { slug: string }) {
               </TPanel>
 
               <ProposalSection
-                chapter="CH.01"
                 title={t('circles.coBuild.active')}
                 items={active}
                 circleSlug={circle.slug}
                 empty={t('circles.coBuild.noActive')}
               />
               <ProposalSection
-                chapter="CH.02"
                 title={t('circles.coBuild.history')}
                 items={history}
                 circleSlug={circle.slug}
@@ -229,7 +227,7 @@ export function CircleCoBuildPage({ slug }: { slug: string }) {
               ) : null}
             </div>
             <aside className="border-l border-[var(--t-noise)] pl-0 xl:pl-5">
-              <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+              <p className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                 LOG // {t('circles.coBuild.records')}
               </p>
               {logsQuery.isPending && maintenanceLogs.length === 0 ? (
@@ -242,7 +240,7 @@ export function CircleCoBuildPage({ slug }: { slug: string }) {
                   <button
                     type="button"
                     onClick={() => void retryLogs()}
-                    className="mt-2 font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-accent)] hover:text-white"
+                    className="mt-2 font-sans text-[12px] font-medium tracking-normal text-[var(--t-accent)] hover:text-white"
                   >
                     {t('app.retry')}
                   </button>
@@ -259,7 +257,7 @@ export function CircleCoBuildPage({ slug }: { slug: string }) {
                       />
                     ))
                   ) : (
-                    <li className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                    <li className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                       {t('circles.coBuild.noRecords')}
                     </li>
                   )}
@@ -273,7 +271,7 @@ export function CircleCoBuildPage({ slug }: { slug: string }) {
                             ? retryLogs()
                             : logsQuery.fetchNextPage({ cancelRefetch: false }))
                         }
-                        className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)] disabled:opacity-50"
+                        className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-accent)] disabled:opacity-50"
                       >
                         {logsQuery.isFetchNextPageError
                           ? t('app.retry')
@@ -356,13 +354,11 @@ function MaintenanceRecordItem({
 }
 
 function ProposalSection({
-  chapter,
   title,
   items,
   circleSlug,
   empty,
 }: {
-  chapter: string;
   title: string;
   items: Array<{
     id: string;
@@ -378,10 +374,9 @@ function ProposalSection({
   const { t } = useTranslation();
   return (
     <section>
-      <div className="mb-3 flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.15em]">
-        <span className="text-[var(--t-accent)]">{chapter}</span>
-        <span aria-hidden className="h-px w-6 bg-[var(--t-noise)]" />
+      <div className="mb-3 flex items-center gap-2 font-sans text-[12px] font-medium tracking-normal">
         <span className="text-white">{title}</span>
+        <span aria-hidden className="h-px flex-1 bg-[var(--t-noise)]" />
       </div>
       {items.length ? (
         <div className="divide-y divide-[var(--t-noise2)] border-y border-[var(--t-noise)]">
@@ -399,7 +394,7 @@ function ProposalSection({
                 <p className="truncate text-sm font-semibold text-white">
                   {t(`circles.coBuild.scopes.${proposal.scope}`)}
                 </p>
-                <p className="mt-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                <p className="mt-1 font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                   {proposal.creator.name} · {t(`circles.coBuild.statuses.${proposal.status}`)} ·{' '}
                   {t('circles.coBuild.quorum', { count: proposal.quorum })}
                 </p>
@@ -413,7 +408,7 @@ function ProposalSection({
           ))}
         </div>
       ) : (
-        <p className="border border-dashed border-[var(--t-noise)] px-4 py-6 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+        <p className="border border-dashed border-[var(--t-noise)] px-4 py-6 font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
           {empty}
         </p>
       )}

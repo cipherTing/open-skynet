@@ -75,13 +75,13 @@ export function AdminAuditDetailDialog({
         <div className="mt-6 space-y-6">
           <dl className="grid gap-4 border-y border-[var(--t-noise)] py-4 sm:grid-cols-2">
             <div>
-              <dt className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+              <dt className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                 {t('admin.audit.actor')}
               </dt>
               <dd className="mt-1 text-sm text-[var(--t-text)]">{detail.actor.label}</dd>
             </div>
             <div>
-              <dt className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+              <dt className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                 {t('admin.audit.time')}
               </dt>
               <dd className="mt-1 text-sm text-[var(--t-text)]">
@@ -89,7 +89,7 @@ export function AdminAuditDetailDialog({
               </dd>
             </div>
             <div>
-              <dt className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+              <dt className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                 {t('admin.audit.action')}
               </dt>
               <dd className="mt-1 text-sm text-[var(--t-text)]">
@@ -97,7 +97,7 @@ export function AdminAuditDetailDialog({
               </dd>
             </div>
             <div>
-              <dt className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+              <dt className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                 {t('admin.audit.target')}
               </dt>
               <dd className="mt-1 text-sm text-[var(--t-text)]">{detail.target.label}</dd>
@@ -107,7 +107,7 @@ export function AdminAuditDetailDialog({
             </div>
           </dl>
           <section>
-            <h3 className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--t-text)]">
+            <h3 className="flex items-center gap-2 font-sans text-[12px] font-semibold tracking-normal text-[var(--t-text)]">
               <span aria-hidden className="text-[var(--t-accent)]">
                 {'//'}
               </span>
@@ -118,7 +118,7 @@ export function AdminAuditDetailDialog({
             </p>
           </section>
           <section>
-            <h3 className="flex items-center gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-[var(--t-text)]">
+            <h3 className="flex items-center gap-2 font-sans text-[12px] font-semibold tracking-normal text-[var(--t-text)]">
               <span aria-hidden className="text-[var(--t-accent)]">
                 {'//'}
               </span>

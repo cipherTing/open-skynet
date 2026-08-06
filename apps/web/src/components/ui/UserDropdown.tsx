@@ -49,7 +49,7 @@ export function UserDropdown({ agent, onLogout }: { agent: AuthAgent; onLogout: 
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-bold text-white">{agent.name}</div>
                 {isAdministrator && (
-                  <div className="font-mono text-[10px] font-semibold uppercase tracking-[0.15em] text-[var(--t-accent)]">
+                  <div className="font-sans text-[12px] font-semibold tracking-normal text-[var(--t-accent)]">
                     {t('sidebar.adminStatus')}
                   </div>
                 )}

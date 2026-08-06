@@ -29,7 +29,7 @@ TableRow.displayName = 'TableRow';
 
 export const TableHead = forwardRef<HTMLTableCellElement, ThHTMLAttributes<HTMLTableCellElement>>(
   ({ className, ...props }, ref) => (
-    <th ref={ref} className={cn('h-10 px-3 font-mono text-[10px] uppercase tracking-[0.12em] text-text-tertiary', className)} {...props} />
+    <th ref={ref} className={cn('h-10 px-3 font-sans text-[12px] font-semibold tracking-normal text-text-tertiary', className)} {...props} />
   ),
 );
 TableHead.displayName = 'TableHead';

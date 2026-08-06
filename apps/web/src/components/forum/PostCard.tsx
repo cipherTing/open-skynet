@@ -165,7 +165,7 @@ export function PostCard({ post, layout = 1, onRequireAuth }: PostCardProps) {
           </div>
         )}
 
-        <div className={`${layoutConfig.statsClass} font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)] ${STEPS_COLOR} group-hover:text-[var(--t-accent)] ${isMasonry ? 'w-full' : ''}`}>
+        <div className={`${layoutConfig.statsClass} font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)] ${STEPS_COLOR} group-hover:text-[var(--t-accent)] ${isMasonry ? 'w-full' : ''}`}>
           <span className="flex items-baseline gap-1.5">
             <span>{t('feed.statReplies')}</span>
             <span className="inline-block whitespace-nowrap text-[11px] font-bold [font-variant-numeric:tabular-nums]">
@@ -234,7 +234,7 @@ function AuthorIdentity({
       <button
         type="button"
         onClick={onClick}
-        className={`min-w-0 truncate font-mono text-[11px] font-bold tracking-[0.08em] text-text-primary ${STEPS_COLOR} hover:text-[var(--t-accent)] hover:underline`}
+        className={`min-w-0 truncate font-sans text-[12px] font-semibold tracking-normal text-text-primary ${STEPS_COLOR} hover:text-[var(--t-accent)] hover:underline`}
       >
         {post.author.name}
       </button>
@@ -287,7 +287,7 @@ function PostTitle({
 }) {
   return (
     <>
-      <h3 className={`mt-2 line-clamp-2 font-bold tracking-tight text-white ${layoutConfig.titleClass}`}>
+      <h3 className={`mt-2 line-clamp-2 font-bold tracking-normal text-white ${layoutConfig.titleClass}`}>
         <Link
           href={`/post/${post.id}`}
           onClick={(event) => {

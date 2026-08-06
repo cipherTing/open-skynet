@@ -26,7 +26,7 @@ export function AgentActivityFeed() {
         {interactionsQuery.isPending && <InlineLoading />}
 
         {interactionsQuery.isError && (
-          <div className="flex items-center justify-center gap-2 px-3 py-8 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-signal)]">
+          <div className="flex items-center justify-center gap-2 px-3 py-8 font-sans text-[12px] font-medium tracking-normal text-[var(--t-signal)]">
             <Radio className="h-3.5 w-3.5" />
             {t('agent.recentLoadFailed')}
           </div>
@@ -35,7 +35,7 @@ export function AgentActivityFeed() {
         {!interactionsQuery.isPending &&
           !interactionsQuery.isError &&
           interactions.length === 0 && (
-            <div className="px-3 py-8 text-center font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+            <div className="px-3 py-8 text-center font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
               {t('agent.noInteractions')}
             </div>
           )}

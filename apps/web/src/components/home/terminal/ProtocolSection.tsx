@@ -14,7 +14,7 @@ interface ProtocolSectionProps {
 }
 
 const CTA_CLASS =
-  'inline-flex shrink-0 items-center gap-2 whitespace-nowrap border border-[var(--t-accent)] bg-[var(--t-accent)] px-5 py-5 font-mono text-sm uppercase tracking-[0.15em] text-black hover:bg-transparent hover:text-[var(--t-accent)] sm:gap-3 sm:px-8 sm:tracking-[0.25em]';
+  'inline-flex shrink-0 items-center gap-2 whitespace-nowrap border border-[var(--t-accent)] bg-[var(--t-accent)] px-5 py-5 font-sans text-[14px] font-semibold tracking-normal text-black hover:bg-transparent hover:text-[var(--t-accent)] sm:gap-3 sm:px-8';
 
 /**
  * 接入协议区块（04 // PROTOCOL）。

@@ -60,21 +60,21 @@ export function ReplyInput({
     >
       {/* 错误提示 */}
       {error && (
-        <div className="border-b border-danger/40 bg-danger/10 px-3 py-2 font-mono text-[11px] text-danger">
+        <div className="border-b border-danger/40 bg-danger/10 px-3 py-2 font-sans text-[12px] leading-5 tracking-normal text-danger">
           {error}
         </div>
       )}
 
       {/* 命令行头 */}
       <div className="flex items-center justify-between border-b border-[var(--t-noise2)] px-3 py-1.5">
-        <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--t-faint)]">
+        <span className="font-sans text-[11px] tracking-normal text-[var(--t-faint)]">
           <span className="text-[var(--t-accent)]">{'>'}</span> {t('replyInput.label')}
         </span>
         <button
           type="button"
           onClick={() => setShowPreview(!showPreview)}
           disabled={disabled}
-          className={`flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.12em] transition-colors [transition-timing-function:steps(2,end)] ${
+          className={`flex items-center gap-1 font-sans text-[11px] tracking-normal transition-colors [transition-timing-function:steps(2,end)] ${
             showPreview
               ? 'text-[var(--t-accent)]'
               : 'text-[var(--t-faint)] hover:text-[var(--t-accent)]'
@@ -134,7 +134,7 @@ export function ReplyInput({
               onChange={(e) => setContent(e.target.value)}
               placeholder={inputPlaceholder}
               rows={compact ? 3 : 4}
-              className={`block w-full resize-none rounded-none border-0 bg-transparent px-0 py-0 pl-[16px] font-mono text-[12px] leading-relaxed tracking-[0.08em] text-white caret-[var(--t-accent)] outline-none placeholder:text-[var(--t-faint)] disabled:cursor-not-allowed disabled:opacity-45 ${
+              className={`block w-full resize-none rounded-none border-0 bg-transparent px-0 py-0 pl-[16px] font-sans text-[13px] leading-6 tracking-normal text-white caret-[var(--t-accent)] outline-none placeholder:text-[var(--t-faint)] disabled:cursor-not-allowed disabled:opacity-45 ${
                 compact ? 'min-h-[76px]' : 'min-h-[96px]'
               }`}
             />
@@ -148,14 +148,14 @@ export function ReplyInput({
         </div>
       )}
 
-      {/* 操作行：等宽小字 */}
+      {/* 操作行：小字号中文操作文案 */}
       <div className="flex items-center justify-end gap-3 border-t border-[var(--t-noise2)] px-3 py-2">
         {onCancel && (
           <button
             type="button"
             onClick={onCancel}
             disabled={disabled}
-            className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-white"
+            className="inline-flex items-center gap-1 font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)] transition-colors [transition-timing-function:steps(2,end)] hover:text-white"
           >
             <X className="w-3 h-3" />
             {t('app.cancel')}
@@ -165,7 +165,7 @@ export function ReplyInput({
           type="button"
           onClick={handleSubmit}
           disabled={disabled || submitting || !content.trim()}
-          className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)] transition-colors [transition-timing-function:steps(2,end)] hover:bg-accent/10 disabled:cursor-not-allowed disabled:text-[var(--t-faint)] disabled:hover:bg-transparent"
+          className="inline-flex items-center gap-1 font-sans text-[12px] font-medium tracking-normal text-[var(--t-accent)] transition-colors [transition-timing-function:steps(2,end)] hover:bg-accent/10 disabled:cursor-not-allowed disabled:text-[var(--t-faint)] disabled:hover:bg-transparent"
         >
           <Send className="w-3 h-3" />
           {`[ ${submitting ? t('replyInput.sending') : t('replyInput.send')} ]`}

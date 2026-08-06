@@ -13,7 +13,7 @@ type RuleChange =
 function Snapshot({ label, value, muted = false }: { label: string; value: string; muted?: boolean }) {
   return (
     <div className={`border px-3 py-2.5 ${muted ? 'border-[var(--t-noise2)] bg-black text-[var(--t-text)]/40' : 'border-[var(--t-noise)] bg-[var(--t-panel)] text-[var(--t-text)]'}`}>
-      <p className="font-mono text-[9px] uppercase tracking-[0.15em] text-[var(--t-faint)]">{label}</p>
+      <p className="font-sans text-[11px] font-medium tracking-normal text-[var(--t-faint)]">{label}</p>
       <p className="mt-1 whitespace-pre-wrap text-sm leading-6">{value}</p>
     </div>
   );
@@ -22,7 +22,7 @@ function Snapshot({ label, value, muted = false }: { label: string; value: strin
 export function TopicChangeDiff({ before, after }: { before: string | null; after: string | null }) {
   const { t } = useTranslation();
   if (before === null || after === null) {
-    return <p className="border border-dashed border-[var(--t-noise)] px-3 py-3 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">{t('circles.coBuild.diff.historyUnavailable')}</p>;
+    return <p className="border border-dashed border-[var(--t-noise)] px-3 py-3 font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">{t('circles.coBuild.diff.historyUnavailable')}</p>;
   }
   return (
     <div className="grid gap-2 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
@@ -74,16 +74,16 @@ function ChangeBadge({ kind }: { kind: RuleChange['kind'] }) {
   } as const;
   const current = config[kind];
   const Icon = current.icon;
-  return <span className={`inline-flex items-center gap-1 border px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.15em] ${current.className}`}><Icon className="h-3 w-3" />{t(`circles.coBuild.diff.${current.key}`)}</span>;
+  return <span className={`inline-flex items-center gap-1 border px-2 py-0.5 font-sans text-[12px] font-semibold tracking-normal ${current.className}`}><Icon className="h-3 w-3" />{t(`circles.coBuild.diff.${current.key}`)}</span>;
 }
 
 export function RuleChangeDiff({ before, after }: { before: CircleRuleItem[] | null; after: CircleRuleItem[] | null }) {
   const { t } = useTranslation();
   if (before === null || after === null) {
-    return <p className="border border-dashed border-[var(--t-noise)] px-3 py-3 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">{t('circles.coBuild.diff.historyUnavailable')}</p>;
+    return <p className="border border-dashed border-[var(--t-noise)] px-3 py-3 font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">{t('circles.coBuild.diff.historyUnavailable')}</p>;
   }
   const changes = findRuleChanges(before, after);
-  if (changes.length === 0) return <p className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">{t('circles.coBuild.diff.unchanged')}</p>;
+  if (changes.length === 0) return <p className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">{t('circles.coBuild.diff.unchanged')}</p>;
   return (
     <ol className="space-y-3">
       {changes.map((change) => (
@@ -92,7 +92,7 @@ export function RuleChangeDiff({ before, after }: { before: CircleRuleItem[] | n
           {change.kind === 'EDITED' ? <div className="mt-3 grid gap-2 sm:grid-cols-2"><Snapshot label={t('circles.coBuild.diff.before')} value={change.before.text} muted /><Snapshot label={t('circles.coBuild.diff.after')} value={change.after.text} /></div> : null}
           {change.kind === 'ADDED' ? <p className="mt-3 text-sm leading-6 text-[var(--t-text)]">{change.rule.text}</p> : null}
           {change.kind === 'DELETED' ? <p className="mt-3 text-sm leading-6 text-[var(--t-text)]/40 line-through">{change.rule.text}</p> : null}
-          {change.kind === 'MOVED' ? <p className="mt-3 text-sm leading-6 text-[var(--t-text)]/70">{change.rule.text}<span className="ml-2 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">{t('circles.coBuild.diff.movedFrom', { from: change.fromIndex + 1, to: change.toIndex + 1 })}</span></p> : null}
+          {change.kind === 'MOVED' ? <p className="mt-3 text-sm leading-6 text-[var(--t-text)]/70">{change.rule.text}<span className="ml-2 font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">{t('circles.coBuild.diff.movedFrom', { from: change.fromIndex + 1, to: change.toIndex + 1 })}</span></p> : null}
         </li>
       ))}
     </ol>

@@ -24,7 +24,7 @@ export const ToggleGroupItem = forwardRef<
     ref={ref}
     className={cn(
       'inline-flex min-h-8 items-center justify-center border-r border-[var(--t-noise)] px-3 last:border-r-0',
-      'font-mono text-[11px] uppercase tracking-[0.12em] text-[var(--t-sub)]',
+      'font-sans text-[12px] font-medium tracking-normal text-[var(--t-sub)]',
       'transition-[color,background-color] duration-100 [transition-timing-function:steps(2,end)]',
       'hover:bg-[var(--t-accent-wash)] hover:text-white',
       'focus-visible:relative focus-visible:z-10 focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--t-accent)]',

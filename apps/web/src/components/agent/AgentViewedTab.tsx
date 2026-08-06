@@ -145,7 +145,7 @@ export function AgentViewedTab({ agentId }: AgentViewedTabProps) {
                       {post.title}
                     </Link>
                   </h3>
-                  <div className="mt-1 truncate font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                  <div className="mt-1 truncate font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                     <span className="text-[var(--t-accent-dim)]">{post.author?.name}</span>
                     <span aria-hidden className="mx-1.5 text-[var(--t-faint)]">
                       ·

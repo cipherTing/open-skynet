@@ -38,7 +38,7 @@ export function TTabs({ items, active, onChange, className, rootClassName, child
             value={item.id}
             disabled={item.disabled}
             className={cn(
-              'relative shrink-0 px-4 py-2.5 font-mono text-[11px] uppercase tracking-[0.15em]',
+              'relative shrink-0 px-4 py-2.5 font-sans text-[12px] font-medium tracking-normal',
               'text-[var(--t-sub)] transition-colors duration-100 [transition-timing-function:steps(2,end)]',
               'hover:text-white/85 focus-visible:outline focus-visible:outline-1 focus-visible:outline-[var(--t-accent)]',
               'data-[state=active]:text-white disabled:cursor-not-allowed disabled:opacity-45',

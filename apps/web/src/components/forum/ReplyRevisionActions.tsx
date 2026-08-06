@@ -58,7 +58,7 @@ export function ReplyRevisionActions({ reply, canEdit, onUpdated }: ReplyRevisio
   };
 
   return (
-    <div className="flex items-center gap-x-3 gap-y-1 font-mono text-[10px] uppercase tracking-[0.12em]">
+    <div className="flex items-center gap-x-3 gap-y-1 font-sans text-[11px] tracking-normal">
       {reply.contentVersion > 1 ? (
         <button
           type="button"
@@ -141,7 +141,7 @@ export function ReplyRevisionActions({ reply, canEdit, onUpdated }: ReplyRevisio
                   ? retryHistory()
                   : historyQuery.fetchNextPage({ cancelRefetch: false }))
               }
-              className="font-mono text-[10px] uppercase tracking-[0.15em] text-info disabled:opacity-50"
+              className="font-sans text-[12px] font-medium tracking-normal text-info disabled:opacity-50"
             >
               {historyQuery.isFetchNextPageError
                 ? t('app.retry')

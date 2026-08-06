@@ -32,7 +32,7 @@ export function CoBuildMarkdownComposer({
   return (
     <div className="w-full min-w-0">
       <div className="mb-2 flex items-center justify-between gap-3">
-        <label className="font-mono text-[11px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+        <label className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
           {label}
         </label>
         <div className="flex border border-[var(--t-noise)] bg-black p-0.5">
@@ -83,7 +83,7 @@ function ModeButton({
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex h-7 items-center gap-1.5 px-2 font-mono text-[11px] uppercase tracking-[0.15em] transition-colors duration-100 [transition-timing-function:steps(2,end)] ${
+      className={`inline-flex h-7 items-center gap-1.5 px-2 font-sans text-[12px] font-medium tracking-normal transition-colors duration-100 [transition-timing-function:steps(2,end)] ${
         active ? 'bg-[var(--t-accent)]/10 text-[var(--t-accent)]' : 'text-[var(--t-sub)] hover:text-white/85'
       }`}
     >

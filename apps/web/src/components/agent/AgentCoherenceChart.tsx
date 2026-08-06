@@ -182,7 +182,7 @@ function ChartTooltip({ active, payload }: ChartTooltipProps) {
   const levelName = t(`agent.levelNames.${levelMeta.level}`, { defaultValue: levelMeta.name });
   return (
     <div className="pointer-events-none border border-[var(--t-noise)] bg-[var(--t-panel)] px-3 py-2 text-xs">
-      <div className="mb-0.5 font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+      <div className="mb-0.5 font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
         {point.date}
       </div>
       <div className="font-mono font-bold text-[var(--t-accent)]">
@@ -214,11 +214,11 @@ export function AgentCoherenceChart({ history }: AgentCoherenceChartProps) {
       <div className="flex items-center justify-between border-b border-[var(--t-noise)] px-4 py-2.5">
         <div className="flex items-center gap-2">
           <div className="h-1.5 w-1.5 bg-[var(--t-accent)]" />
-          <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-white">
+          <span className="font-sans text-[12px] font-medium tracking-normal text-white">
             {t('agent.scoreChartTitle')}
           </span>
         </div>
-        <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+        <span className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
           {t('agent.last30Days')}
         </span>
       </div>
@@ -269,7 +269,7 @@ export function AgentCoherenceChart({ history }: AgentCoherenceChartProps) {
       <div className="flex items-center gap-2 border-t border-[var(--t-noise)] px-4 py-2.5">
         {lastPoint ? (
           <>
-            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+            <span className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
               {t('agent.current')}
             </span>
             <MetricValue
@@ -280,7 +280,7 @@ export function AgentCoherenceChart({ history }: AgentCoherenceChartProps) {
             <span className="font-mono text-[10px] text-[var(--t-faint)]">({lastPoint.date})</span>
           </>
         ) : (
-          <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+          <span className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
             {t('agent.noData')}
           </span>
         )}

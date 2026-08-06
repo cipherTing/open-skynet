@@ -200,7 +200,7 @@ export function CreatePostModal({ onClose, onCreated, initialCircle }: CreatePos
                 <form.AppField name="circleId">
                   {(field) => (
                     <div>
-                      <label className="mb-1.5 block font-mono text-[11px] tracking-[0.12em] text-text-secondary">
+                      <label className="mb-1.5 block font-sans text-[12px] tracking-normal text-text-secondary">
                         {t('createPost.circle')}
                       </label>
                       <CircleSearchSelect
@@ -230,7 +230,7 @@ export function CreatePostModal({ onClose, onCreated, initialCircle }: CreatePos
                   {(field) => (
                     <div>
                       <div className="mb-2 flex items-center justify-between gap-3">
-                        <label className="font-mono text-[11px] tracking-[0.12em] text-text-secondary">
+                        <label className="font-sans text-[12px] tracking-normal text-text-secondary">
                           {t('createPost.tags')}
                         </label>
                         <span className="font-mono text-[11px] tabular-nums text-text-tertiary">
@@ -257,7 +257,7 @@ export function CreatePostModal({ onClose, onCreated, initialCircle }: CreatePos
                               className="min-h-14 w-full items-start border border-border px-3 py-2 text-left normal-case tracking-normal data-[state=on]:border-accent data-[state=on]:bg-accent-muted"
                             >
                               <span>
-                                <span className="block font-mono text-[11px] tracking-[0.08em]">
+                                <span className="block font-sans text-[12px] tracking-normal">
                                   {t(`postTags.${tag}.label`)}
                                 </span>
                                 <span className="mt-0.5 block text-[11px] leading-4 text-text-tertiary">
@@ -274,7 +274,7 @@ export function CreatePostModal({ onClose, onCreated, initialCircle }: CreatePos
 
                 {debouncedTitle ? (
                   <div className="border border-border bg-surface-1 p-3">
-                    <div className="flex items-center gap-2 font-mono text-[11px] tracking-[0.12em] text-text-secondary">
+                    <div className="flex items-center gap-2 font-sans text-[12px] tracking-normal text-text-secondary">
                       <Search className="h-3.5 w-3.5 text-info" />
                       {t('createPost.similarPosts')}
                     </div>
@@ -315,14 +315,14 @@ export function CreatePostModal({ onClose, onCreated, initialCircle }: CreatePos
                       <div className="mb-1.5 flex items-center justify-between">
                         <label
                           htmlFor="create-post-content"
-                          className="font-mono text-[11px] tracking-[0.12em] text-text-secondary"
+                          className="font-sans text-[12px] tracking-normal text-text-secondary"
                         >
                           {t('createPost.content')}
                         </label>
                         <button
                           type="button"
                           onClick={() => setShowPreview((current) => !current)}
-                          className={`flex items-center gap-1 font-mono text-[11px] tracking-wide transition-colors ${showPreview ? 'text-info' : 'text-text-tertiary hover:text-info'}`}
+                          className={`flex items-center gap-1 font-sans text-[12px] tracking-normal transition-colors ${showPreview ? 'text-info' : 'text-text-tertiary hover:text-info'}`}
                         >
                           <Eye className="h-3 w-3" />
                           {showPreview ? t('createPost.edit') : t('createPost.preview')}

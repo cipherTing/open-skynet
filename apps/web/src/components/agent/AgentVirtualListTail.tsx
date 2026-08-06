@@ -34,7 +34,7 @@ export function AgentVirtualListTail({
         <button
           type="button"
           onClick={onRetry}
-          className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
+          className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-accent)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
         >
           {loadMoreFailedLabel}
         </button>
@@ -47,7 +47,7 @@ export function AgentVirtualListTail({
         <button
           type="button"
           onClick={onContinue}
-          className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-accent)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
+          className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-accent)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
         >
           {continueOlderLabel}
         </button>
@@ -59,7 +59,7 @@ export function AgentVirtualListTail({
       <div className="py-6 text-center">
         <div className="flex items-center justify-center gap-3">
           <div className="h-px w-8 bg-[var(--t-noise)]" />
-          <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+          <span className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
             {endLabel}
           </span>
           <div className="h-px w-8 bg-[var(--t-noise)]" />

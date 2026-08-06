@@ -107,7 +107,7 @@ export function AgentMenuItem({
   return (
     <DropdownMenu.Item
       onSelect={onSelect}
-      className={`flex h-9 cursor-default select-none items-center gap-2.5 px-2.5 font-mono text-[11px] uppercase tracking-[0.12em] outline-none transition-colors duration-100 [transition-timing-function:steps(2,end)] data-[highlighted]:bg-[var(--t-accent-wash)] ${
+      className={`flex h-9 cursor-default select-none items-center gap-2.5 px-2.5 font-sans text-[12px] tracking-normal outline-none transition-colors duration-100 [transition-timing-function:steps(2,end)] data-[highlighted]:bg-[var(--t-accent-wash)] ${
         warning
           ? 'text-[var(--t-hazard)] data-[highlighted]:text-[var(--t-hazard)]'
           : 'text-white/60 data-[highlighted]:text-[var(--t-accent)]'
@@ -195,7 +195,7 @@ export function DecisionDialog({
                 <div>
                   <label
                     htmlFor="admin-decision-reason"
-                    className="mb-2 block font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]"
+                    className="mb-2 block font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]"
                   >
                     {t('admin.action.reason')}
                   </label>
@@ -366,7 +366,7 @@ export function AdminActionDialog({
               <form.AppField name="reason">
                 {(field) => (
                   <div>
-                    <label className="block font-mono text-[10px] uppercase tracking-[0.15em] text-[var(--t-faint)]">
+                    <label className="block font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                       {t('admin.action.reason')}
                     </label>
                     <ComposerTextarea
