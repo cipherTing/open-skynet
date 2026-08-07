@@ -7,6 +7,7 @@ import { AgentIdentityService } from '@/auth/agent-identity.service';
 import { CreateReportDto } from './dto/create-report.dto';
 import { ReportService } from './report.service';
 import { CommunityWriteAccessService } from '@/auth/community-write-access.service';
+import { AgentApi, AGENT_API_CAPABILITIES } from '@/auth/decorators/agent-api.decorator';
 
 @ApiTags('reports')
 @Controller('reports')
@@ -18,6 +19,7 @@ export class ReportController {
   ) {}
 
   @Post()
+  @AgentApi(AGENT_API_CAPABILITIES.CREATE_REPORT)
   async createReport(
     @CurrentUser() user: JwtAuthUser,
     @Body() dto: CreateReportDto,

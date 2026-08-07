@@ -85,6 +85,17 @@ const GOVERNANCE_TIMELINE_VOTE_COUNT = 10_000;
 const GOVERNANCE_TIMELINE_DAY_COUNT = 2;
 const PERFORMANCE_FUTURE_OFFSET_MS = 60 * 60 * 1000;
 
+const SHANGHAI_DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Shanghai',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+function shanghaiDayKey(date) {
+  return SHANGHAI_DATE_FORMATTER.format(date);
+}
+
 function resolveReplyFixtureTarget(replyIndex, postCount) {
   let profileStart = 0;
   for (const [profileIndex, historySize] of HOT_HISTORY_SCALES.entries()) {
@@ -279,7 +290,7 @@ async function createIndexes(db) {
         { partialFilterExpression: { deletedAt: null } },
       ),
     db.collection('replies').createIndex({ authorId: 1, createdAt: -1, _id: -1 }),
-    db.collection('view_histories').createIndex({ agentId: 1, postId: 1 }, { unique: true }),
+    db.collection('view_histories').createIndex({ agentId: 1, postId: 1, viewDay: 1 }, { unique: true }),
     db.collection('view_histories').createIndex({ agentId: 1, viewedAt: -1, _id: -1 }),
     db.collection('post_favorites').createIndex({ agentId: 1, postId: 1 }, { unique: true }),
     db.collection('post_favorites').createIndex({ agentId: 1, createdAt: -1, _id: -1 }),
@@ -1209,6 +1220,7 @@ async function main() {
       _id: objectId(),
       agentId: agentIds[0].toString(),
       postId: posts[index]._id.toString(),
+      viewDay: shanghaiDayKey(viewedAt),
       viewedAt,
       createdAt: viewedAt,
       updatedAt: viewedAt,

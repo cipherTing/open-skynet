@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
   Headers,
   Param,
@@ -18,6 +17,7 @@ import { CommunityWriteAccessService } from '@/auth/community-write-access.servi
 import { CircleProposalService } from './circle-proposal.service';
 import {
   CastCircleProposalVoteDto,
+  CircleProposalDetailQueryDto,
   CreateCircleProposalCommentDto,
   CreateCircleProposalDto,
   ExpectedCircleProposalVersionDto,
@@ -27,6 +27,7 @@ import {
   ReviseCircleProposalDto,
   SetCircleProposalStanceDto,
 } from './dto/circle-proposal.dto';
+import { AgentApi, AGENT_API_CAPABILITIES } from '@/auth/decorators/agent-api.decorator';
 
 @ApiTags('circle-proposals')
 @Controller('circles/:circleId/proposals')
@@ -38,6 +39,7 @@ export class CircleProposalController {
   ) {}
 
   @Get()
+  @AgentApi(AGENT_API_CAPABILITIES.LIST_PROPOSALS)
   async list(
     @Param('circleId') circleId: string,
     @Query() dto: ListCircleProposalsDto,
@@ -48,6 +50,7 @@ export class CircleProposalController {
   }
 
   @Post()
+  @AgentApi(AGENT_API_CAPABILITIES.CREATE_PROPOSAL)
   async create(
     @Param('circleId') circleId: string,
     @CurrentUser() user: JwtAuthUser,
@@ -59,12 +62,19 @@ export class CircleProposalController {
   }
 
   @Get(':proposalId')
+  @AgentApi(AGENT_API_CAPABILITIES.GET_PROPOSAL)
   async detail(
     @Param('circleId') circleId: string,
     @Param('proposalId') proposalId: string,
+    @Query() query: CircleProposalDetailQueryDto,
     @CurrentUser() user?: JwtAuthUser,
   ) {
-    return this.proposalService.detail(circleId, proposalId, await this.getOptionalAgentId(user));
+    return this.proposalService.detail(
+      circleId,
+      proposalId,
+      await this.getOptionalAgentId(user),
+      query,
+    );
   }
 
   @Get(':proposalId/revisions')
@@ -76,16 +86,8 @@ export class CircleProposalController {
     return this.proposalService.listRevisions(circleId, proposalId, dto);
   }
 
-  @Get(':proposalId/voters')
-  listVoters(
-    @Param('circleId') circleId: string,
-    @Param('proposalId') proposalId: string,
-    @Query() dto: ListCircleProposalHistoryDto,
-  ) {
-    return this.proposalService.listVoters(circleId, proposalId, dto);
-  }
-
   @Post(':proposalId/revisions')
+  @AgentApi(AGENT_API_CAPABILITIES.REVISE_PROPOSAL)
   async revise(
     @Param('circleId') circleId: string,
     @Param('proposalId') proposalId: string,
@@ -103,6 +105,7 @@ export class CircleProposalController {
   }
 
   @Post(':proposalId/withdraw')
+  @AgentApi(AGENT_API_CAPABILITIES.WITHDRAW_PROPOSAL)
   async withdrawProposal(
     @Param('circleId') circleId: string,
     @Param('proposalId') proposalId: string,
@@ -118,6 +121,7 @@ export class CircleProposalController {
   }
 
   @Put(':proposalId/stance')
+  @AgentApi(AGENT_API_CAPABILITIES.SET_PROPOSAL_STANCE)
   async setStance(
     @Param('circleId') circleId: string,
     @Param('proposalId') proposalId: string,
@@ -132,22 +136,8 @@ export class CircleProposalController {
     );
   }
 
-  @Delete(':proposalId/stance')
-  async withdrawStance(
-    @Param('circleId') circleId: string,
-    @Param('proposalId') proposalId: string,
-    @CurrentUser() user: JwtAuthUser,
-    @Body() dto: ExpectedCircleProposalVersionDto,
-  ) {
-    return this.proposalService.withdrawStance(
-      circleId,
-      proposalId,
-      await this.getWritableAgentId(user),
-      dto,
-    );
-  }
-
   @Put(':proposalId/vote')
+  @AgentApi(AGENT_API_CAPABILITIES.VOTE_ON_PROPOSAL)
   async vote(
     @Param('circleId') circleId: string,
     @Param('proposalId') proposalId: string,
@@ -163,6 +153,7 @@ export class CircleProposalController {
   }
 
   @Get(':proposalId/comments')
+  @AgentApi(AGENT_API_CAPABILITIES.LIST_PROPOSAL_COMMENTS)
   listComments(
     @Param('circleId') circleId: string,
     @Param('proposalId') proposalId: string,
@@ -172,6 +163,7 @@ export class CircleProposalController {
   }
 
   @Post(':proposalId/comments')
+  @AgentApi(AGENT_API_CAPABILITIES.COMMENT_ON_PROPOSAL)
   async addComment(
     @Param('circleId') circleId: string,
     @Param('proposalId') proposalId: string,
@@ -200,9 +192,4 @@ export class CircleProposalController {
     return agent.id;
   }
 
-  private async getOperableAgentId(user: JwtAuthUser): Promise<string> {
-    const agent = await this.agentIdentityService.getByOwnerUserId(user.userId);
-    assertOwnerOperationAllowed(user, agent);
-    return agent.id;
-  }
 }

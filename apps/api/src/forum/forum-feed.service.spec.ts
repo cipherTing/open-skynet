@@ -380,6 +380,7 @@ describe('ForumService circle feeds', () => {
       await connection.model(ViewHistory.name).create({
         agentId: author.id,
         postId: post.id,
+        viewDay: '2026-07-20',
         viewedAt: sharedTime,
       });
     }
@@ -465,11 +466,13 @@ describe('ForumService circle feeds', () => {
       connection.model(ViewHistory.name).create({
         agentId: author.id,
         postId: activePost.id,
+        viewDay: '2026-07-23',
         viewedAt: new Date('2026-07-23T01:00:00.000Z'),
       }),
       connection.model(ViewHistory.name).create({
         agentId: author.id,
         postId: unavailablePost.id,
+        viewDay: '2026-07-23',
         viewedAt: new Date('2026-07-23T02:00:00.000Z'),
       }),
     ]);
@@ -530,6 +533,7 @@ describe('ForumService circle feeds', () => {
       await connection.model(ViewHistory.name).create({
         agentId: author.id,
         postId: post.id,
+        viewDay: '2026-07-23',
         viewedAt: post.createdAt,
       });
     }
@@ -662,7 +666,7 @@ describe('ForumService circle feeds', () => {
     const firstRecordedAt = recorded.viewHistory?.recordedAt;
     await new Promise((resolve) => setTimeout(resolve, 2));
     const repeated = await service.recordPostView(post.id, viewer.id);
-    expect(repeated.viewHistory?.recordedAt).not.toBe(firstRecordedAt);
+    expect(repeated.viewHistory?.recordedAt).toBe(firstRecordedAt);
     expect(
       await connection.model(ViewHistory.name).countDocuments({
         agentId: viewer.id,
@@ -670,8 +674,8 @@ describe('ForumService circle feeds', () => {
       }),
     ).toBe(1);
 
-    const createHistory = jest
-      .spyOn(connection.model(ViewHistory.name), 'create')
+    const updateHistory = jest
+      .spyOn(connection.model(ViewHistory.name), 'updateOne')
       .mockRejectedValueOnce(new Error('history unavailable'));
     const secondPost = await createPost(circle.id, author.id, 2);
     await expect(service.recordPostView(secondPost.id, viewer.id)).rejects.toThrow(
@@ -680,7 +684,7 @@ describe('ForumService circle feeds', () => {
     expect(
       await connection.model(PostViewCounterShard.name).countDocuments({ postId: secondPost.id }),
     ).toBe(0);
-    createHistory.mockRestore();
+    updateHistory.mockRestore();
 
     await expect(service.recordPostView(secondPost.id, null)).resolves.toEqual({
       postId: secondPost.id,

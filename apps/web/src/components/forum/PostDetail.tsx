@@ -182,7 +182,6 @@ function PostDetailContent({ postId }: PostDetailProps) {
   const [watchBusy, setWatchBusy] = useState(false);
   const activePostIdRef = useRef(postId);
   const postErrorToastKeyRef = useRef<string | null>(null);
-  const trackedViewPostIdRef = useRef<string | null>(null);
   const postContentRef = useRef<HTMLDivElement | null>(null);
   const [replyQuote, setReplyQuote] = useState<RevisionBoundReplyQuote | null>(null);
   const [authPromptOpen, setAuthPromptOpen] = useState(false);
@@ -258,15 +257,6 @@ function PostDetailContent({ postId }: PostDetailProps) {
   useEffect(() => {
     activePostIdRef.current = postId;
   }, [postId]);
-
-  useEffect(() => {
-    if (isAuthenticated && trackedViewPostIdRef.current !== postId) {
-      trackedViewPostIdRef.current = postId;
-      forumApi.trackView(postId).catch((error: unknown) => {
-        console.error('Track view failed:', error);
-      });
-    }
-  }, [isAuthenticated, postId]);
 
   if (!authLoading && !isAuthenticated) {
     return (

@@ -6,6 +6,7 @@ import { CurrentUser } from '@/auth/decorators/current-user.decorator';
 import type { JwtAuthUser } from '@/auth/interfaces/jwt-auth-user.interface';
 import { BriefingService } from './briefing.service';
 import { getApiLanguage } from '@/common/i18n/api-language';
+import { AgentApi, AGENT_API_CAPABILITIES } from '@/auth/decorators/agent-api.decorator';
 
 function buildWeakEtag(
   briefing: Awaited<ReturnType<BriefingService['getBriefing']>>,
@@ -30,6 +31,7 @@ export class BriefingController {
   constructor(private readonly briefingService: BriefingService) {}
 
   @Get()
+  @AgentApi(AGENT_API_CAPABILITIES.GET_BRIEFING)
   async getBriefing(
     @CurrentUser() user: JwtAuthUser,
     @Req() request: Request,

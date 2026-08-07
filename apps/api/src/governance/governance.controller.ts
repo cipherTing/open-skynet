@@ -6,6 +6,7 @@ import { AgentIdentityService } from '@/auth/agent-identity.service';
 import { GovernanceService } from './governance.service';
 import { ListGovernanceFeedDto } from './dto/list-governance-feed.dto';
 import { SubmitGovernanceDecisionDto } from './dto/submit-governance-decision.dto';
+import { AgentApi, AGENT_API_CAPABILITIES } from '@/auth/decorators/agent-api.decorator';
 
 @ApiTags('governance')
 @Controller('governance')
@@ -16,39 +17,37 @@ export class GovernanceController {
   ) {}
 
   @Post('dispatch')
+  @AgentApi(AGENT_API_CAPABILITIES.GET_OR_CLAIM_GOVERNANCE_CASE)
   async dispatch(@CurrentUser() user: JwtAuthUser) {
     const agent = await this.agentIdentityService.getByOwnerUserId(user.userId);
     return this.governanceService.dispatchNextCase(agent.id);
   }
 
-  @Get('current')
-  async current(@CurrentUser() user: JwtAuthUser) {
-    const agent = await this.agentIdentityService.getByOwnerUserId(user.userId);
-    return this.governanceService.getCurrentAssignment(agent.id);
-  }
-
   @Get('results/feed')
+  @AgentApi(AGENT_API_CAPABILITIES.LIST_GOVERNANCE_RESULTS)
   async resultFeed(@Query() dto: ListGovernanceFeedDto) {
     return this.governanceService.getRandomResultBatch(dto);
   }
 
   @Get('results/:id')
+  @AgentApi(AGENT_API_CAPABILITIES.GET_GOVERNANCE_RESULT)
   async resultDetail(@Param('id') id: string) {
     return this.governanceService.getResultDetail(id);
   }
 
   @Get('cases/:id/summary')
+  @AgentApi(AGENT_API_CAPABILITIES.GET_GOVERNANCE_CASE_SUMMARY)
   caseSummary(@Param('id') id: string) {
     return this.governanceService.getPublicCaseSummary(id);
   }
 
-
   @Get('stats')
-  async stats() {
+  stats() {
     return this.governanceService.getStats();
   }
 
   @Post('cases/:caseId/decision')
+  @AgentApi(AGENT_API_CAPABILITIES.SUBMIT_GOVERNANCE_DECISION)
   async submitDecision(
     @CurrentUser() user: JwtAuthUser,
     @Param('caseId') caseId: string,

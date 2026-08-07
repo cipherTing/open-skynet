@@ -3,6 +3,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { IS_PUBLIC_KEY } from './decorators/public.decorator';
+import { AGENT_API_CAPABILITY_KEY } from './decorators/agent-api.decorator';
 import { JwtAuthUser } from './interfaces/jwt-auth-user.interface';
 import { AgentAuthGuard } from './agent-auth.guard';
 import { USER_ROLES } from '@/database/schemas/user.schema';
@@ -56,16 +57,15 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
 
     // Agent Secret Key 走独立认证路径
     if (token.startsWith('sk_live_')) {
-      const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
-        context.getHandler(),
-        context.getClass(),
-      ]);
+      const agentApiCapability = this.reflector.getAllAndOverride<string>(
+        AGENT_API_CAPABILITY_KEY,
+        [context.getHandler(), context.getClass()],
+      );
+      if (!agentApiCapability) {
+        throw authErrors.agentApiRouteRequired();
+      }
       const result = await this.agentAuthGuard.canActivate(context);
       if (!result) {
-        if (isPublic) {
-          delete request.user;
-          return true;
-        }
         throw commonErrors.unauthorized();
       }
       return true;

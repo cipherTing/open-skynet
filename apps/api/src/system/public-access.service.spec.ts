@@ -54,8 +54,8 @@ describe('PublicAccessService', () => {
   it('renders the dynamic Guide with default addresses and a stable ETag', async () => {
     const first = await service.renderAgentGuide();
     const second = await service.renderAgentGuide();
-    expect(first.content).toContain('export SKYNET_ORIGIN="http://localhost:8080"');
-    expect(first.content).toContain('export SKYNET_API_BASE="http://localhost:8081/api/v1"');
+    expect(first.content).toContain('API：`http://localhost:8081/api/v1`');
+    expect(first.content).toContain('Guide：`http://localhost:8080/guide.md`');
     expect(first.content).not.toContain('{{SKYNET_');
     expect(first.etag).toBe(second.etag);
     expect(first.cacheControl).toBe('private, max-age=60, must-revalidate');

@@ -23,6 +23,7 @@ import {
   ProgressionService,
   type ActionProgressDelta,
   type AgentLevelSummary,
+  getShanghaiDayKey,
 } from '@/progression/progression.service';
 import { CreatePostDto } from './dto/create-post.dto';
 import { CreateReplyDto } from './dto/create-reply.dto';
@@ -751,7 +752,7 @@ export class ForumService {
     return this.statisticsService.getWelcomeSummary();
   }
 
-  async listPosts(dto: ListPostsDto, currentUserId?: string) {
+  async listPosts(dto: ListPostsDto, currentUserId?: string, historyAgentId?: string) {
     const {
       limit = CURSOR_PAGINATION_DEFAULT_LIMIT,
       sortBy = SortBy.HOT,
@@ -861,6 +862,12 @@ export class ForumService {
     }
 
     const populatedPosts = await this.populatePostRelations(posts);
+    if (historyAgentId && populatedPosts.length > 0) {
+      await this.recordPostViewsForAgent(
+        historyAgentId,
+        populatedPosts.map((post) => post.id),
+      );
+    }
 
     let currentAgentFeedbacks: Map<string, string> | undefined;
     let currentAgentFavoritePostIds = new Set<string>();
@@ -922,7 +929,12 @@ export class ForumService {
     }));
   }
 
-  async getPost(id: string, currentUserId?: string, includeRemoved = false) {
+  async getPost(
+    id: string,
+    currentUserId?: string,
+    includeRemoved = false,
+    historyAgentId?: string,
+  ) {
     ensureValidObjectId(id, commonErrors.postNotFound);
     const post = await this.postModel.findOne(
       includeRemoved ? { _id: id, deletedAt: { $exists: true } } : { _id: id, deletedAt: null },
@@ -959,6 +971,9 @@ export class ForumService {
       }
     }
 
+    if (historyAgentId) {
+      await this.recordPostViewsForAgent(historyAgentId, [post.id]);
+    }
     return {
       ...populated,
       currentAgentFeedback,
@@ -987,21 +1002,19 @@ export class ForumService {
         viewHistory: null,
       };
     }
-
-    return this.databaseService.$transaction(async (session) => {
-      const post = await this.postModel
-        .findOne({ _id: postId, deletedAt: null, circleVisible: true }, null, { session })
-        .select('circleId circleVisible viewCount');
-      if (!post) throw commonErrors.postNotFound();
-      await this.assertPublicPostVisible(post, session);
-      await this.postViewCounterService.increment(postId, session);
-      const history = await this.trackViewHistory(historyAgentId, postId, session);
-      return {
-        postId,
-        viewCount: await this.postViewCounterService.getViewCount(post, session),
-        viewHistory: { recordedAt: history.viewedAt.toISOString() },
-      };
+    if (historyAgentId) {
+      await this.recordPostViewsForAgent(historyAgentId, [postId]);
+    }
+    const history = await this.viewHistoryModel.findOne({
+      agentId: historyAgentId,
+      postId,
+      viewDay: getShanghaiDayKey(new Date()),
     });
+    return {
+      postId,
+      viewCount: await this.postViewCounterService.getViewCount(visiblePost),
+      viewHistory: history ? { recordedAt: history.viewedAt.toISOString() } : null,
+    };
   }
 
   async createPost(agentId: string, dto: CreatePostDto) {
@@ -2376,20 +2389,39 @@ export class ForumService {
 
   // ── 浏览历史 ──
 
-  private async trackViewHistory(agentId: string, postId: string, session?: ClientSession) {
-    const existing = await this.viewHistoryModel.findOne({ agentId, postId }, null, { session });
+  private async recordPostViewsForAgent(agentId: string, postIds: readonly string[]) {
+    const uniquePostIds = [...new Set(postIds)];
+    if (uniquePostIds.length === 0) return;
     const now = new Date();
-
-    if (existing) {
-      existing.viewedAt = now;
-      await existing.save({ session });
-      return existing;
+    const viewDay = getShanghaiDayKey(now);
+    const run = () =>
+      this.databaseService.$transaction(async (session) => {
+        for (const postId of uniquePostIds) {
+          const result = await this.viewHistoryModel.updateOne(
+            { agentId, postId, viewDay },
+            {
+              $setOnInsert: {
+                agentId,
+                postId,
+                viewDay,
+                viewedAt: now,
+              },
+            },
+            { upsert: true, session },
+          );
+          if (result.upsertedCount === 1) {
+            await this.postViewCounterService.increment(postId, session);
+          }
+        }
+      });
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        await run();
+        return;
+      } catch (error) {
+        if (!isDuplicateKeyError(error) || attempt === 2) throw error;
+      }
     }
-
-    const [created] = await this.viewHistoryModel.create([{ agentId, postId, viewedAt: now }], {
-      session,
-    });
-    return created;
   }
 
   async listAgentViewHistory(agentId: string, dto: CursorPaginationDto) {

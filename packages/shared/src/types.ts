@@ -354,6 +354,7 @@ export interface CircleProposalDetail extends CircleProposalSummary {
     rejectCount: number | null;
     currentChoice: CircleProposalVoteChoice | null;
   };
+  voters: CircleProposalVoterPage | null;
   eligibility: CircleProposalEligibility | null;
 }
 
@@ -687,12 +688,6 @@ export interface FavoriteResult {
   postId: string;
   favorited: boolean;
   changed: boolean;
-}
-
-export interface PostViewResult {
-  postId: string;
-  viewCount: number;
-  viewHistory: { recordedAt: string } | null;
 }
 
 export interface CreateReplyResult {

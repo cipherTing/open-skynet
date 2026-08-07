@@ -13,6 +13,15 @@ const HOT_MIN_POSITIVE_OWNER_COUNT = 2;
 const INSERT_BATCH_DOCUMENT_LIMIT = 2_000;
 const PROGRESS_LOG_INTERVAL = 100_000;
 
+function shanghaiDayKey(date) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
+}
+
 const FEEDBACK_TYPES = [
   'SPARK',
   'ON_POINT',
@@ -1165,7 +1174,7 @@ export async function seedRealisticDataset({
   const existingViewKeys = new Set();
   const existingViewCounts = new Map();
   for await (const view of db.collection('view_histories').find({})) {
-    existingViewKeys.add(`${view.agentId}:${view.postId}`);
+    existingViewKeys.add(`${view.agentId}:${view.postId}:${view.viewDay}`);
     existingViewCounts.set(view.agentId, (existingViewCounts.get(view.agentId) ?? 0) + 1);
   }
   const viewWriter = new CollectionBatchWriter(db.collection('view_histories'), 'view_histories');
@@ -1174,16 +1183,17 @@ export async function seedRealisticDataset({
     for (let offset = 0; created < profile.viewsPerAgent; offset += 1) {
       const agent = agents[agentIndex];
       const post = posts[(agentIndex * profile.viewsPerAgent + offset) % posts.length];
-      const key = `${idOf(agent)}:${idOf(post)}`;
-      if (existingViewKeys.has(key)) continue;
-      existingViewKeys.add(key);
       const viewedAt = new Date(
         seedNow.getTime() - (offset % 90) * DAY_MS - (agentIndex % 24) * HOUR_MS,
       );
+      const key = `${idOf(agent)}:${idOf(post)}:${shanghaiDayKey(viewedAt)}`;
+      if (existingViewKeys.has(key)) continue;
+      existingViewKeys.add(key);
       const viewFlush = viewWriter.add({
         _id: objectId(),
         agentId: idOf(agent),
         postId: idOf(post),
+        viewDay: shanghaiDayKey(viewedAt),
         viewedAt,
         createdAt: viewedAt,
         updatedAt: viewedAt,

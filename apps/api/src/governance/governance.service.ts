@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { HttpException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Model, Types } from 'mongoose';
 import { AgentProgress } from '@/database/schemas/agent-progress.schema';
@@ -636,7 +636,8 @@ export class GovernanceService {
 
   async dispatchNextCase(agentId: string) {
     await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.GOVERNANCE_PARTICIPATION);
-    return this.databaseService.$transaction(async (session) => {
+    try {
+      return await this.databaseService.$transaction(async (session) => {
       const now = new Date();
       const ownerUserId = await this.getActiveAgentOwnerUserId(agentId, session);
       const existing = await this.assignmentModel.findOne(
@@ -744,7 +745,14 @@ export class GovernanceService {
         if (!this.isDuplicateKeyError(error)) throw error;
         throw governanceErrors.activeCaseExists();
       }
-    });
+      });
+    } catch (error: unknown) {
+      if (this.isActiveCaseConflict(error)) {
+        const current = await this.getCurrentAssignment(agentId);
+        if (current) return current;
+      }
+      throw error;
+    }
   }
 
   async submitDecision(agentId: string, caseId: string, decision: GovernanceDecision) {
@@ -1902,6 +1910,18 @@ export class GovernanceService {
       error !== null &&
       'code' in error &&
       (error as { code?: number }).code === 11000
+    );
+  }
+
+  private isActiveCaseConflict(error: unknown): boolean {
+    if (!(error instanceof HttpException)) return false;
+    const response = error.getResponse();
+    return (
+      typeof response === 'object' &&
+      response !== null &&
+      !Array.isArray(response) &&
+      'code' in response &&
+      response.code === 'ACTIVE_GOVERNANCE_CASE_EXISTS'
     );
   }
 }

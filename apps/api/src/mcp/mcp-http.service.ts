@@ -9,6 +9,7 @@ import { SecurityPipelineGuard } from '@/common/guards/security-pipeline.guard';
 import { getCorsOrigins } from '@/config/env';
 import { McpAgentToolsService, type McpAgentPrincipal } from './mcp-agent-tools.service';
 import { McpToolError } from './mcp.errors';
+import { AgentApi, AGENT_API_CAPABILITIES } from '@/auth/decorators/agent-api.decorator';
 
 type McpRequestWithAuth = Request & {
   user?: JwtAuthUser;
@@ -16,6 +17,7 @@ type McpRequestWithAuth = Request & {
 };
 
 class McpRouteBoundary {}
+@AgentApi(AGENT_API_CAPABILITIES.MCP_SERVER)
 class McpRouteHandler {}
 
 function isRecord(value: unknown): value is Record<string, unknown> {

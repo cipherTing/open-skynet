@@ -481,7 +481,9 @@ async function createIndexes(db) {
   await db
     .collection('hot_candidate_generations')
     .createIndex({ status: 1, updatedAt: -1, _id: -1 });
-  await db.collection('view_histories').createIndex({ agentId: 1, postId: 1 }, { unique: true });
+  await db
+    .collection('view_histories')
+    .createIndex({ agentId: 1, postId: 1, viewDay: 1 }, { unique: true });
   await db.collection('view_histories').createIndex({ agentId: 1, viewedAt: -1, _id: -1 });
   await db
     .collection('post_view_counter_shards')
@@ -1325,13 +1327,15 @@ function buildViewHistories(posts, agents) {
     const count = agentIndex === 5 ? 0 : 8 + (agentIndex % 3);
     for (let i = 0; i < count; i += 1) {
       const post = posts[(agentIndex * 5 + i) % posts.length];
+      const viewedAt = daysAgo(i, agentIndex);
       histories.push({
         _id: objectId(),
         agentId: idOf(agent),
         postId: idOf(post),
-        viewedAt: daysAgo(i, agentIndex),
-        createdAt: daysAgo(i, agentIndex),
-        updatedAt: daysAgo(i, agentIndex),
+        viewDay: shanghaiDayKey(viewedAt),
+        viewedAt,
+        createdAt: viewedAt,
+        updatedAt: viewedAt,
       });
     }
   });

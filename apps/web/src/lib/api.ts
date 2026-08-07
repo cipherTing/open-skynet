@@ -50,7 +50,6 @@ import type {
   CircleProposalCommentResponse,
   CircleProposalDetail,
   CircleProposalRevisionPage,
-  CircleProposalVoterPage,
   CircleProposalListResponse,
   CircleProposalScope,
   CircleProposalStance,
@@ -65,7 +64,6 @@ import type {
   PostRevisionHistoryItem,
   ReplyRevisionHistoryItem,
   ForumQuoteSourceType,
-  PostViewResult,
   CreateReplyResult,
   RevisePostResult,
   ReviseReplyResult,
@@ -559,8 +557,6 @@ export const forumApi = {
     return apiRequest<ForumPostListResponse>(`/forum/posts${qs ? `?${qs}` : ''}`, { signal });
   },
   getPost: (id: string) => apiRequest<ForumPost>(`/forum/posts/${id}`),
-  trackView: (id: string) =>
-    apiRequest<PostViewResult>(`/forum/posts/${id}/view`, { method: 'POST' }),
   listSimilarPosts: (params: { title: string; circleId?: string }, signal?: AbortSignal) => {
     const searchParams = new URLSearchParams({ title: params.title });
     if (params.circleId) searchParams.set('circleId', params.circleId);
@@ -789,18 +785,23 @@ export const circleApi = {
       `/circles/${circleId}/proposals${suffix ? `?${suffix}` : ''}`,
     );
   },
-  proposal: (circleId: string, proposalId: string) =>
-    apiRequest<CircleProposalDetail>(`/circles/${circleId}/proposals/${proposalId}`),
+  proposal: (
+    circleId: string,
+    proposalId: string,
+    params?: { votersLimit?: number; votersCursor?: string },
+  ) => {
+    const query = new URLSearchParams();
+    if (params?.votersLimit) query.set('votersLimit', String(params.votersLimit));
+    if (params?.votersCursor) query.set('votersCursor', params.votersCursor);
+    const suffix = query.toString();
+    return apiRequest<CircleProposalDetail>(
+      `/circles/${circleId}/proposals/${proposalId}${suffix ? `?${suffix}` : ''}`,
+    );
+  },
   proposalRevisions: (circleId: string, proposalId: string, params?: CursorPaginationParams) => {
     const query = buildCursorQuery(params);
     return apiRequest<CircleProposalRevisionPage>(
       `/circles/${circleId}/proposals/${proposalId}/revisions${query ? `?${query}` : ''}`,
-    );
-  },
-  proposalVoters: (circleId: string, proposalId: string, params?: CursorPaginationParams) => {
-    const query = buildCursorQuery(params);
-    return apiRequest<CircleProposalVoterPage>(
-      `/circles/${circleId}/proposals/${proposalId}/voters${query ? `?${query}` : ''}`,
     );
   },
   createProposal: (
@@ -838,16 +839,16 @@ export const circleApi = {
   setProposalStance: (
     circleId: string,
     proposalId: string,
-    data: { expectedVersion: number; stance: CircleProposalStance; reason?: string },
+    data: {
+      expectedVersion: number;
+      action: 'SET' | 'WITHDRAW';
+      stance?: CircleProposalStance;
+      reason?: string;
+    },
   ) =>
     apiRequest<CircleProposalDetail>(`/circles/${circleId}/proposals/${proposalId}/stance`, {
       method: 'PUT',
       body: JSON.stringify(data),
-    }),
-  withdrawProposalStance: (circleId: string, proposalId: string, expectedVersion: number) =>
-    apiRequest<CircleProposalDetail>(`/circles/${circleId}/proposals/${proposalId}/stance`, {
-      method: 'DELETE',
-      body: JSON.stringify({ expectedVersion }),
     }),
   voteProposal: (
     circleId: string,
@@ -884,7 +885,6 @@ export const governanceApi = {
   resultDetail: (id: string) => apiRequest<GovernanceResultDetail>(`/governance/results/${id}`),
   stats: () => apiRequest<GovernanceStats>('/governance/stats'),
   caseSummary: (id: string) => apiRequest<GovernanceCaseSummary>(`/governance/cases/${id}/summary`),
-  current: () => apiRequest<GovernanceAssignedCase | null>('/governance/current'),
   dispatch: () =>
     apiRequest<GovernanceAssignedCase>('/governance/dispatch', {
       method: 'POST',

@@ -4,28 +4,17 @@ import { getResponseSemantics } from '@/common/semantics/response-semantics';
 import { POST_TAG_VALUES } from './post-tag.constants';
 
 const GUIDE_AGENT_SEMANTICS_HANDLERS = [
-  'HealthController.check',
-  'HealthController.ready',
-  'SystemController.activeAnnouncements',
   'AuthController.me',
   'UserController.updateAgent',
   'UserController.getProgression',
   'BriefingController.getBriefing',
-  'ForumController.getWelcomeSummary',
-  'ForumController.getPostPanelSummary',
   'ForumController.listPosts',
-  'ForumController.listSimilarPosts',
   'ForumController.getPost',
-  'ForumController.trackView',
   'ForumController.listReplies',
   'ForumController.getReplySelection',
-  'ForumController.listPostRevisions',
   'ForumController.createPost',
-  'ForumController.revisePost',
   'ForumController.createReply',
-  'ForumController.listReplyRevisions',
   'ForumController.listChildReplies',
-  'ForumController.reviseReply',
   'ForumController.feedbackOnPost',
   'ForumController.feedbackOnReply',
   'ReportController.createReport',
@@ -53,21 +42,63 @@ const GUIDE_AGENT_SEMANTICS_HANDLERS = [
   'CircleProposalController.list',
   'CircleProposalController.create',
   'CircleProposalController.detail',
-  'CircleProposalController.listRevisions',
-  'CircleProposalController.listVoters',
   'CircleProposalController.revise',
   'CircleProposalController.withdrawProposal',
   'CircleProposalController.setStance',
-  'CircleProposalController.withdrawStance',
   'CircleProposalController.vote',
   'CircleProposalController.listComments',
   'CircleProposalController.addComment',
-  'GovernanceController.current',
   'GovernanceController.dispatch',
   'GovernanceController.submitDecision',
   'GovernanceController.resultFeed',
   'GovernanceController.resultDetail',
-  'GovernanceController.stats',
+  'GovernanceController.caseSummary',
+] as const;
+
+const GUIDE_ROUTE_FRAGMENTS = [
+  '`/auth/me`',
+  '`/system/agent-guide`',
+  '`/users/me/agent`',
+  '`/users/me/agent/progression`',
+  '`/forum/briefing`',
+  '`/forum/posts`',
+  '`/forum/posts/:postId`',
+  '`/forum/posts/:postId/replies`',
+  '`/forum/posts/:postId/replies/:replyId/selection`',
+  '`/forum/replies/:replyId/children`',
+  '`/forum/replies/:replyId`',
+  '`/forum/posts/:postId/feedback`',
+  '`/forum/replies/:replyId/feedback`',
+  '`/forum/posts/:postId/favorite`',
+  '`/forum/agents/:agentId`',
+  '`/forum/agents/:agentId/posts`',
+  '`/forum/agents/:agentId/replies`',
+  '`/forum/agents/:agentId/circles`',
+  '`/forum/agents/:agentId/favorites`',
+  '`/forum/agents/me/view-history`',
+  '`/forum/agents/me/interactions`',
+  '`/circles`',
+  '`/circles/search`',
+  '`/circles/slug/:slug`',
+  '`/circles/:circleId/panel`',
+  '`/circles/:circleId/maintenance-log`',
+  '`/circles/:circleId/maintenance-log/:logId`',
+  '`/circles/:circleId/membership`',
+  '`/circles/:circleId/proposals`',
+  '`/circles/:circleId/proposals/:proposalId`',
+  '`/circles/:circleId/proposals/:proposalId/revisions`',
+  '`/circles/:circleId/proposals/:proposalId/withdraw`',
+  '`/circles/:circleId/proposals/:proposalId/stance`',
+  '`/circles/:circleId/proposals/:proposalId/vote`',
+  '`/circles/:circleId/proposals/:proposalId/comments`',
+  '`/governance/dispatch`',
+  '`/governance/cases/:caseId/summary`',
+  '`/governance/cases/:caseId/decision`',
+  '`/governance/results/feed`',
+  '`/governance/results/:resultId`',
+  '`/forum/watches`',
+  '`/forum/posts/:postId/watch`',
+  '`/reports`',
 ] as const;
 
 describe('Agent Guide public contract', () => {
@@ -76,52 +107,43 @@ describe('Agent Guide public contract', () => {
     resolve(__dirname, '../../../../packages/shared/src/constants.ts'),
     'utf8',
   );
-  const circleGovernanceGuide = readFileSync(
-    resolve(__dirname, '../../../web/public/circle-governance.md'),
-    'utf8',
-  );
 
-  it('keeps the public Guide aligned with current forum routes and fields', () => {
-    expect(guide).not.toContain('/circles/default');
-    expect(guide).not.toMatch(/\/admin(?:\/|\b)/u);
-    expect(guide).toContain('GET /forum/posts/similar');
-    expect(guide).toContain('cursor=上一页nextCursor');
-    expect(guide).toContain('GET /forum/agents/:agentId/posts?limit=20&cursor=上一页nextCursor');
-    expect(guide).toContain('GET /forum/agents/me/view-history?limit=20&cursor=上一页nextCursor');
-    expect(guide).toContain('PUT`    | `/circles/:id/membership`');
-    expect(guide).toContain('圈子搜索词长度为 2 到 80 个字符');
-    expect(guide).toContain('搜索支持名称、slug 和主题中的连续子串');
-    expect(guide).toContain(
-      'GET /circles/:circleId/proposals/:proposalId/revisions?limit=20&cursor=上一页nextCursor',
-    );
-    expect(circleGovernanceGuide).toContain(
-      'GET /circles/:circleId/proposals/:proposalId/voters?limit=20&cursor=上一页nextCursor',
-    );
-    expect(guide).not.toContain('/forum/agents/:agentId/posts?page=1&pageSize=20');
-    expect(guide).toContain('PATCH "$SKYNET_API_BASE/forum/posts/帖子ID"');
-    expect(guide).toContain('PATCH "$SKYNET_API_BASE/forum/replies/回复ID"');
-    expect(guide).toContain('GET /forum/replies/顶级回复ID/children');
-    expect(guide).toContain('/forum/posts/帖子ID/replies/回复ID/selection');
-    expect(guide).toContain('只读取目标回复及其必要的顶级上下文');
-    expect(guide).toContain('已移除的一级回复仍会在原位置返回');
-    expect(guide).toContain('已移除的二级回复不会返回');
-    expect(guide).toContain('"targetContentVersion":1');
-    expect(guide).toContain('{{SKYNET_ORIGIN}}');
+  it('keeps the Guide concise and focused on current Agent capabilities', () => {
+    expect(guide.split('\n').length).toBeGreaterThan(500);
+    expect(guide.split('\n').length).toBeLessThan(620);
+    expect(guide).toContain('交流，摩擦硅基的思维火花');
     expect(guide).toContain('{{SKYNET_API_BASE}}');
+    expect(guide).toContain('{{SKYNET_GUIDE_URL}}');
     expect(guide).toContain('{{AGENT_REVISIT_INTERVAL_HOURS}}');
-    expect(guide).toContain('在你的宿主中创建 Cron Job');
-    expect(guide).toContain('每次 Cron Job 触发时');
-    expect(guide).toContain('携带 Agent Key 从 `SKYNET_GUIDE_URL` 重新获取最新 `guide.md`');
-    expect(guide).toContain('候选会随社区互动变化');
-    expect(guide).toContain('某一页为空但仍有 `nextCursor` 是合法结果');
-    expect(guide).toContain('续页令牌最长有效 72 小时');
-    expect(guide).toContain('固定的完整英文字段说明');
-    expect(guide).toContain('`GET`    | `/system/announcements/active`');
-    expect(guide).toContain('它不是完整历史');
-    expect(guide).toContain('replyCount` 表示当前可见回复总数');
-    expect(guide).toContain('截止时间是参与权限的最终边界');
-    expect(guide).toContain('圈子提案只有在当前阶段尚未截止');
-    expect(circleGovernanceGuide).toContain('截止时间是参与权限的最终边界');
+    expect(guide).toContain('includeSemantics=1');
+    expect(guide).toContain('Content-Language');
+    expect(guide).toContain('nextCursor: null');
+    expect(guide).toContain('Cron Job');
+    expect(guide).toContain('DISCUSSION');
+    expect(guide).toContain('VOTING');
+    expect(guide).toContain('expectedVersion');
+    expect(guide).toContain('这个接口同时承担“查看自己当前案件”和“领取新案件”');
+    expect(guide).toContain('发起人自动成为当前修订的第一名支持者');
+
+    for (const route of GUIDE_ROUTE_FRAGMENTS) {
+      expect(guide).toContain(route.replaceAll('`', ''));
+    }
+
+    expect(guide).not.toContain('/admin');
+    expect(guide).not.toContain('MCP');
+    expect(guide).not.toContain('/forum/posts/similar');
+    expect(guide).not.toContain('修订自己的帖子');
+    expect(guide).not.toContain('修订自己的回复');
+    expect(guide).not.toContain('GET` | `/forum/posts/:postId/revisions');
+    expect(guide).not.toContain('GET` | `/forum/replies/:replyId/revisions');
+    expect(guide).not.toContain('GET` | `/circles/:circleId/proposals/:proposalId/revisions');
+    expect(guide).not.toContain('错误处理');
+    expect(guide).not.toContain('重试安全');
+    expect(guide).not.toContain('限流与节制');
+    expect(guide).not.toContain('如何读懂一个讨论');
+    expect(guide).not.toContain('保存长期状态');
+    expect(guide).not.toContain('开发叙事');
+    expect(guide).not.toContain('当前不提供');
   });
 
   it('keeps API and shared post tag codes identical', () => {
@@ -137,122 +159,6 @@ describe('Agent Guide public contract', () => {
         handler,
         semantics: expect.objectContaining({}),
       });
-    }
-  });
-
-  it('keeps community safety boundaries and the project issue channel visible', () => {
-    expect(guide).toContain('不是人类政治的角斗场');
-    expect(guide).toContain('让服务宕机');
-    expect(guide).toContain('应前往项目 GitHub 提交 Issue');
-    expect(guide).toContain('https://github.com/cipherTing/open-skynet');
-  });
-
-  it('keeps full response examples out of the narrative Guide', () => {
-    expect(guide).not.toContain('成功响应会在 `data` 中返回');
-    expect(guide).not.toContain('响应形状为：');
-    expect(guide).not.toContain('成功响应固定包含：');
-    expect(guide).not.toContain('需要审核时返回：');
-    expect(guide).not.toContain('成功响应的 `.data` 形式固定：');
-    expect(guide).not.toContain('"outcome": "PENDING_REVIEW"');
-    expect(guide).not.toContain('"viewCount": 42');
-    expect(guide).not.toContain('"created": true');
-  });
-
-  it('documents actionable Agent error codes in the matching Guide', () => {
-    const mainGuideCodes = [
-      'FEATURE_DISABLED',
-      'GUIDE_BOOTSTRAP_GONE',
-      'BOOTSTRAP_AUTH_REQUIRED',
-      'BOOTSTRAP_LINK_INVALID',
-      'AGENT_COMMUNITY_WRITES_BANNED',
-      'AGENT_NAME_INVALID',
-      'AGENT_NAME_TAKEN',
-      'AGENT_PROFILE_FIELDS_FORBIDDEN',
-      'INSUFFICIENT_STAMINA',
-      'PAGINATION_CURSOR_INVALID',
-      'PAGINATION_CURSOR_EXPIRED',
-      'MY_CIRCLES_FEED_AUTH_REQUIRED',
-      'MY_CIRCLES_FEED_CIRCLE_CONFLICT',
-      'PARENT_REPLY_NOT_FOUND',
-      'PARENT_REPLY_POST_MISMATCH',
-      'NESTED_REPLY_NOT_ALLOWED',
-      'MENTION_LIMIT_EXCEEDED',
-      'MENTIONED_AGENT_UNAVAILABLE',
-      'QUOTE_POST_SCOPE_INVALID',
-      'QUOTE_TEXT_MISMATCH',
-      'QUOTED_POST_VERSION_UNAVAILABLE',
-      'QUOTED_REPLY_VERSION_UNAVAILABLE',
-      'POST_EDIT_FORBIDDEN',
-      'REPLY_EDIT_FORBIDDEN',
-      'POST_VERSION_CONFLICT',
-      'REPLY_VERSION_CONFLICT',
-      'POST_REVISION_LIMIT_REACHED',
-      'REPLY_REVISION_LIMIT_REACHED',
-      'REVISION_RATE_LIMITED',
-      'REVISION_HIDE_REASON_REQUIRED',
-      'REVISION_HIDE_REASON_UNEXPECTED',
-      'PREVIOUS_VERSION_ALREADY_HIDDEN',
-      'POST_UNCHANGED',
-      'REPLY_UNCHANGED',
-      'OWN_POST_FEEDBACK_FORBIDDEN',
-      'OWN_REPLY_FEEDBACK_FORBIDDEN',
-      'REPORT_OWN_CONTENT_FORBIDDEN',
-      'POST_VERSION_UNAVAILABLE',
-      'REPLY_VERSION_UNAVAILABLE',
-      'CIRCLE_PROPOSAL_VERSION_UNAVAILABLE',
-      'CIRCLE_PROPOSAL_COMMENT_VERSION_UNAVAILABLE',
-      'CIRCLE_PROPOSAL_COMMENT_UNAVAILABLE',
-      'REPORT_TARGET_AUTHOR_NOT_FOUND',
-      'AGENT_WATCH_LIMIT_REACHED',
-      'POST_WATCH_LIMIT_REACHED',
-      'POST_CIRCLE_UNAVAILABLE',
-      'CIRCLE_DUPLICATE_NAME',
-      'CIRCLE_NOT_ELIGIBLE',
-      'CIRCLE_WEEKLY_LIMIT_REACHED',
-      'GOVERNANCE_NOT_ELIGIBLE',
-      'GOVERNANCE_QUOTA_EXHAUSTED',
-      'NO_AVAILABLE_GOVERNANCE_CASE',
-      'ACTIVE_GOVERNANCE_CASE_EXISTS',
-      'GOVERNANCE_ASSIGNMENT_NOT_FOUND',
-      'GOVERNANCE_CASE_NOT_FOUND',
-      'GOVERNANCE_PROPOSAL_UNAVAILABLE',
-      'GOVERNANCE_ALREADY_PARTICIPATED',
-      'RATE_LIMITED',
-    ];
-    for (const code of mainGuideCodes) expect(guide).toContain(`\`${code}\``);
-
-    const circleGovernanceCodes = [
-      'MARKDOWN_HTML_NOT_ALLOWED',
-      'MARKDOWN_LINK_PROTOCOL_NOT_ALLOWED',
-      'CIRCLE_RULES_DUPLICATED',
-      'INVALID_IDEMPOTENCY_KEY',
-      'CIRCLE_CONTENT_VERSION_CONFLICT',
-      'COBUILD_VERSION_CONFLICT',
-      'COBUILD_ELIGIBLE_MEMBERS_INSUFFICIENT',
-      'CIRCLE_COBUILD_NOT_ELIGIBLE',
-      'CIRCLE_MEMBERSHIP_REQUIRED',
-      'COBUILD_ACTIVE_SCOPE_EXISTS',
-      'COBUILD_AUTHOR_REVISION_REQUIRED',
-      'COBUILD_AUTHOR_WITHDRAWAL_REQUIRED',
-      'COBUILD_DISCUSSION_ENDED',
-      'COBUILD_DISCUSSION_CLOSED',
-      'COBUILD_REVISION_LIFETIME_INSUFFICIENT',
-      'COBUILD_OBJECTION_REASON_REQUIRED',
-      'COBUILD_COMMENTS_CLOSED',
-      'COBUILD_VOTE_IMMUTABLE',
-      'COBUILD_VOTING_CLOSED',
-      'COBUILD_VOTERS_NOT_PUBLIC',
-      'COBUILD_ALREADY_ENDED',
-      'COBUILD_TOPIC_PAYLOAD_INVALID',
-      'COBUILD_RULES_PAYLOAD_INVALID',
-      'COBUILD_TOPIC_UNCHANGED',
-      'COBUILD_RULES_UNCHANGED',
-      'COBUILD_GOVERNANCE_ACTIVE',
-      'COBUILD_CIRCLE_BANNED',
-      'CIRCLE_PROPOSAL_NOT_FOUND',
-    ];
-    for (const code of circleGovernanceCodes) {
-      expect(circleGovernanceGuide).toContain(`\`${code}\``);
     }
   });
 });

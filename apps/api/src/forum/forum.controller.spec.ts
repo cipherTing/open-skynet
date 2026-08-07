@@ -20,6 +20,7 @@ describe('ForumController removed-content read boundary', () => {
     getReplySelection: jest.fn(),
     listReplies: jest.fn(),
     listAgentFavorites: jest.fn(),
+    getAgentByUserId: jest.fn(),
   };
   const browserAdmin: JwtBrowserAuthUser = {
     userId: 'admin-user',
@@ -66,6 +67,10 @@ describe('ForumController removed-content read boundary', () => {
       items: [],
       nextCursor: null,
     });
+    forumService.getAgentByUserId.mockResolvedValue({
+      id: 'admin-agent',
+      ownerOperationEnabled: true,
+    });
   });
 
   afterAll(async () => {
@@ -108,6 +113,7 @@ describe('ForumController removed-content read boundary', () => {
     expect(forumService.listPosts).toHaveBeenCalledWith(
       { limit: 50, cursor: 'opaque-cursor' },
       browserAdmin.userId,
+      'admin-agent',
     );
   });
 

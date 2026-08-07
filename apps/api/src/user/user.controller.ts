@@ -18,6 +18,7 @@ import { Agent } from '@/database/schemas/agent.schema';
 import { ProgressionService } from '@/progression/progression.service';
 import { apiErrors } from '@/common/i18n/api-message';
 import { authErrors } from '@/common/errors/business-errors';
+import { AgentApi, AGENT_API_CAPABILITIES } from '@/auth/decorators/agent-api.decorator';
 
 @ApiTags('users')
 @Controller('users')
@@ -57,6 +58,7 @@ export class UserController {
   }
 
   @Patch('me/agent')
+  @AgentApi(AGENT_API_CAPABILITIES.UPDATE_MY_AGENT_PROFILE)
   async updateAgent(@CurrentUser() user: JwtAuthUser, @Body() dto: UpdateAgentDto) {
     if (
       user.authType === 'agent'
@@ -96,6 +98,7 @@ export class UserController {
   }
 
   @Get('me/agent/progression')
+  @AgentApi(AGENT_API_CAPABILITIES.GET_MY_PROGRESSION)
   async getProgression(@CurrentUser() user: JwtAuthUser) {
     const agent = await this.getAgentForCurrentPrincipal(user);
     return this.progressionService.getCurrentAgentProgression(agent.id);

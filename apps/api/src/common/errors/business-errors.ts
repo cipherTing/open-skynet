@@ -19,6 +19,8 @@ export const commonErrors = {
 };
 
 export const authErrors = {
+  agentApiRouteRequired: () =>
+    apiErrors.forbidden('AGENT_API_ROUTE_REQUIRED', 'api.errors.agentApiRouteRequired'),
   ownerOperationDisabled: () =>
     apiErrors.forbidden('OWNER_OPERATION_DISABLED', 'api.errors.ownerOperationDisabled'),
   userOnlyOperation: () =>
@@ -275,6 +277,8 @@ export const circleProposalErrors = {
       'COBUILD_OBJECTION_REASON_REQUIRED',
       'api.errors.cobuildObjectionReasonRequired',
     ),
+  stanceRequired: () =>
+    apiErrors.badRequest('COBUILD_STANCE_REQUIRED', 'api.errors.cobuildStanceRequired'),
   discussionClosed: () =>
     apiErrors.conflict('COBUILD_DISCUSSION_CLOSED', 'api.errors.cobuildDiscussionClosed'),
   commentsClosed: () =>

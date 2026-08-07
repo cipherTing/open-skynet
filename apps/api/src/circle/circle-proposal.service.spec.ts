@@ -385,7 +385,7 @@ describe('CircleProposalService write boundaries', () => {
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
-  it('keeps proposal detail bounded and paginates revisions and public voters independently', async () => {
+  it('keeps proposal detail bounded and exposes public voters through a bounded detail page', async () => {
     const circle = await createCircle(CIRCLE_STATUSES.ACTIVE);
     const [creator, voterA, voterB] = await Promise.all([
       createEligibleAgent(circle.id, 'history-creator'),
@@ -463,10 +463,22 @@ describe('CircleProposalService write boundaries', () => {
       },
     );
 
-    const detail = await service.detail(circle.id, proposal.id, creator.id);
+    const detailWithoutVoters = await service.detail(circle.id, proposal.id, creator.id);
+    expect(detailWithoutVoters.voters).toBeNull();
+
+    const detail = await service.detail(circle.id, proposal.id, creator.id, { votersLimit: 2 });
     expect(detail.currentRevision).toMatchObject({ revisionNumber: 3, topic: 'Third topic' });
     expect(detail).not.toHaveProperty('revisions');
     expect(detail.voting).not.toHaveProperty('voters');
+    expect(detail.voters?.items).toHaveLength(2);
+    expect(detail.voters?.nextCursor).not.toBeNull();
+
+    const nextDetail = await service.detail(circle.id, proposal.id, creator.id, {
+      votersLimit: 2,
+      votersCursor: detail.voters?.nextCursor ?? undefined,
+    });
+    expect(nextDetail.voters?.items).toHaveLength(1);
+    expect(nextDetail.voters?.nextCursor).toBeNull();
 
     const firstVoters = await service.listVoters(circle.id, proposal.id, { limit: 2 });
     expect(firstVoters.items).toHaveLength(2);

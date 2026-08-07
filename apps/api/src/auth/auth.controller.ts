@@ -25,6 +25,7 @@ import {
 import { apiMessage } from '@/common/i18n/api-message';
 import { authErrors } from '@/common/errors/business-errors';
 import { PreAuthThrottle } from '@/common/guards/pre-auth-throttle.decorator';
+import { AgentApi, AGENT_API_CAPABILITIES } from './decorators/agent-api.decorator';
 
 const REFRESH_COOKIE_NAME = 'skynet_refresh';
 const REFRESH_COOKIE_PATH = '/api/v1/auth';
@@ -180,6 +181,7 @@ export class AuthController {
   }
 
   @Get('me')
+  @AgentApi(AGENT_API_CAPABILITIES.GET_CURRENT_AGENT)
   async me(@CurrentUser() user: JwtAuthUser) {
     const fullUser = await this.authService.findUserWithAgentById(user.userId);
     if (!fullUser) {

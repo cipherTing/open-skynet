@@ -27,6 +27,7 @@ import {
   CIRCLE_PROPOSAL_DISCUSSION_HOURS,
   CIRCLE_PROPOSAL_MAX_LIFETIME_DAYS,
   CIRCLE_PROPOSAL_SCOPES,
+  CIRCLE_PROPOSAL_STANCE_ACTIONS,
   CIRCLE_PROPOSAL_STANCES,
   CIRCLE_PROPOSAL_STATUSES,
   CIRCLE_PROPOSAL_VOTING_HOURS,
@@ -38,6 +39,7 @@ import {
 } from './circle.constants';
 import type {
   CastCircleProposalVoteDto,
+  CircleProposalDetailQueryDto,
   CreateCircleProposalCommentDto,
   CreateCircleProposalDto,
   ExpectedCircleProposalVersionDto,
@@ -49,7 +51,10 @@ import type {
 } from './dto/circle-proposal.dto';
 import { circleProposalErrors, commonErrors } from '@/common/errors/business-errors';
 import { isApiMessage } from '@/common/i18n/api-message';
-import { CURSOR_PAGINATION_DEFAULT_LIMIT } from '@/common/dto/cursor-pagination.dto';
+import {
+  CURSOR_PAGINATION_DEFAULT_LIMIT,
+  CURSOR_PAGINATION_MAX_LIMIT,
+} from '@/common/dto/cursor-pagination.dto';
 import {
   decodeOrdinalCursor as decodeResourceOrdinalCursor,
   decodeTimestampCursor as decodeResourceTimestampCursor,
@@ -224,7 +229,12 @@ export class CircleProposalService {
     };
   }
 
-  async detail(circleId: string, proposalId: string, viewerAgentId?: string) {
+  async detail(
+    circleId: string,
+    proposalId: string,
+    viewerAgentId?: string,
+    query: CircleProposalDetailQueryDto = {},
+  ) {
     const proposal = await this.getProposal(circleId, proposalId);
     const terminal = !ACTIVE_STATUSES.includes(proposal.status);
     const viewerOwnerUserId = viewerAgentId ? await this.resolveOwnerUserId(viewerAgentId) : null;
@@ -259,6 +269,17 @@ export class CircleProposalService {
         viewerAgentId ? this.getEligibility(circleId, viewerAgentId) : Promise.resolve(null),
       ]);
     if (!currentRevision) throw new Error('Missing current circle proposal revision');
+    const shouldReadVoters =
+      terminal && (query.votersLimit !== undefined || query.votersCursor !== undefined);
+    const voters = shouldReadVoters
+      ? await this.listVoters(circleId, proposalId, {
+          limit: Math.min(
+            query.votersLimit ?? CURSOR_PAGINATION_DEFAULT_LIMIT,
+            CURSOR_PAGINATION_MAX_LIMIT,
+          ),
+          cursor: query.votersCursor,
+        })
+      : null;
     return {
       ...this.serializeSummary(proposal),
       base: {
@@ -279,6 +300,7 @@ export class CircleProposalService {
         rejectCount: terminal ? proposal.rejectCount : null,
         currentChoice: currentVote?.choice ?? null,
       },
+      voters,
       eligibility,
     };
   }
@@ -606,6 +628,10 @@ export class CircleProposalService {
     actorAgentId: string,
     dto: SetCircleProposalStanceDto,
   ) {
+    if (dto.action === CIRCLE_PROPOSAL_STANCE_ACTIONS.WITHDRAW) {
+      return this.withdrawStance(circleId, proposalId, actorAgentId, dto);
+    }
+    if (!dto.stance) throw circleProposalErrors.stanceRequired();
     const reason = dto.reason ? normalizeMarkdown(dto.reason) : null;
     if (dto.stance === CIRCLE_PROPOSAL_STANCES.OBJECTION && !reason) {
       throw circleProposalErrors.objectionReasonRequired();

@@ -41,9 +41,9 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { useCursorPaginationRetry } from '@/hooks/useCursorPaginationRetry';
 import type {
   CircleProposalCommentResponse,
+  CircleProposalDetail,
   CircleProposalRevisionPage,
   CircleProposalStatus,
-  CircleProposalVoterPage,
 } from '@skynet/shared';
 
 const PROGRESS_BLOCKS = 24;
@@ -121,13 +121,14 @@ export function CircleProposalDetailPage({
     retry: false,
     queryFn: circleId
       ? ({ pageParam }) =>
-          circleApi.proposalVoters(circleId, proposalId, {
-            cursor: pageParam,
-            limit: PROPOSAL_HISTORY_PAGE_SIZE,
+          circleApi.proposal(circleId, proposalId, {
+            votersCursor: pageParam ?? undefined,
+            votersLimit: PROPOSAL_HISTORY_PAGE_SIZE,
           })
       : skipToken,
     initialPageParam: null,
-    getNextPageParam: (lastPage: CircleProposalVoterPage) => lastPage.nextCursor ?? undefined,
+    getNextPageParam: (lastPage: CircleProposalDetail) =>
+      lastPage.voters?.nextCursor ?? undefined,
     enabled: votersOpen && isAuthenticated && Boolean(proposal?.resolvedAt),
   });
   const commentsQueryKey = circleId
@@ -209,16 +210,21 @@ export function CircleProposalDetailPage({
       if (kind === 'support')
         return circleApi.setProposalStance(circle.id, proposal.id, {
           expectedVersion: proposal.version,
+          action: 'SET',
           stance: 'SUPPORT',
         });
       if (kind === 'object')
         return circleApi.setProposalStance(circle.id, proposal.id, {
           expectedVersion: proposal.version,
+          action: 'SET',
           stance: 'OBJECTION',
           reason: objection.trim(),
         });
       if (kind === 'withdrawStance')
-        return circleApi.withdrawProposalStance(circle.id, proposal.id, proposal.version);
+        return circleApi.setProposalStance(circle.id, proposal.id, {
+          expectedVersion: proposal.version,
+          action: 'WITHDRAW',
+        });
       if (kind === 'approve')
         return circleApi.voteProposal(circle.id, proposal.id, {
           expectedVersion: proposal.version,
@@ -277,7 +283,7 @@ export function CircleProposalDetailPage({
     [revisionsQuery.data?.pages],
   );
   const voters = useMemo(
-    () => votersQuery.data?.pages.flatMap((page) => page.items) ?? [],
+    () => votersQuery.data?.pages.flatMap((page) => page.voters?.items ?? []) ?? [],
     [votersQuery.data?.pages],
   );
   const comments = useMemo(

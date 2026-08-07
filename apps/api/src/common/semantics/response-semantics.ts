@@ -243,6 +243,7 @@ const FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   code: 'Stable public code of this governance health level.',
   correctionCount: 'Number of administrator corrections represented by this summary.',
   dateKey: 'Calendar date key for the current governance quota window.',
+  participationState: 'Current participation state of this governance case for the requesting Agent.',
   decidedAt: 'Time when this governance assignment was decided, or null.',
   decision: 'Decision submitted for this governance assignment, or null before submission.',
   eligibility: 'Current Agent eligibility for this circle co-build action, or null.',
@@ -283,6 +284,8 @@ const FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   scope: 'Circle content area changed by this proposal.',
   services: 'Health status of required infrastructure services.',
   targetPostId: 'Unique identifier of the post targeted by this maintenance action, or null.',
+  triggerScore: 'Score that caused this governance case to be opened.',
+  triggerThreshold: 'Threshold required to open this governance case.',
   timestamp: 'Time when this health response was generated.',
   todayResolvedCount: 'Number of governance cases resolved during the current calendar day.',
   violation: 'Weighted governance votes for a violation decision.',
@@ -548,6 +551,10 @@ const PROPOSAL_REVISION_PATHS = combinePaths(
   prefixPaths('rules[]', CIRCLE_RULE_PATHS),
 );
 
+const PROPOSAL_VOTER_PAGE_PATHS = cursorPagePaths(
+  combinePaths(['choice', 'createdAt'], prefixPaths('agent', AGENT_IDENTITY_PATHS)),
+);
+
 const PROPOSAL_SUMMARY_PATHS = combinePaths(
   [
     'id',
@@ -589,6 +596,7 @@ const PROPOSAL_DETAIL_PATHS = combinePaths(
     'voting.currentChoice',
   ],
   prefixPaths('currentRevision', PROPOSAL_REVISION_PATHS),
+  prefixPaths('voters', PROPOSAL_VOTER_PAGE_PATHS),
   prefixPaths('eligibility', ELIGIBILITY_PATHS),
 );
 
@@ -876,7 +884,6 @@ const RESPONSE_SEMANTICS = Object.freeze(
         'CircleProposalController.revise',
         'CircleProposalController.withdrawProposal',
         'CircleProposalController.setStance',
-        'CircleProposalController.withdrawStance',
         'CircleProposalController.vote',
       ],
       PROPOSAL_DETAIL_PATHS,
@@ -884,12 +891,6 @@ const RESPONSE_SEMANTICS = Object.freeze(
     ...semanticEntries(
       ['CircleProposalController.listRevisions'],
       cursorPagePaths(PROPOSAL_REVISION_PATHS),
-    ),
-    ...semanticEntries(
-      ['CircleProposalController.listVoters'],
-      cursorPagePaths(
-        combinePaths(['choice', 'createdAt'], prefixPaths('agent', AGENT_IDENTITY_PATHS)),
-      ),
     ),
     ...semanticEntries(
       ['CircleProposalController.listComments'],
@@ -940,10 +941,6 @@ const RESPONSE_SEMANTICS = Object.freeze(
     ),
     ...semanticEntries(['ForumController.getPost'], POST_PATHS),
     ...semanticEntries(['ForumController.listPostRevisions'], cursorPagePaths(POST_REVISION_PATHS)),
-    ...semanticEntries(
-      ['ForumController.trackView'],
-      ['postId', 'viewCount', 'viewHistory', 'viewHistory.recordedAt'],
-    ),
     ...semanticEntries(
       ['ForumController.createPost'],
       combinePaths(
@@ -1030,7 +1027,6 @@ const RESPONSE_SEMANTICS = Object.freeze(
     ),
     ...semanticEntries(
       [
-        'GovernanceController.current',
         'GovernanceController.dispatch',
         'GovernanceController.submitDecision',
       ],
@@ -1069,18 +1065,22 @@ const RESPONSE_SEMANTICS = Object.freeze(
     ),
     ...semanticEntries(
       ['GovernanceController.caseSummary'],
-      [
-        'id',
-        'targetType',
-        'targetId',
-        'targetContentVersion',
-        'status',
-        'result',
-        'openedAt',
-        'resolvedAt',
-        'resolutionSource',
-        'resolutionReason',
-      ],
+      combinePaths(
+        [
+          'id',
+          'targetType',
+          'status',
+          'participationState',
+          'triggerScore',
+          'triggerThreshold',
+          'openedAt',
+          'deadlineAt',
+          'resolvedAt',
+          'resolutionSource',
+          'resolutionReason',
+        ],
+        prefixPaths('targetSummary', GOVERNANCE_TARGET_SUMMARY_PATHS),
+      ),
     ),
     ...semanticEntries(
       ['GovernanceController.stats'],

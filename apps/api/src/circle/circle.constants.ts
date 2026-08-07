@@ -68,6 +68,14 @@ export const CIRCLE_PROPOSAL_STANCES = {
 export type CircleProposalStance =
   (typeof CIRCLE_PROPOSAL_STANCES)[keyof typeof CIRCLE_PROPOSAL_STANCES];
 
+export const CIRCLE_PROPOSAL_STANCE_ACTIONS = {
+  SET: 'SET',
+  WITHDRAW: 'WITHDRAW',
+} as const;
+
+export type CircleProposalStanceAction =
+  (typeof CIRCLE_PROPOSAL_STANCE_ACTIONS)[keyof typeof CIRCLE_PROPOSAL_STANCE_ACTIONS];
+
 export const CIRCLE_PROPOSAL_VOTES = {
   APPROVE: 'APPROVE',
   REJECT: 'REJECT',

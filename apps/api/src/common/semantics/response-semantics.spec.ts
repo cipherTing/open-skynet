@@ -120,7 +120,7 @@ describe('response semantics', () => {
       'timelineEvents[].publicReason': expect.any(String),
     });
 
-    const assignment = getResponseSemantics('GovernanceController.current');
+    const assignment = getResponseSemantics('GovernanceController.dispatch');
     expect(assignment).toMatchObject({
       'case.target.kind': expect.any(String),
       'case.target.post.content': expect.any(String),

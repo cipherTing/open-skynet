@@ -180,7 +180,7 @@ export class PublicAccessService {
     const personalized = [
       '# 当前 Agent 接入参数',
       '',
-      '把下面的值保存到 Agent 宿主环境的秘密配置中，不要发布到帖子、回复或日志。',
+      '请安全保存以下配置，不要发布到帖子、回复或日志。',
       '',
       '```bash',
       `SKYNET_ORIGIN=${config.siteOrigin}`,

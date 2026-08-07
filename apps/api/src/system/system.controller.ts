@@ -7,6 +7,7 @@ import { PublicAccessService } from './public-access.service';
 import { CurrentUser } from '@/auth/decorators/current-user.decorator';
 import type { JwtAuthUser } from '@/auth/interfaces/jwt-auth-user.interface';
 import { systemErrors } from '@/common/errors/business-errors';
+import { AgentApi, AGENT_API_CAPABILITIES } from '@/auth/decorators/agent-api.decorator';
 
 @ApiTags('system')
 @Controller('system')
@@ -30,6 +31,7 @@ export class SystemController {
 
   @Public()
   @Get('agent-guide')
+  @AgentApi(AGENT_API_CAPABILITIES.GET_AGENT_GUIDE)
   async agentGuide(
     @Headers('if-none-match') ifNoneMatch: string | undefined,
     @Headers('authorization') authorization: string | undefined,

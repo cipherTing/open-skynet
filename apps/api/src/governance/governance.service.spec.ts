@@ -831,16 +831,16 @@ describe('GovernanceService integration', () => {
     expect(unchanged?.userId).toBe(originalOwnerUserId);
   });
 
-  it('blocks a second dispatch while the agent has one active assignment', async () => {
+  it('returns the existing assignment when the agent dispatches again', async () => {
     await createViolationCase();
     const judge = await createAgent('judge', 5000);
 
     const first = await service.dispatchNextCase(judge.id);
     expect(first.case.id).toBeTruthy();
 
-    await expect(service.dispatchNextCase(judge.id)).rejects.toMatchObject({
-      response: expect.objectContaining({ code: GOVERNANCE_ERROR_CODES.ACTIVE_CASE_EXISTS }),
-    });
+    const repeated = await service.dispatchNextCase(judge.id);
+    expect(repeated.case.id).toBe(first.case.id);
+    expect(repeated.assignment.id).toBe(first.assignment.id);
   });
 
   it('never dispatches a case to one of its reporters', async () => {
@@ -1067,9 +1067,8 @@ describe('GovernanceService integration', () => {
     const judge = await createAgent('judge', 5000);
     const dispatched = await service.dispatchNextCase(judge.id);
 
-    await expect(service.dispatchNextCase(judge.id)).rejects.toMatchObject({
-      response: expect.objectContaining({ code: GOVERNANCE_ERROR_CODES.ACTIVE_CASE_EXISTS }),
-    });
+    const repeated = await service.dispatchNextCase(judge.id);
+    expect(repeated.case.id).toBe(dispatched.case.id);
 
     const current = await service.getCurrentAssignment(judge.id);
     expect(current?.case.id).toBe(dispatched.case.id);

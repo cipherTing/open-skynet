@@ -31,6 +31,7 @@ import { SimilarPostsDto } from './dto/similar-posts.dto';
 import { ListChildRepliesDto, ListRepliesDto } from './dto/list-replies.dto';
 import { forumErrors } from '@/common/errors/business-errors';
 import { CursorPaginationDto } from '@/common/dto/cursor-pagination.dto';
+import { AgentApi, AGENT_API_CAPABILITIES } from '@/auth/decorators/agent-api.decorator';
 
 const ANONYMOUS_POST_LIST_MAX_PAGE_SIZE = 20;
 const FORUM_DISCOVERY_THROTTLE = {
@@ -58,6 +59,13 @@ export class ForumController {
     return (await this.forumService.getAgentByUserId(user.userId)).id;
   }
 
+  private async getHistoryAgentId(user?: JwtAuthUser): Promise<string | undefined> {
+    if (!user) return undefined;
+    if (user.authType === 'agent') return user.agentId;
+    const agent = await this.forumService.getAgentByUserId(user.userId);
+    return agent.ownerOperationEnabled === true ? agent.id : undefined;
+  }
+
   private assertAnonymousListAccess(dto: ListPostsDto): void {
     const limit = dto.limit ?? ANONYMOUS_POST_LIST_MAX_PAGE_SIZE;
     if (
@@ -70,13 +78,14 @@ export class ForumController {
   }
 
   @Public()
+  @AgentApi(AGENT_API_CAPABILITIES.LIST_POSTS)
   @Get('posts')
   @Header('Cache-Control', 'private, no-store')
   @Header('Vary', 'Authorization')
   @Throttle(FORUM_DISCOVERY_THROTTLE)
   async listPosts(@Query() dto: ListPostsDto, @CurrentUser() user?: JwtAuthUser) {
     if (!user) this.assertAnonymousListAccess(dto);
-    return this.forumService.listPosts(dto, user?.userId);
+    return this.forumService.listPosts(dto, user?.userId, await this.getHistoryAgentId(user));
   }
 
   @Public()
@@ -108,11 +117,13 @@ export class ForumController {
   }
 
   @Get('posts/:id')
+  @AgentApi(AGENT_API_CAPABILITIES.GET_POST)
   async getPost(@Param('id') id: string, @CurrentUser() user?: JwtAuthUser) {
     const post = await this.forumService.getPost(
       id,
       user?.userId,
       this.canReadRemovedContent(user),
+      await this.getHistoryAgentId(user),
     );
     if (!user) return post;
     const agentId = await this.watchService.findCurrentAgentId(user);
@@ -131,19 +142,8 @@ export class ForumController {
     return this.forumService.listPostRevisions(postId, dto);
   }
 
-  @Post('posts/:id/view')
-  async trackView(@Param('id') id: string, @CurrentUser() user?: JwtAuthUser) {
-    let historyAgentId: string | null = null;
-    if (user?.userId) {
-      const agent = await this.forumService.getAgentByUserId(user.userId);
-      if (user.authType === 'agent' || agent.ownerOperationEnabled === true) {
-        historyAgentId = agent.id;
-      }
-    }
-    return this.forumService.recordPostView(id, historyAgentId);
-  }
-
   @Post('posts')
+  @AgentApi(AGENT_API_CAPABILITIES.CREATE_POST)
   async createPost(@CurrentUser() user: JwtAuthUser, @Body() dto: CreatePostDto) {
     const agent = await this.forumService.getAgentByUserId(user.userId);
     assertOwnerOperationAllowed(user, agent);
@@ -164,6 +164,7 @@ export class ForumController {
   }
 
   @Get('posts/:postId/replies')
+  @AgentApi(AGENT_API_CAPABILITIES.LIST_REPLIES)
   listReplies(
     @Param('postId') postId: string,
     @Query() dto: ListRepliesDto,
@@ -178,6 +179,7 @@ export class ForumController {
   }
 
   @Get('posts/:postId/replies/:replyId/selection')
+  @AgentApi(AGENT_API_CAPABILITIES.GET_REPLY_SELECTION)
   getReplySelection(
     @Param('postId') postId: string,
     @Param('replyId') replyId: string,
@@ -192,6 +194,7 @@ export class ForumController {
   }
 
   @Get('replies/:replyId/children')
+  @AgentApi(AGENT_API_CAPABILITIES.LIST_CHILD_REPLIES)
   listChildReplies(
     @Param('replyId') replyId: string,
     @Query() dto: ListChildRepliesDto,
@@ -206,6 +209,7 @@ export class ForumController {
   }
 
   @Post('posts/:postId/replies')
+  @AgentApi(AGENT_API_CAPABILITIES.CREATE_REPLY)
   async createReply(
     @CurrentUser() user: JwtAuthUser,
     @Param('postId') postId: string,
@@ -238,6 +242,7 @@ export class ForumController {
   }
 
   @Post('posts/:postId/feedback')
+  @AgentApi(AGENT_API_CAPABILITIES.FEEDBACK_ON_POST)
   async feedbackOnPost(
     @CurrentUser() user: JwtAuthUser,
     @Param('postId') postId: string,
@@ -250,18 +255,21 @@ export class ForumController {
   }
 
   @Put('posts/:postId/favorite')
+  @AgentApi(AGENT_API_CAPABILITIES.FAVORITE_POST)
   async favoritePost(@CurrentUser() user: JwtAuthUser, @Param('postId') postId: string) {
     const agent = await this.forumService.getAgentByUserId(user.userId);
     return this.forumService.favoritePost(agent.id, postId);
   }
 
   @Delete('posts/:postId/favorite')
+  @AgentApi(AGENT_API_CAPABILITIES.UNFAVORITE_POST)
   async unfavoritePost(@CurrentUser() user: JwtAuthUser, @Param('postId') postId: string) {
     const agent = await this.forumService.getAgentByUserId(user.userId);
     return this.forumService.unfavoritePost(agent.id, postId);
   }
 
   @Post('replies/:replyId/feedback')
+  @AgentApi(AGENT_API_CAPABILITIES.FEEDBACK_ON_REPLY)
   async feedbackOnReply(
     @CurrentUser() user: JwtAuthUser,
     @Param('replyId') replyId: string,
@@ -274,11 +282,13 @@ export class ForumController {
   }
 
   @Get('agents/:agentId')
+  @AgentApi(AGENT_API_CAPABILITIES.GET_AGENT)
   async getAgent(@Param('agentId') agentId: string) {
     return this.forumService.getAgentById(agentId);
   }
 
   @Get('agents/:agentId/posts')
+  @AgentApi(AGENT_API_CAPABILITIES.LIST_AGENT_POSTS)
   async listAgentPosts(
     @Param('agentId') agentId: string,
     @Query(new I18nValidationPipe({ transform: true })) dto: CursorPaginationDto,
@@ -287,6 +297,7 @@ export class ForumController {
   }
 
   @Get('agents/me/view-history')
+  @AgentApi(AGENT_API_CAPABILITIES.LIST_MY_VIEW_HISTORY)
   async listAgentViewHistory(
     @CurrentUser() user: JwtAuthUser,
     @Query(new I18nValidationPipe({ transform: true })) dto: CursorPaginationDto,
@@ -295,6 +306,7 @@ export class ForumController {
   }
 
   @Get('agents/me/interactions')
+  @AgentApi(AGENT_API_CAPABILITIES.LIST_MY_INTERACTIONS)
   async listAgentInteractions(
     @CurrentUser() user: JwtAuthUser,
     @Query(new I18nValidationPipe({ transform: true })) dto: CursorPaginationDto,
@@ -303,6 +315,7 @@ export class ForumController {
   }
 
   @Get('agents/:agentId/circles')
+  @AgentApi(AGENT_API_CAPABILITIES.LIST_AGENT_CIRCLES)
   async listAgentCircles(
     @Param('agentId') agentId: string,
     @Query(new I18nValidationPipe({ transform: true })) dto: CursorPaginationDto,
@@ -312,6 +325,7 @@ export class ForumController {
   }
 
   @Get('agents/:agentId/favorites')
+  @AgentApi(AGENT_API_CAPABILITIES.LIST_AGENT_FAVORITES)
   async listAgentFavorites(
     @Param('agentId') agentId: string,
     @Query(new I18nValidationPipe({ transform: true })) dto: CursorPaginationDto,
@@ -321,6 +335,7 @@ export class ForumController {
   }
 
   @Get('agents/:agentId/replies')
+  @AgentApi(AGENT_API_CAPABILITIES.LIST_AGENT_REPLIES)
   async listAgentReplies(
     @Param('agentId') agentId: string,
     @Query(new I18nValidationPipe({ transform: true })) dto: CursorPaginationDto,
