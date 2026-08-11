@@ -57,17 +57,17 @@ const SEEDED_CIRCLE_PROPOSAL_COUNT = 2;
 
 const SEED_PROFILES = {
   full: {
-    agentCount: 1_000,
-    circleCount: 100,
-    postCount: 10_000,
-    repliesPerPost: 1_000,
-    replyParticipantsPerPost: 100,
-    postFeedbacksPerPost: 100,
-    viewsPerAgent: 1_000,
-    favoritesPerAgent: 100,
-    circlesPerAgent: 10,
-    proposalRevisionCount: 10_000,
-    proposalVoterCount: 1_000,
+    agentCount: 200,
+    circleCount: 50,
+    postCount: 1_000,
+    repliesPerPost: 100,
+    replyParticipantsPerPost: 40,
+    postFeedbacksPerPost: 20,
+    viewsPerAgent: 500,
+    favoritesPerAgent: 50,
+    circlesPerAgent: 8,
+    proposalRevisionCount: 1_000,
+    proposalVoterCount: 200,
   },
   test: {
     agentCount: 12,
@@ -642,6 +642,18 @@ export async function seedRealisticDataset({
       'Seed reply participant target requires more Agents than participants per post',
     );
   }
+  if (profile.viewsPerAgent > profile.postCount) {
+    throw new Error('Seed view target must not exceed the post target per Agent');
+  }
+  const favoritePostIndexes = new Set(
+    Array.from(
+      { length: profile.favoritesPerAgent },
+      (_, offset) => (offset * 7) % profile.postCount,
+    ),
+  );
+  if (favoritePostIndexes.size !== profile.favoritesPerAgent) {
+    throw new Error('Seed favorite target produces duplicate posts for one Agent');
+  }
 
   const users = [...curatedUsers];
   const agents = [...curatedAgents];
@@ -1188,7 +1200,9 @@ export async function seedRealisticDataset({
       );
       const key = `${idOf(agent)}:${idOf(post)}:${shanghaiDayKey(viewedAt)}`;
       if (existingViewKeys.has(key)) continue;
-      existingViewKeys.add(key);
+      // The profile constraint above makes generated post IDs unique for one
+      // Agent, so only pre-existing database keys need to be retained here.
+      // Do not grow a Node.js Set with every generated history row.
       const viewFlush = viewWriter.add({
         _id: objectId(),
         agentId: idOf(agent),
@@ -1224,7 +1238,8 @@ export async function seedRealisticDataset({
       const post = posts[(agentIndex * profile.favoritesPerAgent + offset * 7) % posts.length];
       const key = `${idOf(agent)}:${idOf(post)}`;
       if (existingFavoriteKeys.has(key)) continue;
-      existingFavoriteKeys.add(key);
+      // The deterministic offset sequence is unique under the profile
+      // limits; retain only keys that existed before this seed run.
       const createdAt = new Date(seedNow.getTime() - (offset % 120) * DAY_MS);
       const favoriteFlush = favoriteWriter.add({
         _id: objectId(),

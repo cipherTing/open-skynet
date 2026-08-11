@@ -693,6 +693,34 @@ describe('ForumService circle feeds', () => {
     });
   });
 
+  it('handles a legacy view-history unique index left by the previous schema', async () => {
+    const circle = await createCircle('legacy-view-index');
+    const [author, viewer] = await Promise.all([
+      createAgent('legacy-view-index-author'),
+      createAgent('legacy-view-index-viewer'),
+    ]);
+    const post = await createPost(circle.id, author.id, 1);
+    const collection = connection.collection('view_histories');
+
+    await collection.dropIndex('agentId_1_postId_1_viewDay_1');
+    await collection.createIndex({ agentId: 1, postId: 1 }, { unique: true });
+    await collection.insertOne({
+      agentId: viewer.id,
+      postId: post.id,
+      viewedAt: new Date('2026-07-20T00:00:00.000Z'),
+      createdAt: new Date('2026-07-20T00:00:00.000Z'),
+      updatedAt: new Date('2026-07-20T00:00:00.000Z'),
+    });
+
+    try {
+      await expect(service.recordPostView(post.id, viewer.id)).resolves.toMatchObject({
+        postId: post.id,
+      });
+    } finally {
+      await connection.model(ViewHistory.name).syncIndexes();
+    }
+  });
+
   it('keeps concurrent view increments exact while limiting one post to fixed counter shards', async () => {
     const circle = await createCircle('view-counter-shards');
     const author = await createAgent('view-counter-author');
@@ -1052,18 +1080,18 @@ describe('ForumService circle feeds', () => {
       childLimit: 2,
       cursor: firstPage.nextCursor,
     });
-    expect(secondPage.items.filter(isVisibleForumServiceReply).map((reply) => reply.content)).toEqual(
-      ['top-2', 'top-3'],
-    );
+    expect(
+      secondPage.items.filter(isVisibleForumServiceReply).map((reply) => reply.content),
+    ).toEqual(['top-2', 'top-3']);
     expect(secondPage.nextCursor).toBeNull();
 
     const childPage = await service.listChildReplies(topReplies[0].id, {
       limit: 2,
       cursor: firstPageVisibleItems[0]?.childrenNextCursor ?? undefined,
     });
-    expect(childPage.items.filter(isVisibleForumServiceReply).map((reply) => reply.content)).toEqual(
-      ['child-0-2', 'child-0-3'],
-    );
+    expect(
+      childPage.items.filter(isVisibleForumServiceReply).map((reply) => reply.content),
+    ).toEqual(['child-0-2', 'child-0-3']);
     expect(childPage.nextCursor).not.toBeNull();
   });
 
@@ -1235,9 +1263,9 @@ describe('ForumService circle feeds', () => {
       'visible child one',
       'visible child two',
     ]);
-    await expect(
-      service.getReplySelection(post.id, childRows[1].id),
-    ).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.getReplySelection(post.id, childRows[1].id)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 
   it('counts distinct real community actors instead of completed daily tasks', async () => {

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types, type ClientSession, type FilterQuery } from 'mongoose';
 import { buildPostSearchText, Post, type PostDocument } from '@/database/schemas/post.schema';
@@ -312,6 +312,10 @@ function serializeDeletedReply(reply: ReplyDocument): DeletedReplyBackedJson {
 
 @Injectable()
 export class ForumService {
+  private readonly logger = new Logger(ForumService.name);
+  private viewHistoryIndexRepair: Promise<void> | null = null;
+  private viewHistoryIndexesChecked = false;
+
   constructor(
     @InjectModel(Post.name) private readonly postModel: Model<Post>,
     @InjectModel(PostRevision.name)
@@ -1095,12 +1099,7 @@ export class ForumService {
       throw forumErrors.postReviewTypeInvalid();
     }
     const postId = new Types.ObjectId();
-    await this.createPostInSession(
-      request.requesterAgentId,
-      request.payload,
-      postId,
-      session,
-    );
+    await this.createPostInSession(request.requesterAgentId, request.payload, postId, session);
     await this.progressionService.completePrechargedAction(
       {
         agentId: request.requesterAgentId,
@@ -1250,9 +1249,7 @@ export class ForumService {
 
     const limit = dto.limit ?? 20;
     const childLimit = dto.childLimit ?? 3;
-    const topReplyVisibility = includeRemovedPost
-      ? { deletedAt: { $exists: true } }
-      : {};
+    const topReplyVisibility = includeRemovedPost ? { deletedAt: { $exists: true } } : {};
     const childReplyVisibility = includeRemovedPost
       ? { deletedAt: { $exists: true } }
       : { deletedAt: null };
@@ -2389,9 +2386,71 @@ export class ForumService {
 
   // ── 浏览历史 ──
 
+  private async ensureViewHistoryIndexes(): Promise<void> {
+    if (this.viewHistoryIndexRepair) return this.viewHistoryIndexRepair;
+    if (this.viewHistoryIndexesChecked) return;
+
+    this.viewHistoryIndexesChecked = true;
+    const indexes = await this.viewHistoryModel.collection.listIndexes().toArray();
+    const legacyUniqueIndex = indexes.find((index) => {
+      const key = index.key ?? {};
+      return (
+        index.unique === true &&
+        Object.keys(key).length === 2 &&
+        key.agentId === 1 &&
+        key.postId === 1
+      );
+    });
+    if (!legacyUniqueIndex) return;
+
+    const repair = this.repairLegacyViewHistoryIndex(legacyUniqueIndex);
+    this.viewHistoryIndexRepair = repair;
+    try {
+      await repair;
+    } catch (error) {
+      this.viewHistoryIndexesChecked = false;
+      throw error;
+    } finally {
+      this.viewHistoryIndexRepair = null;
+    }
+  }
+
+  private async repairLegacyViewHistoryIndex(index: { name?: string }): Promise<void> {
+    this.logger.warn(
+      'Detected the legacy view-history unique index; synchronizing the current schema indexes.',
+    );
+    if (!index.name) {
+      throw new Error('The legacy view-history index has no name.');
+    }
+
+    // Mongoose caches model initialization state. Calling syncIndexes() alone
+    // after another process left the old unique index can therefore leave the
+    // stale index in place for the first write. Drop that exact legacy index,
+    // backfill the immutable day key, then create the schema indexes explicitly.
+    await this.viewHistoryModel.collection.dropIndex(index.name);
+    await this.viewHistoryModel.collection.updateMany(
+      { $or: [{ viewDay: { $exists: false } }, { viewDay: null }] },
+      [
+        {
+          $set: {
+            viewDay: {
+              $dateToString: {
+                format: '%Y-%m-%d',
+                date: '$viewedAt',
+                timezone: 'Asia/Shanghai',
+              },
+            },
+          },
+        },
+      ],
+    );
+    await this.viewHistoryModel.createIndexes();
+  }
+
   private async recordPostViewsForAgent(agentId: string, postIds: readonly string[]) {
     const uniquePostIds = [...new Set(postIds)];
     if (uniquePostIds.length === 0) return;
+    await this.ensureViewHistoryIndexes();
     const now = new Date();
     const viewDay = getShanghaiDayKey(now);
     const run = () =>
@@ -2420,6 +2479,24 @@ export class ForumService {
         return;
       } catch (error) {
         if (!isDuplicateKeyError(error) || attempt === 2) throw error;
+
+        // A legacy agentId+postId index can be introduced after the first
+        // request has cached the healthy schema. Re-check only on a duplicate
+        // key so normal concurrent upserts keep their existing bounded retry.
+        const indexes = await this.viewHistoryModel.collection.listIndexes().toArray();
+        const legacyUniqueIndex = indexes.find((index) => {
+          const key = index.key ?? {};
+          return (
+            index.unique === true &&
+            Object.keys(key).length === 2 &&
+            key.agentId === 1 &&
+            key.postId === 1
+          );
+        });
+        if (legacyUniqueIndex) {
+          this.viewHistoryIndexesChecked = false;
+          await this.ensureViewHistoryIndexes();
+        }
       }
     }
   }

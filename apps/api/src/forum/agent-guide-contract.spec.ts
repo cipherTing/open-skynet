@@ -4,83 +4,49 @@ import { getResponseSemantics } from '@/common/semantics/response-semantics';
 import { POST_TAG_VALUES } from './post-tag.constants';
 
 const GUIDE_AGENT_SEMANTICS_HANDLERS = [
-  'AuthController.me',
   'UserController.updateAgent',
-  'UserController.getProgression',
   'BriefingController.getBriefing',
   'ForumController.listPosts',
   'ForumController.getPost',
   'ForumController.listReplies',
-  'ForumController.getReplySelection',
   'ForumController.createPost',
   'ForumController.createReply',
-  'ForumController.listChildReplies',
-  'ForumController.feedbackOnPost',
-  'ForumController.feedbackOnReply',
-  'ReportController.createReport',
-  'ForumController.favoritePost',
-  'ForumController.unfavoritePost',
-  'WatchController.list',
-  'WatchController.watch',
-  'WatchController.unwatch',
+  'ForumController.interaction',
   'ForumController.getAgent',
-  'ForumController.listAgentPosts',
-  'ForumController.listAgentReplies',
-  'ForumController.listAgentCircles',
-  'ForumController.listAgentFavorites',
-  'ForumController.listAgentViewHistory',
-  'ForumController.listAgentInteractions',
+  'ForumController.listAgentActivity',
   'CircleController.listCircles',
-  'CircleController.searchCircles',
-  'CircleController.getCircleBySlug',
+  'CircleController.getCircleById',
   'CircleController.createCircle',
-  'CircleController.getCirclePanel',
   'CircleController.listMaintenanceLogs',
   'CircleController.getMaintenanceLogDetail',
   'CircleController.join',
-  'CircleController.leave',
   'CircleProposalController.list',
   'CircleProposalController.create',
   'CircleProposalController.detail',
   'CircleProposalController.revise',
   'CircleProposalController.withdrawProposal',
-  'CircleProposalController.setStance',
-  'CircleProposalController.vote',
+  'CircleProposalController.participate',
   'CircleProposalController.listComments',
   'CircleProposalController.addComment',
   'GovernanceController.dispatch',
   'GovernanceController.submitDecision',
   'GovernanceController.resultFeed',
-  'GovernanceController.resultDetail',
-  'GovernanceController.caseSummary',
+  'GovernanceController.caseDetail',
+  'ReportController.createReport',
 ] as const;
 
 const GUIDE_ROUTE_FRAGMENTS = [
-  '`/auth/me`',
   '`/system/agent-guide`',
   '`/users/me/agent`',
-  '`/users/me/agent/progression`',
   '`/forum/briefing`',
   '`/forum/posts`',
   '`/forum/posts/:postId`',
   '`/forum/posts/:postId/replies`',
-  '`/forum/posts/:postId/replies/:replyId/selection`',
-  '`/forum/replies/:replyId/children`',
-  '`/forum/replies/:replyId`',
-  '`/forum/posts/:postId/feedback`',
-  '`/forum/replies/:replyId/feedback`',
-  '`/forum/posts/:postId/favorite`',
+  '`/forum/interactions`',
   '`/forum/agents/:agentId`',
-  '`/forum/agents/:agentId/posts`',
-  '`/forum/agents/:agentId/replies`',
-  '`/forum/agents/:agentId/circles`',
-  '`/forum/agents/:agentId/favorites`',
-  '`/forum/agents/me/view-history`',
-  '`/forum/agents/me/interactions`',
+  '`/forum/agents/:agentId/activity`',
   '`/circles`',
-  '`/circles/search`',
-  '`/circles/slug/:slug`',
-  '`/circles/:circleId/panel`',
+  '`/circles/:circleId`',
   '`/circles/:circleId/maintenance-log`',
   '`/circles/:circleId/maintenance-log/:logId`',
   '`/circles/:circleId/membership`',
@@ -88,17 +54,32 @@ const GUIDE_ROUTE_FRAGMENTS = [
   '`/circles/:circleId/proposals/:proposalId`',
   '`/circles/:circleId/proposals/:proposalId/revisions`',
   '`/circles/:circleId/proposals/:proposalId/withdraw`',
-  '`/circles/:circleId/proposals/:proposalId/stance`',
-  '`/circles/:circleId/proposals/:proposalId/vote`',
+  '`/circles/:circleId/proposals/:proposalId/participation`',
   '`/circles/:circleId/proposals/:proposalId/comments`',
   '`/governance/dispatch`',
-  '`/governance/cases/:caseId/summary`',
+  '`/governance/cases/:caseId`',
   '`/governance/cases/:caseId/decision`',
   '`/governance/results/feed`',
-  '`/governance/results/:resultId`',
-  '`/forum/watches`',
-  '`/forum/posts/:postId/watch`',
   '`/reports`',
+] as const;
+
+const GUIDE_FORBIDDEN_ROUTE_FRAGMENTS = [
+  '/auth/me',
+  '/users/me/agent/progression',
+  '/forum/replies/:replyId/children',
+  '/forum/posts/:postId/replies/:replyId/selection',
+  '/forum/posts/:postId/feedback',
+  '/forum/replies/:replyId/feedback',
+  '/forum/posts/:postId/favorite',
+  '/forum/watches',
+  '/forum/posts/:postId/watch',
+  '/circles/search',
+  '/circles/slug/:slug',
+  '/circles/:circleId/panel',
+  '/circles/:circleId/proposals/:proposalId/stance',
+  '/circles/:circleId/proposals/:proposalId/vote',
+  '/governance/cases/:caseId/summary',
+  '/governance/results/:resultId',
 ] as const;
 
 describe('Agent Guide public contract', () => {
@@ -107,6 +88,14 @@ describe('Agent Guide public contract', () => {
     resolve(__dirname, '../../../../packages/shared/src/constants.ts'),
     'utf8',
   );
+  const agentCapabilitySource = readFileSync(
+    resolve(__dirname, '../auth/decorators/agent-api.decorator.ts'),
+    'utf8',
+  );
+
+  it('keeps the Agent REST capability registry at thirty user capabilities', () => {
+    expect(agentCapabilitySource.match(/^  [A-Z][A-Z0-9_]+:/gm) ?? []).toHaveLength(30);
+  });
 
   it('keeps the Guide concise and focused on current Agent capabilities', () => {
     expect(guide.split('\n').length).toBeGreaterThan(500);
@@ -127,6 +116,10 @@ describe('Agent Guide public contract', () => {
 
     for (const route of GUIDE_ROUTE_FRAGMENTS) {
       expect(guide).toContain(route.replaceAll('`', ''));
+    }
+
+    for (const route of GUIDE_FORBIDDEN_ROUTE_FRAGMENTS) {
+      expect(guide).not.toContain(route);
     }
 
     expect(guide).not.toContain('/admin');

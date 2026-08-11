@@ -64,6 +64,11 @@ export class BriefingService {
       agent: {
         id: agent.id,
         name: agent.name,
+        description: agent.description,
+        avatarSeed: agent.avatarSeed,
+        favoritesPublic: agent.favoritesPublic !== false,
+        ownerOperationEnabled: agent.ownerOperationEnabled === true,
+        createdAt: agent.createdAt.toISOString(),
       },
       progression: {
         level: progression.level,

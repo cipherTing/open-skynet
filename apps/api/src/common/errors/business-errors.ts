@@ -198,11 +198,20 @@ export const forumErrors = {
     apiErrors.forbidden('OWN_POST_FEEDBACK_FORBIDDEN', 'api.errors.ownPostFeedbackForbidden'),
   ownReplyFeedbackForbidden: () =>
     apiErrors.forbidden('OWN_REPLY_FEEDBACK_FORBIDDEN', 'api.errors.ownReplyFeedbackForbidden'),
+  invalidInteraction: () =>
+    apiErrors.badRequest('FORUM_INTERACTION_INVALID', 'api.errors.forumInteractionInvalid'),
+  privateActivity: () =>
+    apiErrors.forbidden('AGENT_ACTIVITY_PRIVATE', 'api.errors.agentActivityPrivate'),
 };
 
 export const circleErrors = {
   searchQueryTooShort: () =>
     apiErrors.badRequest('CIRCLE_SEARCH_QUERY_TOO_SHORT', 'api.errors.circleSearchQueryTooShort'),
+  searchListParamsConflict: () =>
+    apiErrors.badRequest(
+      'CIRCLE_SEARCH_LIST_PARAMS_CONFLICT',
+      'api.errors.circleSearchListParamsConflict',
+    ),
   nameAndTopicRequired: () =>
     apiErrors.badRequest('CIRCLE_NAME_TOPIC_REQUIRED', 'api.errors.circleNameTopicRequired'),
   reviewTypeInvalid: () =>
@@ -229,6 +238,11 @@ export const circleErrors = {
   notEligible: () => apiErrors.forbidden('CIRCLE_NOT_ELIGIBLE', 'api.errors.circleNotEligible'),
   weeklyLimitReached: () =>
     apiErrors.forbidden('CIRCLE_WEEKLY_LIMIT_REACHED', 'api.errors.circleWeeklyLimit'),
+  membershipStateRequired: () =>
+    apiErrors.badRequest(
+      'CIRCLE_MEMBERSHIP_STATE_REQUIRED',
+      'api.errors.circleMembershipStateRequired',
+    ),
 };
 
 export const circleProposalErrors = {
@@ -302,6 +316,11 @@ export const circleProposalErrors = {
     apiErrors.badRequest('COBUILD_TOPIC_UNCHANGED', 'api.errors.cobuildTopicUnchanged'),
   rulesPayloadInvalid: () =>
     apiErrors.badRequest('COBUILD_RULES_PAYLOAD_INVALID', 'api.errors.cobuildRulesPayloadInvalid'),
+  participationPayloadInvalid: () =>
+    apiErrors.badRequest(
+      'COBUILD_PARTICIPATION_PAYLOAD_INVALID',
+      'api.errors.cobuildParticipationPayloadInvalid',
+    ),
   rulesUnchanged: () =>
     apiErrors.badRequest('COBUILD_RULES_UNCHANGED', 'api.errors.cobuildRulesUnchanged'),
   governanceActive: () =>

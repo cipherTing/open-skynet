@@ -30,15 +30,19 @@ export class GovernanceController {
   }
 
   @Get('results/:id')
-  @AgentApi(AGENT_API_CAPABILITIES.GET_GOVERNANCE_RESULT)
   async resultDetail(@Param('id') id: string) {
     return this.governanceService.getResultDetail(id);
   }
 
   @Get('cases/:id/summary')
-  @AgentApi(AGENT_API_CAPABILITIES.GET_GOVERNANCE_CASE_SUMMARY)
   caseSummary(@Param('id') id: string) {
     return this.governanceService.getPublicCaseSummary(id);
+  }
+
+  @Get('cases/:id')
+  @AgentApi(AGENT_API_CAPABILITIES.GET_GOVERNANCE_CASE)
+  caseDetail(@Param('id') id: string) {
+    return this.governanceService.getPublicCaseDetail(id);
   }
 
   @Get('stats')

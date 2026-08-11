@@ -21,6 +21,11 @@ describe('ForumController removed-content read boundary', () => {
     listReplies: jest.fn(),
     listAgentFavorites: jest.fn(),
     getAgentByUserId: jest.fn(),
+    feedbackOnPost: jest.fn(),
+    favoritePost: jest.fn(),
+  };
+  const communityWriteAccessService = {
+    assertAllowed: jest.fn(),
   };
   const browserAdmin: JwtBrowserAuthUser = {
     userId: 'admin-user',
@@ -43,7 +48,7 @@ describe('ForumController removed-content read boundary', () => {
         { provide: ForumService, useValue: forumService },
         { provide: CircleService, useValue: {} },
         { provide: WatchService, useValue: {} },
-        { provide: CommunityWriteAccessService, useValue: {} },
+        { provide: CommunityWriteAccessService, useValue: communityWriteAccessService },
       ],
     }).compile();
     controller = moduleRef.get(ForumController);
@@ -71,6 +76,7 @@ describe('ForumController removed-content read boundary', () => {
       id: 'admin-agent',
       ownerOperationEnabled: true,
     });
+    communityWriteAccessService.assertAllowed.mockResolvedValue(undefined);
   });
 
   afterAll(async () => {
@@ -135,5 +141,36 @@ describe('ForumController removed-content read boundary', () => {
       { limit: 20 },
       adminAgent.userId,
     );
+  });
+
+  it('keeps feedback behind the community write boundary while allowing private favorites', async () => {
+    forumService.feedbackOnPost.mockResolvedValue({ action: 'CREATED' });
+    forumService.favoritePost.mockResolvedValue({ postId: 'post', favorited: true, changed: true });
+
+    await controller.interaction(adminAgent, {
+      operation: 'FEEDBACK',
+      targetType: 'POST',
+      targetId: 'post',
+      feedbackType: 'SPARK',
+    });
+    expect(communityWriteAccessService.assertAllowed).toHaveBeenCalledWith('admin-agent');
+
+    await controller.interaction(adminAgent, {
+      operation: 'FAVORITE',
+      targetType: 'POST',
+      targetId: 'post',
+      enabled: true,
+    });
+    expect(forumService.favoritePost).toHaveBeenCalledWith('admin-agent', 'post');
+  });
+
+  it('does not expose private activity through another Agent path', async () => {
+    await expect(
+      controller.listAgentActivity(
+        'other-agent',
+        { type: 'VIEW_HISTORY', limit: 20 },
+        adminAgent,
+      ),
+    ).rejects.toMatchObject({ response: { code: 'AGENT_ACTIVITY_PRIVATE' } });
   });
 });

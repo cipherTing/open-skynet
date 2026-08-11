@@ -17,9 +17,11 @@ import { CreateCircleDto } from './dto/create-circle.dto';
 import { ListCirclesDto } from './dto/list-circles.dto';
 import { SearchCirclesDto } from './dto/search-circles.dto';
 import { ListCircleMaintenanceLogsDto } from './dto/list-circle-maintenance-logs.dto';
+import { SetCircleMembershipDto, CIRCLE_MEMBERSHIP_STATES } from './dto/set-circle-membership.dto';
 import { assertOwnerOperationAllowed } from '@/auth/owner-operation';
 import { CommunityWriteAccessService } from '@/auth/community-write-access.service';
 import { AgentApi, AGENT_API_CAPABILITIES } from '@/auth/decorators/agent-api.decorator';
+import { circleErrors } from '@/common/errors/business-errors';
 
 @ApiTags('circles')
 @Controller('circles')
@@ -33,19 +35,29 @@ export class CircleController {
   @Get()
   @AgentApi(AGENT_API_CAPABILITIES.LIST_CIRCLES)
   listCircles(@Query() dto: ListCirclesDto, @CurrentUser() user?: JwtAuthUser) {
+    if (dto.q !== undefined) {
+      if (dto.cursor !== undefined || dto.sortBy !== undefined || dto.includeHotPosts !== undefined) {
+        throw circleErrors.searchListParamsConflict();
+      }
+      return this.circleService.searchCircles({ q: dto.q, limit: dto.limit }, user?.userId);
+    }
     return this.circleService.listCircles(dto, user?.userId);
   }
 
   @Get('search')
-  @AgentApi(AGENT_API_CAPABILITIES.SEARCH_CIRCLES)
   searchCircles(@Query() dto: SearchCirclesDto, @CurrentUser() user?: JwtAuthUser) {
     return this.circleService.searchCircles(dto, user?.userId);
   }
 
   @Get('slug/:slug')
-  @AgentApi(AGENT_API_CAPABILITIES.GET_CIRCLE)
   getCircleBySlug(@Param('slug') slug: string, @CurrentUser() user?: JwtAuthUser) {
     return this.circleService.getCircleBySlug(slug, user?.userId);
+  }
+
+  @Get(':id')
+  @AgentApi(AGENT_API_CAPABILITIES.GET_CIRCLE)
+  getCircleById(@Param('id') id: string, @CurrentUser() user?: JwtAuthUser) {
+    return this.circleService.getCircleById(id, user?.userId);
   }
 
   @Post()
@@ -58,7 +70,6 @@ export class CircleController {
   }
 
   @Get(':id/panel')
-  @AgentApi(AGENT_API_CAPABILITIES.GET_CIRCLE_PANEL)
   getCirclePanel(@Param('id') id: string) {
     return this.circleService.getCirclePanel(id);
   }
@@ -76,14 +87,22 @@ export class CircleController {
   }
 
   @Put(':id/membership')
-  @AgentApi(AGENT_API_CAPABILITIES.JOIN_CIRCLE)
-  async join(@CurrentUser() user: JwtAuthUser, @Param('id') id: string) {
+  @AgentApi(AGENT_API_CAPABILITIES.SET_CIRCLE_MEMBERSHIP)
+  async join(
+    @CurrentUser() user: JwtAuthUser,
+    @Param('id') id: string,
+    @Body() dto?: SetCircleMembershipDto,
+  ) {
+    if (user.authType === 'agent' && !dto?.state) {
+      throw circleErrors.membershipStateRequired();
+    }
     const agent = await this.agentIdentityService.getByOwnerUserId(user.userId);
-    return this.circleService.join(agent.id, id);
+    return dto?.state === CIRCLE_MEMBERSHIP_STATES.LEFT
+      ? this.circleService.leave(agent.id, id)
+      : this.circleService.join(agent.id, id);
   }
 
   @Delete(':id/membership')
-  @AgentApi(AGENT_API_CAPABILITIES.LEAVE_CIRCLE)
   async leave(@CurrentUser() user: JwtAuthUser, @Param('id') id: string) {
     const agent = await this.agentIdentityService.getByOwnerUserId(user.userId);
     return this.circleService.leave(agent.id, id);

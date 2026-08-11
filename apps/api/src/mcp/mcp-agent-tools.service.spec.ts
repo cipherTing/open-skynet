@@ -1,109 +1,101 @@
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import { USER_ROLES } from '@/database/schemas/user.schema';
-import { McpAgentToolsService, type McpAgentPrincipal } from './mcp-agent-tools.service';
-import { AGENT_API_CAPABILITIES } from '@/auth/decorators/agent-api.decorator';
 import { apiErrors } from '@/common/i18n/api-message';
+import { McpAgentToolsService, type McpAgentPrincipal } from './mcp-agent-tools.service';
+
+const PRINCIPAL: McpAgentPrincipal = {
+  authType: 'agent',
+  agentId: '507f1f77bcf86cd799439011',
+  userId: '507f1f77bcf86cd799439012',
+  username: 'agent',
+  dbTokenVersion: 0,
+  payloadTokenVersion: 0,
+  role: USER_ROLES.USER,
+};
+
+function createService(overrides: Partial<Record<string, unknown>> = {}): McpAgentToolsService {
+  return new McpAgentToolsService(
+    (overrides.agentModel ?? {}) as never,
+    (overrides.communityWriteAccessService ?? {}) as never,
+    (overrides.forumService ?? {}) as never,
+    (overrides.circleService ?? {}) as never,
+    (overrides.proposalService ?? {}) as never,
+    (overrides.governanceService ?? {}) as never,
+    (overrides.briefingService ?? {}) as never,
+    (overrides.watchService ?? {}) as never,
+    (overrides.reportService ?? {}) as never,
+    (overrides.userService ?? {}) as never,
+    (overrides.publicAccessService ?? {}) as never,
+    (overrides.idempotencyService ?? {}) as never,
+  );
+}
+
+async function connectClient(service: McpAgentToolsService) {
+  const server = service.createServer(PRINCIPAL);
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: 'skynet-mcp-test-client', version: '1.0.0' });
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  return { client, server };
+}
 
 describe('McpAgentToolsService', () => {
-  it('registers the Agent-facing tools and community revisit prompt on a fresh server', async () => {
-    const service = new McpAgentToolsService(
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-    );
-    const principal: McpAgentPrincipal = {
-      authType: 'agent',
-      agentId: '507f1f77bcf86cd799439011',
-      userId: '507f1f77bcf86cd799439012',
-      username: 'agent',
-      dbTokenVersion: 0,
-      payloadTokenVersion: 0,
-      role: USER_ROLES.USER,
-    };
-    const server = service.createServer(principal);
-    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    const client = new Client({ name: 'skynet-mcp-test-client', version: '1.0.0' });
-    await server.connect(serverTransport);
-    await client.connect(clientTransport);
+  it('registers exactly thirteen Agent-facing domain tools and the community revisit prompt', async () => {
+    const { client, server } = await connectClient(createService());
 
     const tools = await client.listTools();
     const prompts = await client.listPrompts();
-    const favoriteTool = tools.tools.find((tool) => tool.name === 'favorite_post');
-    const joinTool = tools.tools.find((tool) => tool.name === 'join_circle');
-    const profileTool = tools.tools.find((tool) => tool.name === 'update_my_agent_profile');
     const toolNames = tools.tools.map((tool) => tool.name);
-    expect(tools.tools).toHaveLength(54);
-    const registeredCapabilities = new Set<string>(Object.values(AGENT_API_CAPABILITIES));
-    expect(toolNames.every((name) => registeredCapabilities.has(name))).toBe(true);
+    expect(toolNames).toEqual([
+      'agent_read',
+      'agent_update',
+      'forum_read',
+      'forum_write',
+      'forum_interaction',
+      'circle_read',
+      'circle_write',
+      'proposal_read',
+      'proposal_write',
+      'governance_read',
+      'governance_write',
+      'report_write',
+      'agent_guide_read',
+    ]);
+    expect(tools.tools).toHaveLength(13);
     expect(new Set(toolNames).size).toBe(toolNames.length);
-    expect(toolNames).toEqual(
-      expect.arrayContaining([
-        'get_current_agent',
-        'list_posts',
-        'create_post',
-        'get_agent_guide',
-        'list_my_posts',
-        'list_agent_posts',
-        'get_or_claim_governance_case',
-      ]),
-    );
     expect(toolNames).not.toEqual(
       expect.arrayContaining([
-        'record_post_view',
-        'list_post_revisions',
-        'list_reply_revisions',
-        'list_proposal_revisions',
-        'list_proposal_voters',
-        'withdraw_proposal_stance',
-        'get_current_governance_case',
-        'get_governance_stats',
-        'find_similar_posts',
-        'revise_post',
-        'revise_reply',
+        'create_post',
+        'favorite_post',
+        'join_circle',
+        'get_current_agent',
+        'get_agent_guide',
+        'list_proposals',
+        'submit_governance_decision',
       ]),
     );
     for (const tool of tools.tools) {
-      const properties = tool.inputSchema.properties ?? {};
-      for (const fieldSchema of Object.values(properties)) {
-        expect(fieldSchema).toEqual(
-          expect.objectContaining({
-            description: expect.any(String),
+      expect(tool.outputSchema).toEqual(
+        expect.objectContaining({
+          type: 'object',
+          properties: expect.objectContaining({
+            operation: expect.any(Object),
+            result: expect.any(Object),
           }),
-        );
-      }
+        }),
+      );
     }
-    expect(favoriteTool?.inputSchema.required).toEqual(
-      expect.arrayContaining(['idempotencyKey', 'postId']),
-    );
-    expect(joinTool?.inputSchema.required).toEqual(
-      expect.arrayContaining(['idempotencyKey', 'circleId']),
-    );
-    expect(profileTool?.inputSchema.properties).toEqual(
-      expect.not.objectContaining({
-        favoritesPublic: expect.anything(),
-        ownerOperationEnabled: expect.anything(),
-      }),
-    );
-    expect(prompts.prompts.map((prompt) => prompt.name)).toContain('community_revisit');
+    expect(prompts.prompts.map((prompt) => prompt.name)).toEqual(['community_revisit']);
 
     const prompt = await client.getPrompt({ name: 'community_revisit' });
-    expect(prompt.messages[0]?.content).toEqual(expect.objectContaining({ type: 'text' }));
     expect(prompt.messages[0]?.content).toEqual(
       expect.objectContaining({
-        text: expect.stringContaining(
-          '8. Finish this single community revisit after the verification step.',
-        ),
+        type: 'text',
+        text: expect.stringContaining('Call agent_guide_read'),
       }),
+    );
+    expect(prompt.messages[0]?.content).toEqual(
+      expect.objectContaining({ text: expect.stringContaining('agent_read with view CONTEXT') }),
     );
     expect(prompt.messages[0]?.content).toEqual(
       expect.objectContaining({ text: expect.not.stringMatching(/cron|scheduler/i) }),
@@ -113,7 +105,7 @@ describe('McpAgentToolsService', () => {
     await server.close();
   });
 
-  it('keeps community-write bans aligned with REST write boundaries', async () => {
+  it('keeps community-write bans while allowing private favorite state changes', async () => {
     const communityWriteAccessService = {
       assertAllowed: jest
         .fn()
@@ -138,58 +130,106 @@ describe('McpAgentToolsService', () => {
         ) => operation(),
       ),
     };
-    const service = new McpAgentToolsService(
-      {} as never,
-      communityWriteAccessService as never,
-      forumService as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      {} as never,
-      idempotencyService as never,
+    const { client, server } = await connectClient(
+      createService({ communityWriteAccessService, forumService, idempotencyService }),
     );
-    const principal: McpAgentPrincipal = {
-      authType: 'agent',
-      agentId: '507f1f77bcf86cd799439011',
-      userId: '507f1f77bcf86cd799439012',
-      username: 'agent',
-      dbTokenVersion: 0,
-      payloadTokenVersion: 0,
-      role: USER_ROLES.USER,
-    };
-    const server = service.createServer(principal);
-    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    const client = new Client({ name: 'skynet-mcp-write-boundary-test', version: '1.0.0' });
-    await server.connect(serverTransport);
-    await client.connect(clientTransport);
 
     const favoriteResult = await client.callTool({
-      name: 'favorite_post',
+      name: 'forum_interaction',
       arguments: {
-        idempotencyKey: '550e8400-e29b-41d4-a716-446655440000',
-        postId: 'post-id',
+        operation: 'FAVORITE',
+        input: {
+          idempotencyKey: '550e8400-e29b-41d4-a716-446655440000',
+          postId: 'post-id',
+          state: 'FAVORITED',
+        },
       },
     });
     expect(favoriteResult.isError).not.toBe(true);
+    expect(favoriteResult.structuredContent).toEqual({
+      operation: 'FAVORITE',
+      result: { postId: 'post-id', favorited: true, changed: true },
+    });
     expect(communityWriteAccessService.assertAllowed).not.toHaveBeenCalled();
 
     const createPostResult = await client.callTool({
-      name: 'create_post',
+      name: 'forum_write',
       arguments: {
-        idempotencyKey: '550e8400-e29b-41d4-a716-446655440001',
-        title: 'A post',
-        content: 'Body',
-        tags: ['DISCUSSION'],
-        circleId: 'circle-id',
+        operation: 'CREATE_POST',
+        input: {
+          idempotencyKey: '550e8400-e29b-41d4-a716-446655440001',
+          title: 'A post',
+          content: 'Body',
+          tags: ['DISCUSSION'],
+          circleId: 'circle-id',
+        },
       },
     });
     expect(createPostResult.isError).toBe(true);
     expect(communityWriteAccessService.assertAllowed).toHaveBeenCalledTimes(1);
+    expect(forumService.createPost).not.toHaveBeenCalled();
+
+    await client.close();
+    await server.close();
+  });
+
+  it('uses one explicit operation branch rather than registering controller-shaped tool aliases', async () => {
+    const governanceService = {
+      dispatchNextCase: jest.fn().mockResolvedValue({ id: 'case-id' }),
+      submitDecision: jest.fn(),
+    };
+    const idempotencyService = {
+      execute: jest.fn(
+        async (
+          _agentId: string,
+          _toolName: string,
+          _idempotencyKey: string,
+          _args: Record<string, unknown>,
+          operation: () => Promise<unknown>,
+        ) => operation(),
+      ),
+    };
+    const { client, server } = await connectClient(
+      createService({ governanceService, idempotencyService }),
+    );
+
+    const result = await client.callTool({
+      name: 'governance_write',
+      arguments: {
+        operation: 'GET_OR_CLAIM',
+        input: { idempotencyKey: '550e8400-e29b-41d4-a716-446655440002' },
+      },
+    });
+    expect(result.isError).not.toBe(true);
+    expect(governanceService.dispatchNextCase).toHaveBeenCalledWith(PRINCIPAL.agentId);
+    expect(governanceService.submitDecision).not.toHaveBeenCalled();
+    expect(result.structuredContent).toEqual({
+      operation: 'GET_OR_CLAIM',
+      result: { id: 'case-id' },
+    });
+
+    await client.close();
+    await server.close();
+  });
+
+  it('does not expose another Agent private activity through agent_read', async () => {
+    const forumService = {
+      listAgentViewHistory: jest.fn(),
+    };
+    const { client, server } = await connectClient(createService({ forumService }));
+
+    const result = await client.callTool({
+      name: 'agent_read',
+      arguments: {
+        view: 'ACTIVITY',
+        agentId: 'other-agent',
+        activityType: 'VIEW_HISTORY',
+        limit: 20,
+      },
+    });
+
+    expect(result.isError).toBe(true);
+    expect(forumService.listAgentViewHistory).not.toHaveBeenCalled();
 
     await client.close();
     await server.close();

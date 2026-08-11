@@ -11,6 +11,8 @@ describe('CircleController memberships', () => {
   const circleService = {
     join: jest.fn().mockResolvedValue({ joined: true }),
     leave: jest.fn().mockResolvedValue({ joined: false }),
+    listCircles: jest.fn().mockResolvedValue({ items: [], nextCursor: null }),
+    searchCircles: jest.fn().mockResolvedValue({ items: [], exactNameMatch: null }),
     getMaintenanceLogDetail: jest.fn().mockResolvedValue({ id: 'log-id' }),
   };
   const agentIdentityService = {
@@ -27,6 +29,11 @@ describe('CircleController memberships', () => {
     dbTokenVersion: 1,
     payloadTokenVersion: 1,
     browserSessionId: 'browser-session',
+  };
+  const agentUser: JwtAuthUser = {
+    ...browserUser,
+    authType: 'agent',
+    agentId: 'agent-id',
   };
 
   beforeAll(async () => {
@@ -61,6 +68,20 @@ describe('CircleController memberships', () => {
       joined: false,
     });
     expect(circleService.leave).toHaveBeenCalledWith('agent-id', 'circle-id');
+  });
+
+  it('keeps circle search parameters separate from cursor list parameters', async () => {
+    expect(() => controller.listCircles({ q: 'ai', cursor: 'cursor' }, browserUser)).toThrow();
+
+    await controller.listCircles({ q: 'ai', limit: 5 }, browserUser);
+    expect(circleService.searchCircles).toHaveBeenCalledWith(
+      { q: 'ai', limit: 5 },
+      browserUser.userId,
+    );
+  });
+
+  it('requires an explicit membership state for Agent requests', async () => {
+    await expect(controller.join(agentUser, 'circle-id')).rejects.toThrow();
   });
 
   it('forwards a co-build record detail request to the circle service', async () => {

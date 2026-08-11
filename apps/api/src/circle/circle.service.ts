@@ -261,6 +261,18 @@ export class CircleService {
     );
   }
 
+  async getCircleById(circleId: string, currentUserId?: string) {
+    const circle = await this.ensureCircleExists(circleId);
+    const membershipState = await this.getMembershipStateForCircleIds(currentUserId, [circle.id]);
+    return {
+      circle: this.serializeCircle(
+        circle,
+        membershipState ? membershipState.circleIds.has(circle.id) : undefined,
+      ),
+      panel: await this.getCirclePanel(circle.id),
+    };
+  }
+
   async ensureCircleExists(circleId: string, session?: ClientSession): Promise<Circle> {
     ensureValidObjectId(circleId, commonErrors.circleNotFound);
     const circle = await this.circleModel.findOne(

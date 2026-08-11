@@ -737,7 +737,7 @@ export const circleApi = {
     const searchParams = new URLSearchParams();
     searchParams.set('q', params.q);
     if (params.limit) searchParams.set('limit', String(params.limit));
-    return apiRequest<CircleSearchResponse>(`/circles/search?${searchParams.toString()}`);
+    return apiRequest<CircleSearchResponse>(`/circles?${searchParams.toString()}`);
   },
   getCircleBySlug: (slug: string) =>
     apiRequest<Circle>(`/circles/slug/${encodeURIComponent(slug)}`),
@@ -767,10 +767,12 @@ export const circleApi = {
   join: (circleId: string) =>
     apiRequest<CircleMembershipResult>(`/circles/${circleId}/membership`, {
       method: 'PUT',
+      body: JSON.stringify({ state: 'JOINED' }),
     }),
   leave: (circleId: string) =>
     apiRequest<CircleMembershipResult>(`/circles/${circleId}/membership`, {
-      method: 'DELETE',
+      method: 'PUT',
+      body: JSON.stringify({ state: 'LEFT' }),
     }),
   proposals: (
     circleId: string,
@@ -846,19 +848,31 @@ export const circleApi = {
       reason?: string;
     },
   ) =>
-    apiRequest<CircleProposalDetail>(`/circles/${circleId}/proposals/${proposalId}/stance`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    }),
+    apiRequest<CircleProposalDetail>(
+      `/circles/${circleId}/proposals/${proposalId}/participation`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          operation: 'STANCE',
+          expectedVersion: data.expectedVersion,
+          stanceAction: data.action,
+          stance: data.stance,
+          reason: data.reason,
+        }),
+      },
+    ),
   voteProposal: (
     circleId: string,
     proposalId: string,
     data: { expectedVersion: number; choice: CircleProposalVoteChoice },
   ) =>
-    apiRequest<CircleProposalDetail>(`/circles/${circleId}/proposals/${proposalId}/vote`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    }),
+    apiRequest<CircleProposalDetail>(
+      `/circles/${circleId}/proposals/${proposalId}/participation`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ operation: 'VOTE', ...data }),
+      },
+    ),
   proposalComments: (circleId: string, proposalId: string, params?: CursorPaginationParams) => {
     const query = buildCursorQuery(params);
     return apiRequest<CircleProposalCommentResponse>(

@@ -27,7 +27,12 @@ import {
   ReviseCircleProposalDto,
   SetCircleProposalStanceDto,
 } from './dto/circle-proposal.dto';
+import {
+  ProposalParticipationDto,
+  PROPOSAL_PARTICIPATION_OPERATIONS,
+} from './dto/proposal-participation.dto';
 import { AgentApi, AGENT_API_CAPABILITIES } from '@/auth/decorators/agent-api.decorator';
+import { circleProposalErrors } from '@/common/errors/business-errors';
 
 @ApiTags('circle-proposals')
 @Controller('circles/:circleId/proposals')
@@ -121,7 +126,6 @@ export class CircleProposalController {
   }
 
   @Put(':proposalId/stance')
-  @AgentApi(AGENT_API_CAPABILITIES.SET_PROPOSAL_STANCE)
   async setStance(
     @Param('circleId') circleId: string,
     @Param('proposalId') proposalId: string,
@@ -137,7 +141,6 @@ export class CircleProposalController {
   }
 
   @Put(':proposalId/vote')
-  @AgentApi(AGENT_API_CAPABILITIES.VOTE_ON_PROPOSAL)
   async vote(
     @Param('circleId') circleId: string,
     @Param('proposalId') proposalId: string,
@@ -150,6 +153,31 @@ export class CircleProposalController {
       await this.getWritableAgentId(user),
       dto,
     );
+  }
+
+  @Post(':proposalId/participation')
+  @AgentApi(AGENT_API_CAPABILITIES.PARTICIPATE_PROPOSAL)
+  async participate(
+    @Param('circleId') circleId: string,
+    @Param('proposalId') proposalId: string,
+    @CurrentUser() user: JwtAuthUser,
+    @Body() dto: ProposalParticipationDto,
+  ) {
+    const agentId = await this.getWritableAgentId(user);
+    if (dto.operation === PROPOSAL_PARTICIPATION_OPERATIONS.STANCE) {
+      if (!dto.stanceAction) throw circleProposalErrors.participationPayloadInvalid();
+      return this.proposalService.setStance(circleId, proposalId, agentId, {
+        action: dto.stanceAction,
+        expectedVersion: dto.expectedVersion,
+        stance: dto.stance,
+        reason: dto.reason,
+      });
+    }
+    if (!dto.choice) throw circleProposalErrors.participationPayloadInvalid();
+    return this.proposalService.vote(circleId, proposalId, agentId, {
+      expectedVersion: dto.expectedVersion,
+      choice: dto.choice,
+    });
   }
 
   @Get(':proposalId/comments')

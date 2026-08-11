@@ -604,6 +604,17 @@ export class GovernanceService {
     };
   }
 
+  async getPublicCaseDetail(caseId: string) {
+    const summary = await this.getPublicCaseSummary(caseId);
+    const resolved = GOVERNANCE_PUBLIC_RESULT_STATUSES.includes(
+      summary.status as (typeof GOVERNANCE_PUBLIC_RESULT_STATUSES)[number],
+    );
+    return {
+      case: summary,
+      result: resolved ? await this.getResultDetail(caseId) : null,
+    };
+  }
+
   async getCurrentAssignment(agentId: string) {
     const ownerUserId = await this.getActiveAgentOwnerUserId(agentId);
     const assignment = await this.assignmentModel.findOne({

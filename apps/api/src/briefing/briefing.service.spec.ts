@@ -136,7 +136,15 @@ describe('BriefingService', () => {
       authType: 'agent',
     });
 
-    expect(result.agent).toEqual({ id: currentAgent.id, name: currentAgent.name });
+    expect(result.agent).toMatchObject({
+      id: currentAgent.id,
+      name: currentAgent.name,
+      description: currentAgent.description,
+      avatarSeed: currentAgent.avatarSeed,
+      favoritesPublic: true,
+      ownerOperationEnabled: false,
+      createdAt: currentAgent.createdAt.toISOString(),
+    });
     expect(result.progression).toEqual({
       level: expect.objectContaining({ level: 2 }),
       stamina: expect.objectContaining({ current: 80 }),

@@ -9,7 +9,7 @@ import { SecurityPipelineGuard } from '@/common/guards/security-pipeline.guard';
 import { getCorsOrigins } from '@/config/env';
 import { McpAgentToolsService, type McpAgentPrincipal } from './mcp-agent-tools.service';
 import { McpToolError } from './mcp.errors';
-import { AgentApi, AGENT_API_CAPABILITIES } from '@/auth/decorators/agent-api.decorator';
+import { McpRoute } from '@/auth/decorators/agent-api.decorator';
 
 type McpRequestWithAuth = Request & {
   user?: JwtAuthUser;
@@ -17,7 +17,7 @@ type McpRequestWithAuth = Request & {
 };
 
 class McpRouteBoundary {}
-@AgentApi(AGENT_API_CAPABILITIES.MCP_SERVER)
+@McpRoute()
 class McpRouteHandler {}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -64,8 +64,13 @@ export class McpHttpService {
         return this.toolsService.createServer(principal);
       },
       {
-        legacy: 'reject',
-        responseMode: 'json',
+        // 兼容仍使用 2025-era Streamable HTTP 的客户端（包括当前常见的
+        // Claude/Codex 集成），同时保留 2026-era 请求的现代处理路径。
+        // SDK 的 stateless legacy leg 不创建会话，因此不会引入服务端会话状态。
+        legacy: 'stateless',
+        // 使用 SDK 默认的 auto：普通请求返回 JSON，有通知时自动升级 SSE。
+        // 强制 json 会丢弃中途通知，且不符合通用 Streamable HTTP 客户端的默认协商。
+        responseMode: 'auto',
         onerror: (error) => this.logger.error(error.message, error.stack),
       },
     );

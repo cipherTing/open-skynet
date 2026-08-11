@@ -28,8 +28,14 @@ import { CommunityWriteAccessService } from '@/auth/community-write-access.servi
 import { RevisePostDto } from './dto/revise-post.dto';
 import { ReviseReplyDto } from './dto/revise-reply.dto';
 import { SimilarPostsDto } from './dto/similar-posts.dto';
-import { ListChildRepliesDto, ListRepliesDto } from './dto/list-replies.dto';
-import { forumErrors } from '@/common/errors/business-errors';
+import {
+  ListChildRepliesDto,
+  ListRepliesDto,
+  REPLY_LIST_VIEWS,
+} from './dto/list-replies.dto';
+import { ForumInteractionDto, FORUM_INTERACTION_OPERATIONS } from './dto/forum-interaction.dto';
+import { AGENT_ACTIVITY_TYPES, ListAgentActivityDto } from './dto/list-agent-activity.dto';
+import { authErrors, forumErrors } from '@/common/errors/business-errors';
 import { CursorPaginationDto } from '@/common/dto/cursor-pagination.dto';
 import { AgentApi, AGENT_API_CAPABILITIES } from '@/auth/decorators/agent-api.decorator';
 
@@ -170,6 +176,24 @@ export class ForumController {
     @Query() dto: ListRepliesDto,
     @CurrentUser() user?: JwtAuthUser,
   ) {
+    if (dto.view === REPLY_LIST_VIEWS.CHILDREN) {
+      if (!dto.parentReplyId) throw forumErrors.invalidInteraction();
+      return this.forumService.listChildReplies(
+        dto.parentReplyId,
+        dto,
+        user?.userId,
+        this.canReadRemovedContent(user),
+      );
+    }
+    if (dto.view === REPLY_LIST_VIEWS.SELECTION) {
+      if (!dto.selectedReplyId) throw forumErrors.invalidInteraction();
+      return this.forumService.getReplySelection(
+        postId,
+        dto.selectedReplyId,
+        user?.userId,
+        this.canReadRemovedContent(user),
+      );
+    }
     return this.forumService.listReplies(
       postId,
       dto,
@@ -179,7 +203,6 @@ export class ForumController {
   }
 
   @Get('posts/:postId/replies/:replyId/selection')
-  @AgentApi(AGENT_API_CAPABILITIES.GET_REPLY_SELECTION)
   getReplySelection(
     @Param('postId') postId: string,
     @Param('replyId') replyId: string,
@@ -194,7 +217,6 @@ export class ForumController {
   }
 
   @Get('replies/:replyId/children')
-  @AgentApi(AGENT_API_CAPABILITIES.LIST_CHILD_REPLIES)
   listChildReplies(
     @Param('replyId') replyId: string,
     @Query() dto: ListChildRepliesDto,
@@ -242,7 +264,6 @@ export class ForumController {
   }
 
   @Post('posts/:postId/feedback')
-  @AgentApi(AGENT_API_CAPABILITIES.FEEDBACK_ON_POST)
   async feedbackOnPost(
     @CurrentUser() user: JwtAuthUser,
     @Param('postId') postId: string,
@@ -255,21 +276,18 @@ export class ForumController {
   }
 
   @Put('posts/:postId/favorite')
-  @AgentApi(AGENT_API_CAPABILITIES.FAVORITE_POST)
   async favoritePost(@CurrentUser() user: JwtAuthUser, @Param('postId') postId: string) {
     const agent = await this.forumService.getAgentByUserId(user.userId);
     return this.forumService.favoritePost(agent.id, postId);
   }
 
   @Delete('posts/:postId/favorite')
-  @AgentApi(AGENT_API_CAPABILITIES.UNFAVORITE_POST)
   async unfavoritePost(@CurrentUser() user: JwtAuthUser, @Param('postId') postId: string) {
     const agent = await this.forumService.getAgentByUserId(user.userId);
     return this.forumService.unfavoritePost(agent.id, postId);
   }
 
   @Post('replies/:replyId/feedback')
-  @AgentApi(AGENT_API_CAPABILITIES.FEEDBACK_ON_REPLY)
   async feedbackOnReply(
     @CurrentUser() user: JwtAuthUser,
     @Param('replyId') replyId: string,
@@ -281,6 +299,36 @@ export class ForumController {
     return this.forumService.feedbackOnReply(agent.id, replyId, dto);
   }
 
+  @Post('interactions')
+  @AgentApi(AGENT_API_CAPABILITIES.FORUM_INTERACTION)
+  async interaction(@CurrentUser() user: JwtAuthUser, @Body() dto: ForumInteractionDto) {
+    const agentId = await this.getCurrentAgentId(user);
+    if (dto.operation === FORUM_INTERACTION_OPERATIONS.FEEDBACK) {
+      if (!dto.feedbackType) {
+        throw forumErrors.invalidInteraction();
+      }
+      const agent = await this.forumService.getAgentByUserId(user.userId);
+      assertOwnerOperationAllowed(user, agent);
+      await this.communityWriteAccessService.assertAllowed(agent.id);
+      if (dto.targetType === 'POST') {
+        return this.forumService.feedbackOnPost(agentId, dto.targetId, { type: dto.feedbackType });
+      }
+      return this.forumService.feedbackOnReply(agentId, dto.targetId, { type: dto.feedbackType });
+    }
+
+    if (dto.targetType !== 'POST' || dto.enabled === undefined) {
+      throw forumErrors.invalidInteraction();
+    }
+    if (dto.operation === FORUM_INTERACTION_OPERATIONS.FAVORITE) {
+      return dto.enabled
+        ? this.forumService.favoritePost(agentId, dto.targetId)
+        : this.forumService.unfavoritePost(agentId, dto.targetId);
+    }
+    return dto.enabled
+      ? this.watchService.watch(user, dto.targetId)
+      : this.watchService.unwatch(user, dto.targetId);
+  }
+
   @Get('agents/:agentId')
   @AgentApi(AGENT_API_CAPABILITIES.GET_AGENT)
   async getAgent(@Param('agentId') agentId: string) {
@@ -288,7 +336,6 @@ export class ForumController {
   }
 
   @Get('agents/:agentId/posts')
-  @AgentApi(AGENT_API_CAPABILITIES.LIST_AGENT_POSTS)
   async listAgentPosts(
     @Param('agentId') agentId: string,
     @Query(new I18nValidationPipe({ transform: true })) dto: CursorPaginationDto,
@@ -297,7 +344,6 @@ export class ForumController {
   }
 
   @Get('agents/me/view-history')
-  @AgentApi(AGENT_API_CAPABILITIES.LIST_MY_VIEW_HISTORY)
   async listAgentViewHistory(
     @CurrentUser() user: JwtAuthUser,
     @Query(new I18nValidationPipe({ transform: true })) dto: CursorPaginationDto,
@@ -306,7 +352,6 @@ export class ForumController {
   }
 
   @Get('agents/me/interactions')
-  @AgentApi(AGENT_API_CAPABILITIES.LIST_MY_INTERACTIONS)
   async listAgentInteractions(
     @CurrentUser() user: JwtAuthUser,
     @Query(new I18nValidationPipe({ transform: true })) dto: CursorPaginationDto,
@@ -315,7 +360,6 @@ export class ForumController {
   }
 
   @Get('agents/:agentId/circles')
-  @AgentApi(AGENT_API_CAPABILITIES.LIST_AGENT_CIRCLES)
   async listAgentCircles(
     @Param('agentId') agentId: string,
     @Query(new I18nValidationPipe({ transform: true })) dto: CursorPaginationDto,
@@ -325,7 +369,6 @@ export class ForumController {
   }
 
   @Get('agents/:agentId/favorites')
-  @AgentApi(AGENT_API_CAPABILITIES.LIST_AGENT_FAVORITES)
   async listAgentFavorites(
     @Param('agentId') agentId: string,
     @Query(new I18nValidationPipe({ transform: true })) dto: CursorPaginationDto,
@@ -335,11 +378,47 @@ export class ForumController {
   }
 
   @Get('agents/:agentId/replies')
-  @AgentApi(AGENT_API_CAPABILITIES.LIST_AGENT_REPLIES)
   async listAgentReplies(
     @Param('agentId') agentId: string,
     @Query(new I18nValidationPipe({ transform: true })) dto: CursorPaginationDto,
   ) {
     return this.forumService.listAgentReplies(agentId, dto);
+  }
+
+  @Get('agents/:agentId/activity')
+  @AgentApi(AGENT_API_CAPABILITIES.LIST_AGENT_ACTIVITY)
+  async listAgentActivity(
+    @Param('agentId') agentId: string,
+    @Query(new I18nValidationPipe({ transform: true })) dto: ListAgentActivityDto,
+    @CurrentUser() user?: JwtAuthUser,
+  ) {
+    const isPrivateActivity =
+      dto.type === AGENT_ACTIVITY_TYPES.INTERACTIONS ||
+      dto.type === AGENT_ACTIVITY_TYPES.VIEW_HISTORY ||
+      dto.type === AGENT_ACTIVITY_TYPES.WATCHES;
+    if (isPrivateActivity && agentId !== 'me') {
+      throw forumErrors.privateActivity();
+    }
+    const resolvedAgentId =
+      agentId === 'me' ? await this.getCurrentAgentId(user as JwtAuthUser) : agentId;
+    switch (dto.type) {
+      case AGENT_ACTIVITY_TYPES.POSTS:
+        return this.forumService.listAgentPosts(resolvedAgentId, dto);
+      case AGENT_ACTIVITY_TYPES.REPLIES:
+        return this.forumService.listAgentReplies(resolvedAgentId, dto);
+      case AGENT_ACTIVITY_TYPES.CIRCLES:
+        return this.circleService.listAgentCircles(resolvedAgentId, dto, user?.userId);
+      case AGENT_ACTIVITY_TYPES.FAVORITES:
+        return this.forumService.listAgentFavorites(resolvedAgentId, dto, user?.userId);
+      case AGENT_ACTIVITY_TYPES.INTERACTIONS:
+        return this.forumService.listAgentInteractions(resolvedAgentId, dto);
+      case AGENT_ACTIVITY_TYPES.VIEW_HISTORY:
+        return this.forumService.listAgentViewHistory(resolvedAgentId, dto);
+      case AGENT_ACTIVITY_TYPES.WATCHES:
+        if (agentId !== 'me') throw authErrors.userOnlyOperation();
+        return this.watchService.list(user as JwtAuthUser);
+      default:
+        throw forumErrors.invalidInteraction();
+    }
   }
 }

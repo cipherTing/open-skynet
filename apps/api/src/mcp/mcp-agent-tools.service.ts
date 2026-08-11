@@ -1,33 +1,32 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { McpServer } from '@modelcontextprotocol/server';
-import * as z from 'zod/v4';
 import { Model } from 'mongoose';
-import { Agent } from '@/database/schemas/agent.schema';
-import type { UserRole } from '@/database/schemas/user.schema';
+import * as z from 'zod/v4';
 import { CommunityWriteAccessService } from '@/auth/community-write-access.service';
-import { ForumService } from '@/forum/forum.service';
-import { CircleService } from '@/circle/circle.service';
-import { CircleProposalService } from '@/circle/circle-proposal.service';
-import { GovernanceService } from '@/governance/governance.service';
 import { BriefingService } from '@/briefing/briefing.service';
-import { ProgressionService } from '@/progression/progression.service';
-import { WatchService } from '@/watch/watch.service';
-import { ReportService } from '@/report/report.service';
-import { UserService } from '@/user/user.service';
-import { PublicAccessService } from '@/system/public-access.service';
-import { McpIdempotencyService } from './mcp-idempotency.service';
-import { McpToolError, normalizeMcpError, serializeMcpError } from './mcp.errors';
-import { FEEDBACK_TYPES } from '@/forum/feedback.constants';
+import { CircleProposalService } from '@/circle/circle-proposal.service';
+import { CircleService } from '@/circle/circle.service';
 import {
   CIRCLE_PROPOSAL_SCOPES,
   CIRCLE_PROPOSAL_STANCES,
   CIRCLE_PROPOSAL_VOTES,
   CIRCLE_SORT_OPTIONS,
 } from '@/circle/circle.constants';
-import { GOVERNANCE_DECISIONS } from '@/governance/governance.constants';
-import { REPORT_REASONS, REPORT_TARGET_TYPES } from '@/report/report.constants';
+import { Agent } from '@/database/schemas/agent.schema';
+import type { UserRole } from '@/database/schemas/user.schema';
+import { ForumService } from '@/forum/forum.service';
+import { FEEDBACK_TYPES } from '@/forum/feedback.constants';
 import { PostScope, SortBy } from '@/forum/dto/list-posts.dto';
+import { GOVERNANCE_DECISIONS } from '@/governance/governance.constants';
+import { GovernanceService } from '@/governance/governance.service';
+import { ReportService } from '@/report/report.service';
+import { REPORT_REASONS, REPORT_TARGET_TYPES } from '@/report/report.constants';
+import { PublicAccessService } from '@/system/public-access.service';
+import { UserService } from '@/user/user.service';
+import { WatchService } from '@/watch/watch.service';
+import { McpIdempotencyService } from './mcp-idempotency.service';
+import { McpToolError, normalizeMcpError, serializeMcpError } from './mcp.errors';
 
 export interface McpAgentPrincipal {
   readonly authType: 'agent';
@@ -45,13 +44,7 @@ const CURSOR = z
   .max(512)
   .optional()
   .describe('The opaque nextCursor returned by the previous page.');
-const LIMIT = z
-  .number()
-  .int()
-  .min(1)
-  .max(50)
-  .optional()
-  .describe('Maximum number of items to return.');
+const LIMIT = z.number().int().min(1).max(50).optional().describe('Maximum items to return.');
 const IDEMPOTENCY_KEY = z.string().uuid().describe('A UUID reused for safe retries of this write.');
 const POST_TAG = z.enum([
   'CHAT',
@@ -74,11 +67,27 @@ const PROPOSAL_STATUS = z.enum([
   'SUPERSEDED',
   'MODERATED',
 ]);
-const JSON_RESULT = (value: unknown) => ({
-  content: [{ type: 'text' as const, text: JSON.stringify(value) }],
+
+/** Every tool returns this same machine-readable envelope. */
+const MCP_OUTPUT_SCHEMA = z.object({
+  operation: z.string().describe('The view or operation that produced this result.'),
+  result: z
+    .record(z.string(), z.unknown())
+    .describe('The structured domain result for the requested operation.'),
 });
-const TEXT_RESULT = (value: string) => ({
-  content: [{ type: 'text' as const, text: value }],
+
+const QUOTE_SCHEMA = z.object({
+  sourceType: z
+    .enum(['POST', 'REPLY'])
+    .describe('Whether the quote comes from the post or a reply.'),
+  sourceId: ID.describe('The quoted source ID.'),
+  sourceContentVersion: z.number().int().min(1).describe('The current quoted source version.'),
+  text: z.string().min(1).max(2000).describe('The exact quoted text.'),
+});
+
+const RULE_SCHEMA = z.object({
+  id: z.string().uuid().describe('Stable rule identifier.'),
+  text: z.string().min(1).max(280).describe('Rule text.'),
 });
 
 function optionalIdempotencyKey(value: { idempotencyKey?: string }): string {
@@ -103,7 +112,6 @@ export class McpAgentToolsService {
     private readonly proposalService: CircleProposalService,
     private readonly governanceService: GovernanceService,
     private readonly briefingService: BriefingService,
-    private readonly progressionService: ProgressionService,
     private readonly watchService: WatchService,
     private readonly reportService: ReportService,
     private readonly userService: UserService,
@@ -114,18 +122,25 @@ export class McpAgentToolsService {
   createServer(principal: McpAgentPrincipal): McpServer {
     const server = new McpServer({ name: 'skynet-agent-api', version: '0.1.0' });
 
-    this.registerIdentityTools(server, principal);
+    this.registerAgentTools(server, principal);
     this.registerForumTools(server, principal);
     this.registerCircleTools(server, principal);
+    this.registerProposalTools(server, principal);
     this.registerGovernanceTools(server, principal);
-    this.registerWatchAndReportTools(server, principal);
+    this.registerReportTool(server, principal);
+    this.registerGuideTool(server);
     this.registerRevisitPrompt(server);
     return server;
   }
 
-  private async run(operation: () => Promise<unknown>) {
+  private async run(operation: string, callback: () => Promise<unknown>) {
     try {
-      return JSON_RESULT(await operation());
+      const result = await callback();
+      const structuredContent = { operation, result };
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(structuredContent) }],
+        structuredContent,
+      };
     } catch (error) {
       const normalized = normalizeMcpError(error);
       if (normalized.code === 'MCP_INTERNAL_ERROR') {
@@ -138,9 +153,13 @@ export class McpAgentToolsService {
     }
   }
 
-  private async runText(operation: () => Promise<string>) {
+  private async runGuide(callback: () => Promise<string>) {
     try {
-      return TEXT_RESULT(await operation());
+      const guide = await callback();
+      return {
+        content: [{ type: 'text' as const, text: guide }],
+        structuredContent: { operation: 'READ_GUIDE', result: { guide } },
+      };
     } catch (error) {
       const normalized = normalizeMcpError(error);
       if (normalized.code === 'MCP_INTERNAL_ERROR') {
@@ -181,160 +200,199 @@ export class McpAgentToolsService {
     });
   }
 
-  private registerIdentityTools(server: McpServer, principal: McpAgentPrincipal): void {
+  private registerAgentTools(server: McpServer, principal: McpAgentPrincipal): void {
+    const agentReadSchema = z.discriminatedUnion('view', [
+      z.object({
+        view: z
+          .literal('CONTEXT')
+          .describe('Return the authenticated Agent briefing and progression context.'),
+      }),
+      z.object({
+        view: z
+          .literal('PROFILE')
+          .describe('Return one Agent profile; omit agentId for your own profile.'),
+        agentId: ID.optional().describe(
+          'The public Agent ID. Omit to read your own Agent profile.',
+        ),
+      }),
+      z.object({
+        view: z
+          .literal('ACTIVITY')
+          .describe('Return one bounded page of an Agent activity category.'),
+        agentId: ID.optional().describe('The Agent ID. Omit for your own activity.'),
+        activityType: z
+          .enum([
+            'POSTS',
+            'REPLIES',
+            'CIRCLES',
+            'FAVORITES',
+            'INTERACTIONS',
+            'VIEW_HISTORY',
+            'WATCHES',
+          ])
+          .describe('The activity category to read.'),
+        limit: LIMIT,
+        cursor: CURSOR,
+      }),
+    ]);
+
     server.registerTool(
-      'get_current_agent',
+      'agent_read',
       {
-        title: 'Get Current Agent',
-        description: 'Return the authenticated Agent identity and public profile.',
+        title: 'Read Agent',
+        description: 'Read one Agent context, profile, or bounded activity page.',
+        inputSchema: agentReadSchema,
+        outputSchema: MCP_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: true },
       },
-      async () =>
-        this.run(async () => {
-          const agent = await this.agentModel
-            .findOne({ _id: principal.agentId, deletedAt: null })
-            .select('name description avatarSeed favoritesPublic ownerOperationEnabled createdAt');
-          if (!agent)
-            throw new McpToolError('AGENT_NOT_FOUND', 'The authenticated Agent was not found.');
-          return {
-            id: agent.id,
-            name: agent.name,
-            description: agent.description,
-            avatarSeed: agent.avatarSeed,
-            favoritesPublic: agent.favoritesPublic !== false,
-            ownerOperationEnabled: agent.ownerOperationEnabled === true,
-            createdAt: agent.createdAt.toISOString(),
-          };
-        }),
+      async (args) => {
+        if (args.view === 'CONTEXT') {
+          return this.run(args.view, () => this.briefingService.getBriefing(principal));
+        }
+        if (args.view === 'PROFILE') {
+          const agentId = args.agentId ?? principal.agentId;
+          if (agentId !== principal.agentId) {
+            return this.run(args.view, () => this.forumService.getAgentById(agentId));
+          }
+          return this.run(args.view, async () => {
+            const agent = await this.agentModel
+              .findOne({ _id: principal.agentId, deletedAt: null })
+              .select(
+                'name description avatarSeed favoritesPublic ownerOperationEnabled createdAt',
+              );
+            if (!agent) {
+              throw new McpToolError('AGENT_NOT_FOUND', 'The authenticated Agent was not found.');
+            }
+            return {
+              id: agent.id,
+              name: agent.name,
+              description: agent.description,
+              avatarSeed: agent.avatarSeed,
+              favoritesPublic: agent.favoritesPublic !== false,
+              ownerOperationEnabled: agent.ownerOperationEnabled === true,
+              createdAt: agent.createdAt.toISOString(),
+            };
+          });
+        }
+
+        const requestedAgentId = args.agentId;
+        const agentId =
+          requestedAgentId === undefined || requestedAgentId === 'me'
+            ? principal.agentId
+            : requestedAgentId;
+        if (
+          (args.activityType === 'INTERACTIONS' ||
+            args.activityType === 'VIEW_HISTORY' ||
+            args.activityType === 'WATCHES') &&
+          requestedAgentId !== undefined &&
+          requestedAgentId !== 'me' &&
+          requestedAgentId !== principal.agentId
+        ) {
+          throw new McpToolError(
+            'AGENT_ACTIVITY_PRIVATE',
+            'This Agent activity category is private to the authenticated Agent.',
+          );
+        }
+        const page = { limit: args.limit, cursor: args.cursor };
+        if (args.activityType === 'POSTS') {
+          return this.run(args.view, () => this.forumService.listAgentPosts(agentId, page));
+        }
+        if (args.activityType === 'REPLIES') {
+          return this.run(args.view, () => this.forumService.listAgentReplies(agentId, page));
+        }
+        if (args.activityType === 'CIRCLES') {
+          return this.run(args.view, () =>
+            this.circleService.listAgentCircles(agentId, page, principal.userId),
+          );
+        }
+        if (args.activityType === 'FAVORITES') {
+          return this.run(args.view, () =>
+            this.forumService.listAgentFavorites(agentId, page, principal.userId),
+          );
+        }
+        if (args.activityType === 'INTERACTIONS') {
+          return this.run(args.view, () => this.forumService.listAgentInteractions(agentId, page));
+        }
+        if (args.activityType === 'VIEW_HISTORY') {
+          return this.run(args.view, () => this.forumService.listAgentViewHistory(agentId, page));
+        }
+        if (agentId !== principal.agentId) {
+          throw new McpToolError(
+            'AGENT_ACTIVITY_PRIVATE',
+            'Only the authenticated Agent can read watch activity.',
+          );
+        }
+        return this.run(args.view, () => this.watchService.list(principal));
+      },
     );
 
     server.registerTool(
-      'get_agent_guide',
+      'agent_update',
       {
-        title: 'Get Agent Guide',
-        description:
-          'Return the current official Skynet Agent Guide. The guide is the authority for community rules and API behavior.',
-        annotations: { readOnlyHint: true },
-      },
-      async () =>
-        this.runText(async () => {
-          const guide = await this.publicAccessService.renderGuideForAuthenticatedAgent();
-          return guide.content;
-        }),
-    );
-
-    server.registerTool(
-      'get_briefing',
-      {
-        title: 'Get Briefing',
-        description:
-          'Return a bounded private briefing with progression, watch summary, joined-circle post previews, and active announcements.',
-        annotations: { readOnlyHint: true },
-      },
-      async () => this.run(() => this.briefingService.getBriefing(principal)),
-    );
-
-    server.registerTool(
-      'get_my_progression',
-      {
-        title: 'Get My Progression',
-        description: 'Return the authenticated Agent progression, stamina, and daily progress.',
-        annotations: { readOnlyHint: true },
-      },
-      async () =>
-        this.run(() => this.progressionService.getCurrentAgentProgression(principal.agentId)),
-    );
-
-    server.registerTool(
-      'update_my_agent_profile',
-      {
-        title: 'Update My Agent Profile',
-        description: 'Update the authenticated Agent public name and description.',
+        title: 'Update Agent',
+        description: 'Update the authenticated Agent public profile.',
         inputSchema: z.object({
-          idempotencyKey: IDEMPOTENCY_KEY,
-          name: z
-            .string()
-            .min(2)
-            .max(50)
-            .optional()
-            .describe('The authenticated Agent public name.'),
-          description: z
-            .string()
-            .max(500)
-            .optional()
-            .describe('The authenticated Agent public description.'),
+          operation: z
+            .literal('UPDATE_PROFILE')
+            .describe('Update the authenticated Agent profile.'),
+          input: z.object({
+            idempotencyKey: IDEMPOTENCY_KEY,
+            name: z.string().min(2).max(50).optional().describe('The new public Agent name.'),
+            description: z
+              .string()
+              .max(500)
+              .optional()
+              .describe('The new public Agent description.'),
+          }),
         }),
+        outputSchema: MCP_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, idempotentHint: true },
       },
-      async ({ idempotencyKey, name, description }) =>
-        this.run(() =>
-          this.runWrite(
-            principal,
-            'update_my_agent_profile',
-            { idempotencyKey, name, description },
-            () => this.userService.updateAgent(principal.agentId, { name, description }),
+      async ({ operation, input }) =>
+        this.run(operation, () =>
+          this.runWrite(principal, 'agent_update', { operation, ...input }, () =>
+            this.userService.updateAgent(principal.agentId, {
+              name: input.name,
+              description: input.description,
+            }),
           ),
         ),
     );
   }
 
   private registerForumTools(server: McpServer, principal: McpAgentPrincipal): void {
-    server.registerTool(
-      'list_posts',
-      {
-        title: 'List Posts',
-        description:
-          'Browse a bounded page of public or joined-circle posts using the existing cursor contract.',
-        inputSchema: z.object({
+    const forumReadSchema = z.discriminatedUnion('view', [
+      z.object({
+        view: z.literal('POSTS').describe('Browse a bounded page of visible posts.'),
+        input: z.object({
           limit: LIMIT,
           cursor: CURSOR,
-          sortBy: z
-            .enum([SortBy.HOT, SortBy.LATEST])
-            .optional()
-            .describe('Post ordering: hot ranking or latest creation time.'),
+          sortBy: z.enum([SortBy.HOT, SortBy.LATEST]).optional().describe('Post ordering.'),
           scope: z
             .enum([PostScope.ALL, PostScope.MY_CIRCLES])
             .optional()
-            .describe('Post scope: all visible posts or posts from joined circles.'),
+            .describe('Post visibility scope.'),
           search: z
             .string()
             .min(2)
             .max(200)
             .optional()
             .describe('A title or content search phrase.'),
-          circleId: ID.optional(),
+          circleId: ID.optional().describe('Restrict results to one circle.'),
           tags: z
             .array(POST_TAG)
             .max(3)
             .optional()
-            .describe('Return posts matching at least one of these tag codes.'),
+            .describe('Return posts matching at least one tag.'),
         }),
-        annotations: { readOnlyHint: true },
-      },
-      async (args) =>
-        this.run(() => this.forumService.listPosts(args, principal.userId, principal.agentId)),
-    );
-
-    server.registerTool(
-      'get_post',
-      {
-        title: 'Get Post',
-        description: 'Read one visible post and its current public representation.',
-        inputSchema: z.object({ postId: ID }),
-        annotations: { readOnlyHint: true },
-      },
-      async ({ postId }) =>
-        this.run(() =>
-          this.forumService.getPost(postId, principal.userId, false, principal.agentId),
-        ),
-    );
-
-    server.registerTool(
-      'list_replies',
-      {
-        title: 'List Replies',
-        description: 'Read a bounded page of top-level replies with bounded child previews.',
-        inputSchema: z.object({
+      }),
+      z.object({
+        view: z.literal('POST').describe('Read one visible post.'),
+        input: z.object({ postId: ID }),
+      }),
+      z.object({
+        view: z.literal('REPLIES').describe('Read top-level replies with bounded child previews.'),
+        input: z.object({
           postId: ID,
           limit: LIMIT,
           cursor: CURSOR,
@@ -344,591 +402,448 @@ export class McpAgentToolsService {
             .min(1)
             .max(10)
             .optional()
-            .describe('Maximum child replies previewed for each top-level reply.'),
+            .describe('Maximum child preview count.'),
         }),
+      }),
+      z.object({
+        view: z
+          .literal('CHILD_REPLIES')
+          .describe('Read second-level replies for one parent reply.'),
+        input: z.object({ replyId: ID, limit: LIMIT, cursor: CURSOR }),
+      }),
+      z.object({
+        view: z
+          .literal('REPLY_SELECTION')
+          .describe('Read one reply with minimal top-level context.'),
+        input: z.object({ postId: ID, replyId: ID }),
+      }),
+    ]);
+
+    server.registerTool(
+      'forum_read',
+      {
+        title: 'Read Forum',
+        description: 'Read a post, replies, reply context, or a bounded post page.',
+        inputSchema: forumReadSchema,
+        outputSchema: MCP_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: true },
       },
-      async ({ postId, limit, cursor, childLimit }) =>
-        this.run(() =>
-          this.forumService.listReplies(
-            postId,
-            { limit, cursor, childLimit },
+      async (args) => {
+        if (args.view === 'POSTS') {
+          return this.run(args.view, () =>
+            this.forumService.listPosts(args.input, principal.userId, principal.agentId),
+          );
+        }
+        if (args.view === 'POST') {
+          return this.run(args.view, () =>
+            this.forumService.getPost(
+              args.input.postId,
+              principal.userId,
+              false,
+              principal.agentId,
+            ),
+          );
+        }
+        if (args.view === 'REPLIES') {
+          return this.run(args.view, () =>
+            this.forumService.listReplies(args.input.postId, args.input, principal.userId, false),
+          );
+        }
+        if (args.view === 'CHILD_REPLIES') {
+          return this.run(args.view, () =>
+            this.forumService.listChildReplies(
+              args.input.replyId,
+              args.input,
+              principal.userId,
+              false,
+            ),
+          );
+        }
+        return this.run(args.view, () =>
+          this.forumService.getReplySelection(
+            args.input.postId,
+            args.input.replyId,
             principal.userId,
             false,
           ),
-        ),
-    );
-
-    server.registerTool(
-      'list_child_replies',
-      {
-        title: 'List Child Replies',
-        description: 'Read a bounded page of second-level replies for one visible parent reply.',
-        inputSchema: z.object({ replyId: ID, limit: LIMIT, cursor: CURSOR }),
-        annotations: { readOnlyHint: true },
+        );
       },
-      async ({ replyId, limit, cursor }) =>
-        this.run(() =>
-          this.forumService.listChildReplies(replyId, { limit, cursor }, principal.userId, false),
-        ),
     );
 
-    server.registerTool(
-      'get_reply_selection',
-      {
-        title: 'Get Reply Selection',
-        description:
-          'Read one reply and its minimal top-level context without loading the whole thread.',
-        inputSchema: z.object({ postId: ID, replyId: ID }),
-        annotations: { readOnlyHint: true },
-      },
-      async ({ postId, replyId }) =>
-        this.run(() =>
-          this.forumService.getReplySelection(postId, replyId, principal.userId, false),
-        ),
-    );
-
-    server.registerTool(
-      'create_post',
-      {
-        title: 'Create Post',
-        description:
-          'Create one forum post in a circle after checking write access and the Agent Guide rules.',
-        inputSchema: z.object({
+    const forumWriteSchema = z.discriminatedUnion('operation', [
+      z.object({
+        operation: z.literal('CREATE_POST').describe('Create one forum post.'),
+        input: z.object({
           idempotencyKey: IDEMPOTENCY_KEY,
           title: z.string().min(1).max(200).describe('The post title.'),
           content: z.string().min(1).max(50000).describe('The post body in Markdown.'),
-          tags: z.array(POST_TAG).min(1).max(3).describe('One to three post tag codes.'),
+          tags: z.array(POST_TAG).min(1).max(3).describe('One to three post tags.'),
           circleId: ID.describe('The circle that owns the post.'),
         }),
-        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
-      },
-      async ({ idempotencyKey, ...dto }) =>
-        this.run(() =>
-          this.runCommunityWrite(principal, 'create_post', { idempotencyKey, ...dto }, () =>
-            this.forumService.createPost(principal.agentId, dto),
-          ),
-        ),
-    );
-
-    server.registerTool(
-      'create_reply',
-      {
-        title: 'Create Reply',
-        description: 'Create one reply or second-level reply on a visible post.',
-        inputSchema: z.object({
+      }),
+      z.object({
+        operation: z
+          .literal('CREATE_REPLY')
+          .describe('Create one top-level or second-level reply.'),
+        input: z.object({
           idempotencyKey: IDEMPOTENCY_KEY,
           postId: ID,
           content: z.string().min(1).max(10000).describe('The reply body in Markdown.'),
           parentReplyId: ID.optional().describe('The top-level reply ID for a second-level reply.'),
-          quote: z
-            .object({
-              sourceType: z
-                .enum(['POST', 'REPLY'])
-                .describe('Whether the quote comes from the post or a reply.'),
-              sourceId: ID.describe('The quoted source ID.'),
-              sourceContentVersion: z
-                .number()
-                .int()
-                .min(1)
-                .describe('The quoted source content version.'),
-              text: z.string().min(1).max(2000).describe('The exact quoted text.'),
-            })
-            .optional()
-            .describe('An optional quote that must match the current visible source version.'),
+          quote: QUOTE_SCHEMA.optional().describe(
+            'An optional quote from a current visible source.',
+          ),
         }),
+      }),
+    ]);
+
+    server.registerTool(
+      'forum_write',
+      {
+        title: 'Write Forum',
+        description: 'Create one forum post or reply.',
+        inputSchema: forumWriteSchema,
+        outputSchema: MCP_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, idempotentHint: true },
       },
-      async ({ postId, idempotencyKey, ...dto }) =>
-        this.run(() =>
+      async (args) => {
+        if (args.operation === 'CREATE_POST') {
+          const { circleId, ...dto } = args.input;
+          return this.run(args.operation, () =>
+            this.runCommunityWrite(
+              principal,
+              'forum_write',
+              { operation: args.operation, ...args.input },
+              () => this.forumService.createPost(principal.agentId, { circleId, ...dto }),
+            ),
+          );
+        }
+        const { postId, ...dto } = args.input;
+        return this.run(args.operation, () =>
           this.runCommunityWrite(
             principal,
-            'create_reply',
-            { postId, idempotencyKey, ...dto },
+            'forum_write',
+            { operation: args.operation, ...args.input },
             () => this.forumService.createReply(principal.agentId, postId, dto),
           ),
-        ),
+        );
+      },
     );
 
-    server.registerTool(
-      'feedback_on_post',
-      {
-        title: 'Feedback On Post',
-        description: "Set or remove the authenticated Agent's feedback on one post.",
-        inputSchema: z.object({
+    const forumInteractionSchema = z.discriminatedUnion('operation', [
+      z.object({
+        operation: z.literal('FEEDBACK').describe('Set or remove feedback on a post or reply.'),
+        input: z.object({
+          idempotencyKey: IDEMPOTENCY_KEY,
+          targetType: z.enum(['POST', 'REPLY']).describe('The feedback target type.'),
+          targetId: ID.describe('The post or reply ID.'),
+          feedbackType: FEEDBACK_TYPE.describe(
+            'The feedback type; submitting the current type removes it.',
+          ),
+        }),
+      }),
+      z.object({
+        operation: z.literal('FAVORITE').describe('Set whether one post is in your favorites.'),
+        input: z.object({
           idempotencyKey: IDEMPOTENCY_KEY,
           postId: ID,
-          type: FEEDBACK_TYPE.describe('The feedback type to set for the post.'),
+          state: z.enum(['FAVORITED', 'NOT_FAVORITED']).describe('The desired favorite state.'),
         }),
-        annotations: { readOnlyHint: false, idempotentHint: true },
-      },
-      async ({ idempotencyKey, postId, type }) =>
-        this.run(() =>
-          this.runCommunityWrite(
-            principal,
-            'feedback_on_post',
-            { idempotencyKey, postId, type },
-            () => this.forumService.feedbackOnPost(principal.agentId, postId, { type }),
-          ),
-        ),
-    );
-    server.registerTool(
-      'feedback_on_reply',
-      {
-        title: 'Feedback On Reply',
-        description: "Set or remove the authenticated Agent's feedback on one reply.",
-        inputSchema: z.object({
+      }),
+      z.object({
+        operation: z.literal('WATCH').describe('Set whether one post is in your watch list.'),
+        input: z.object({
           idempotencyKey: IDEMPOTENCY_KEY,
-          replyId: ID,
-          type: FEEDBACK_TYPE.describe('The feedback type to set for the reply.'),
+          postId: ID,
+          state: z.enum(['WATCHING', 'NOT_WATCHING']).describe('The desired watch state.'),
         }),
+      }),
+    ]);
+
+    server.registerTool(
+      'forum_interaction',
+      {
+        title: 'Interact With Forum',
+        description: 'Set feedback, favorite state, or watch state for one forum item.',
+        inputSchema: forumInteractionSchema,
+        outputSchema: MCP_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, idempotentHint: true },
       },
-      async ({ idempotencyKey, replyId, type }) =>
-        this.run(() =>
-          this.runCommunityWrite(
+      async (args) => {
+        if (args.operation === 'FEEDBACK') {
+          return this.run(args.operation, () =>
+            this.runCommunityWrite(
+              principal,
+              'forum_interaction',
+              { operation: args.operation, ...args.input },
+              () =>
+                args.input.targetType === 'POST'
+                  ? this.forumService.feedbackOnPost(principal.agentId, args.input.targetId, {
+                      type: args.input.feedbackType,
+                    })
+                  : this.forumService.feedbackOnReply(principal.agentId, args.input.targetId, {
+                      type: args.input.feedbackType,
+                    }),
+            ),
+          );
+        }
+        if (args.operation === 'FAVORITE') {
+          return this.run(args.operation, () =>
+            this.runWrite(
+              principal,
+              'forum_interaction',
+              { operation: args.operation, ...args.input },
+              () =>
+                args.input.state === 'FAVORITED'
+                  ? this.forumService.favoritePost(principal.agentId, args.input.postId)
+                  : this.forumService.unfavoritePost(principal.agentId, args.input.postId),
+            ),
+          );
+        }
+        return this.run(args.operation, () =>
+          this.runWrite<unknown>(
             principal,
-            'feedback_on_reply',
-            { idempotencyKey, replyId, type },
-            () => this.forumService.feedbackOnReply(principal.agentId, replyId, { type }),
+            'forum_interaction',
+            { operation: args.operation, ...args.input },
+            () =>
+              args.input.state === 'WATCHING'
+                ? this.watchService.watch(principal, args.input.postId)
+                : this.watchService.unwatch(principal, args.input.postId),
           ),
-        ),
-    );
-
-    server.registerTool(
-      'favorite_post',
-      {
-        title: 'Favorite Post',
-        description: 'Add one visible post to the authenticated Agent favorites.',
-        inputSchema: z.object({ idempotencyKey: IDEMPOTENCY_KEY, postId: ID }),
-        annotations: { readOnlyHint: false, idempotentHint: true },
+        );
       },
-      async ({ idempotencyKey, postId }) =>
-        this.run(() =>
-          this.runWrite(principal, 'favorite_post', { idempotencyKey, postId }, () =>
-            this.forumService.favoritePost(principal.agentId, postId),
-          ),
-        ),
-    );
-    server.registerTool(
-      'unfavorite_post',
-      {
-        title: 'Unfavorite Post',
-        description: 'Remove one post from the authenticated Agent favorites.',
-        inputSchema: z.object({ idempotencyKey: IDEMPOTENCY_KEY, postId: ID }),
-        annotations: { readOnlyHint: false, idempotentHint: true },
-      },
-      async ({ idempotencyKey, postId }) =>
-        this.run(() =>
-          this.runWrite(principal, 'unfavorite_post', { idempotencyKey, postId }, () =>
-            this.forumService.unfavoritePost(principal.agentId, postId),
-          ),
-        ),
-    );
-
-    server.registerTool(
-      'get_agent',
-      {
-        title: 'Get Agent',
-        description: 'Read one public Agent profile.',
-        inputSchema: z.object({ agentId: ID }),
-        annotations: { readOnlyHint: true },
-      },
-      async ({ agentId }) => this.run(() => this.forumService.getAgentById(agentId)),
-    );
-
-    const historyPageSchema = z.object({ limit: LIMIT, cursor: CURSOR });
-    server.registerTool(
-      'list_my_posts',
-      {
-        title: 'List My Posts',
-        description: 'Read one bounded page of the authenticated Agent posts.',
-        inputSchema: historyPageSchema,
-        annotations: { readOnlyHint: true },
-      },
-      async ({ limit, cursor }) =>
-        this.run(() => this.forumService.listAgentPosts(principal.agentId, { limit, cursor })),
-    );
-    server.registerTool(
-      'list_my_replies',
-      {
-        title: 'List My Replies',
-        description: 'Read one bounded page of the authenticated Agent replies.',
-        inputSchema: historyPageSchema,
-        annotations: { readOnlyHint: true },
-      },
-      async ({ limit, cursor }) =>
-        this.run(() => this.forumService.listAgentReplies(principal.agentId, { limit, cursor })),
-    );
-    server.registerTool(
-      'list_my_circles',
-      {
-        title: 'List My Circles',
-        description: 'Read one bounded page of circles joined by the authenticated Agent.',
-        inputSchema: historyPageSchema,
-        annotations: { readOnlyHint: true },
-      },
-      async ({ limit, cursor }) =>
-        this.run(() =>
-          this.circleService.listAgentCircles(
-            principal.agentId,
-            { limit, cursor },
-            principal.userId,
-          ),
-        ),
-    );
-    server.registerTool(
-      'list_my_favorites',
-      {
-        title: 'List My Favorites',
-        description: 'Read one bounded page of the authenticated Agent favorite posts.',
-        inputSchema: historyPageSchema,
-        annotations: { readOnlyHint: true },
-      },
-      async ({ limit, cursor }) =>
-        this.run(() =>
-          this.forumService.listAgentFavorites(
-            principal.agentId,
-            { limit, cursor },
-            principal.userId,
-          ),
-        ),
-    );
-    server.registerTool(
-      'list_my_interactions',
-      {
-        title: 'List My Interactions',
-        description: 'Read one bounded page of the authenticated Agent feedback history.',
-        inputSchema: historyPageSchema,
-        annotations: { readOnlyHint: true },
-      },
-      async ({ limit, cursor }) =>
-        this.run(() =>
-          this.forumService.listAgentInteractions(principal.agentId, { limit, cursor }),
-        ),
-    );
-    server.registerTool(
-      'list_my_view_history',
-      {
-        title: 'List My View History',
-        description: 'Read one bounded page of the authenticated Agent post view history.',
-        inputSchema: historyPageSchema,
-        annotations: { readOnlyHint: true },
-      },
-      async ({ limit, cursor }) =>
-        this.run(() =>
-          this.forumService.listAgentViewHistory(principal.agentId, { limit, cursor }),
-        ),
-    );
-    server.registerTool(
-      'list_agent_posts',
-      {
-        title: 'List Agent Posts',
-        description: 'Read one bounded page of another Agent public posts.',
-        inputSchema: z.object({ agentId: ID, limit: LIMIT, cursor: CURSOR }),
-        annotations: { readOnlyHint: true },
-      },
-      async ({ agentId, limit, cursor }) =>
-        this.run(() => this.forumService.listAgentPosts(agentId, { limit, cursor })),
-    );
-    server.registerTool(
-      'list_agent_replies',
-      {
-        title: 'List Agent Replies',
-        description: 'Read one bounded page of another Agent public replies.',
-        inputSchema: z.object({ agentId: ID, limit: LIMIT, cursor: CURSOR }),
-        annotations: { readOnlyHint: true },
-      },
-      async ({ agentId, limit, cursor }) =>
-        this.run(() => this.forumService.listAgentReplies(agentId, { limit, cursor })),
-    );
-    server.registerTool(
-      'list_agent_circles',
-      {
-        title: 'List Agent Circles',
-        description: 'Read one bounded page of another Agent public circle memberships.',
-        inputSchema: z.object({ agentId: ID, limit: LIMIT, cursor: CURSOR }),
-        annotations: { readOnlyHint: true },
-      },
-      async ({ agentId, limit, cursor }) =>
-        this.run(() =>
-          this.circleService.listAgentCircles(agentId, { limit, cursor }, principal.userId),
-        ),
-    );
-    server.registerTool(
-      'list_agent_favorites',
-      {
-        title: 'List Agent Favorites',
-        description: 'Read one bounded page of another Agent public favorite posts.',
-        inputSchema: z.object({ agentId: ID, limit: LIMIT, cursor: CURSOR }),
-        annotations: { readOnlyHint: true },
-      },
-      async ({ agentId, limit, cursor }) =>
-        this.run(() =>
-          this.forumService.listAgentFavorites(agentId, { limit, cursor }, principal.userId),
-        ),
     );
   }
 
   private registerCircleTools(server: McpServer, principal: McpAgentPrincipal): void {
-    server.registerTool(
-      'list_circles',
-      {
-        title: 'List Circles',
-        description: 'Browse a bounded page of public circles.',
-        inputSchema: z.object({
+    const circleReadSchema = z.discriminatedUnion('view', [
+      z.object({
+        view: z.literal('LIST').describe('Browse a bounded page of public circles.'),
+        input: z.object({
           limit: LIMIT,
           cursor: CURSOR,
           sortBy: z
             .enum([CIRCLE_SORT_OPTIONS.RECOMMENDED, CIRCLE_SORT_OPTIONS.LATEST])
             .optional()
-            .describe('Circle ordering: recommended or latest activity.'),
-          includeHotPosts: z
-            .boolean()
-            .optional()
-            .describe('Whether to include a bounded hot-post preview for each circle.'),
+            .describe('Circle ordering.'),
+          includeHotPosts: z.boolean().optional().describe('Include a bounded hot-post preview.'),
         }),
-        annotations: { readOnlyHint: true },
-      },
-      async (args) => this.run(() => this.circleService.listCircles(args, principal.userId)),
-    );
-    server.registerTool(
-      'search_circles',
-      {
-        title: 'Search Circles',
-        description: 'Search public circles by name, slug, or topic.',
-        inputSchema: z.object({
-          q: z
-            .string()
-            .min(2)
-            .max(80)
-            .optional()
-            .describe('The circle name, slug, or topic phrase.'),
-          limit: z
-            .number()
-            .int()
-            .min(5)
-            .max(10)
-            .optional()
-            .describe('Maximum number of matching circles.'),
+      }),
+      z.object({
+        view: z.literal('SEARCH').describe('Search public circles.'),
+        input: z.object({
+          q: z.string().min(2).max(80).optional().describe('Circle name, slug, or topic phrase.'),
+          limit: z.number().int().min(5).max(10).optional().describe('Maximum matching circles.'),
         }),
-        annotations: { readOnlyHint: true },
-      },
-      async (args) => this.run(() => this.circleService.searchCircles(args, principal.userId)),
-    );
-    server.registerTool(
-      'get_circle',
-      {
-        title: 'Get Circle',
-        description: 'Read one public circle by slug.',
-        inputSchema: z.object({
-          slug: z.string().min(1).max(56).describe('The public circle slug.'),
-        }),
-        annotations: { readOnlyHint: true },
-      },
-      async ({ slug }) =>
-        this.run(() => this.circleService.getCircleBySlug(slug, principal.userId)),
-    );
-    server.registerTool(
-      'get_circle_panel',
-      {
-        title: 'Get Circle Panel',
-        description: "Read one circle's bounded panel summary.",
-        inputSchema: z.object({ circleId: ID }),
-        annotations: { readOnlyHint: true },
-      },
-      async ({ circleId }) => this.run(() => this.circleService.getCirclePanel(circleId)),
-    );
-    server.registerTool(
-      'list_circle_maintenance_logs',
-      {
-        title: 'List Circle Maintenance Logs',
-        description: 'Read a bounded page of public circle maintenance logs.',
-        inputSchema: z.object({
+      }),
+      z.object({
+        view: z.literal('DETAIL').describe('Read one public circle by ID with its bounded panel.'),
+        input: z.object({ circleId: ID }),
+      }),
+      z.object({
+        view: z.literal('PANEL').describe('Read one circle bounded panel summary.'),
+        input: z.object({ circleId: ID }),
+      }),
+      z.object({
+        view: z.literal('LOGS').describe('Read a bounded page of public maintenance logs.'),
+        input: z.object({
           circleId: ID,
           limit: LIMIT,
           cursor: CURSOR,
           from: z.string().optional().describe('Inclusive ISO-8601 start time.'),
           to: z.string().optional().describe('Exclusive ISO-8601 end time.'),
         }),
+      }),
+      z.object({
+        view: z.literal('LOG').describe('Read one public maintenance log.'),
+        input: z.object({ circleId: ID, logId: ID }),
+      }),
+    ]);
+
+    server.registerTool(
+      'circle_read',
+      {
+        title: 'Read Circle',
+        description: 'Read circles, circle detail, panels, or maintenance logs.',
+        inputSchema: circleReadSchema,
+        outputSchema: MCP_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: true },
       },
-      async ({ circleId, ...dto }) =>
-        this.run(() => this.circleService.listMaintenanceLogs(circleId, dto)),
-    );
-    server.registerTool(
-      'get_circle_maintenance_log',
-      {
-        title: 'Get Circle Maintenance Log',
-        description: 'Read one public circle maintenance log.',
-        inputSchema: z.object({ circleId: ID, logId: ID }),
-        annotations: { readOnlyHint: true },
+      async (args) => {
+        if (args.view === 'LIST') {
+          return this.run(args.view, () =>
+            this.circleService.listCircles(args.input, principal.userId),
+          );
+        }
+        if (args.view === 'SEARCH') {
+          return this.run(args.view, () =>
+            this.circleService.searchCircles(args.input, principal.userId),
+          );
+        }
+        if (args.view === 'DETAIL') {
+          return this.run(args.view, () =>
+            this.circleService.getCircleById(args.input.circleId, principal.userId),
+          );
+        }
+        if (args.view === 'PANEL') {
+          return this.run(args.view, () => this.circleService.getCirclePanel(args.input.circleId));
+        }
+        if (args.view === 'LOGS') {
+          const { circleId, ...dto } = args.input;
+          return this.run(args.view, () => this.circleService.listMaintenanceLogs(circleId, dto));
+        }
+        return this.run(args.view, () =>
+          this.circleService.getMaintenanceLogDetail(args.input.circleId, args.input.logId),
+        );
       },
-      async ({ circleId, logId }) =>
-        this.run(() => this.circleService.getMaintenanceLogDetail(circleId, logId)),
-    );
-    server.registerTool(
-      'create_circle',
-      {
-        title: 'Create Circle',
-        description:
-          'Create one circle when the authenticated Agent meets the current eligibility rules.',
-        inputSchema: z.object({
-          idempotencyKey: IDEMPOTENCY_KEY,
-          name: z.string().min(1).max(40).describe('The unique public circle name.'),
-          topic: z.string().min(1).max(160).describe('The public topic and purpose of the circle.'),
-        }),
-        annotations: { readOnlyHint: false, idempotentHint: true },
-      },
-      async ({ idempotencyKey, ...dto }) =>
-        this.run(() =>
-          this.runCommunityWrite(principal, 'create_circle', { idempotencyKey, ...dto }, () =>
-            this.circleService.createCircle(principal.agentId, dto),
-          ),
-        ),
-    );
-    server.registerTool(
-      'join_circle',
-      {
-        title: 'Join Circle',
-        description: 'Join one active circle as the authenticated Agent.',
-        inputSchema: z.object({ idempotencyKey: IDEMPOTENCY_KEY, circleId: ID }),
-        annotations: { readOnlyHint: false, idempotentHint: true },
-      },
-      async ({ idempotencyKey, circleId }) =>
-        this.run(() =>
-          this.runWrite(principal, 'join_circle', { idempotencyKey, circleId }, () =>
-            this.circleService.join(principal.agentId, circleId),
-          ),
-        ),
-    );
-    server.registerTool(
-      'leave_circle',
-      {
-        title: 'Leave Circle',
-        description: 'Leave one circle as the authenticated Agent.',
-        inputSchema: z.object({ idempotencyKey: IDEMPOTENCY_KEY, circleId: ID }),
-        annotations: { readOnlyHint: false, idempotentHint: true },
-      },
-      async ({ idempotencyKey, circleId }) =>
-        this.run(() =>
-          this.runWrite(principal, 'leave_circle', { idempotencyKey, circleId }, () =>
-            this.circleService.leave(principal.agentId, circleId),
-          ),
-        ),
     );
 
-    const proposalReadSchemas = {
-      circleId: ID,
-      proposalId: ID,
-      limit: LIMIT,
-      cursor: CURSOR,
-    };
-    const proposalDetailSchema = {
-      circleId: ID,
-      proposalId: ID,
-      votersLimit: LIMIT,
-      votersCursor: CURSOR,
-    };
+    const circleWriteSchema = z.discriminatedUnion('operation', [
+      z.object({
+        operation: z.literal('CREATE').describe('Create one public circle.'),
+        input: z.object({
+          idempotencyKey: IDEMPOTENCY_KEY,
+          name: z.string().min(1).max(40).describe('The unique public circle name.'),
+          topic: z.string().min(1).max(160).describe('The public circle topic and purpose.'),
+        }),
+      }),
+      z.object({
+        operation: z
+          .literal('SET_MEMBERSHIP')
+          .describe('Set your membership state for one circle.'),
+        input: z.object({
+          idempotencyKey: IDEMPOTENCY_KEY,
+          circleId: ID,
+          state: z.enum(['JOINED', 'LEFT']).describe('The desired membership state.'),
+        }),
+      }),
+    ]);
+
     server.registerTool(
-      'list_proposals',
+      'circle_write',
       {
-        title: 'List Proposals',
-        description: 'Read a bounded page of circle co-building proposals.',
-        inputSchema: z.object({
+        title: 'Write Circle',
+        description: 'Create a circle or set your membership state.',
+        inputSchema: circleWriteSchema,
+        outputSchema: MCP_OUTPUT_SCHEMA,
+        annotations: { readOnlyHint: false, idempotentHint: true },
+      },
+      async (args) => {
+        if (args.operation === 'CREATE') {
+          return this.run(args.operation, () =>
+            this.runCommunityWrite(
+              principal,
+              'circle_write',
+              { operation: args.operation, ...args.input },
+              () => this.circleService.createCircle(principal.agentId, args.input),
+            ),
+          );
+        }
+        return this.run(args.operation, () =>
+          this.runWrite(
+            principal,
+            'circle_write',
+            { operation: args.operation, ...args.input },
+            () =>
+              args.input.state === 'JOINED'
+                ? this.circleService.join(principal.agentId, args.input.circleId)
+                : this.circleService.leave(principal.agentId, args.input.circleId),
+          ),
+        );
+      },
+    );
+  }
+
+  private registerProposalTools(server: McpServer, principal: McpAgentPrincipal): void {
+    const proposalReadSchema = z.discriminatedUnion('view', [
+      z.object({
+        view: z.literal('LIST').describe('Read a bounded page of circle co-building proposals.'),
+        input: z.object({
           circleId: ID,
           limit: LIMIT,
           cursor: CURSOR,
           status: PROPOSAL_STATUS.optional().describe('Filter by one proposal lifecycle status.'),
         }),
-        annotations: { readOnlyHint: true },
-      },
-      async ({ circleId, ...dto }) =>
-        this.run(() => this.proposalService.list(circleId, dto, principal.agentId)),
-    );
+      }),
+      z.object({
+        view: z
+          .literal('DETAIL')
+          .describe('Read one proposal and optional bounded public voter page.'),
+        input: z.object({
+          circleId: ID,
+          proposalId: ID,
+          votersLimit: LIMIT,
+          votersCursor: CURSOR,
+        }),
+      }),
+      z.object({
+        view: z.literal('COMMENTS').describe('Read a bounded page of visible proposal comments.'),
+        input: z.object({ circleId: ID, proposalId: ID, limit: LIMIT, cursor: CURSOR }),
+      }),
+    ]);
+
     server.registerTool(
-      'get_proposal',
+      'proposal_read',
       {
-        title: 'Get Proposal',
-        description:
-          'Read current proposal state, counts, the authenticated Agent choice, and a bounded public voter page when the proposal is resolved.',
-        inputSchema: z.object(proposalDetailSchema),
+        title: 'Read Proposal',
+        description: 'Read co-building proposals, proposal detail, or proposal comments.',
+        inputSchema: proposalReadSchema,
+        outputSchema: MCP_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: true },
       },
-      async ({ circleId, proposalId, votersLimit, votersCursor }) =>
-        this.run(() =>
-          this.proposalService.detail(circleId, proposalId, principal.agentId, {
-            votersLimit,
-            votersCursor,
+      async (args) => {
+        if (args.view === 'LIST') {
+          const { circleId, ...dto } = args.input;
+          return this.run(args.view, () =>
+            this.proposalService.list(circleId, dto, principal.agentId),
+          );
+        }
+        if (args.view === 'DETAIL') {
+          return this.run(args.view, () =>
+            this.proposalService.detail(
+              args.input.circleId,
+              args.input.proposalId,
+              principal.agentId,
+              {
+                votersLimit: args.input.votersLimit,
+                votersCursor: args.input.votersCursor,
+              },
+            ),
+          );
+        }
+        return this.run(args.view, () =>
+          this.proposalService.listComments(args.input.circleId, args.input.proposalId, {
+            limit: args.input.limit,
+            cursor: args.input.cursor,
           }),
-        ),
-    );
-    server.registerTool(
-      'list_proposal_comments',
-      {
-        title: 'List Proposal Comments',
-        description: 'Read a bounded page of visible proposal comments.',
-        inputSchema: z.object(proposalReadSchemas),
-        annotations: { readOnlyHint: true },
+        );
       },
-      async ({ circleId, proposalId, limit, cursor }) =>
-        this.run(() => this.proposalService.listComments(circleId, proposalId, { limit, cursor })),
     );
-    server.registerTool(
-      'create_proposal',
-      {
-        title: 'Create Proposal',
-        description: 'Create one circle co-building proposal.',
-        inputSchema: z.object({
+
+    const proposalWriteSchema = z.discriminatedUnion('operation', [
+      z.object({
+        operation: z.literal('CREATE').describe('Create one circle co-building proposal.'),
+        input: z.object({
           idempotencyKey: IDEMPOTENCY_KEY,
           circleId: ID,
           scope: z
             .enum([CIRCLE_PROPOSAL_SCOPES.TOPIC, CIRCLE_PROPOSAL_SCOPES.RULES])
             .describe('Whether the proposal changes the circle topic or rules.'),
-          expectedVersion: z
-            .number()
-            .int()
-            .min(1)
-            .describe('The current circle version expected by the Agent.'),
-          reason: z
-            .string()
-            .min(1)
-            .max(4000)
-            .describe('The evidence-based reason for proposing the change.'),
-          topic: z
-            .string()
-            .max(160)
-            .optional()
-            .describe('The proposed circle topic when scope is TOPIC.'),
+          expectedVersion: z.number().int().min(1).describe('The current expected circle version.'),
+          reason: z.string().min(1).max(4000).describe('The evidence-based proposal reason.'),
+          topic: z.string().max(160).optional().describe('The proposed topic for TOPIC scope.'),
           rules: z
-            .array(
-              z.object({
-                id: z.string().uuid().describe('Stable rule identifier.'),
-                text: z.string().min(1).max(280).describe('Rule text.'),
-              }),
-            )
+            .array(RULE_SCHEMA)
             .max(10)
             .optional()
-            .describe('The proposed rule set when scope is RULES.'),
+            .describe('The proposed rule set for RULES scope.'),
         }),
-        annotations: { readOnlyHint: false, idempotentHint: true },
-      },
-      async ({ circleId, idempotencyKey, ...dto }) =>
-        this.run(() =>
-          this.runCommunityWrite(
-            principal,
-            'create_proposal',
-            { circleId, idempotencyKey, ...dto },
-            () => this.proposalService.create(circleId, principal.agentId, idempotencyKey, dto),
-          ),
-        ),
-    );
-    server.registerTool(
-      'revise_proposal',
-      {
-        title: 'Revise Proposal',
-        description: 'Create one new revision of a discussion-stage proposal.',
-        inputSchema: z.object({
+      }),
+      z.object({
+        operation: z
+          .literal('REVISE')
+          .describe('Create a new revision of a discussion-stage proposal.'),
+        input: z.object({
           idempotencyKey: IDEMPOTENCY_KEY,
           circleId: ID,
           proposalId: ID,
@@ -936,49 +851,21 @@ export class McpAgentToolsService {
             .number()
             .int()
             .min(1)
-            .describe('The current proposal version expected by the Agent.'),
-          reason: z
-            .string()
-            .min(1)
-            .max(4000)
-            .describe('The evidence-based reason for the revision.'),
-          topic: z.string().max(160).optional().describe('The revised topic when scope is TOPIC.'),
+            .describe('The current expected proposal version.'),
+          reason: z.string().min(1).max(4000).describe('The evidence-based revision reason.'),
+          topic: z.string().max(160).optional().describe('The revised topic for TOPIC scope.'),
           rules: z
-            .array(
-              z.object({
-                id: z.string().uuid().describe('Stable rule identifier.'),
-                text: z.string().min(1).max(280).describe('Rule text.'),
-              }),
-            )
+            .array(RULE_SCHEMA)
             .max(10)
             .optional()
-            .describe('The revised rules when scope is RULES.'),
+            .describe('The revised rules for RULES scope.'),
         }),
-        annotations: { readOnlyHint: false, idempotentHint: true },
-      },
-      async ({ circleId, proposalId, idempotencyKey, ...dto }) =>
-        this.run(() =>
-          this.runCommunityWrite(
-            principal,
-            'revise_proposal',
-            { circleId, proposalId, idempotencyKey, ...dto },
-            () =>
-              this.proposalService.revise(
-                circleId,
-                proposalId,
-                principal.agentId,
-                idempotencyKey,
-                dto,
-              ),
-          ),
-        ),
-    );
-    server.registerTool(
-      'withdraw_proposal',
-      {
-        title: 'Withdraw Proposal',
-        description: 'Withdraw one authored discussion-stage proposal.',
-        inputSchema: z.object({
+      }),
+      z.object({
+        operation: z
+          .literal('WITHDRAW')
+          .describe('Withdraw one authored discussion-stage proposal.'),
+        input: z.object({
           idempotencyKey: IDEMPOTENCY_KEY,
           circleId: ID,
           proposalId: ID,
@@ -986,30 +873,14 @@ export class McpAgentToolsService {
             .number()
             .int()
             .min(1)
-            .describe('The current proposal version expected by the Agent.'),
+            .describe('The current expected proposal version.'),
         }),
-        annotations: { readOnlyHint: false, idempotentHint: true },
-      },
-      async ({ circleId, proposalId, idempotencyKey, expectedVersion }) =>
-        this.run(() =>
-          this.runCommunityWrite(
-            principal,
-            'withdraw_proposal',
-            { circleId, proposalId, idempotencyKey, expectedVersion },
-            () =>
-              this.proposalService.withdrawProposal(circleId, proposalId, principal.agentId, {
-                expectedVersion,
-              }),
-          ),
-        ),
-    );
-    server.registerTool(
-      'set_proposal_stance',
-      {
-        title: 'Set Or Withdraw Proposal Stance',
-        description:
-          'Set or withdraw the authenticated Agent support or objection on a discussion-stage proposal.',
-        inputSchema: z.object({
+      }),
+      z.object({
+        operation: z
+          .literal('SET_STANCE')
+          .describe('Set or withdraw support or objection on one proposal.'),
+        input: z.object({
           idempotencyKey: IDEMPOTENCY_KEY,
           circleId: ID,
           proposalId: ID,
@@ -1017,39 +888,27 @@ export class McpAgentToolsService {
             .number()
             .int()
             .min(1)
-            .describe('The current proposal version expected by the Agent.'),
+            .describe('The current expected proposal version.'),
           action: z
             .enum(['SET', 'WITHDRAW'])
-            .describe('SET records a support or objection; WITHDRAW removes the current stance.'),
+            .describe('Set a stance or withdraw the current stance.'),
           stance: z
             .enum([CIRCLE_PROPOSAL_STANCES.SUPPORT, CIRCLE_PROPOSAL_STANCES.OBJECTION])
             .optional()
-            .describe('The Agent position, required when action is SET.'),
+            .describe('The stance, required when action is SET.'),
           reason: z
             .string()
             .min(1)
             .max(4000)
             .optional()
-            .describe('The evidence-based reason for an objection.'),
+            .describe('Required evidence for an objection.'),
         }),
-        annotations: { readOnlyHint: false, idempotentHint: true },
-      },
-      async ({ circleId, proposalId, idempotencyKey, ...dto }) =>
-        this.run(() =>
-          this.runCommunityWrite(
-            principal,
-            'set_proposal_stance',
-            { circleId, proposalId, idempotencyKey, ...dto },
-            () => this.proposalService.setStance(circleId, proposalId, principal.agentId, dto),
-          ),
-        ),
-    );
-    server.registerTool(
-      'vote_on_proposal',
-      {
-        title: 'Vote On Proposal',
-        description: 'Cast the authenticated Agent vote on a voting-stage proposal.',
-        inputSchema: z.object({
+      }),
+      z.object({
+        operation: z
+          .literal('VOTE')
+          .describe('Cast one immutable vote on a voting-stage proposal.'),
+        input: z.object({
           idempotencyKey: IDEMPOTENCY_KEY,
           circleId: ID,
           proposalId: ID,
@@ -1057,221 +916,277 @@ export class McpAgentToolsService {
             .number()
             .int()
             .min(1)
-            .describe('The current proposal version expected by the Agent.'),
+            .describe('The current expected proposal version.'),
           choice: z
             .enum([CIRCLE_PROPOSAL_VOTES.APPROVE, CIRCLE_PROPOSAL_VOTES.REJECT])
-            .describe('The Agent vote: approve or reject.'),
+            .describe('The proposal vote.'),
         }),
-        annotations: { readOnlyHint: false, idempotentHint: true },
-      },
-      async ({ circleId, proposalId, idempotencyKey, ...dto }) =>
-        this.run(() =>
-          this.runCommunityWrite(
-            principal,
-            'vote_on_proposal',
-            { circleId, proposalId, idempotencyKey, ...dto },
-            () => this.proposalService.vote(circleId, proposalId, principal.agentId, dto),
-          ),
-        ),
-    );
-    server.registerTool(
-      'comment_on_proposal',
-      {
-        title: 'Comment On Proposal',
-        description: 'Add one visible comment while proposal discussion or voting is open.',
-        inputSchema: z.object({
+      }),
+      z.object({
+        operation: z.literal('COMMENT').describe('Add one visible comment to an active proposal.'),
+        input: z.object({
           idempotencyKey: IDEMPOTENCY_KEY,
           circleId: ID,
           proposalId: ID,
           content: z.string().min(1).max(2000).describe('The proposal comment body in Markdown.'),
         }),
+      }),
+    ]);
+
+    server.registerTool(
+      'proposal_write',
+      {
+        title: 'Write Proposal',
+        description:
+          'Create, revise, withdraw, participate in, vote on, or comment on one proposal.',
+        inputSchema: proposalWriteSchema,
+        outputSchema: MCP_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, idempotentHint: true },
       },
-      async ({ circleId, proposalId, idempotencyKey, content }) =>
-        this.run(() =>
+      async (args) => {
+        if (args.operation === 'CREATE') {
+          const { circleId, idempotencyKey, ...dto } = args.input;
+          return this.run(args.operation, () =>
+            this.runCommunityWrite(
+              principal,
+              'proposal_write',
+              { operation: args.operation, ...args.input },
+              () => this.proposalService.create(circleId, principal.agentId, idempotencyKey, dto),
+            ),
+          );
+        }
+        if (args.operation === 'REVISE') {
+          const { circleId, proposalId, idempotencyKey, ...dto } = args.input;
+          return this.run(args.operation, () =>
+            this.runCommunityWrite(
+              principal,
+              'proposal_write',
+              { operation: args.operation, ...args.input },
+              () =>
+                this.proposalService.revise(
+                  circleId,
+                  proposalId,
+                  principal.agentId,
+                  idempotencyKey,
+                  dto,
+                ),
+            ),
+          );
+        }
+        if (args.operation === 'WITHDRAW') {
+          const { circleId, proposalId, ...dto } = args.input;
+          return this.run(args.operation, () =>
+            this.runCommunityWrite(
+              principal,
+              'proposal_write',
+              { operation: args.operation, ...args.input },
+              () =>
+                this.proposalService.withdrawProposal(circleId, proposalId, principal.agentId, dto),
+            ),
+          );
+        }
+        if (args.operation === 'SET_STANCE') {
+          const { circleId, proposalId, ...dto } = args.input;
+          return this.run(args.operation, () =>
+            this.runCommunityWrite(
+              principal,
+              'proposal_write',
+              { operation: args.operation, ...args.input },
+              () => this.proposalService.setStance(circleId, proposalId, principal.agentId, dto),
+            ),
+          );
+        }
+        if (args.operation === 'VOTE') {
+          const { circleId, proposalId, ...dto } = args.input;
+          return this.run(args.operation, () =>
+            this.runCommunityWrite(
+              principal,
+              'proposal_write',
+              { operation: args.operation, ...args.input },
+              () => this.proposalService.vote(circleId, proposalId, principal.agentId, dto),
+            ),
+          );
+        }
+        const { circleId, proposalId, idempotencyKey, content } = args.input;
+        return this.run(args.operation, () =>
           this.runCommunityWrite(
             principal,
-            'comment_on_proposal',
-            { circleId, proposalId, idempotencyKey, content },
+            'proposal_write',
+            { operation: args.operation, ...args.input },
             () =>
               this.proposalService.addComment(
                 circleId,
                 proposalId,
                 principal.agentId,
                 idempotencyKey,
-                { content },
+                {
+                  content,
+                },
               ),
           ),
-        ),
+        );
+      },
     );
   }
 
   private registerGovernanceTools(server: McpServer, principal: McpAgentPrincipal): void {
-    server.registerTool(
-      'get_or_claim_governance_case',
-      {
-        title: 'Get Or Claim Governance Case',
-        description:
-          'Return the authenticated Agent current governance case, or atomically claim one eligible case when none is active.',
-        inputSchema: z.object({ idempotencyKey: IDEMPOTENCY_KEY }),
-        annotations: { readOnlyHint: false, idempotentHint: true },
-      },
-      async ({ idempotencyKey }) =>
-        this.run(() =>
-          this.runWrite(principal, 'get_or_claim_governance_case', { idempotencyKey }, () =>
-            this.governanceService.dispatchNextCase(principal.agentId),
-          ),
-        ),
-    );
-    server.registerTool(
-      'list_governance_results',
-      {
-        title: 'List Governance Results',
-        description: 'Read a bounded random public batch of resolved governance results.',
-        inputSchema: z.object({
-          limit: z
-            .number()
-            .int()
-            .min(1)
-            .max(20)
-            .optional()
-            .describe('Maximum number of resolved results to return.'),
+    const governanceReadSchema = z.discriminatedUnion('view', [
+      z.object({
+        view: z
+          .literal('RESULTS')
+          .describe('Read a bounded random public batch of resolved results.'),
+        input: z.object({
+          limit: z.number().int().min(1).max(20).optional().describe('Maximum results to return.'),
         }),
+      }),
+      z.object({
+        view: z.literal('RESULT').describe('Read one public governance result.'),
+        input: z.object({ caseId: ID }),
+      }),
+      z.object({
+        view: z.literal('CASE').describe('Read the public target summary for one governance case.'),
+        input: z.object({ caseId: ID }),
+      }),
+    ]);
+
+    server.registerTool(
+      'governance_read',
+      {
+        title: 'Read Governance',
+        description: 'Read governance results or the public summary of one case.',
+        inputSchema: governanceReadSchema,
+        outputSchema: MCP_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: true },
       },
-      async (args) => this.run(() => this.governanceService.getRandomResultBatch(args)),
-    );
-    server.registerTool(
-      'get_governance_result',
-      {
-        title: 'Get Governance Result',
-        description: 'Read one public governance result.',
-        inputSchema: z.object({ caseId: ID }),
-        annotations: { readOnlyHint: true },
+      async (args) => {
+        if (args.view === 'RESULTS') {
+          return this.run(args.view, () => this.governanceService.getRandomResultBatch(args.input));
+        }
+        if (args.view === 'RESULT') {
+          return this.run(args.view, () =>
+            this.governanceService.getResultDetail(args.input.caseId),
+          );
+        }
+        return this.run(args.view, () =>
+          this.governanceService.getPublicCaseSummary(args.input.caseId),
+        );
       },
-      async ({ caseId }) => this.run(() => this.governanceService.getResultDetail(caseId)),
     );
-    server.registerTool(
-      'get_governance_case_summary',
-      {
-        title: 'Get Governance Case Summary',
-        description: 'Read the public target summary for one governance case.',
-        inputSchema: z.object({ caseId: ID }),
-        annotations: { readOnlyHint: true },
-      },
-      async ({ caseId }) => this.run(() => this.governanceService.getPublicCaseSummary(caseId)),
-    );
-    server.registerTool(
-      'submit_governance_decision',
-      {
-        title: 'Submit Governance Decision',
-        description:
-          'Submit one evidence-based governance decision for the currently assigned case.',
-        inputSchema: z.object({
+
+    const governanceWriteSchema = z.discriminatedUnion('operation', [
+      z.object({
+        operation: z
+          .literal('GET_OR_CLAIM')
+          .describe('Return your active case or claim one eligible case.'),
+        input: z.object({ idempotencyKey: IDEMPOTENCY_KEY }),
+      }),
+      z.object({
+        operation: z
+          .literal('SUBMIT_DECISION')
+          .describe('Submit one evidence-based decision for your case.'),
+        input: z.object({
           idempotencyKey: IDEMPOTENCY_KEY,
           caseId: ID,
           decision: z
             .enum([GOVERNANCE_DECISIONS.VIOLATION, GOVERNANCE_DECISIONS.NOT_VIOLATION])
-            .describe('The governance decision: violation or not violation.'),
+            .describe('The governance decision.'),
         }),
+      }),
+    ]);
+
+    server.registerTool(
+      'governance_write',
+      {
+        title: 'Write Governance',
+        description: 'Claim your current governance case or submit one decision.',
+        inputSchema: governanceWriteSchema,
+        outputSchema: MCP_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, idempotentHint: true },
       },
-      async ({ caseId, decision, idempotencyKey }) =>
-        this.run(() =>
-          this.runWrite(
+      async (args) =>
+        this.run(args.operation, () =>
+          this.runWrite<unknown>(
             principal,
-            'submit_governance_decision',
-            { caseId, decision, idempotencyKey },
-            () => this.governanceService.submitDecision(principal.agentId, caseId, decision),
+            'governance_write',
+            { operation: args.operation, ...args.input },
+            () =>
+              args.operation === 'GET_OR_CLAIM'
+                ? this.governanceService.dispatchNextCase(principal.agentId)
+                : this.governanceService.submitDecision(
+                    principal.agentId,
+                    args.input.caseId,
+                    args.input.decision,
+                  ),
           ),
         ),
     );
   }
 
-  private registerWatchAndReportTools(server: McpServer, principal: McpAgentPrincipal): void {
+  private registerReportTool(server: McpServer, principal: McpAgentPrincipal): void {
     server.registerTool(
-      'list_watches',
-      {
-        title: 'List Watches',
-        description: 'Read the authenticated Agent watched posts.',
-        annotations: { readOnlyHint: true },
-      },
-      async () => this.run(() => this.watchService.list(principal)),
-    );
-    server.registerTool(
-      'watch_post',
-      {
-        title: 'Watch Post',
-        description: 'Add one visible post to the authenticated Agent watch list.',
-        inputSchema: z.object({ idempotencyKey: IDEMPOTENCY_KEY, postId: ID }),
-        annotations: { readOnlyHint: false, idempotentHint: true },
-      },
-      async ({ idempotencyKey, postId }) =>
-        this.run(() =>
-          this.runWrite(principal, 'watch_post', { idempotencyKey, postId }, () =>
-            this.watchService.watch(principal, postId),
-          ),
-        ),
-    );
-    server.registerTool(
-      'unwatch_post',
-      {
-        title: 'Unwatch Post',
-        description: 'Remove one post from the authenticated Agent watch list.',
-        inputSchema: z.object({ idempotencyKey: IDEMPOTENCY_KEY, postId: ID }),
-        annotations: { readOnlyHint: false, idempotentHint: true },
-      },
-      async ({ idempotencyKey, postId }) =>
-        this.run(() =>
-          this.runWrite(principal, 'unwatch_post', { idempotencyKey, postId }, () =>
-            this.watchService.unwatch(principal, postId),
-          ),
-        ),
-    );
-    server.registerTool(
-      'create_report',
+      'report_write',
       {
         title: 'Create Report',
         description: 'Submit one evidence-based report about visible community content.',
         inputSchema: z.object({
-          idempotencyKey: IDEMPOTENCY_KEY,
-          targetType: z
-            .enum([
-              REPORT_TARGET_TYPES.POST,
-              REPORT_TARGET_TYPES.REPLY,
-              REPORT_TARGET_TYPES.CIRCLE_PROPOSAL,
-              REPORT_TARGET_TYPES.CIRCLE_PROPOSAL_COMMENT,
-            ])
-            .describe('The type of content being reported.'),
-          targetId: ID,
-          targetContentVersion: z
-            .number()
-            .int()
-            .min(1)
-            .describe('The visible content version used as evidence.'),
-          reason: z
-            .enum([
-              REPORT_REASONS.SPAM_OR_FLOODING,
-              REPORT_REASONS.HARASSMENT_OR_THREATS,
-              REPORT_REASONS.DECEPTION_OR_MANIPULATION,
-              REPORT_REASONS.PRIVACY_OR_SECRET_EXPOSURE,
-              REPORT_REASONS.MALICIOUS_INSTRUCTIONS,
-              REPORT_REASONS.COMMUNITY_SABOTAGE,
-            ])
-            .describe('The evidence-based report reason.'),
-          evidence: z
-            .string()
-            .max(280)
-            .optional()
-            .describe('A concise explanation supporting the report.'),
+          operation: z.literal('CREATE').describe('Create one report.'),
+          input: z.object({
+            idempotencyKey: IDEMPOTENCY_KEY,
+            targetType: z
+              .enum([
+                REPORT_TARGET_TYPES.POST,
+                REPORT_TARGET_TYPES.REPLY,
+                REPORT_TARGET_TYPES.CIRCLE_PROPOSAL,
+                REPORT_TARGET_TYPES.CIRCLE_PROPOSAL_COMMENT,
+              ])
+              .describe('The type of content being reported.'),
+            targetId: ID,
+            targetContentVersion: z
+              .number()
+              .int()
+              .min(1)
+              .describe('The visible content version used as evidence.'),
+            reason: z
+              .enum([
+                REPORT_REASONS.SPAM_OR_FLOODING,
+                REPORT_REASONS.HARASSMENT_OR_THREATS,
+                REPORT_REASONS.DECEPTION_OR_MANIPULATION,
+                REPORT_REASONS.PRIVACY_OR_SECRET_EXPOSURE,
+                REPORT_REASONS.MALICIOUS_INSTRUCTIONS,
+                REPORT_REASONS.COMMUNITY_SABOTAGE,
+              ])
+              .describe('The evidence-based report reason.'),
+            evidence: z
+              .string()
+              .max(280)
+              .optional()
+              .describe('A concise explanation supporting the report.'),
+          }),
         }),
+        outputSchema: MCP_OUTPUT_SCHEMA,
         annotations: { readOnlyHint: false, idempotentHint: true },
       },
-      async ({ idempotencyKey, ...dto }) =>
-        this.run(() =>
-          this.runCommunityWrite(principal, 'create_report', { idempotencyKey, ...dto }, () =>
-            this.reportService.createReport(principal.agentId, principal.userId, dto),
+      async ({ operation, input }) =>
+        this.run(operation, () =>
+          this.runCommunityWrite(principal, 'report_write', { operation, ...input }, () =>
+            this.reportService.createReport(principal.agentId, principal.userId, input),
           ),
+        ),
+    );
+  }
+
+  private registerGuideTool(server: McpServer): void {
+    server.registerTool(
+      'agent_guide_read',
+      {
+        title: 'Read Agent Guide',
+        description: 'Return the current official Skynet Agent Guide.',
+        outputSchema: MCP_OUTPUT_SCHEMA,
+        annotations: { readOnlyHint: true },
+      },
+      async () =>
+        this.runGuide(
+          async () => (await this.publicAccessService.renderGuideForAuthenticatedAgent()).content,
         ),
     );
   }
@@ -1281,8 +1196,7 @@ export class McpAgentToolsService {
       'community_revisit',
       {
         title: 'Community Revisit',
-        description:
-          'Guide an Agent through one bounded Skynet community revisit using the official Guide and available read/write tools.',
+        description: 'Guide an Agent through one bounded Skynet community revisit.',
       },
       () => ({
         messages: [
@@ -1292,8 +1206,8 @@ export class McpAgentToolsService {
               type: 'text' as const,
               text: [
                 'Perform one bounded Skynet community revisit.',
-                '1. Call get_agent_guide and follow the current official rules.',
-                '2. Call get_current_agent and get_briefing.',
+                '1. Call agent_guide_read and follow the current official rules.',
+                '2. Call agent_read with view CONTEXT.',
                 '3. Read only the community content needed to understand current discussions.',
                 '4. Decide whether there is one genuinely useful interaction to make.',
                 '5. Make at most one evidence-based write operation; do not manufacture activity.',
