@@ -66,7 +66,7 @@ import {
   AgentGovernanceHistorySchema,
 } from '@/database/schemas/agent-governance-history.schema';
 import { CircleProposalService } from '@/circle/circle-proposal.service';
-import { getReportTargetKey, REPORT_TARGET_STATUSES } from '@/report/report.constants';
+import { REPORT_TARGET_STATUSES } from '@/report/report.constants';
 
 let sequence = 0;
 const TEST_CIRCLE_ID = '64f000000000000000000001';
@@ -232,7 +232,7 @@ describe('GovernanceService integration', () => {
       xpTotal,
       staminaCurrent: 100,
       staminaLastSettledAt: new Date(),
-      dailyProgressDate: '2026-05-14',
+      progressDay: '2026-05-14',
       dailyCounters: {},
       awardedDailyTaskIds: [],
     });
@@ -306,7 +306,6 @@ describe('GovernanceService integration', () => {
       })),
     });
     await connection.model(ReportTargetState.name).create({
-      targetKey: getReportTargetKey(GOVERNANCE_TARGET_TYPES.POST, post.id, 1, 1),
       targetType: GOVERNANCE_TARGET_TYPES.POST,
       targetId: post.id,
       targetContentVersion: 1,
@@ -365,7 +364,6 @@ describe('GovernanceService integration', () => {
       moderationReason: null,
       approveCount: 0,
       rejectCount: 0,
-      activeKey: `${circleId}:TOPIC`,
       activeGovernanceCaseId: null,
       idempotencyKey: crypto.randomUUID(),
     });
@@ -391,7 +389,6 @@ describe('GovernanceService integration', () => {
       })),
     });
     await connection.model(ReportTargetState.name).create({
-      targetKey: getReportTargetKey(GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL, proposal.id, 1, 1),
       targetType: GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL,
       targetId: proposal.id,
       targetContentVersion: 1,
@@ -414,7 +411,7 @@ describe('GovernanceService integration', () => {
     expect(governanceCase.targetSnapshot.post.title).toBe('bad post');
     expect(governanceCase.targetSnapshot.post.content).toBe('bad content');
     expect(governanceCase.targetSnapshot.post.authorId).toBe(governanceCase.targetAuthorId);
-    expect(governanceCase.targetSnapshot.post.circleRules).toEqual({
+    expect(JSON.parse(JSON.stringify(governanceCase.targetSnapshot.post.circleRules))).toEqual({
       circleId: TEST_CIRCLE_ID,
       version: 1,
       rules: [{ id: 'rule-friendly', text: '友好交流，不破坏社区' }],
@@ -592,8 +589,8 @@ describe('GovernanceService integration', () => {
       status: GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION,
       resolution: GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION,
       resolvedAt: new Date('2026-05-22T05:00:00.000Z'),
-      violationTally: 2.5,
-      notViolationTally: 1.5,
+      violationTally: 3,
+      notViolationTally: 2,
     });
     await connection.model(GovernanceVote.name).insertMany([
       {
@@ -1491,7 +1488,6 @@ describe('GovernanceService integration', () => {
       })),
     });
     await connection.model(ReportTargetState.name).create({
-      targetKey: getReportTargetKey(GOVERNANCE_TARGET_TYPES.REPLY, rootReply.id, 1, 1),
       targetType: GOVERNANCE_TARGET_TYPES.REPLY,
       targetId: rootReply.id,
       targetContentVersion: 1,

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, type ClientSession } from 'mongoose';
 import { AgentGovernanceProfile } from '@/database/schemas/agent-governance-profile.schema';
 import { GOVERNANCE_HEALTH_LEVEL } from '@/governance/governance.constants';
 import { apiErrors } from '@/common/i18n/api-message';
@@ -12,9 +12,9 @@ export class CommunityWriteAccessService {
     private readonly governanceProfileModel: Model<AgentGovernanceProfile>,
   ) {}
 
-  async assertAllowed(agentId: string): Promise<void> {
+  async assertAllowed(agentId: string, session?: ClientSession): Promise<void> {
     const profile = await this.governanceProfileModel
-      .findOne({ agentId })
+      .findOne({ agentId }, null, { session })
       .select('healthLevel activeAdminBanRecordId');
     if (profile?.healthLevel !== GOVERNANCE_HEALTH_LEVEL.BANNED) return;
     throw apiErrors.forbidden(

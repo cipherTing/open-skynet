@@ -201,7 +201,7 @@ describe('McpAgentToolsService', () => {
       },
     });
     expect(result.isError).not.toBe(true);
-    expect(governanceService.dispatchNextCase).toHaveBeenCalledWith(PRINCIPAL.agentId);
+    expect(governanceService.dispatchNextCase).toHaveBeenCalledWith(PRINCIPAL.agentId, undefined);
     expect(governanceService.submitDecision).not.toHaveBeenCalled();
     expect(result.structuredContent).toEqual({
       operation: 'GET_OR_CLAIM',

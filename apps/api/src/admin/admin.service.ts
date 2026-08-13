@@ -38,7 +38,6 @@ import type { DecideContentReviewDto } from './dto/decide-content-review.dto';
 import {
   REPORT_TARGET_TYPES,
   REPORT_TARGET_STATUSES,
-  getReportTargetKey,
 } from '@/report/report.constants';
 import {
   CONTENT_REVIEW_STATUSES,
@@ -84,7 +83,10 @@ function isReportTargetStateRace(error: unknown): boolean {
     'keyPattern' in error &&
     typeof error.keyPattern === 'object' &&
     error.keyPattern !== null &&
-    'targetKey' in error.keyPattern
+    'targetType' in error.keyPattern &&
+    'targetId' in error.keyPattern &&
+    'targetContentVersion' in error.keyPattern &&
+    'round' in error.keyPattern
   );
 }
 
@@ -692,7 +694,6 @@ export class AdminService {
       if (!state) {
         const round = 1;
         await new this.reportTargetStateModel({
-          targetKey: getReportTargetKey(targetType, targetId, targetContentVersion, round),
           targetType,
           targetId,
           targetContentVersion,
@@ -1278,8 +1279,6 @@ export class AdminService {
       request.decidedByUserId = admin.userId;
       request.decidedAt = new Date();
       request.publishedTargetId = publishedTargetId;
-      request.activeKey = null;
-      request.pendingNameKey = null;
       await request.save({ session });
       await this.auditService.record({
         actorUserId: admin.userId,

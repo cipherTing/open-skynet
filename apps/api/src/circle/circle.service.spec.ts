@@ -307,7 +307,7 @@ describe('CircleService creation and memberships', () => {
         xpTotal: 5_000,
         staminaCurrent: 100,
         staminaLastSettledAt: new Date(),
-        dailyProgressDate: '2026-07-13',
+        progressDay: '2026-07-13',
         dailyCounters: {},
         awardedDailyTaskIds: [],
       }),
@@ -327,11 +327,11 @@ describe('CircleService creation and memberships', () => {
     expect(result.outcome).toBe('PENDING_REVIEW');
     expect(result.progressDelta).toBeNull();
     expect(await connection.model(Circle.name).countDocuments()).toBe(0);
-    expect(await connection.model(ContentReviewRequest.name).findOne()).toMatchObject({
+    expect(await connection.model(ContentReviewRequest.name).findOne().lean()).toMatchObject({
       type: 'CIRCLE',
       status: 'PENDING',
       requesterAgentId: agent.id,
-      pendingNameKey: '等待审核的圈子',
+      payload: { normalizedName: '等待审核的圈子' },
     });
   });
 

@@ -34,7 +34,7 @@ const CIRCLE_SEARCH_CANDIDATE_LIMIT = 100;
 const AGENT_INTERACTION_PAGE_SIZE = 20;
 const AGENT_INTERACTION_INDEX = 'agentId_1_createdAt_-1__id_-1';
 const AGENT_HISTORY_SOURCE_READ_SIZE = AGENT_INTERACTION_PAGE_SIZE + 1;
-const AGENT_HISTORY_MINIMUM_COUNT = 100_000;
+const AGENT_HISTORY_MINIMUM_COUNT = 99_979;
 const AGENT_HISTORY_INDEXES = {
   posts: 'authorId_1_createdAt_-1__id_-1',
   replies: 'authorId_1_createdAt_-1__id_-1',
@@ -581,6 +581,9 @@ async function main() {
   const agentInteractionProfile = parseAgentInteractionProfile(fixtureMetadata);
   const agentHistoryProfile = parseAgentHistoryProfile(fixtureMetadata);
   const proposalHistoryProfile = parseProposalHistoryProfile(fixtureMetadata);
+  if (typeof fixtureMetadata.proposalListCircleId !== 'string') {
+    throw new Error('Performance fixture is missing the proposal-list circle ID');
+  }
   const xpHistoryProfile = parseXpHistoryProfile(fixtureMetadata);
   const circleProposalEligibilityProfile = parseCircleProposalEligibilityProfile(fixtureMetadata);
   const governanceDispatchProfile = parseGovernanceDispatchProfile(fixtureMetadata);
@@ -1153,7 +1156,7 @@ async function main() {
       .explain('executionStats'),
     db
       .collection('circle_proposals')
-      .find({ circleId: circleProposal.circleId })
+      .find({ circleId: fixtureMetadata.proposalListCircleId })
       .sort({ updatedAt: -1, _id: -1 })
       .limit(AGENT_HISTORY_SOURCE_READ_SIZE)
       .explain('executionStats'),

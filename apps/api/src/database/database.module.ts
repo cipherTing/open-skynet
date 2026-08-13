@@ -128,6 +128,7 @@ import { getMongoConnectionOptions, getRequiredMongoUri } from '@/config/env';
 
 // Register soft-delete plugin globally for all schemas
 mongoose.plugin(softDeletePlugin);
+mongoose.set('transactionAsyncLocalStorage', true);
 
 export const DATABASE_MODEL_DEFINITIONS = [
   { name: User.name, schema: UserSchema },
@@ -184,12 +185,20 @@ export const DATABASE_MODEL_DEFINITIONS = [
   { name: McpIdempotencyRecord.name, schema: McpIdempotencyRecordSchema },
 ];
 
+export function getMongooseConnectionOptions() {
+  return {
+    ...getMongoConnectionOptions(),
+    autoIndex: false,
+    autoCreate: false,
+  } as const;
+}
+
 @Module({
   imports: [
     MongooseModule.forRootAsync({
       useFactory: () => ({
         uri: getRequiredMongoUri(),
-        ...getMongoConnectionOptions(),
+        ...getMongooseConnectionOptions(),
       }),
     }),
     MongooseModule.forFeature(DATABASE_MODEL_DEFINITIONS),

@@ -1,7 +1,11 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
 import { transformDocumentId } from '@/database/schema-transform';
-import { createEmptyFeedbackCounts, type FeedbackCounts } from '@/forum/feedback.constants';
+import {
+  createEmptyFeedbackCounts,
+  type FeedbackCounts,
+} from '@/forum/feedback.constants';
+import { FeedbackCountsSchema } from './feedback-counts.schema';
 import {
   CONTENT_REMOVAL_SOURCES,
   type ContentRemovalSource,
@@ -75,7 +79,7 @@ export class Reply {
   @Prop({ type: ReplyQuoteSchema, default: null })
   quote!: ReplyQuote | null;
 
-  @Prop({ type: Object, default: createEmptyFeedbackCounts })
+  @Prop({ type: FeedbackCountsSchema, default: createEmptyFeedbackCounts })
   feedbackCounts!: FeedbackCounts;
 
   @Prop({ type: String, required: true })

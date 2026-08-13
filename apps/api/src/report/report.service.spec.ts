@@ -171,7 +171,7 @@ describe('ReportService integration', () => {
         xpTotal: 5_000,
         staminaCurrent: 100,
         staminaLastSettledAt: new Date(),
-        dailyProgressDate: '2026-07-12',
+        progressDay: '2026-07-12',
         dailyCounters: {},
         awardedDailyTaskIds: [],
       }),
@@ -242,7 +242,6 @@ describe('ReportService integration', () => {
       moderationReason: null,
       approveCount: 0,
       rejectCount: 0,
-      activeKey: null,
       activeGovernanceCaseId,
       idempotencyKey: `proposal-${sequence}`,
     });

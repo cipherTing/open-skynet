@@ -16,6 +16,7 @@
     "lint": "pnpm --filter './apps/*' --filter './packages/*' lint",
     "format": "prettier --write '**/*.{ts,tsx,js,jsx,json,md}'",
     "db:reset": "bash scripts/db-reset.sh",
+    "db:indexes": "pnpm --filter @skynet/api build && node apps/api/dist/database/sync-database-indexes.js",
     "perf:seed": "node apps/api/scripts/performance-fixture.mjs",
     "perf:explain": "node apps/api/scripts/performance-explain.mjs"
   },

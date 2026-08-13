@@ -41,7 +41,6 @@ import {
   HOT_WORK_CLAIM_TTL_MS,
 } from '@/hot-ranking/hot-ranking.constants';
 import type { HotProjectionJob } from '@/hot-ranking/hot-ranking.types';
-import { hotProjectionSourceKey } from '@/hot-ranking/hot-projection-keys';
 import {
   FEEDBACK_TARGET_TYPES,
   normalizeFeedbackCounts,
@@ -81,7 +80,6 @@ interface HotReplyVisibilitySource {
 
 interface HotProjectionWorkItemSource {
   _id: Types.ObjectId;
-  sourceKey: string;
   sourceType: HotProjectionSourceType;
   sourceId: string;
   postId: string;
@@ -371,36 +369,39 @@ export class HotRankingProjectionService {
     session: ClientSession,
   ): Promise<void> {
     if (replies.length === 0) return;
-    const sourceKeys = replies.map((reply) =>
-      hotProjectionSourceKey(HOT_PROJECTION_SOURCE_TYPES.REPLY, reply._id.toString()),
-    );
+    const sourceIds = replies.map((reply) => reply._id.toString());
     const existingItems = await this.workItemModel
-      .find({ sourceKey: { $in: sourceKeys } }, null, { session })
+      .find(
+        { sourceType: HOT_PROJECTION_SOURCE_TYPES.REPLY, sourceId: { $in: sourceIds } },
+        null,
+        { session },
+      )
       .select(
-        '_id sourceKey sourceType sourceId postId participantAgentId participantOwnerUserId desiredActive desiredSourceExists desiredActivityAt version',
+        '_id sourceType sourceId postId participantAgentId participantOwnerUserId desiredActive desiredSourceExists desiredActivityAt version',
       )
       .lean<HotProjectionWorkItemSource[]>();
-    const existingByKey = new Map(existingItems.map((item) => [item.sourceKey, item]));
+    const existingByKey = new Map(
+      existingItems.map((item) => [`${item.sourceType}\u0000${item.sourceId}`, item]),
+    );
     const operations: Array<AnyBulkWriteOperation<HotProjectionWorkItem>> = [];
     let expectedExistingMatches = 0;
     let expectedUpserts = 0;
 
     for (const reply of replies) {
       const sourceId = reply._id.toString();
-      const sourceKey = hotProjectionSourceKey(HOT_PROJECTION_SOURCE_TYPES.REPLY, sourceId);
+      const sourceIdentity = `${HOT_PROJECTION_SOURCE_TYPES.REPLY}\u0000${sourceId}`;
       const desiredActive =
         rootVisible &&
         reply.deletedAt === null &&
         reply.authorOwnerUserIdSnapshot !== postAuthorOwnerUserId;
-      const existing = existingByKey.get(sourceKey);
+      const existing = existingByKey.get(sourceIdentity);
       if (!existing) {
         if (!desiredActive) continue;
         operations.push({
           updateOne: {
-            filter: { sourceKey },
+            filter: { sourceType: HOT_PROJECTION_SOURCE_TYPES.REPLY, sourceId },
             update: {
               $setOnInsert: {
-                sourceKey,
                 sourceType: HOT_PROJECTION_SOURCE_TYPES.REPLY,
                 sourceId,
                 postId: reply.postId,
@@ -430,7 +431,7 @@ export class HotRankingProjectionService {
         existing.participantAgentId !== reply.authorId ||
         existing.participantOwnerUserId !== reply.authorOwnerUserIdSnapshot
       ) {
-        throw new Error(`回复分支热度来源快照不一致: ${sourceKey}`);
+        throw new Error(`回复分支热度来源快照不一致: ${HOT_PROJECTION_SOURCE_TYPES.REPLY}/${sourceId}`);
       }
       const activityChanged = existing.desiredActivityAt.getTime() !== reply.createdAt.getTime();
       if (
@@ -562,17 +563,11 @@ export class HotRankingProjectionService {
           return {
             updateOne: {
               filter: {
-                sourceKey: hotProjectionSourceKey(
-                  HOT_PROJECTION_SOURCE_TYPES.FEEDBACK,
-                  feedback._id.toString(),
-                ),
+                sourceType: HOT_PROJECTION_SOURCE_TYPES.FEEDBACK,
+                sourceId: feedback._id.toString(),
               },
               update: {
                 $setOnInsert: {
-                  sourceKey: hotProjectionSourceKey(
-                    HOT_PROJECTION_SOURCE_TYPES.FEEDBACK,
-                    feedback._id.toString(),
-                  ),
                   sourceType: HOT_PROJECTION_SOURCE_TYPES.FEEDBACK,
                   sourceId: feedback._id.toString(),
                   postId,
@@ -711,7 +706,7 @@ export class HotRankingProjectionService {
         workItemApplied = updated.matchedCount === 1;
       }
       if (!workItemApplied) {
-        throw new Error(`热度工作项发生并发变化: ${item.sourceKey}`);
+        throw new Error(`热度工作项发生并发变化: ${item.sourceType}:${item.sourceId}`);
       }
 
       const activeDelta = Number(item.desiredActive) - Number(oldProjectedActive);

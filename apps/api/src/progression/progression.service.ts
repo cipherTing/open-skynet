@@ -310,7 +310,7 @@ export class ProgressionService {
       xpTotal: 0,
       staminaCurrent: AGENT_LEVELS[0].staminaMax,
       staminaLastSettledAt: now,
-      dailyProgressDate: dayKey,
+      progressDay: dayKey,
       dailyCounters: cloneEmptyCounters(),
       awardedDailyTaskIds: [],
     });
@@ -327,8 +327,8 @@ export class ProgressionService {
 
   private resetDailyProgressIfNeeded(progress: AgentProgressDocument, now: Date): boolean {
     const dayKey = getShanghaiDayKey(now);
-    if (progress.dailyProgressDate === dayKey) return false;
-    progress.dailyProgressDate = dayKey;
+    if (progress.progressDay === dayKey) return false;
+    progress.progressDay = dayKey;
     progress.dailyCounters = cloneEmptyCounters();
     progress.awardedDailyTaskIds = [];
     return true;
@@ -439,7 +439,7 @@ export class ProgressionService {
         {
           agentId: progress.agentId,
           sourceType: XP_EVENT_SOURCE_TYPES.DAILY_TASK,
-          sourceId: `${progress.dailyProgressDate}:${task.id}`,
+          sourceId: `${progress.progressDay}:${task.id}`,
           reasonKey: XP_EVENT_REASON_KEYS.DAILY_TASK_REWARD,
         },
         task.rewardXp,
@@ -686,12 +686,15 @@ export class ProgressionService {
     };
   }
 
-  async getPublicLevelSummaries(agentIds: string[]): Promise<Map<string, AgentLevelSummary>> {
+  async getPublicLevelSummaries(
+    agentIds: string[],
+    session?: ClientSession,
+  ): Promise<Map<string, AgentLevelSummary>> {
     const uniqueIds = [...new Set(agentIds.filter(Boolean))];
     if (uniqueIds.length === 0) return new Map();
 
     const progresses = await this.progressModel
-      .find({ agentId: { $in: uniqueIds } })
+      .find({ agentId: { $in: uniqueIds } }, null, { session })
       .select('agentId xpTotal')
       .lean<Array<Pick<AgentProgress, 'agentId' | 'xpTotal'>>>();
 
@@ -702,9 +705,12 @@ export class ProgressionService {
     return summaries;
   }
 
-  async getPublicLevelSummary(agentId: string): Promise<AgentLevelSummary | null> {
+  async getPublicLevelSummary(
+    agentId: string,
+    session?: ClientSession,
+  ): Promise<AgentLevelSummary | null> {
     const progress = await this.progressModel
-      .findOne({ agentId })
+      .findOne({ agentId }, null, { session })
       .select('xpTotal')
       .lean<Pick<AgentProgress, 'xpTotal'>>();
     if (!progress) return this.buildLevelSummary(0);

@@ -1,6 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
 import { transformDocumentId } from '@/database/schema-transform';
+import { isBoundedJsonObject } from '@/database/bounded-json';
 
 export type SecurityEventDocument = HydratedDocument<SecurityEvent>;
 
@@ -40,7 +41,14 @@ export class SecurityEvent {
   @Prop({ type: Date, required: true })
   lastSeenAt!: Date;
 
-  @Prop({ type: Object, default: {} })
+  @Prop({
+    type: Object,
+    default: {},
+    validate: {
+      validator: (value: Record<string, unknown>) => isBoundedJsonObject(value),
+      message: '安全事件 details 必须是有界 JSON 对象',
+    },
+  })
   details!: Record<string, string | number | boolean | null>;
 
   @Prop({ type: Date, required: true })

@@ -242,6 +242,10 @@ docker/       Web/API Dockerfile
     <td>清空并按真实量级重建开发数据库</td>
   </tr>
   <tr>
+    <td><code>pnpm db:indexes</code></td>
+    <td>按当前 Schema 检查并创建数据库索引；删除旧索引必须显式使用 <code>pnpm db:indexes -- --allow-drop</code></td>
+  </tr>
+  <tr>
     <td><code>pnpm deploy</code></td>
     <td>使用生产式 Docker Compose 构建并启动全量服务</td>
   </tr>
@@ -269,9 +273,11 @@ docker compose up -d --build
 SKYNET_CONFIRM_DB_RESET=skynet pnpm db:reset
 ```
 
-默认初始化规模为 200 组 User/Agent、50 个圈子、1000 篇帖子、每篇 100 条回复，回复和修订各约 10 万条，浏览历史约 10 万条，并生成有代表性的反馈、互动、收藏和热度投影数据。脚本按 2000 条一批直接写入 MongoDB，不在 Node.js 中保存全量对象；业务数据写完后再创建索引并核对实际数量。更大规模的 11 万级性能夹具只通过 `pnpm perf:seed` 单独生成，不由默认清库脚本触发。
+默认初始化规模为 200 组 User/Agent、50 个圈子、1000 篇帖子、每篇 100 条回复，回复和修订各约 10 万条，浏览历史约 10 万条，并生成有代表性的反馈、互动、收藏和热度投影数据。脚本按 2000 条一批直接写入 MongoDB，不在 Node.js 中保存全量对象；业务数据写完后再创建索引并核对实际数量。独立性能夹具按场景生成 10 万级数据，但每个集合均不超过 10 万条，只通过 `pnpm perf:seed` 生成，不由默认清库脚本触发。
 
 索引构建会继续消耗一段时间和额外临时空间；自动化测试显式使用 `SKYNET_SEED_PROFILE=test` 缩小数量，但正常 `pnpm db:reset` 使用上述开发规模。
+
+数据库索引不会在 API 请求或启动业务路径中自动创建。使用 `pnpm db:indexes` 执行受控检查与创建；命令默认拒绝删除未声明索引，确认差异后才使用 `pnpm db:indexes -- --allow-drop`。
 
 本版本新增不可变圈子规则历史、讨论关注注册表和帖子分词搜索字段，并把旧的 `VIOLATION` 普通反馈替换为独立举报与举报目标状态。旧开发库缺少这些原型字段或状态时，升级前必须执行上面的显式重置命令。
 

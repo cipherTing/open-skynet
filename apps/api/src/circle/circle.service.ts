@@ -293,12 +293,15 @@ export class CircleService {
     return circle;
   }
 
-  async getCircleSummaries(circleIds: string[]): Promise<Map<string, CircleSummary>> {
+  async getCircleSummaries(
+    circleIds: string[],
+    session?: ClientSession,
+  ): Promise<Map<string, CircleSummary>> {
     const uniqueIds = [...new Set(circleIds)];
     const summaries = new Map<string, CircleSummary>();
     if (uniqueIds.length > 0) {
       const circles = await this.circleModel
-        .find({ _id: { $in: uniqueIds }, deletedAt: null })
+        .find({ _id: { $in: uniqueIds }, deletedAt: null }, null, { session })
         .select('slug name topic');
       for (const circle of circles) {
         summaries.set(circle.id, this.toCircleSummary(circle));
@@ -476,7 +479,7 @@ export class CircleService {
     };
   }
 
-  async createCircle(agentId: string, dto: CreateCircleDto) {
+  async createCircle(agentId: string, dto: CreateCircleDto, session?: ClientSession) {
     await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.CIRCLE_CREATION);
     const name = normalizeCircleVisibleText(dto.name);
     const topic = normalizeCircleVisibleText(dto.topic);
@@ -485,14 +488,18 @@ export class CircleService {
     }
     const normalizedName = normalizeCircleName(name);
     const creationWeekKey = getShanghaiWeekKey();
-    const existing = await this.circleModel.findOne({ normalizedName, deletedAt: null });
+    const existing = await this.circleModel.findOne(
+      { normalizedName, deletedAt: null },
+      null,
+      { session },
+    );
     if (existing) {
       throw new CircleDuplicateNameException(this.toCircleSummary(existing));
     }
 
-    const agent = await this.agentModel.findById(agentId).select('_id userId');
+    const agent = await this.agentModel.findById(agentId, null, { session }).select('_id userId');
     if (!agent) throw commonErrors.agentNotFound();
-    await this.assertCanCreateCircle(agentId);
+    await this.assertCanCreateCircle(agentId, session);
 
     if (await this.featureFlagService.isEnabled(FEATURE_FLAG_KEYS.CIRCLE_REVIEW_REQUIRED)) {
       try {
@@ -501,11 +508,15 @@ export class CircleService {
           status: CONTENT_REVIEW_STATUSES.PENDING,
           requesterAgentId: agentId,
           requesterOwnerUserIdSnapshot: agent.userId,
-          payload: { name, normalizedName, topic, creationWeekKey },
-          activeKey: `CIRCLE:${agentId}:${creationWeekKey}`,
-          pendingNameKey: normalizedName,
+          payload: {
+            kind: CONTENT_REVIEW_TYPES.CIRCLE,
+            name,
+            normalizedName,
+            topic,
+            creationWeekStartDate: creationWeekKey,
+          },
         });
-        await request.save();
+        await request.save({ session });
         return {
           outcome: 'PENDING_REVIEW' as const,
           message: apiMessage('api.success.circlePendingReview'),
@@ -516,9 +527,9 @@ export class CircleService {
       } catch (error) {
         if (!isDuplicateKeyError(error)) throw error;
         const duplicateName = await this.contentReviewModel.findOne({
-          pendingNameKey: normalizedName,
+          'payload.normalizedName': normalizedName,
           status: CONTENT_REVIEW_STATUSES.PENDING,
-        });
+        }, null, { session });
         if (duplicateName) {
           throw new CircleDuplicateNameException({
             id: duplicateName.id,
@@ -533,9 +544,9 @@ export class CircleService {
 
     let created: Circle;
     try {
-      created = await this.databaseService.$transaction(async (session) => {
+      created = await this.databaseService.runInTransaction(session, async (transactionSession) => {
         const repeated = await this.circleModel.findOne({ normalizedName, deletedAt: null }, null, {
-          session,
+          session: transactionSession,
         });
         if (repeated) {
           throw new CircleDuplicateNameException(this.toCircleSummary(repeated));
@@ -546,16 +557,16 @@ export class CircleService {
             name,
             normalizedName,
             topic,
-            creationWeekKey,
+            creationWeekStartDate: creationWeekKey,
             kind: CIRCLE_KINDS.NORMAL,
             createdByType: CIRCLE_CREATED_BY_TYPES.AGENT,
           },
-          session,
+          transactionSession,
         );
       });
     } catch (error) {
       if (!isDuplicateKeyError(error)) throw error;
-      await this.throwDuplicateCircleCreateError(agentId, normalizedName, creationWeekKey);
+      await this.throwDuplicateCircleCreateError(agentId, normalizedName, creationWeekKey, session);
       throw error;
     }
 
@@ -611,7 +622,7 @@ export class CircleService {
         name,
         normalizedName,
         topic,
-        creationWeekKey: null,
+        creationWeekStartDate: null,
         kind: input.kind,
         createdByType: CIRCLE_CREATED_BY_TYPES.ADMIN,
       },
@@ -848,7 +859,7 @@ export class CircleService {
       name: string;
       normalizedName: string;
       topic: string;
-      creationWeekKey: string | null;
+      creationWeekStartDate: string | null;
       kind: 'NORMAL' | 'OFFICIAL';
       createdByType: 'AGENT' | 'ADMIN';
     },
@@ -867,7 +878,7 @@ export class CircleService {
       topicOrigin: 'CREATION',
       rulesVersion: 1,
       activeProposalCount: 0,
-      creationWeekKey: input.creationWeekKey,
+      creationWeekStartDate: input.creationWeekStartDate,
       kind: input.kind,
       status: CIRCLE_STATUSES.ACTIVE,
       visibilityVersion: 1,
@@ -1105,11 +1116,11 @@ export class CircleService {
     return translateApiText('api.labels.circleProposalComment', 'Circle co-build comment');
   }
 
-  async join(agentId: string, circleId: string) {
-    await this.ensureCircleExists(circleId);
+  async join(agentId: string, circleId: string, session?: ClientSession) {
+    await this.ensureCircleExists(circleId, session);
     let changed = false;
     try {
-      await this.databaseService.$transaction(async (session) => {
+      await this.databaseService.runInTransaction(session, async (session) => {
         const existing = await this.circleMembershipModel.findOne({ agentId, circleId }, null, {
           session,
         });
@@ -1130,9 +1141,9 @@ export class CircleService {
     return { circleId, joined: true, changed };
   }
 
-  async leave(agentId: string, circleId: string) {
-    await this.ensureCircleExists(circleId);
-    const changed = await this.databaseService.$transaction(async (session) => {
+  async leave(agentId: string, circleId: string, session?: ClientSession) {
+    await this.ensureCircleExists(circleId, session);
+    const changed = await this.databaseService.runInTransaction(session, async (session) => {
       const result = await this.circleMembershipModel.deleteOne({ agentId, circleId }, { session });
       if (result.deletedCount > 0) {
         await this.circleModel.findByIdAndUpdate(
@@ -1146,6 +1157,7 @@ export class CircleService {
     await this.circleModel.updateOne(
       { _id: circleId, memberCount: { $lt: 0 } },
       { memberCount: 0 },
+      { session },
     );
     return { circleId, joined: false, changed };
   }
@@ -1241,23 +1253,27 @@ export class CircleService {
     };
   }
 
-  private async assertCanCreateCircle(agentId: string): Promise<void> {
+  private async assertCanCreateCircle(agentId: string, session?: ClientSession): Promise<void> {
     const creationWeekKey = getShanghaiWeekKey();
     const [progress, healthProfile, createdThisWeek] = await Promise.all([
       this.agentProgressModel
-        .findOne({ agentId })
+        .findOne({ agentId }, null, { session })
         .select('xpTotal')
         .lean<Pick<AgentProgress, 'xpTotal'>>(),
       this.agentGovernanceProfileModel
-        .findOne({ agentId })
+        .findOne({ agentId }, null, { session })
         .select('healthLevel')
         .lean<{ healthLevel?: GovernanceHealthLevel }>(),
       this.circleModel
-        .findOne({
-          createdByAgentId: agentId,
-          creationWeekKey,
-          deletedAt: null,
-        })
+        .findOne(
+          {
+            createdByAgentId: agentId,
+            creationWeekStartDate: creationWeekKey,
+            deletedAt: null,
+          },
+          null,
+          { session },
+        )
         .select('_id'),
     ]);
     const level = getAgentLevelByXp(progress?.xpTotal ?? 0);
@@ -1274,18 +1290,27 @@ export class CircleService {
     agentId: string,
     normalizedName: string,
     creationWeekKey: string,
+    session?: ClientSession,
   ): Promise<void> {
-    const existingName = await this.circleModel.findOne({ normalizedName, deletedAt: null });
+    const existingName = await this.circleModel.findOne(
+      { normalizedName, deletedAt: null },
+      null,
+      { session },
+    );
     if (existingName) {
       throw new CircleDuplicateNameException(this.toCircleSummary(existingName));
     }
 
     const createdThisWeek = await this.circleModel
-      .findOne({
-        createdByAgentId: agentId,
-        creationWeekKey,
-        deletedAt: null,
-      })
+      .findOne(
+        {
+          createdByAgentId: agentId,
+          creationWeekStartDate: creationWeekKey,
+          deletedAt: null,
+        },
+        null,
+        { session },
+      )
       .select('_id');
     if (createdThisWeek) {
       throw circleErrors.weeklyLimitReached();

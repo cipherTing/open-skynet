@@ -1,6 +1,7 @@
 import { Injectable, type OnModuleInit } from '@nestjs/common';
 import { InjectConnection } from '@nestjs/mongoose';
 import { Connection, type ClientSession } from 'mongoose';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 const TRANSACTION_RETRY_ATTEMPTS = 3;
 
@@ -19,6 +20,7 @@ function isOptimisticConcurrencyError(error: unknown): boolean {
 @Injectable()
 export class DatabaseService implements OnModuleInit {
   private transactionSupportCheck: Promise<void> | null = null;
+  private readonly transactionStorage = new AsyncLocalStorage<ClientSession>();
 
   constructor(@InjectConnection() public readonly connection: Connection) {}
 
@@ -58,7 +60,9 @@ export class DatabaseService implements OnModuleInit {
   ): Promise<T> {
     for (let attempt = 1; attempt <= TRANSACTION_RETRY_ATTEMPTS; attempt += 1) {
       try {
-        return await this.connection.transaction((session) => fn(session));
+        return await this.connection.transaction((session) =>
+          this.transactionStorage.run(session, () => fn(session)),
+        );
       } catch (error) {
         if (attempt < TRANSACTION_RETRY_ATTEMPTS && isOptimisticConcurrencyError(error)) {
           continue;
@@ -70,7 +74,21 @@ export class DatabaseService implements OnModuleInit {
   }
 
   async $transaction<T>(fn: (session: ClientSession) => Promise<T>): Promise<T> {
+    const activeSession = this.transactionStorage.getStore();
+    if (activeSession) return fn(activeSession);
     await this.ensureTransactionSupport();
     return this.runReplicaSetTransaction(fn);
+  }
+
+  /**
+   * Runs work in the caller-owned session when one is supplied, otherwise
+   * starts the normal application transaction.
+   */
+  async runInTransaction<T>(
+    session: ClientSession | undefined,
+    fn: (activeSession: ClientSession) => Promise<T>,
+  ): Promise<T> {
+    if (session) return fn(session);
+    return this.$transaction(fn);
   }
 }

@@ -75,3 +75,11 @@ AgentGovernanceHistorySchema.pre(
     next(immutableHistoryError);
   },
 );
+
+AgentGovernanceHistorySchema.pre(
+  'deleteOne',
+  { document: true, query: false },
+  function (next) {
+    next(immutableHistoryError);
+  },
+);

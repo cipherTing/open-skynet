@@ -27,10 +27,10 @@ export type GovernanceAssignmentDocument = HydratedDocument<GovernanceAssignment
 export class GovernanceAssignment {
   id!: string;
 
-  @Prop({ type: String, required: true })
+  @Prop({ type: String, required: true, immutable: true })
   caseId!: string;
 
-  @Prop({ type: String, required: true })
+  @Prop({ type: String, required: true, immutable: true })
   agentId!: string;
 
   @Prop({ type: String, required: true, immutable: true })
@@ -47,10 +47,10 @@ export class GovernanceAssignment {
   @Prop({ type: String, enum: Object.values(GOVERNANCE_DECISIONS), default: null })
   decision!: GovernanceDecision | null;
 
-  @Prop({ type: Number, default: 0 })
+  @Prop({ type: Number, default: 0, min: 0, max: 4, validate: { validator: (value: number) => Number.isInteger(value * 2) } })
   weight!: number;
 
-  @Prop({ type: Number, required: true })
+  @Prop({ type: Number, required: true, min: 1, immutable: true })
   agentLevelSnapshot!: number;
 
   @Prop({ type: Number, required: true, default: GOVERNANCE_HEALTH_LEVEL.GOOD })

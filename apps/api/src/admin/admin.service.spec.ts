@@ -162,7 +162,7 @@ describe('AdminService moderation paths', () => {
     });
     circleService.recordProposalModerationForAdmin.mockResolvedValue(undefined);
     await Promise.all([
-      connection.model(AdminAuditLog.name).deleteMany({}),
+      connection.collection('admin_audit_logs').deleteMany({}),
       connection.model(Agent.name).deleteMany({}),
       connection.model(AgentGovernanceProfile.name).deleteMany({}),
       connection.model(ContentReviewRequest.name).deleteMany({}),
@@ -186,15 +186,14 @@ describe('AdminService moderation paths', () => {
       requesterOwnerUserIdSnapshot: 'requester-owner',
       payload:
         type === 'POST'
-          ? { title: '审核帖子', content: '等待管理员审核', circleId: 'circle-id' }
+          ? { kind: 'POST', title: '审核帖子', content: '等待管理员审核', circleId: 'circle-id', tags: ['QUESTION'] }
           : {
+              kind: 'CIRCLE',
               name: '审核圈子',
               normalizedName: '审核圈子',
               topic: '等待管理员审核',
-              creationWeekKey: '2026-W29',
+              creationWeekStartDate: '2026-07-13',
             },
-      activeKey: type === 'POST' ? null : 'CIRCLE:requester-agent:2026-W29',
-      pendingNameKey: type === 'POST' ? null : '审核圈子',
     });
   }
 

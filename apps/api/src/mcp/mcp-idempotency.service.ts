@@ -1,12 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { createHash } from 'node:crypto';
-import { Model } from 'mongoose';
+import { ClientSession, Model } from 'mongoose';
 import {
   McpIdempotencyRecord,
   MCP_IDEMPOTENCY_STATUSES,
 } from '@/database/schemas/mcp-idempotency-record.schema';
-import { McpToolError, normalizeMcpError } from './mcp.errors';
+import { McpToolError } from './mcp.errors';
+import { DatabaseService } from '@/database/database.service';
 
 const IDEMPOTENCY_PENDING_TTL_MS = 15 * 60 * 1000;
 const IDEMPOTENCY_RESULT_TTL_MS = 24 * 60 * 60 * 1000;
@@ -22,8 +23,17 @@ function hashInput(value: unknown): string {
   return createHash('sha256').update(stableJson(value)).digest('hex');
 }
 
-function isDuplicateKeyError(error: unknown): boolean {
-  return typeof error === 'object' && error !== null && 'code' in error && error.code === 11000;
+function isIdempotencyDuplicateKeyError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null || !('code' in error) || error.code !== 11000) {
+    return false;
+  }
+  const keyPattern = 'keyPattern' in error ? error.keyPattern : undefined;
+  if (typeof keyPattern !== 'object' || keyPattern === null) return false;
+  return [
+    'agentId',
+    'toolName',
+    'idempotencyKey',
+  ].every((key) => key in keyPattern);
 }
 
 @Injectable()
@@ -31,6 +41,7 @@ export class McpIdempotencyService {
   constructor(
     @InjectModel(McpIdempotencyRecord.name)
     private readonly recordModel: Model<McpIdempotencyRecord>,
+    private readonly databaseService: DatabaseService,
   ) {}
 
   async execute<T>(
@@ -38,32 +49,31 @@ export class McpIdempotencyService {
     toolName: string,
     idempotencyKey: string,
     input: unknown,
-    operation: () => Promise<T>,
+    operation: (session: ClientSession) => Promise<T>,
   ): Promise<T> {
     const inputHash = hashInput(input);
-    const existing = await this.recordModel.findOne({ agentId, toolName, idempotencyKey });
-    if (existing) return this.resolveExisting(existing, inputHash) as T;
+    return this.databaseService.$transaction(async (session) => {
+      const existing = await this.recordModel.findOne(
+        { agentId, toolName, idempotencyKey },
+        null,
+        { session },
+      );
+      if (existing) return this.resolveExisting(existing, inputHash) as T;
 
-    try {
-      await this.recordModel.create({
-        agentId,
-        toolName,
-        idempotencyKey,
-        inputHash,
-        status: MCP_IDEMPOTENCY_STATUSES.PENDING,
-        result: null,
-        error: null,
-        expiresAt: new Date(Date.now() + IDEMPOTENCY_PENDING_TTL_MS),
-      });
-    } catch (error) {
-      if (!isDuplicateKeyError(error)) throw error;
-      const raced = await this.recordModel.findOne({ agentId, toolName, idempotencyKey });
-      if (!raced) throw error;
-      return this.resolveExisting(raced, inputHash) as T;
-    }
+      await this.recordModel.create(
+        [{
+          agentId,
+          toolName,
+          idempotencyKey,
+          inputHash,
+          status: MCP_IDEMPOTENCY_STATUSES.PENDING,
+          result: null,
+          expiresAt: new Date(Date.now() + IDEMPOTENCY_PENDING_TTL_MS),
+        }],
+        { session },
+      );
 
-    try {
-      const result = await operation();
+      const result = await operation(session);
       await this.recordModel.updateOne(
         { agentId, toolName, idempotencyKey, inputHash, status: MCP_IDEMPOTENCY_STATUSES.PENDING },
         {
@@ -73,28 +83,15 @@ export class McpIdempotencyService {
             expiresAt: new Date(Date.now() + IDEMPOTENCY_RESULT_TTL_MS),
           },
         },
+        { session, runValidators: true },
       );
       return result;
-    } catch (error) {
-      const normalized = normalizeMcpError(error);
-      await this.recordModel.updateOne(
-        { agentId, toolName, idempotencyKey, inputHash, status: MCP_IDEMPOTENCY_STATUSES.PENDING },
-        {
-          $set: {
-            status: MCP_IDEMPOTENCY_STATUSES.FAILED,
-            error: {
-              code: normalized.code,
-              message: normalized.message,
-              ...(normalized.details.retryAfterSeconds !== undefined
-                ? { retryAfterSeconds: normalized.details.retryAfterSeconds }
-                : {}),
-            },
-            expiresAt: new Date(Date.now() + IDEMPOTENCY_RESULT_TTL_MS),
-          },
-        },
-      );
-      throw error;
-    }
+    }).catch(async (error: unknown) => {
+      if (!isIdempotencyDuplicateKeyError(error)) throw error;
+      const raced = await this.recordModel.findOne({ agentId, toolName, idempotencyKey });
+      if (!raced) throw error;
+      return this.resolveExisting(raced, inputHash) as T;
+    });
   }
 
   private resolveExisting(record: McpIdempotencyRecord, inputHash: string): unknown {
@@ -106,18 +103,6 @@ export class McpIdempotencyService {
     }
     if (record.status === MCP_IDEMPOTENCY_STATUSES.COMPLETED) {
       return record.result?.value;
-    }
-    if (record.status === MCP_IDEMPOTENCY_STATUSES.FAILED) {
-      const error = record.error;
-      const code = typeof error?.code === 'string' ? error.code : 'MCP_OPERATION_RECORDED_FAILED';
-      const message =
-        typeof error?.message === 'string' ? error.message : 'The previous operation failed.';
-      const retryAfterSeconds = error?.retryAfterSeconds;
-      throw new McpToolError(
-        code,
-        message,
-        typeof retryAfterSeconds === 'number' ? { retryAfterSeconds } : {},
-      );
     }
     const retryAfterSeconds = Math.max(
       1,

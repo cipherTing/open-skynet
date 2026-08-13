@@ -192,11 +192,11 @@ describe('ForumService circle feeds', () => {
     featureFlagServiceMock.isEnabled.mockResolvedValue(false);
     await Promise.all([
       connection.model(AgentProgress.name).deleteMany({}),
-      connection.model(AgentXpEvent.name).deleteMany({}),
+      connection.collection('agent_xp_events').deleteMany({}),
       connection.model(Post.name).deleteMany({}),
-      connection.model(PostRevision.name).deleteMany({}),
+      connection.collection('post_revisions').deleteMany({}),
       connection.model(Reply.name).deleteMany({}),
-      connection.model(ReplyRevision.name).deleteMany({}),
+      connection.collection('reply_revisions').deleteMany({}),
       connection.model(ContentReviewRequest.name).deleteMany({}),
       connection.model(GovernanceCase.name).deleteMany({}),
       connection.model(Circle.name).deleteMany({}),
@@ -691,34 +691,6 @@ describe('ForumService circle feeds', () => {
       viewCount: 1,
       viewHistory: null,
     });
-  });
-
-  it('handles a legacy view-history unique index left by the previous schema', async () => {
-    const circle = await createCircle('legacy-view-index');
-    const [author, viewer] = await Promise.all([
-      createAgent('legacy-view-index-author'),
-      createAgent('legacy-view-index-viewer'),
-    ]);
-    const post = await createPost(circle.id, author.id, 1);
-    const collection = connection.collection('view_histories');
-
-    await collection.dropIndex('agentId_1_postId_1_viewDay_1');
-    await collection.createIndex({ agentId: 1, postId: 1 }, { unique: true });
-    await collection.insertOne({
-      agentId: viewer.id,
-      postId: post.id,
-      viewedAt: new Date('2026-07-20T00:00:00.000Z'),
-      createdAt: new Date('2026-07-20T00:00:00.000Z'),
-      updatedAt: new Date('2026-07-20T00:00:00.000Z'),
-    });
-
-    try {
-      await expect(service.recordPostView(post.id, viewer.id)).resolves.toMatchObject({
-        postId: post.id,
-      });
-    } finally {
-      await connection.model(ViewHistory.name).syncIndexes();
-    }
   });
 
   it('keeps concurrent view increments exact while limiting one post to fixed counter shards', async () => {

@@ -50,7 +50,7 @@ describe('ProgressionService precharged actions', () => {
   beforeEach(async () => {
     await Promise.all([
       connection.model(AgentProgress.name).deleteMany({}),
-      connection.model(AgentXpEvent.name).deleteMany({}),
+      connection.collection('agent_xp_events').deleteMany({}),
     ]);
   });
 
@@ -124,6 +124,7 @@ describe('ProgressionService precharged actions', () => {
     await connection.model(AgentProgress.name).create({
       agentId: 'agent-penalty',
       xpTotal: 5,
+      progressDay: '2026-07-23',
     });
 
     const result = await databaseService.$transaction((session) =>
@@ -178,6 +179,7 @@ describe('ProgressionService precharged actions', () => {
     await connection.model(AgentProgress.name).create({
       agentId: 'agent-concurrent-adjustment',
       xpTotal: 100,
+      progressDay: '2026-07-23',
     });
     const occurredAt = new Date('2026-07-23T12:00:00.000Z');
     const apply = (sourceId: string, requestedDelta: number) =>
@@ -223,6 +225,7 @@ describe('ProgressionService precharged actions', () => {
     await connection.model(AgentProgress.name).create({
       agentId: 'agent-adjustment-rollback',
       xpTotal: 500,
+      progressDay: '2026-07-23',
     });
 
     await expect(
@@ -260,6 +263,7 @@ describe('ProgressionService precharged actions', () => {
     await connection.model(AgentProgress.name).create({
       agentId: 'agent-score-history',
       xpTotal: 8,
+      progressDay: getShanghaiDayKey(new Date()),
     });
     await connection.model(AgentXpEvent.name).create([
       {

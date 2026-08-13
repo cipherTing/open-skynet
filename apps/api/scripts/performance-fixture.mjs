@@ -9,19 +9,19 @@ dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 const uri =
   process.env.PERF_MONGODB_URI || 'mongodb://localhost:27017/skynet_perf?directConnection=true';
 const confirmation = process.env.SKYNET_CONFIRM_PERF_RESET;
-const HOT_HISTORY_SCALES = [100, 10_000, 100_000];
+const HOT_HISTORY_SCALES = [100, 10_000, 89_900];
 const HOT_EXPIRED_STATE_COUNT = 10_000;
-const DEFAULT_HOT_CANDIDATE_COUNT = 100_000;
+const DEFAULT_HOT_CANDIDATE_COUNT = 90_000;
 const DEFAULT_POST_COUNT = DEFAULT_HOT_CANDIDATE_COUNT + HOT_EXPIRED_STATE_COUNT;
 const DEFAULT_CIRCLE_PROPOSAL_STANCE_COUNT = 10_000;
 const DEFAULT_AGENT_INTERACTION_COUNT = 100_000;
-const DEFAULT_AGENT_HISTORY_COUNT = 100_000;
+const DEFAULT_AGENT_HISTORY_COUNT = 99_979;
 const DEFAULT_CIRCLE_PROPOSAL_HISTORY_COUNT = 10_000;
 const DEFAULT_XP_HISTORY_COUNT = 100_000;
 const DEADLINE_QUERY_DISTRACTOR_COUNT = 5_000;
 const HOT_ACTIVE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
-const HOT_HISTORY_PARTICIPANT_AGENT_INDEX = 10;
-const HOT_HISTORY_FEEDBACK_AGENT_INDEX = 11;
+const HOT_HISTORY_PARTICIPANT_AGENT_INDEX = 1;
+const HOT_HISTORY_FEEDBACK_AGENT_INDEX = 2;
 const configuredPostCount = Number(process.env.PERF_POST_COUNT || DEFAULT_POST_COUNT);
 const counts = {
   agents: Number(process.env.PERF_AGENT_COUNT || 1_000),
@@ -30,7 +30,7 @@ const counts = {
     process.env.PERF_HOT_CANDIDATE_COUNT ||
       Math.min(DEFAULT_HOT_CANDIDATE_COUNT, configuredPostCount - HOT_EXPIRED_STATE_COUNT),
   ),
-  replies: Number(process.env.PERF_REPLY_COUNT || 150_000),
+  replies: Number(process.env.PERF_REPLY_COUNT || 100_000),
   governanceCases: Number(process.env.PERF_GOVERNANCE_CASE_COUNT || 10_000),
   circleProposals: Number(process.env.PERF_CIRCLE_PROPOSAL_COUNT || 10_000),
   circleProposalStances: Number(
@@ -59,9 +59,24 @@ const PERFORMANCE_REPLY_FEEDBACK_COUNTS = {
   OFF_TOPIC: 0,
   NOISE: 0,
 };
+const EMPTY_FEEDBACK_COUNTS = {
+  SPARK: 0,
+  ON_POINT: 0,
+  CONSTRUCTIVE: 0,
+  RESONATE: 0,
+  UNCLEAR: 0,
+  OFF_TOPIC: 0,
+  NOISE: 0,
+};
 const ACTIVE_GOVERNANCE_STATUS = 'OPEN';
 const ACTIVE_PROPOSAL_STATUS = 'DISCUSSION';
 const CIRCLE_PROPOSAL_STANCES = { SUPPORT: 'SUPPORT', OBJECTION: 'OBJECTION' };
+const XP_EVENT_SOURCE_TYPES = {
+  PERFORMANCE_HISTORY: 'ADMIN_ADJUSTMENT',
+};
+const XP_EVENT_REASON_KEYS = {
+  PERFORMANCE_HISTORY: 'admin-xp-adjustment',
+};
 const GOVERNANCE_DECISIONS = {
   VIOLATION: 'VIOLATION',
   NOT_VIOLATION: 'NOT_VIOLATION',
@@ -75,7 +90,7 @@ const LARGE_REPLY_BRANCH_HISTORY_SIZE = Math.max(...HOT_HISTORY_SCALES);
 const POST_VIEW_COUNTER_SHARD_COUNT = 32;
 const POST_VIEW_COUNTER_POST_COUNT = 20;
 const POST_DISTRIBUTION_CIRCLE_COUNT = 50;
-const MEMBERSHIP_PROFILE_CIRCLE_COUNT = 10_000;
+const MEMBERSHIP_PROFILE_CIRCLE_COUNT = POST_DISTRIBUTION_CIRCLE_COUNT;
 const AGENT_HISTORY_PAGE_SIZE = 20;
 const GOVERNANCE_DISPATCH_PARTICIPATION_COUNT = 10_000;
 const GOVERNANCE_DISPATCH_ACTIVE_PARTICIPATION_COUNT = 60;
@@ -147,8 +162,25 @@ function assertSafeTarget() {
   if (counts.hotCandidates + HOT_EXPIRED_STATE_COUNT > counts.posts) {
     throw new Error('PERF_POST_COUNT must cover hot candidates and expired hot states');
   }
-  if (counts.replies < dedicatedHotHistoryReplyCount) {
-    throw new Error('PERF_REPLY_COUNT must cover all dedicated hot-history profiles');
+  if (counts.replies !== dedicatedHotHistoryReplyCount) {
+    throw new Error(
+      `PERF_REPLY_COUNT must equal the dedicated hot-history total ${dedicatedHotHistoryReplyCount}`,
+    );
+  }
+  const boundedCollections = {
+    posts: counts.posts,
+    replies: counts.replies,
+    governanceCases: counts.governanceCases + counts.deadlineDistractors,
+    circleProposals: counts.circleProposals + counts.deadlineDistractors + 1,
+    interactions: counts.agentInteractions,
+    favorites: counts.agentHistory,
+    viewHistory: counts.agentHistory,
+    circleMemberships: counts.agentHistory + 2,
+    xpHistory: counts.xpHistory,
+    proposalHistory: counts.circleProposalHistory,
+  };
+  for (const [name, value] of Object.entries(boundedCollections)) {
+    if (value > 100_000) throw new Error(`${name} fixture count must not exceed 100000`);
   }
   if (counts.agentHistory > counts.posts) {
     throw new Error('PERF_POST_COUNT must cover the Agent history profile');
@@ -192,6 +224,16 @@ function buildCircleSearchTokens(name, slug, topic) {
   return Array.from(
     new Set([...buildBigrams(name), ...buildBigrams(slug), ...buildBigrams(topic)]),
   ).sort();
+}
+
+const SEARCH_SEGMENTER = new Intl.Segmenter('zh-Hans', { granularity: 'word' });
+
+function buildSearchText(value) {
+  const normalized = value.normalize('NFKC').toLocaleLowerCase('zh-CN');
+  return Array.from(SEARCH_SEGMENTER.segment(normalized))
+    .filter((segment) => segment.isWordLike)
+    .map((segment) => segment.segment)
+    .join(' ');
 }
 
 function getMongoConnectionOptions() {
@@ -362,6 +404,7 @@ async function createIndexes(db) {
       .collection('post_hot_participants')
       .createIndex({ postId: 1, ownerUserId: 1 }, { unique: true }),
     db.collection('post_hot_participants').createIndex({ postId: 1, lastActiveAt: -1 }),
+    db.collection('post_hot_participants').createIndex({ ownerUserId: 1, lastActiveAt: -1 }),
     db.collection('feedbacks').createIndex({ targetType: 1, replyId: 1, type: 1, _id: 1 }),
     db.collection('governance_cases').createIndex({
       status: 1,
@@ -371,6 +414,10 @@ async function createIndexes(db) {
       _id: 1,
     }),
     db.collection('governance_cases').createIndex({ status: 1, nextTransitionAt: 1, _id: 1 }),
+    db.collection('governance_cases').createIndex(
+      { targetType: 1, targetId: 1, targetContentVersion: 1, round: 1 },
+      { unique: true, name: 'uq_governance_cases_target_round' },
+    ),
     db
       .collection('governance_cases')
       .createIndex({ status: 1, deadlineScheduleDispatchAt: 1, _id: 1 }),
@@ -396,6 +443,14 @@ async function createIndexes(db) {
       deadlineScheduleDispatchAt: 1,
       _id: 1,
     }),
+    db.collection('circle_proposals').createIndex(
+      { circleId: 1, scope: 1 },
+      {
+        unique: true,
+        name: 'uq_circle_proposals_active_scope',
+        partialFilterExpression: { status: { $in: ['DISCUSSION', 'VOTING'] } },
+      },
+    ),
     db.collection('circle_proposals').createIndex({ circleId: 1, updatedAt: -1, _id: -1 }),
     db
       .collection('circle_proposal_stances')
@@ -431,6 +486,26 @@ async function createIndexes(db) {
       .createIndex({ agentId: 1, sourceType: 1, sourceId: 1, reasonKey: 1 }, { unique: true }),
     db.collection('agent_xp_events').createIndex({ agentId: 1, occurredAt: 1, xp: 1 }),
     db.collection('admin_audit_logs').createIndex({ createdAt: -1, _id: -1 }),
+    db.collection('report_target_states').createIndex(
+      { targetType: 1, targetId: 1, targetContentVersion: 1, round: 1 },
+      { unique: true, name: 'uq_report_target_states_target_round' },
+    ),
+    db.collection('report_target_states').createIndex(
+      { caseId: 1 },
+      {
+        unique: true,
+        name: 'uq_report_target_states_case_id',
+        partialFilterExpression: { caseId: { $type: 'string' } },
+      },
+    ),
+    db.collection('report_target_states').createIndex(
+      { status: 1, updatedAt: -1, _id: -1 },
+      { name: 'ix_report_target_states_status_updated' },
+    ),
+    db.collection('report_target_states').createIndex(
+      { targetType: 1, targetId: 1, targetContentVersion: 1, round: -1 },
+      { name: 'ix_report_target_states_target' },
+    ),
   ]);
 }
 
@@ -446,8 +521,8 @@ async function main() {
   const agentIds = Array.from({ length: counts.agents }, () => objectId());
   const ownerIds = agentIds.map(() => objectId().toString());
   const ownerByAgentId = new Map(agentIds.map((id, index) => [id.toString(), ownerIds[index]]));
-  const circleIds = Array.from({ length: MEMBERSHIP_PROFILE_CIRCLE_COUNT }, () => objectId());
-  const agentHistoryCircleIds = Array.from({ length: counts.agentHistory }, () => objectId());
+  const circleIds = Array.from({ length: counts.agentHistory }, () => objectId());
+  const agentHistoryCircleIds = circleIds;
   await insertBatches(
     db.collection('agents'),
     agentIds.map((id, index) => ({
@@ -468,7 +543,7 @@ async function main() {
       xpTotal: 5_000,
       staminaCurrent: 100,
       staminaLastSettledAt: new Date(now),
-      dailyProgressDate: '2026-07-23',
+      progressDay: '2026-07-23',
       dailyCounters: { posts: 0, replies: 0, childReplies: 0, feedbacks: 0 },
       awardedDailyTaskIds: [],
       createdAt: new Date(now - index * 1_000),
@@ -502,8 +577,18 @@ async function main() {
         normalizedName: normalizeCircleSearchText(name),
         topic,
         searchTokens: buildCircleSearchTokens(name, slug, topic),
+        createdByType: 'AGENT',
+        createdByAgentId: agentIds[index % agentIds.length].toString(),
+        rules: [],
+        topicVersion: 1,
+        topicOrigin: 'CREATION',
+        rulesVersion: 1,
+        activeProposalCount: 0,
+        creationWeekStartDate: null,
+        kind: 'NORMAL',
         status: index === 0 ? 'BANNED' : 'ACTIVE',
         visibilityVersion: index === 0 ? 2 : 1,
+        bannedAt: index === 0 ? new Date(now) : null,
         memberCount: index % 100,
         postCount: index % 250,
         lastPostAt: new Date(now - index * 30_000),
@@ -513,31 +598,7 @@ async function main() {
       };
     }),
   );
-  await insertBatches(
-    db.collection('circles'),
-    agentHistoryCircleIds.map((id, index) => {
-      const slug = `agent-history-${index}`;
-      const name = `Agent 历史圈子 ${index}`;
-      const topic = 'Agent 圈子历史性能验证';
-      return {
-        _id: id,
-        slug,
-        name,
-        normalizedName: normalizeCircleSearchText(name),
-        topic,
-        searchTokens: buildCircleSearchTokens(name, slug, topic),
-        status: 'ACTIVE',
-        visibilityVersion: 1,
-        memberCount: index % 100,
-        postCount: index % 250,
-        lastPostAt: new Date(now - index),
-        deletedAt: null,
-        createdAt: new Date(now - index),
-        updatedAt: new Date(now - index),
-      };
-    }),
-  );
-  const profileCircleMemberships = circleIds.map((circleId, index) => ({
+  const profileCircleMemberships = circleIds.slice(0, MEMBERSHIP_PROFILE_CIRCLE_COUNT).map((circleId, index) => ({
     _id: objectId(),
     agentId: agentIds[0].toString(),
     circleId: circleId.toString(),
@@ -554,12 +615,12 @@ async function main() {
   await insertBatches(db.collection('circle_memberships'), [
     ...profileCircleMemberships,
     ...agentHistoryCircleMemberships,
-    ...agentIds.slice(1).map((agentId, index) => ({
+    ...[agentIds[1]].map((agentId) => ({
       _id: objectId(),
       agentId: agentId.toString(),
       circleId: circleIds[1].toString(),
-      createdAt: new Date(now - circleIds.length - index),
-      updatedAt: new Date(now - circleIds.length - index),
+      createdAt: new Date(now - circleIds.length),
+      updatedAt: new Date(now - circleIds.length),
     })),
   ]);
 
@@ -568,6 +629,10 @@ async function main() {
     title: `性能帖子 ${index}`,
     content: `固定性能验证正文 ${index}`,
     tags: ['DISCUSSION'],
+    contentVersion: 1,
+    lastEditedAt: null,
+    searchTitle: buildSearchText(`性能帖子 ${index}`),
+    searchContent: buildSearchText(`固定性能验证正文 ${index}`),
     authorId:
       index < counts.agentHistory
         ? agentIds[0].toString()
@@ -576,8 +641,10 @@ async function main() {
     circleVisible: true,
     circleVisibilityVersion: 1,
     replyCount: 5,
+    feedbackCounts: { ...EMPTY_FEEDBACK_COUNTS },
     viewCount: (index * 17) % 10_000,
     deletedAt: null,
+    removalSource: 'NONE',
     createdAt: new Date(now - index * 10_000),
     updatedAt: new Date(now - index * 10_000),
   }));
@@ -683,14 +750,14 @@ async function main() {
     membershipProfile: {
       agentId: agentIds[0].toString(),
       ownerUserId: ownerIds[0],
-      circleCount: circleIds.length,
-      activeCircleCount: circleIds.length - 1,
+      circleCount: profileCircleMemberships.length,
+      activeCircleCount: profileCircleMemberships.length - 1,
     },
     circleProposalEligibilityProfile: {
       circleId: circleIds[1].toString(),
       actorOwnerUserId: ownerIds[0],
-      memberCount: agentIds.length,
-      eligibleMemberCount: agentIds.length,
+      memberCount: 3,
+      eligibleMemberCount: 3,
     },
     agentInteractionProfile: {
       agentId: agentIds[0].toString(),
@@ -699,6 +766,7 @@ async function main() {
     hotCandidateCount: counts.hotCandidates,
     hotExpiredStateCount: HOT_EXPIRED_STATE_COUNT,
     deadlineDistractorCount: counts.deadlineDistractors,
+    proposalListCircleId: circleIds[1].toString(),
     createdAt: new Date(now),
   });
 
@@ -706,6 +774,7 @@ async function main() {
   const hotWorkItems = [];
   const feedbacks = [];
   const fanouts = [];
+  let agentHistoryReplyTailCursor = null;
   for (let index = 0; index < counts.replies; index += 1) {
     const target = resolveReplyFixtureTarget(index, posts.length);
     const post = posts[target.postIndex];
@@ -721,7 +790,7 @@ async function main() {
     const isLargeBranch = target.historySize === LARGE_REPLY_BRANCH_HISTORY_SIZE;
     const isLargeBranchRoot = isLargeBranch && target.positionInHistory === 0;
     const replyObjectId = isLargeBranchRoot ? largeReplyBranchRootId : objectId();
-    replies.push({
+    const replyRecord = {
       _id: replyObjectId,
       postId: post._id.toString(),
       parentReplyId: isLargeBranch && !isLargeBranchRoot ? largeReplyBranchRootId.toString() : null,
@@ -729,15 +798,27 @@ async function main() {
       authorId: agentIds[replyAgentIndex].toString(),
       authorOwnerUserIdSnapshot: ownerIds[replyAgentIndex],
       content: `性能回复 ${index}`,
-      feedbackCounts: PERFORMANCE_REPLY_FEEDBACK_COUNTS,
+      searchContent: buildSearchText(`性能回复 ${index}`),
+      contentVersion: 1,
+      lastEditedAt: null,
+      quote: null,
+      feedbackCounts: { ...PERFORMANCE_REPLY_FEEDBACK_COUNTS },
+      circleRulesVersion: 1,
       deletedAt: null,
-      createdAt: new Date(post.createdAt.getTime() + ((index % 50) + 1) * 1_000),
-      updatedAt: new Date(post.createdAt.getTime() + ((index % 50) + 1) * 1_000),
-    });
+      removalSource: 'NONE',
+      createdAt: new Date(now - index),
+      updatedAt: new Date(now - index),
+    };
+    replies.push(replyRecord);
+    if (index === counts.replies - (AGENT_HISTORY_PAGE_SIZE + 1) - 1) {
+      agentHistoryReplyTailCursor = {
+        timestamp: replyRecord.createdAt.toISOString(),
+        id: replyRecord._id.toString(),
+      };
+    }
     const replyId = replies.at(-1)._id.toString();
     hotWorkItems.push({
       _id: objectId(),
-      sourceKey: `${HOT_SOURCE_TYPES.REPLY}:${replyId}`,
       sourceType: HOT_SOURCE_TYPES.REPLY,
       sourceId: replyId,
       postId: post._id.toString(),
@@ -818,33 +899,9 @@ async function main() {
     updatedAt: new Date(now),
   });
 
-  const agentReplyHistory = Array.from({ length: counts.agentHistory }, (_, index) => {
-    const createdAt = new Date(now - index);
-    const post =
-      posts[HOT_HISTORY_SCALES.length + (index % (posts.length - HOT_HISTORY_SCALES.length))];
-    return {
-      _id: objectId(),
-      postId: post._id.toString(),
-      parentReplyId: null,
-      childReplyCount: 0,
-      authorId: agentIds[1].toString(),
-      authorOwnerUserIdSnapshot: ownerIds[1],
-      content: `Agent 历史回复 ${index}`,
-      contentVersion: 1,
-      lastEditedAt: null,
-      quote: null,
-      circleRulesVersion: 1,
-      feedbackCounts: PERFORMANCE_REPLY_FEEDBACK_COUNTS,
-      deletedAt: null,
-      createdAt,
-      updatedAt: createdAt,
-    };
-  });
-  await insertBatches(db.collection('replies'), agentReplyHistory);
-
   const deadlineNow = new Date(now - 60_000);
   const deadlineFuture = new Date(now + PERFORMANCE_FUTURE_OFFSET_MS);
-  const governanceCases = Array.from({ length: counts.governanceCases }, () => ({
+  const governanceCases = Array.from({ length: counts.governanceCases }, (_, index) => ({
     _id: objectId(),
     status: ACTIVE_GOVERNANCE_STATUS,
     nextTransitionAt: deadlineNow,
@@ -853,10 +910,36 @@ async function main() {
     deadlineVersion: 1,
     deadlinePublishedVersion: 0,
     targetType: 'POST',
-    targetId: posts[0]._id.toString(),
+    targetId: posts[index % posts.length]._id.toString(),
     targetContentVersion: 1,
     round: 1,
-    activeKey: `PERF:${objectId().toString()}`,
+    targetAuthorId: posts[index % posts.length].authorId,
+    targetAuthorOwnerUserId: ownerByAgentId.get(posts[index % posts.length].authorId),
+    reporterAgentIds: agentIds.slice(2, 5).map((agentId) => agentId.toString()),
+    reporterOwnerUserIds: ownerIds.slice(2, 5),
+    targetSnapshot: {
+      kind: 'POST',
+      post: {
+        id: posts[index % posts.length]._id.toString(),
+        title: posts[index % posts.length].title,
+        content: posts[index % posts.length].content,
+        tags: posts[index % posts.length].tags,
+        contentVersion: 1,
+        authorId: posts[index % posts.length].authorId,
+        createdAt: posts[index % posts.length].createdAt,
+        circleRules: { circleId: posts[index % posts.length].circleId, version: 1, rules: [] },
+      },
+    },
+    triggerScore: 3,
+    triggerThreshold: 3,
+    firstReviewAt: deadlineNow,
+    resolution: null,
+    resolvedAt: null,
+    resolutionSource: 'COMMUNITY',
+    resolutionReason: null,
+    resolvedByUserId: null,
+    lastDispatchedAt: null,
+    firstReviewedAt: null,
     openedAt: deadlineNow,
     normalDeadlineAt: deadlineNow,
     emergencyDeadlineAt: deadlineFuture,
@@ -872,14 +955,40 @@ async function main() {
       deadlineVersion: 1,
       deadlinePublishedVersion: 1,
       targetType: 'POST',
-      targetId: posts[0]._id.toString(),
+      targetId: posts[(counts.governanceCases + index) % posts.length]._id.toString(),
       targetContentVersion: 1,
       round: 1,
       targetAuthorId: agentIds[1].toString(),
       targetAuthorOwnerUserId: ownerIds[1],
       reporterAgentIds: agentIds.slice(2, 5).map((agentId) => agentId.toString()),
       reporterOwnerUserIds: ownerIds.slice(2, 5),
-      activeKey: `PERF:${objectId().toString()}`,
+      targetSnapshot: {
+        kind: 'POST',
+        post: {
+          id: posts[(counts.governanceCases + index) % posts.length]._id.toString(),
+          title: posts[(counts.governanceCases + index) % posts.length].title,
+          content: posts[(counts.governanceCases + index) % posts.length].content,
+          tags: posts[(counts.governanceCases + index) % posts.length].tags,
+          contentVersion: 1,
+          authorId: posts[(counts.governanceCases + index) % posts.length].authorId,
+          createdAt: posts[(counts.governanceCases + index) % posts.length].createdAt,
+          circleRules: {
+            circleId: posts[(counts.governanceCases + index) % posts.length].circleId,
+            version: 1,
+            rules: [],
+          },
+        },
+      },
+      triggerScore: 3,
+      triggerThreshold: 3,
+      firstReviewAt: deadlineNow,
+      resolution: null,
+      resolvedAt: null,
+      resolutionSource: 'COMMUNITY',
+      resolutionReason: null,
+      resolvedByUserId: null,
+      lastDispatchedAt: null,
+      firstReviewedAt: null,
       openedAt: new Date(deadlineNow.getTime() + index),
       normalDeadlineAt: deadlineNow,
       emergencyDeadlineAt: deadlineFuture,
@@ -981,13 +1090,14 @@ async function main() {
   const circleProposals = Array.from({ length: counts.circleProposals }, (_, index) => ({
     _id: objectId(),
     status: ACTIVE_PROPOSAL_STATUS,
+    scope: index % 2 === 0 ? 'TOPIC' : 'RULES',
     activeGovernanceCaseId: null,
     nextTransitionAt: deadlineNow,
     deadlineScheduleDispatchAt: deadlineNow,
     deadlineCompensationDispatchAt: deadlineNow,
     deadlineVersion: 1,
     deadlinePublishedVersion: 0,
-    circleId: circleIds[0].toString(),
+    circleId: circleIds[index % circleIds.length].toString(),
     discussionDeadlineAt: deadlineNow,
     votingDeadlineAt: null,
     expiresAt: deadlineFuture,
@@ -996,7 +1106,6 @@ async function main() {
     quorumSnapshot: 20,
     version: 1,
     participationVersion: 0,
-    activeKey: null,
     idempotencyKey: `PERF:${objectId().toString()}`,
     creatorAgentId: agentIds[0].toString(),
     creatorOwnerUserIdSnapshot: ownerIds[0],
@@ -1007,13 +1116,14 @@ async function main() {
     ...Array.from({ length: counts.deadlineDistractors }, (_, index) => ({
       _id: objectId(),
       status: ACTIVE_PROPOSAL_STATUS,
+      scope: index % 2 === 0 ? 'TOPIC' : 'RULES',
       activeGovernanceCaseId: null,
       nextTransitionAt: deadlineFuture,
       deadlineScheduleDispatchAt: null,
       deadlineCompensationDispatchAt: deadlineFuture,
       deadlineVersion: 1,
       deadlinePublishedVersion: 1,
-      circleId: circleIds[0].toString(),
+      circleId: circleIds[(counts.circleProposals + index) % circleIds.length].toString(),
       discussionDeadlineAt: deadlineNow,
       votingDeadlineAt: null,
       expiresAt: deadlineFuture,
@@ -1022,7 +1132,6 @@ async function main() {
       quorumSnapshot: 20,
       version: 1,
       participationVersion: 0,
-      activeKey: null,
       idempotencyKey: `PERF:${objectId().toString()}`,
       creatorAgentId: agentIds[0].toString(),
       creatorOwnerUserIdSnapshot: ownerIds[0],
@@ -1034,6 +1143,44 @@ async function main() {
 
   const proposalHistoryId = objectId();
   const proposalHistoryResolvedAt = new Date(now - 60_000);
+  const proposalListItems = Array.from(
+    { length: AGENT_HISTORY_PAGE_SIZE + 1 },
+    (_, index) => ({
+      _id: objectId(),
+      status: 'ACCEPTED',
+      scope: 'TOPIC',
+      activeGovernanceCaseId: null,
+      nextTransitionAt: null,
+      deadlineScheduleDispatchAt: null,
+      deadlineCompensationDispatchAt: null,
+      deadlineVersion: 1,
+      deadlinePublishedVersion: 1,
+      circleId: circleIds[1].toString(),
+      discussionDeadlineAt: deadlineNow,
+      votingDeadlineAt: proposalHistoryResolvedAt,
+      expiresAt: proposalHistoryResolvedAt,
+      currentRevisionNumber: 1,
+      eligibleMemberCountSnapshot: 20,
+      quorumSnapshot: 20,
+      version: 1,
+      participationVersion: 1,
+      idempotencyKey: `PERF-LIST:${index}`,
+      creatorAgentId: agentIds[0].toString(),
+      creatorOwnerUserIdSnapshot: ownerIds[0],
+      creatorAgentNameSnapshot: 'PerfAgent-0',
+      creatorAgentAvatarSeedSnapshot: 'perf-agent-0',
+      baseVersion: 1,
+      baseTopicSnapshot: '性能提案列表基线',
+      baseRulesSnapshot: null,
+      resolvedAt: proposalHistoryResolvedAt,
+      moderationReason: null,
+      approveCount: 10,
+      rejectCount: 10,
+      createdAt: new Date(now - (index + 1) * 1_000),
+      updatedAt: new Date(now - (index + 1) * 1_000),
+    }),
+  );
+  await insertBatches(db.collection('circle_proposals'), proposalListItems);
   await db.collection('circle_proposals').insertOne({
     _id: proposalHistoryId,
     circleId: circleIds[1].toString(),
@@ -1063,7 +1210,6 @@ async function main() {
     moderationReason: null,
     approveCount: Math.ceil(counts.circleProposalHistory / 2),
     rejectCount: Math.floor(counts.circleProposalHistory / 2),
-    activeKey: null,
     activeGovernanceCaseId: null,
     idempotencyKey: `PERF:${proposalHistoryId.toString()}`,
     createdAt: new Date(now - counts.circleProposalHistory * 1_000),
@@ -1231,9 +1377,9 @@ async function main() {
     return {
       _id: objectId(),
       agentId: agentIds[0].toString(),
-      sourceType: 'PERFORMANCE_HISTORY',
+      sourceType: XP_EVENT_SOURCE_TYPES.PERFORMANCE_HISTORY,
       sourceId: `performance-xp-${index}`,
-      reasonKey: 'performance-history',
+      reasonKey: XP_EVENT_REASON_KEYS.PERFORMANCE_HISTORY,
       xp: index % 3 === 0 ? -1 : 1,
       occurredAt,
       createdAt: occurredAt,
@@ -1261,8 +1407,8 @@ async function main() {
           },
           replies: {
             agentId: agentIds[1].toString(),
-            count: counts.agentHistory,
-            tailCursor: buildDescendingTailCursor(agentReplyHistory, 'createdAt'),
+            count: counts.replies,
+            tailCursor: agentHistoryReplyTailCursor,
           },
           circles: {
             agentId: agentIds[2].toString(),

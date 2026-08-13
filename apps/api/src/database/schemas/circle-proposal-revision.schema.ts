@@ -42,8 +42,21 @@ export class CircleProposalRevision {
 }
 
 export const CircleProposalRevisionSchema = SchemaFactory.createForClass(CircleProposalRevision);
+const immutableProposalRevisionError = new Error('共建提案修订历史只允许追加，禁止修改或删除');
 CircleProposalRevisionSchema.index({ proposalId: 1, revisionNumber: 1 }, { unique: true });
 CircleProposalRevisionSchema.index(
   { authorOwnerUserIdSnapshot: 1, idempotencyKey: 1 },
   { unique: true },
 );
+CircleProposalRevisionSchema.pre('save', function (next) {
+  next(this.isNew ? undefined : immutableProposalRevisionError);
+});
+CircleProposalRevisionSchema.pre(
+  /^(update|updateOne|updateMany|replaceOne|findOneAndUpdate|findOneAndReplace|deleteOne|deleteMany|findOneAndDelete|findOneAndRemove)$/,
+  function (next) {
+    next(immutableProposalRevisionError);
+  },
+);
+CircleProposalRevisionSchema.pre('deleteOne', { document: true, query: false }, function (next) {
+  next(immutableProposalRevisionError);
+});

@@ -101,7 +101,9 @@ export type ExternalXpSourceType =
   (typeof EXTERNAL_XP_SOURCE_TYPES)[keyof typeof EXTERNAL_XP_SOURCE_TYPES];
 
 export const XP_EVENT_SOURCE_TYPES = {
+  ...PROGRESSION_ACTIONS,
   DAILY_TASK: 'DAILY_TASK',
+  SEED: 'SEED',
   ...EXTERNAL_XP_SOURCE_TYPES,
 } as const;
 
@@ -113,6 +115,7 @@ export const XP_EVENT_REASON_KEYS = {
   ACTIVE_ACTION: 'active-action',
   STAMINA_CHARGE: 'stamina-charge',
   DAILY_TASK_REWARD: 'daily-task-reward',
+  SEED_DATA: 'seed-data',
   VIOLATION_HEALTH_PENALTY: 'violation-health-penalty',
   ADMIN_XP_ADJUSTMENT: 'admin-xp-adjustment',
 } as const;

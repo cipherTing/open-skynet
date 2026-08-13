@@ -234,10 +234,13 @@ export class CircleProposalService {
     proposalId: string,
     viewerAgentId?: string,
     query: CircleProposalDetailQueryDto = {},
+    session?: ClientSession,
   ) {
-    const proposal = await this.getProposal(circleId, proposalId);
+    const proposal = await this.getProposal(circleId, proposalId, session);
     const terminal = !ACTIVE_STATUSES.includes(proposal.status);
-    const viewerOwnerUserId = viewerAgentId ? await this.resolveOwnerUserId(viewerAgentId) : null;
+    const viewerOwnerUserId = viewerAgentId
+      ? await this.resolveOwnerUserId(viewerAgentId, session)
+      : null;
     const activeStanceFilter = {
       proposalId,
       revisionNumber: proposal.currentRevisionNumber,
@@ -245,28 +248,38 @@ export class CircleProposalService {
     };
     const [currentRevision, supportCount, objectionCount, currentStance, currentVote, eligibility] =
       await Promise.all([
-        this.revisionModel.findOne({
-          proposalId,
-          revisionNumber: proposal.currentRevisionNumber,
-        }),
+        this.revisionModel.findOne(
+          {
+            proposalId,
+            revisionNumber: proposal.currentRevisionNumber,
+          },
+          null,
+          { session },
+        ),
         this.stanceModel.countDocuments({
           ...activeStanceFilter,
           stance: CIRCLE_PROPOSAL_STANCES.SUPPORT,
-        }),
+        }, { session }),
         this.stanceModel.countDocuments({
           ...activeStanceFilter,
           stance: CIRCLE_PROPOSAL_STANCES.OBJECTION,
-        }),
+        }, { session }),
         viewerOwnerUserId
           ? this.stanceModel.findOne({
               ...activeStanceFilter,
               ownerUserIdSnapshot: viewerOwnerUserId,
-            })
+            }, null, { session })
           : Promise.resolve(null),
         viewerOwnerUserId
-          ? this.voteModel.findOne({ proposalId, ownerUserIdSnapshot: viewerOwnerUserId })
+          ? this.voteModel.findOne(
+              { proposalId, ownerUserIdSnapshot: viewerOwnerUserId },
+              null,
+              { session },
+            )
           : Promise.resolve(null),
-        viewerAgentId ? this.getEligibility(circleId, viewerAgentId) : Promise.resolve(null),
+        viewerAgentId
+          ? this.getEligibility(circleId, viewerAgentId, session)
+          : Promise.resolve(null),
       ]);
     if (!currentRevision) throw new Error('Missing current circle proposal revision');
     const shouldReadVoters =
@@ -278,7 +291,7 @@ export class CircleProposalService {
             CURSOR_PAGINATION_MAX_LIMIT,
           ),
           cursor: query.votersCursor,
-        })
+        }, session)
       : null;
     return {
       ...this.serializeSummary(proposal),
@@ -337,8 +350,13 @@ export class CircleProposalService {
     };
   }
 
-  async listVoters(circleId: string, proposalId: string, dto: ListCircleProposalHistoryDto) {
-    const proposal = await this.getProposal(circleId, proposalId);
+  async listVoters(
+    circleId: string,
+    proposalId: string,
+    dto: ListCircleProposalHistoryDto,
+    session?: ClientSession,
+  ) {
+    const proposal = await this.getProposal(circleId, proposalId, session);
     if (ACTIVE_STATUSES.includes(proposal.status)) throw circleProposalErrors.votersNotPublic();
     const limit = dto.limit ?? CURSOR_PAGINATION_DEFAULT_LIMIT;
     const cursor = dto.cursor
@@ -349,7 +367,8 @@ export class CircleProposalService {
         )
       : null;
     const candidates = await this.voteModel
-      .find({
+      .find(
+        {
         proposalId,
         ...(cursor
           ? {
@@ -359,7 +378,10 @@ export class CircleProposalService {
               ],
             }
           : {}),
-      })
+        },
+        null,
+        { session },
+      )
       .sort({ createdAt: 1, _id: 1 })
       .limit(limit + 1);
     const hasMore = candidates.length > limit;
@@ -391,18 +413,23 @@ export class CircleProposalService {
     actorAgentId: string,
     idempotencyKeyHeader: string | undefined,
     dto: CreateCircleProposalDto,
+    session?: ClientSession,
   ) {
     await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.FORUM_WRITES);
     const idempotencyKey = assertIdempotencyKey(idempotencyKeyHeader);
-    const existingActor = await this.getParticipant(circleId, actorAgentId, true);
-    const existing = await this.proposalModel.findOne({
-      creatorOwnerUserIdSnapshot: existingActor.ownerUserId,
-      idempotencyKey,
-    });
-    if (existing) return this.detail(circleId, existing.id, actorAgentId);
+    const existingActor = await this.getParticipant(circleId, actorAgentId, true, session);
+    const existing = await this.proposalModel.findOne(
+      {
+        creatorOwnerUserIdSnapshot: existingActor.ownerUserId,
+        idempotencyKey,
+      },
+      null,
+      { session },
+    );
+    if (existing) return this.detail(circleId, existing.id, actorAgentId, {}, session);
 
     const created = await this.databaseService
-      .$transaction(async (session) => {
+      .runInTransaction(session, async (session) => {
         const circle = await this.getActiveCircle(circleId, session);
         const actor = await this.getParticipant(circle.id, actorAgentId, true, session);
         const currentVersion = this.getScopeVersion(circle, dto.scope);
@@ -459,7 +486,6 @@ export class CircleProposalService {
           resolvedAt: null,
           approveCount: 0,
           rejectCount: 0,
-          activeKey: `${circle.id}:${dto.scope}`,
           activeGovernanceCaseId: null,
           idempotencyKey,
         });
@@ -504,14 +530,18 @@ export class CircleProposalService {
       })
       .catch(async (error: unknown) => {
         if (!isDuplicateKeyError(error)) throw error;
-        const duplicate = await this.proposalModel.findOne({
-          creatorOwnerUserIdSnapshot: existingActor.ownerUserId,
-          idempotencyKey,
-        });
+        const duplicate = await this.proposalModel.findOne(
+          {
+            creatorOwnerUserIdSnapshot: existingActor.ownerUserId,
+            idempotencyKey,
+          },
+          null,
+          { session },
+        );
         if (duplicate) return duplicate;
         throw circleProposalErrors.activeScopeExists();
       });
-    return this.detail(circleId, created.id, actorAgentId);
+    return this.detail(circleId, created.id, actorAgentId, {}, session);
   }
 
   async revise(
@@ -520,16 +550,21 @@ export class CircleProposalService {
     actorAgentId: string,
     idempotencyKeyHeader: string | undefined,
     dto: ReviseCircleProposalDto,
+    session?: ClientSession,
   ) {
     const idempotencyKey = assertIdempotencyKey(idempotencyKeyHeader);
-    const actor = await this.getParticipant(circleId, actorAgentId, true);
-    const duplicate = await this.revisionModel.findOne({
-      authorOwnerUserIdSnapshot: actor.ownerUserId,
-      idempotencyKey,
-    });
-    if (duplicate) return this.detail(circleId, proposalId, actorAgentId);
+    const actor = await this.getParticipant(circleId, actorAgentId, true, session);
+    const duplicate = await this.revisionModel.findOne(
+      {
+        authorOwnerUserIdSnapshot: actor.ownerUserId,
+        idempotencyKey,
+      },
+      null,
+      { session },
+    );
+    if (duplicate) return this.detail(circleId, proposalId, actorAgentId, {}, session);
 
-    await this.databaseService.$transaction(async (session) => {
+    await this.databaseService.runInTransaction(session, async (session) => {
       const circle = await this.getActiveCircle(circleId, session);
       const transactionActor = await this.getParticipant(circle.id, actorAgentId, true, session);
       const proposal = await this.getProposal(circle.id, proposalId, session);
@@ -619,7 +654,7 @@ export class CircleProposalService {
       );
       if (updated.modifiedCount !== 1) throw circleProposalErrors.discussionClosed();
     });
-    return this.detail(circleId, proposalId, actorAgentId);
+    return this.detail(circleId, proposalId, actorAgentId, {}, session);
   }
 
   async setStance(
@@ -627,16 +662,17 @@ export class CircleProposalService {
     proposalId: string,
     actorAgentId: string,
     dto: SetCircleProposalStanceDto,
+    session?: ClientSession,
   ) {
     if (dto.action === CIRCLE_PROPOSAL_STANCE_ACTIONS.WITHDRAW) {
-      return this.withdrawStance(circleId, proposalId, actorAgentId, dto);
+      return this.withdrawStance(circleId, proposalId, actorAgentId, dto, session);
     }
     if (!dto.stance) throw circleProposalErrors.stanceRequired();
     const reason = dto.reason ? normalizeMarkdown(dto.reason) : null;
     if (dto.stance === CIRCLE_PROPOSAL_STANCES.OBJECTION && !reason) {
       throw circleProposalErrors.objectionReasonRequired();
     }
-    await this.databaseService.$transaction(async (session) => {
+    await this.databaseService.runInTransaction(session, async (session) => {
       const circle = await this.getActiveCircle(circleId, session);
       const actor = await this.getParticipant(circle.id, actorAgentId, true, session);
       const proposal = await this.getProposal(circle.id, proposalId, session);
@@ -680,7 +716,7 @@ export class CircleProposalService {
         { upsert: true, new: true, session },
       );
     });
-    return this.detail(circleId, proposalId, actorAgentId);
+    return this.detail(circleId, proposalId, actorAgentId, {}, session);
   }
 
   async withdrawStance(
@@ -688,8 +724,9 @@ export class CircleProposalService {
     proposalId: string,
     actorAgentId: string,
     dto: ExpectedCircleProposalVersionDto,
+    session?: ClientSession,
   ) {
-    await this.databaseService.$transaction(async (session) => {
+    await this.databaseService.runInTransaction(session, async (session) => {
       const circle = await this.getActiveCircle(circleId, session);
       const actor = await this.getParticipant(circle.id, actorAgentId, true, session);
       const proposal = await this.getProposal(circle.id, proposalId, session);
@@ -720,7 +757,7 @@ export class CircleProposalService {
         { session },
       );
     });
-    return this.detail(circleId, proposalId, actorAgentId);
+    return this.detail(circleId, proposalId, actorAgentId, {}, session);
   }
 
   async addComment(
@@ -729,16 +766,21 @@ export class CircleProposalService {
     actorAgentId: string,
     idempotencyKeyHeader: string | undefined,
     dto: CreateCircleProposalCommentDto,
+    session?: ClientSession,
   ) {
     const idempotencyKey = assertIdempotencyKey(idempotencyKeyHeader);
-    const actor = await this.getParticipant(circleId, actorAgentId, false);
-    const existing = await this.commentModel.findOne({
-      authorOwnerUserIdSnapshot: actor.ownerUserId,
-      idempotencyKey,
-    });
+    const actor = await this.getParticipant(circleId, actorAgentId, false, session);
+    const existing = await this.commentModel.findOne(
+      {
+        authorOwnerUserIdSnapshot: actor.ownerUserId,
+        idempotencyKey,
+      },
+      null,
+      { session },
+    );
     if (existing) return this.serializeComment(existing);
     const comment = await this.databaseService
-      .$transaction(async (session) => {
+      .runInTransaction(session, async (session) => {
         const circle = await this.getActiveCircle(circleId, session);
         const transactionActor = await this.getParticipant(circle.id, actorAgentId, false, session);
         const proposal = await this.getProposal(circle.id, proposalId, session);
@@ -790,10 +832,14 @@ export class CircleProposalService {
       })
       .catch(async (error: unknown) => {
         if (!isDuplicateKeyError(error)) throw error;
-        const duplicate = await this.commentModel.findOne({
-          authorOwnerUserIdSnapshot: actor.ownerUserId,
-          idempotencyKey,
-        });
+        const duplicate = await this.commentModel.findOne(
+          {
+            authorOwnerUserIdSnapshot: actor.ownerUserId,
+            idempotencyKey,
+          },
+          null,
+          { session },
+        );
         if (duplicate) return duplicate;
         throw error;
       });
@@ -840,20 +886,25 @@ export class CircleProposalService {
     proposalId: string,
     actorAgentId: string,
     dto: CastCircleProposalVoteDto,
+    session?: ClientSession,
   ) {
-    const actor = await this.getParticipant(circleId, actorAgentId, true);
-    const existingVote = await this.voteModel.findOne({
-      proposalId,
-      ownerUserIdSnapshot: actor.ownerUserId,
-    });
+    const actor = await this.getParticipant(circleId, actorAgentId, true, session);
+    const existingVote = await this.voteModel.findOne(
+      {
+        proposalId,
+        ownerUserIdSnapshot: actor.ownerUserId,
+      },
+      null,
+      { session },
+    );
     if (existingVote) {
       if (existingVote.choice !== dto.choice) {
         throw circleProposalErrors.voteImmutable();
       }
-      return this.detail(circleId, proposalId, actorAgentId);
+      return this.detail(circleId, proposalId, actorAgentId, {}, session);
     }
     try {
-      await this.databaseService.$transaction(async (session) => {
+      await this.databaseService.runInTransaction(session, async (session) => {
         const circle = await this.getActiveCircle(circleId, session);
         const transactionActor = await this.getParticipant(circle.id, actorAgentId, true, session);
         const proposal = await this.getProposal(circle.id, proposalId, session);
@@ -913,13 +964,17 @@ export class CircleProposalService {
       });
     } catch (error: unknown) {
       if (!isDuplicateKeyError(error)) throw error;
-      const raced = await this.voteModel.findOne({
-        proposalId,
-        ownerUserIdSnapshot: actor.ownerUserId,
-      });
+      const raced = await this.voteModel.findOne(
+        {
+          proposalId,
+          ownerUserIdSnapshot: actor.ownerUserId,
+        },
+        null,
+        { session },
+      );
       if (!raced || raced.choice !== dto.choice) throw circleProposalErrors.voteImmutable();
     }
-    return this.detail(circleId, proposalId, actorAgentId);
+    return this.detail(circleId, proposalId, actorAgentId, {}, session);
   }
 
   async withdrawProposal(
@@ -927,8 +982,9 @@ export class CircleProposalService {
     proposalId: string,
     actorAgentId: string,
     dto: ExpectedCircleProposalVersionDto,
+    session?: ClientSession,
   ) {
-    await this.databaseService.$transaction(async (session) => {
+    await this.databaseService.runInTransaction(session, async (session) => {
       const circle = await this.getActiveCircle(circleId, session);
       const actor = await this.getParticipant(circle.id, actorAgentId, true, session);
       const proposal = await this.getProposal(circle.id, proposalId, session);
@@ -957,7 +1013,6 @@ export class CircleProposalService {
           $set: {
             status: CIRCLE_PROPOSAL_STATUSES.WITHDRAWN,
             resolvedAt: now,
-            activeKey: null,
             activeGovernanceCaseId: null,
             nextTransitionAt: null,
             deadlineVersion: terminalDeadlineVersion,
@@ -986,7 +1041,7 @@ export class CircleProposalService {
         { session },
       );
     });
-    return this.detail(circleId, proposalId, actorAgentId);
+    return this.detail(circleId, proposalId, actorAgentId, {}, session);
   }
 
   async moderateProposalForAdmin(
@@ -1016,7 +1071,7 @@ export class CircleProposalService {
     session: ClientSession,
   ): Promise<CircleProposalDocument | null> {
     const proposal = await this.proposalModel.findOne(
-      { activeKey: `${circleId}:${scope}`, status: { $in: ACTIVE_STATUSES } },
+      { circleId, scope, status: { $in: ACTIVE_STATUSES } },
       null,
       { session },
     );
@@ -1295,7 +1350,6 @@ export class CircleProposalService {
     await circle.save({ session });
     proposal.status = CIRCLE_PROPOSAL_STATUSES.ACCEPTED;
     proposal.resolvedAt = resolvedAt;
-    proposal.activeKey = null;
     proposal.version += 1;
     this.clearTransitionSchedule(proposal);
     await proposal.save({ session });
@@ -1331,7 +1385,6 @@ export class CircleProposalService {
   ): Promise<void> {
     proposal.status = status;
     proposal.resolvedAt = resolvedAt;
-    proposal.activeKey = null;
     proposal.activeGovernanceCaseId = null;
     proposal.version += 1;
     this.clearTransitionSchedule(proposal);
@@ -1368,7 +1421,6 @@ export class CircleProposalService {
         $set: {
           status,
           resolvedAt,
-          activeKey: null,
           activeGovernanceCaseId: null,
           moderationReason: reason,
           nextTransitionAt: null,
@@ -1402,7 +1454,6 @@ export class CircleProposalService {
 
     proposal.status = status;
     proposal.resolvedAt = resolvedAt;
-    proposal.activeKey = null;
     proposal.activeGovernanceCaseId = null;
     proposal.moderationReason = reason;
     proposal.version += 1;
@@ -1433,7 +1484,6 @@ export class CircleProposalService {
     if (!proposal) return false;
     proposal.status = CIRCLE_PROPOSAL_STATUSES.MODERATED;
     proposal.resolvedAt = new Date();
-    proposal.activeKey = null;
     proposal.activeGovernanceCaseId = null;
     proposal.moderationReason = publicReason;
     proposal.version += 1;
@@ -1617,8 +1667,13 @@ export class CircleProposalService {
     return circle;
   }
 
-  private async resolveOwnerUserId(agentId: string): Promise<string | null> {
-    const agent = await this.agentModel.findOne({ _id: agentId, deletedAt: null }).select('userId');
+  private async resolveOwnerUserId(
+    agentId: string,
+    session?: ClientSession,
+  ): Promise<string | null> {
+    const agent = await this.agentModel
+      .findOne({ _id: agentId, deletedAt: null }, null, { session })
+      .select('userId');
     return agent?.userId ?? null;
   }
 
@@ -1668,10 +1723,14 @@ export class CircleProposalService {
     };
   }
 
-  private async getEligibility(circleId: string, agentId: string) {
+  private async getEligibility(
+    circleId: string,
+    agentId: string,
+    session?: ClientSession,
+  ) {
     try {
-      await this.getActiveCircle(circleId);
-      const participant = await this.getParticipant(circleId, agentId, true);
+      await this.getActiveCircle(circleId, session);
+      const participant = await this.getParticipant(circleId, agentId, true, session);
       return {
         eligible: true,
         reason: null,

@@ -21,9 +21,6 @@ export type HotProjectionWorkItemDocument = HydratedDocument<HotProjectionWorkIt
 export class HotProjectionWorkItem {
   id!: string;
 
-  @Prop({ type: String, required: true, immutable: true })
-  sourceKey!: string;
-
   @Prop({ type: String, required: true, enum: Object.values(HOT_PROJECTION_SOURCE_TYPES) })
   sourceType!: HotProjectionSourceType;
 
@@ -72,7 +69,10 @@ export class HotProjectionWorkItem {
 
 export const HotProjectionWorkItemSchema = SchemaFactory.createForClass(HotProjectionWorkItem);
 
-HotProjectionWorkItemSchema.index({ sourceKey: 1 }, { unique: true });
+HotProjectionWorkItemSchema.index(
+  { sourceType: 1, sourceId: 1 },
+  { unique: true, name: 'uq_hot_projection_work_items_source' },
+);
 HotProjectionWorkItemSchema.index(
   { postId: 1, dirty: 1, _id: 1, claimedUntil: 1 },
   { partialFilterExpression: { dirty: true } },

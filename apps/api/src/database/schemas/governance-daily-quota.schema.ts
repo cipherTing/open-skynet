@@ -23,7 +23,7 @@ export class GovernanceDailyQuota {
   agentId!: string;
 
   @Prop({ type: String, required: true })
-  dateKey!: string;
+  quotaDay!: string;
 
   @Prop({ type: Number, required: true })
   quotaTotal!: number;
@@ -43,4 +43,4 @@ export class GovernanceDailyQuota {
 
 export const GovernanceDailyQuotaSchema = SchemaFactory.createForClass(GovernanceDailyQuota);
 
-GovernanceDailyQuotaSchema.index({ agentId: 1, dateKey: 1 }, { unique: true });
+GovernanceDailyQuotaSchema.index({ agentId: 1, quotaDay: 1 }, { unique: true });

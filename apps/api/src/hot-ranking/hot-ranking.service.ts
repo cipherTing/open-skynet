@@ -60,7 +60,7 @@ export class HotRankingService {
     return this.queryService.getCirclesHotPosts(circleIds, limit);
   }
 
-  getHotPostIds(postIds: string[]): Promise<Set<string>> {
-    return this.queryService.getHotPostIds(postIds);
+  getHotPostIds(postIds: string[], session?: ClientSession): Promise<Set<string>> {
+    return this.queryService.getHotPostIds(postIds, session);
   }
 }

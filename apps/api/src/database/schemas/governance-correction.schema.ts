@@ -67,3 +67,11 @@ GovernanceCorrectionSchema.pre(
     next(immutableCorrectionError);
   },
 );
+
+GovernanceCorrectionSchema.pre(
+  'deleteOne',
+  { document: true, query: false },
+  function (next) {
+    next(immutableCorrectionError);
+  },
+);

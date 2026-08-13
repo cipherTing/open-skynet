@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { McpServer } from '@modelcontextprotocol/server';
-import { Model } from 'mongoose';
+import { ClientSession, Model } from 'mongoose';
 import * as z from 'zod/v4';
 import { CommunityWriteAccessService } from '@/auth/community-write-access.service';
 import { BriefingService } from '@/briefing/briefing.service';
@@ -176,7 +176,7 @@ export class McpAgentToolsService {
     principal: McpAgentPrincipal,
     toolName: string,
     args: Record<string, unknown> & { idempotencyKey?: string },
-    operation: () => Promise<T>,
+    operation: (session: ClientSession) => Promise<T>,
   ): Promise<T> {
     const idempotencyKey = optionalIdempotencyKey(args);
     return this.idempotencyService.execute(
@@ -192,11 +192,11 @@ export class McpAgentToolsService {
     principal: McpAgentPrincipal,
     toolName: string,
     args: Record<string, unknown> & { idempotencyKey?: string },
-    operation: () => Promise<T>,
+    operation: (session: ClientSession) => Promise<T>,
   ): Promise<T> {
-    return this.runWrite(principal, toolName, args, async () => {
-      await this.communityWriteAccessService.assertAllowed(principal.agentId);
-      return operation();
+    return this.runWrite(principal, toolName, args, async (session) => {
+      await this.communityWriteAccessService.assertAllowed(principal.agentId, session);
+      return operation(session);
     });
   }
 
@@ -350,11 +350,15 @@ export class McpAgentToolsService {
       },
       async ({ operation, input }) =>
         this.run(operation, () =>
-          this.runWrite(principal, 'agent_update', { operation, ...input }, () =>
-            this.userService.updateAgent(principal.agentId, {
-              name: input.name,
-              description: input.description,
-            }),
+          this.runWrite(principal, 'agent_update', { operation, ...input }, (session) =>
+            this.userService.updateAgent(
+              principal.agentId,
+              {
+                name: input.name,
+                description: input.description,
+              },
+              session,
+            ),
           ),
         ),
     );
@@ -514,7 +518,8 @@ export class McpAgentToolsService {
               principal,
               'forum_write',
               { operation: args.operation, ...args.input },
-              () => this.forumService.createPost(principal.agentId, { circleId, ...dto }),
+              (session) =>
+                this.forumService.createPost(principal.agentId, { circleId, ...dto }, session),
             ),
           );
         }
@@ -524,7 +529,7 @@ export class McpAgentToolsService {
             principal,
             'forum_write',
             { operation: args.operation, ...args.input },
-            () => this.forumService.createReply(principal.agentId, postId, dto),
+            (session) => this.forumService.createReply(principal.agentId, postId, dto, session),
           ),
         );
       },
@@ -576,14 +581,20 @@ export class McpAgentToolsService {
               principal,
               'forum_interaction',
               { operation: args.operation, ...args.input },
-              () =>
+              (session) =>
                 args.input.targetType === 'POST'
-                  ? this.forumService.feedbackOnPost(principal.agentId, args.input.targetId, {
-                      type: args.input.feedbackType,
-                    })
-                  : this.forumService.feedbackOnReply(principal.agentId, args.input.targetId, {
-                      type: args.input.feedbackType,
-                    }),
+                  ? this.forumService.feedbackOnPost(
+                      principal.agentId,
+                      args.input.targetId,
+                      { type: args.input.feedbackType },
+                      session,
+                    )
+                  : this.forumService.feedbackOnReply(
+                      principal.agentId,
+                      args.input.targetId,
+                      { type: args.input.feedbackType },
+                      session,
+                    ),
             ),
           );
         }
@@ -593,10 +604,10 @@ export class McpAgentToolsService {
               principal,
               'forum_interaction',
               { operation: args.operation, ...args.input },
-              () =>
+              (session) =>
                 args.input.state === 'FAVORITED'
-                  ? this.forumService.favoritePost(principal.agentId, args.input.postId)
-                  : this.forumService.unfavoritePost(principal.agentId, args.input.postId),
+                  ? this.forumService.favoritePost(principal.agentId, args.input.postId, session)
+                  : this.forumService.unfavoritePost(principal.agentId, args.input.postId, session),
             ),
           );
         }
@@ -605,10 +616,10 @@ export class McpAgentToolsService {
             principal,
             'forum_interaction',
             { operation: args.operation, ...args.input },
-            () =>
+            (session) =>
               args.input.state === 'WATCHING'
-                ? this.watchService.watch(principal, args.input.postId)
-                : this.watchService.unwatch(principal, args.input.postId),
+                ? this.watchService.watch(principal, args.input.postId, session)
+                : this.watchService.unwatch(principal, args.input.postId, session),
           ),
         );
       },
@@ -735,7 +746,7 @@ export class McpAgentToolsService {
               principal,
               'circle_write',
               { operation: args.operation, ...args.input },
-              () => this.circleService.createCircle(principal.agentId, args.input),
+              (session) => this.circleService.createCircle(principal.agentId, args.input, session),
             ),
           );
         }
@@ -744,10 +755,10 @@ export class McpAgentToolsService {
             principal,
             'circle_write',
             { operation: args.operation, ...args.input },
-            () =>
+            (session) =>
               args.input.state === 'JOINED'
-                ? this.circleService.join(principal.agentId, args.input.circleId)
-                : this.circleService.leave(principal.agentId, args.input.circleId),
+                ? this.circleService.join(principal.agentId, args.input.circleId, session)
+                : this.circleService.leave(principal.agentId, args.input.circleId, session),
           ),
         );
       },
@@ -951,7 +962,8 @@ export class McpAgentToolsService {
               principal,
               'proposal_write',
               { operation: args.operation, ...args.input },
-              () => this.proposalService.create(circleId, principal.agentId, idempotencyKey, dto),
+              (session) =>
+                this.proposalService.create(circleId, principal.agentId, idempotencyKey, dto, session),
             ),
           );
         }
@@ -962,13 +974,14 @@ export class McpAgentToolsService {
               principal,
               'proposal_write',
               { operation: args.operation, ...args.input },
-              () =>
+              (session) =>
                 this.proposalService.revise(
                   circleId,
                   proposalId,
                   principal.agentId,
                   idempotencyKey,
                   dto,
+                  session,
                 ),
             ),
           );
@@ -980,8 +993,14 @@ export class McpAgentToolsService {
               principal,
               'proposal_write',
               { operation: args.operation, ...args.input },
-              () =>
-                this.proposalService.withdrawProposal(circleId, proposalId, principal.agentId, dto),
+              (session) =>
+                this.proposalService.withdrawProposal(
+                  circleId,
+                  proposalId,
+                  principal.agentId,
+                  dto,
+                  session,
+                ),
             ),
           );
         }
@@ -992,7 +1011,14 @@ export class McpAgentToolsService {
               principal,
               'proposal_write',
               { operation: args.operation, ...args.input },
-              () => this.proposalService.setStance(circleId, proposalId, principal.agentId, dto),
+              (session) =>
+                this.proposalService.setStance(
+                  circleId,
+                  proposalId,
+                  principal.agentId,
+                  dto,
+                  session,
+                ),
             ),
           );
         }
@@ -1003,7 +1029,8 @@ export class McpAgentToolsService {
               principal,
               'proposal_write',
               { operation: args.operation, ...args.input },
-              () => this.proposalService.vote(circleId, proposalId, principal.agentId, dto),
+              (session) =>
+                this.proposalService.vote(circleId, proposalId, principal.agentId, dto, session),
             ),
           );
         }
@@ -1013,7 +1040,7 @@ export class McpAgentToolsService {
             principal,
             'proposal_write',
             { operation: args.operation, ...args.input },
-            () =>
+            (session) =>
               this.proposalService.addComment(
                 circleId,
                 proposalId,
@@ -1022,6 +1049,7 @@ export class McpAgentToolsService {
                 {
                   content,
                 },
+                session,
               ),
           ),
         );
@@ -1109,13 +1137,14 @@ export class McpAgentToolsService {
             principal,
             'governance_write',
             { operation: args.operation, ...args.input },
-            () =>
+            (session) =>
               args.operation === 'GET_OR_CLAIM'
-                ? this.governanceService.dispatchNextCase(principal.agentId)
+                ? this.governanceService.dispatchNextCase(principal.agentId, session)
                 : this.governanceService.submitDecision(
                     principal.agentId,
                     args.input.caseId,
                     args.input.decision,
+                    session,
                   ),
           ),
         ),
@@ -1168,8 +1197,8 @@ export class McpAgentToolsService {
       },
       async ({ operation, input }) =>
         this.run(operation, () =>
-          this.runCommunityWrite(principal, 'report_write', { operation, ...input }, () =>
-            this.reportService.createReport(principal.agentId, principal.userId, input),
+          this.runCommunityWrite(principal, 'report_write', { operation, ...input }, (session) =>
+            this.reportService.createReport(principal.agentId, principal.userId, input, session),
           ),
         ),
     );

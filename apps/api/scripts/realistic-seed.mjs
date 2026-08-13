@@ -271,7 +271,7 @@ function makeSyntheticCircle(index, creator, seedNow) {
     topicOrigin: 'CREATION',
     rulesVersion: 1,
     activeProposalCount: 0,
-    creationWeekKey: null,
+    creationWeekStartDate: null,
     kind: 'NORMAL',
     status: 'ACTIVE',
     visibilityVersion: 1,
@@ -340,7 +340,7 @@ function makeProgression(agent, index, seedNow) {
     xpTotal,
     staminaCurrent: Math.max(20, staminaValues[levelIndex] - (index % 40)),
     staminaLastSettledAt: seedNow,
-    dailyProgressDate: new Intl.DateTimeFormat('en-CA', {
+    progressDay: new Intl.DateTimeFormat('en-CA', {
       timeZone: 'Asia/Shanghai',
       year: 'numeric',
       month: '2-digit',
@@ -371,9 +371,9 @@ function makeProgressionEvents(agent, index, seedNow) {
     events.push({
       _id: objectId(),
       agentId: idOf(agent),
-      sourceType: 'SEED_PROGRESS',
+      sourceType: 'SEED',
       sourceId: `${idOf(agent)}:${eventIndex}`,
-      reasonKey: 'seed-progress',
+      reasonKey: 'seed-data',
       xp,
       occurredAt,
       createdAt: occurredAt,
@@ -490,7 +490,6 @@ async function seedCircleProposalHistory(db, profile, circles, agents, seedNow) 
       moderationReason: null,
       approveCount,
       rejectCount,
-      activeKey: null,
       activeGovernanceCaseId: null,
       idempotencyKey: 'seed-terminal-proposal',
       createdAt: terminalCreatedAt,
@@ -525,7 +524,6 @@ async function seedCircleProposalHistory(db, profile, circles, agents, seedNow) 
       moderationReason: null,
       approveCount: 0,
       rejectCount: 0,
-      activeKey: `${circleId}:${CIRCLE_PROPOSAL_SCOPES.TOPIC}`,
       activeGovernanceCaseId: null,
       idempotencyKey: 'seed-active-proposal',
       createdAt: activeCreatedAt,
@@ -971,7 +969,6 @@ export async function seedRealisticDataset({
       if (replyRevisionFlush) await replyRevisionFlush;
       const replyHotWorkFlush = hotWorkWriter.add({
         _id: objectId(),
-        sourceKey: `REPLY:${replyId.toString()}`,
         sourceType: 'REPLY',
         sourceId: replyId.toString(),
         postId,
@@ -1055,7 +1052,6 @@ export async function seedRealisticDataset({
       if (POSITIVE_FEEDBACK_TYPES.has(type)) {
         const feedbackHotWorkFlush = hotWorkWriter.add({
           _id: objectId(),
-          sourceKey: `FEEDBACK:${feedbackId.toString()}`,
           sourceType: 'FEEDBACK',
           sourceId: feedbackId.toString(),
           postId,

@@ -14,7 +14,7 @@ import { CircleProposal } from '@/database/schemas/circle-proposal.schema';
 import { CircleProposalComment } from '@/database/schemas/circle-proposal-comment.schema';
 import { CircleProposalRevision } from '@/database/schemas/circle-proposal-revision.schema';
 import { ReportTargetState } from '@/database/schemas/report-target-state.schema';
-import { REPORT_TARGET_STATUSES, getReportTargetKey } from '@/report/report.constants';
+import { REPORT_TARGET_STATUSES } from '@/report/report.constants';
 import { CONTENT_REMOVAL_SOURCES } from '@/database/schemas/content-removal';
 import { CircleRuleRevision } from '@/database/schemas/circle-rule-revision.schema';
 import { CircleProposalService } from '@/circle/circle-proposal.service';
@@ -86,7 +86,7 @@ export interface GovernanceVoteTally {
 }
 
 interface GovernanceQuotaSnapshot {
-  dateKey: string;
+  quotaDay: string;
   quotaTotal: number;
   quotaUsed: number;
 }
@@ -425,12 +425,6 @@ export class GovernanceService {
     const firstReviewAt = addHours(now, 8);
     const normalDeadlineAt = addHours(now, 48);
     const emergencyDeadlineAt = addHours(now, 56);
-    const activeKey = getReportTargetKey(
-      params.targetType,
-      params.targetId,
-      params.targetContentVersion,
-      params.round,
-    );
     const governanceCase = new this.caseModel({
       targetType: params.targetType,
       targetId: params.targetId,
@@ -454,7 +448,6 @@ export class GovernanceService {
       deadlinePublishedVersion: 0,
       deadlineScheduleDispatchAt: now,
       deadlineCompensationDispatchAt: getCompensationDispatchAt(firstReviewAt, now),
-      activeKey,
     });
     if (params.targetType === GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL) {
       const locked = await this.circleProposalService.holdForGovernance(
@@ -635,20 +628,20 @@ export class GovernanceService {
     if (this.isAgentOrOwnerExcluded(governanceCase, agentId, ownerUserId)) return null;
 
     const level = assignment.agentLevelSnapshot;
-    const dateKey = toShanghaiDateKey();
-    const quota = await this.quotaModel.findOne({ agentId, dateKey });
+    const quotaDay = toShanghaiDateKey();
+    const quota = await this.quotaModel.findOne({ agentId, quotaDay });
     const quotaSnapshot: GovernanceQuotaSnapshot = quota ?? {
-      dateKey,
+      quotaDay,
       quotaTotal: getGovernanceQuotaTotal(level),
       quotaUsed: 0,
     };
     return this.serializeAssignedCase(governanceCase, assignment, quotaSnapshot);
   }
 
-  async dispatchNextCase(agentId: string) {
+  async dispatchNextCase(agentId: string, session?: ClientSession) {
     await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.GOVERNANCE_PARTICIPATION);
     try {
-      return await this.databaseService.$transaction(async (session) => {
+      return await this.databaseService.runInTransaction(session, async (session) => {
       const now = new Date();
       const ownerUserId = await this.getActiveAgentOwnerUserId(agentId, session);
       const existing = await this.assignmentModel.findOne(
@@ -664,7 +657,7 @@ export class GovernanceService {
       }
 
       const profile = await this.getOrCreateGovernanceProfile(agentId, session);
-      const level = await this.getAgentLevel(agentId);
+      const level = await this.getAgentLevel(agentId, session);
       if (!canAgentParticipateInGovernance(profile.healthLevel, level)) {
         throw governanceErrors.notEligible();
       }
@@ -766,9 +759,14 @@ export class GovernanceService {
     }
   }
 
-  async submitDecision(agentId: string, caseId: string, decision: GovernanceDecision) {
+  async submitDecision(
+    agentId: string,
+    caseId: string,
+    decision: GovernanceDecision,
+    session?: ClientSession,
+  ) {
     await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.GOVERNANCE_PARTICIPATION);
-    const result = await this.databaseService.$transaction(async (session) => {
+    const result = await this.databaseService.runInTransaction(session, async (session) => {
       const now = new Date();
       const ownerUserId = await this.getActiveAgentOwnerUserId(agentId, session);
       const assignment = await this.assignmentModel.findOne(
@@ -1072,8 +1070,8 @@ export class GovernanceService {
     }
   }
 
-  private async getAgentLevel(agentId: string): Promise<number> {
-    const summary = await this.progressionService.getPublicLevelSummary(agentId);
+  private async getAgentLevel(agentId: string, session?: ClientSession): Promise<number> {
+    const summary = await this.progressionService.getPublicLevelSummary(agentId, session);
     return summary?.level ?? 1;
   }
 
@@ -1083,15 +1081,15 @@ export class GovernanceService {
     healthLevel: number,
     session?: ClientSession,
   ) {
-    const dateKey = toShanghaiDateKey();
-    const existing = await this.quotaModel.findOne({ agentId, dateKey }, null, { session });
+    const quotaDay = toShanghaiDateKey();
+    const existing = await this.quotaModel.findOne({ agentId, quotaDay }, null, { session });
     if (existing) return existing;
     try {
       const [created] = await this.quotaModel.create(
         [
           {
             agentId,
-            dateKey,
+            quotaDay,
             quotaTotal: getGovernanceQuotaTotal(level),
             quotaUsed: 0,
             levelSnapshot: level,
@@ -1103,7 +1101,7 @@ export class GovernanceService {
       return created;
     } catch (error) {
       if (!this.isDuplicateKeyError(error)) throw error;
-      const raced = await this.quotaModel.findOne({ agentId, dateKey }, null, { session });
+      const raced = await this.quotaModel.findOne({ agentId, quotaDay }, null, { session });
       if (!raced) throw error;
       return raced;
     }
@@ -1361,12 +1359,6 @@ export class GovernanceService {
 
     const nextRound = governanceCase.round + 1;
     await new this.reportTargetStateModel({
-      targetKey: getReportTargetKey(
-        governanceCase.targetType,
-        governanceCase.targetId,
-        governanceCase.targetContentVersion,
-        nextRound,
-      ),
       targetType: governanceCase.targetType,
       targetId: governanceCase.targetId,
       targetContentVersion: governanceCase.targetContentVersion,
@@ -1908,7 +1900,7 @@ export class GovernanceService {
 
   private serializeQuota(quota: GovernanceQuotaSnapshot) {
     return {
-      dateKey: quota.dateKey,
+      dateKey: quota.quotaDay,
       quotaTotal: quota.quotaTotal,
       quotaUsed: quota.quotaUsed,
       quotaRemaining: Math.max(0, quota.quotaTotal - quota.quotaUsed),

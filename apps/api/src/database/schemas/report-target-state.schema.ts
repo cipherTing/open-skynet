@@ -3,6 +3,7 @@ import { HydratedDocument } from 'mongoose';
 import { transformDocumentId } from '@/database/schema-transform';
 import {
   REPORT_TARGET_STATUSES,
+  REPORT_THRESHOLD,
   REPORT_TARGET_TYPES,
   type ReportTargetStatus,
   type ReportTargetType,
@@ -10,7 +11,7 @@ import {
 
 export type ReportTargetStateDocument = HydratedDocument<ReportTargetState>;
 
-@Schema({ _id: false })
+@Schema({ _id: false, versionKey: false, strict: 'throw' })
 export class QualifiedReporter {
   @Prop({ type: String, required: true })
   agentId!: string;
@@ -29,9 +30,6 @@ const QualifiedReporterSchema = SchemaFactory.createForClass(QualifiedReporter);
 })
 export class ReportTargetState {
   id!: string;
-
-  @Prop({ type: String, required: true, immutable: true })
-  targetKey!: string;
 
   @Prop({
     type: String,
@@ -53,7 +51,7 @@ export class ReportTargetState {
   @Prop({ type: String, required: true, immutable: true })
   targetAuthorId!: string;
 
-  @Prop({ type: [QualifiedReporterSchema], required: true, default: [] })
+  @Prop({ type: [QualifiedReporterSchema], required: true, default: [], maxlength: REPORT_THRESHOLD })
   qualifiedReporters!: QualifiedReporter[];
 
   @Prop({
@@ -74,6 +72,10 @@ export class ReportTargetState {
 export const ReportTargetStateSchema = SchemaFactory.createForClass(ReportTargetState);
 
 ReportTargetStateSchema.pre('validate', function (next) {
+  if (this.qualifiedReporters.length > REPORT_THRESHOLD) {
+    next(new Error(`目标举报状态最多保留 ${REPORT_THRESHOLD} 名有效举报人`));
+    return;
+  }
   const agentIds = this.qualifiedReporters.map((item) => item.agentId);
   const ownerUserIds = this.qualifiedReporters.map((item) => item.ownerUserId);
   if (new Set(agentIds).size !== agentIds.length) {
@@ -88,8 +90,8 @@ ReportTargetStateSchema.pre('validate', function (next) {
 });
 
 ReportTargetStateSchema.index(
-  { targetKey: 1 },
-  { unique: true, name: 'uq_report_target_states_target_key' },
+  { targetType: 1, targetId: 1, targetContentVersion: 1, round: 1 },
+  { unique: true, name: 'uq_report_target_states_target_round' },
 );
 ReportTargetStateSchema.index(
   { caseId: 1 },

@@ -30,7 +30,6 @@ import {
   REPORT_TARGET_TYPES,
   REPORT_THRESHOLD,
   REPORT_TRANSACTION_MAX_ATTEMPTS,
-  getReportTargetKey,
   type ReportTargetStatus,
   type ReportTargetType,
 } from './report.constants';
@@ -66,8 +65,6 @@ function isExpectedReportRace(error: unknown): boolean {
   if (!isMongoDuplicateKeyError(error)) return false;
   const keys = Object.keys(error.keyPattern ?? {});
   return (
-    keys.includes('activeKey') ||
-    keys.includes('targetKey') ||
     (keys.includes('reporterAgentId') &&
       keys.includes('targetType') &&
       keys.includes('targetId') &&
@@ -134,7 +131,9 @@ export class ReportService {
     reporterAgentId: string,
     reporterOwnerUserId: string,
     dto: CreateReportDto,
+    session?: ClientSession,
   ): Promise<CreateReportResult> {
+    if (session) return this.createReportInTransaction(reporterAgentId, reporterOwnerUserId, dto, session);
     for (let attempt = 1; attempt <= REPORT_TRANSACTION_MAX_ATTEMPTS; attempt += 1) {
       try {
         return await this.databaseService.$transaction((session) =>
@@ -168,12 +167,6 @@ export class ReportService {
       )
       .sort({ round: -1 });
     const round = latestTargetState?.round ?? 1;
-    const targetKey = getReportTargetKey(
-      dto.targetType,
-      dto.targetId,
-      dto.targetContentVersion,
-      round,
-    );
     const existingReport = await this.reportModel.findOne(
       {
         reporterAgentId,
@@ -187,7 +180,12 @@ export class ReportService {
     );
     const targetState = latestTargetState;
     const existingCase = await this.governanceCaseModel.findOne(
-      { activeKey: targetKey },
+      {
+        targetType: dto.targetType,
+        targetId: dto.targetId,
+        targetContentVersion: dto.targetContentVersion,
+        round,
+      },
       'status',
       { session },
     );
@@ -256,7 +254,6 @@ export class ReportService {
     const state =
       targetState ??
       new this.targetStateModel({
-        targetKey,
         targetType: dto.targetType,
         targetId: dto.targetId,
         targetContentVersion: dto.targetContentVersion,

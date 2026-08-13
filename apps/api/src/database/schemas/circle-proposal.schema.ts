@@ -153,9 +153,6 @@ export class CircleProposal {
   rejectCount!: number;
 
   @Prop({ type: String, default: null })
-  activeKey!: string | null;
-
-  @Prop({ type: String, default: null })
   activeGovernanceCaseId!: string | null;
 
   @Prop({ type: String, required: true, immutable: true })
@@ -168,8 +165,14 @@ export class CircleProposal {
 export const CircleProposalSchema = SchemaFactory.createForClass(CircleProposal);
 
 CircleProposalSchema.index(
-  { activeKey: 1 },
-  { unique: true, partialFilterExpression: { activeKey: { $type: 'string' } } },
+  { circleId: 1, scope: 1 },
+  {
+    unique: true,
+    name: 'uq_circle_proposals_active_scope',
+    partialFilterExpression: {
+      status: { $in: [CIRCLE_PROPOSAL_STATUSES.DISCUSSION, CIRCLE_PROPOSAL_STATUSES.VOTING] },
+    },
+  },
 );
 CircleProposalSchema.index(
   { activeGovernanceCaseId: 1 },

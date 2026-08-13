@@ -101,7 +101,6 @@ describe('GovernanceDeadlinePublisher', () => {
       deadlinePublishedVersion: 0,
       deadlineScheduleDispatchAt: new Date(now.getTime() - 1_000),
       deadlineCompensationDispatchAt: new Date(now.getTime() + 60_000),
-      activeKey: `active-${index}`,
       createdAt: now,
       updatedAt: now,
       ...overrides,

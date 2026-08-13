@@ -13,7 +13,6 @@ import { PostHotState } from '@/database/schemas/post-hot-state.schema';
 import { Post } from '@/database/schemas/post.schema';
 import { Reply } from '@/database/schemas/reply.schema';
 import type { RecordFeedbackContributionInput } from '@/hot-ranking/hot-ranking.types';
-import { hotProjectionSourceKey } from '@/hot-ranking/hot-projection-keys';
 import {
   FEEDBACK_TARGET_TYPES,
   POSITIVE_FEEDBACK_TYPES,
@@ -338,12 +337,15 @@ export class HotRankingWorkService {
     },
     session: ClientSession,
   ): Promise<boolean> {
-    const key = hotProjectionSourceKey(input.sourceType, input.sourceId);
-    const existing = await this.workItemModel.findOne({ sourceKey: key }, null, { session });
+    const key = `${input.sourceType}:${input.sourceId}`;
+    const existing = await this.workItemModel.findOne(
+      { sourceType: input.sourceType, sourceId: input.sourceId },
+      null,
+      { session },
+    );
     if (!existing) {
       if (!input.desiredActive) return false;
       await new this.workItemModel({
-        sourceKey: key,
         sourceType: input.sourceType,
         sourceId: input.sourceId,
         postId: input.postId,

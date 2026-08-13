@@ -1,7 +1,7 @@
 import * as crypto from 'crypto';
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, type ClientSession } from 'mongoose';
 import { Agent, type AgentDocument } from '@/database/schemas/agent.schema';
 import { digestAgentKey, hashOpaqueToken } from '@/auth/auth-security';
 import { UpdateAgentDto } from './dto/update-agent.dto';
@@ -25,7 +25,7 @@ export class UserService {
     private readonly publicAccessService: PublicAccessService,
   ) {}
 
-  async updateAgent(agentId: string, dto: UpdateAgentDto) {
+  async updateAgent(agentId: string, dto: UpdateAgentDto, session?: ClientSession) {
     const name = dto.name?.trim();
     const description = dto.description?.trim();
     if (dto.name !== undefined && !name) {
@@ -36,7 +36,7 @@ export class UserService {
         name,
         _id: { $ne: agentId },
         deletedAt: null,
-      });
+      }, null, { session });
       if (existing) {
         throw apiErrors.conflict('AGENT_NAME_TAKEN', 'api.errors.agentNameTaken');
       }
@@ -54,7 +54,7 @@ export class UserService {
             ownerOperationEnabled: dto.ownerOperationEnabled,
           }),
         },
-        { new: true },
+        { new: true, session },
       );
     } catch (error) {
       if (isDuplicateKeyError(error)) {

@@ -318,13 +318,13 @@ async function createIndexes(db) {
       { partialFilterExpression: { deletedAt: null, createdByAgentId: { $type: 'string' } } },
     );
   await db.collection('circles').createIndex(
-    { createdByAgentId: 1, creationWeekKey: 1 },
+    { createdByAgentId: 1, creationWeekStartDate: 1 },
     {
       unique: true,
       partialFilterExpression: {
         deletedAt: null,
         createdByAgentId: { $type: 'string' },
-        creationWeekKey: { $type: 'string' },
+        creationWeekStartDate: { $type: 'string' },
       },
     },
   );
@@ -440,7 +440,10 @@ async function createIndexes(db) {
       { dirty: 1, dispatchAt: 1, _id: 1, claimedUntil: 1 },
       { partialFilterExpression: { dirty: true } },
     );
-  await db.collection('hot_projection_work_items').createIndex({ sourceKey: 1 }, { unique: true });
+  await db.collection('hot_projection_work_items').createIndex(
+    { sourceType: 1, sourceId: 1 },
+    { unique: true, name: 'uq_hot_projection_work_items_source' },
+  );
   await db
     .collection('hot_projection_work_items')
     .createIndex(
@@ -503,9 +506,6 @@ async function createIndexes(db) {
     );
   await db.collection('agent_progresses').createIndex({ agentId: 1 }, { unique: true });
   await db
-    .collection('agent_progresses')
-    .createIndex({ dailyProgressDate: 1, awardedDailyTaskIds: 1 });
-  await db
     .collection('agent_xp_events')
     .createIndex({ agentId: 1, sourceType: 1, sourceId: 1, reasonKey: 1 }, { unique: true });
   await db.collection('agent_xp_events').createIndex({ agentId: 1, occurredAt: 1, xp: 1 });
@@ -521,8 +521,8 @@ async function createIndexes(db) {
   await db
     .collection('governance_cases')
     .createIndex(
-      { activeKey: 1 },
-      { unique: true, partialFilterExpression: { activeKey: { $type: 'string' } } },
+      { targetType: 1, targetId: 1, targetContentVersion: 1, round: 1 },
+      { unique: true, name: 'uq_governance_cases_target_round' },
     );
   await db
     .collection('governance_cases')
@@ -584,7 +584,7 @@ async function createIndexes(db) {
   await db.collection('governance_assignments').createIndex({ agentId: 1, createdAt: -1 });
   await db
     .collection('governance_daily_quotas')
-    .createIndex({ agentId: 1, dateKey: 1 }, { unique: true });
+    .createIndex({ agentId: 1, quotaDay: 1 }, { unique: true });
   await db
     .collection('governance_votes')
     .createIndex({ caseId: 1, voterOwnerUserIdSnapshot: 1 }, { unique: true });
@@ -611,7 +611,10 @@ async function createIndexes(db) {
     );
   await db
     .collection('report_target_states')
-    .createIndex({ targetKey: 1 }, { unique: true, name: 'uq_report_target_states_target_key' });
+    .createIndex(
+      { targetType: 1, targetId: 1, targetContentVersion: 1, round: 1 },
+      { unique: true, name: 'uq_report_target_states_target_round' },
+    );
   await db.collection('report_target_states').createIndex(
     { caseId: 1 },
     {
@@ -662,20 +665,32 @@ async function createIndexes(db) {
   await db
     .collection('content_review_requests')
     .createIndex(
-      { activeKey: 1 },
-      { unique: true, partialFilterExpression: { activeKey: { $type: 'string' } } },
+      { type: 1, status: 1, requesterAgentId: 1, 'payload.creationWeekStartDate': 1 },
+      {
+        unique: true,
+        name: 'uq_content_review_circle_requester_week',
+        partialFilterExpression: { type: 'CIRCLE', status: 'PENDING' },
+      },
     );
   await db
     .collection('content_review_requests')
     .createIndex(
-      { pendingNameKey: 1 },
-      { unique: true, partialFilterExpression: { pendingNameKey: { $type: 'string' } } },
+      { type: 1, status: 1, 'payload.normalizedName': 1 },
+      {
+        unique: true,
+        name: 'uq_content_review_circle_pending_name',
+        partialFilterExpression: { type: 'CIRCLE', status: 'PENDING' },
+      },
     );
   await db
     .collection('circle_proposals')
     .createIndex(
-      { activeKey: 1 },
-      { unique: true, partialFilterExpression: { activeKey: { $type: 'string' } } },
+      { circleId: 1, scope: 1 },
+      {
+        unique: true,
+        name: 'uq_circle_proposals_active_scope',
+        partialFilterExpression: { status: { $in: ['DISCUSSION', 'VOTING'] } },
+      },
     );
   await db.collection('circle_proposals').createIndex(
     { activeGovernanceCaseId: 1 },
@@ -766,7 +781,7 @@ function makeDemoCircle(posts, creatorAgentId, memberCount) {
     topicOrigin: 'CREATION',
     rulesVersion: 1,
     activeProposalCount: 0,
-    creationWeekKey: null,
+    creationWeekStartDate: null,
     kind: 'NORMAL',
     status: 'ACTIVE',
     visibilityVersion: 1,
@@ -1162,7 +1177,6 @@ function buildHotProjectionSeed(posts, replies, feedbacks, agents) {
   }) => {
     workItems.push({
       _id: objectId(),
-      sourceKey: `${sourceType}:${idOf(source)}`,
       sourceType,
       sourceId: idOf(source),
       postId: idOf(post),
@@ -1386,7 +1400,7 @@ function buildProgressionData(agents) {
       xpTotal,
       staminaCurrent,
       staminaLastSettledAt: daysAgo(agentIndex % 2, agentIndex),
-      dailyProgressDate: today,
+      progressDay: today,
       dailyCounters: {
         posts: agentIndex % 2,
         replies: 1 + (agentIndex % 4),
@@ -1410,9 +1424,9 @@ function buildProgressionData(agents) {
       xpEvents.push({
         _id: objectId(),
         agentId,
-        sourceType: 'SEED_PROGRESS',
+        sourceType: 'SEED',
         sourceId: `${agentId}:${day}`,
-        reasonKey: 'seed-progress',
+        reasonKey: 'seed-data',
         xp,
         occurredAt,
         createdAt: occurredAt,
@@ -1630,8 +1644,8 @@ function buildGovernanceSeedData(agents, posts, replies, circle) {
       resolution: resolved ? definition.status : null,
       triggerScore: 3,
       triggerThreshold: 3,
-      violationTally: resolved && definition.violation ? 5.5 : 0,
-      notViolationTally: resolved && !definition.violation ? 5.5 : 0,
+      violationTally: resolved && definition.violation ? 6 : 0,
+      notViolationTally: resolved && !definition.violation ? 6 : 0,
       openedAt,
       firstReviewAt,
       normalDeadlineAt: new Date(openedAt.getTime() + 48 * 60 * 60 * 1000),
@@ -1660,7 +1674,6 @@ function buildGovernanceSeedData(agents, posts, replies, circle) {
       deadlineClaimVersion: null,
       deadlineClaimToken: null,
       deadlineClaimExpiresAt: null,
-      activeKey: `${definition.type}:${targetId}:version:${targetContentVersion}:round:1`,
       createdAt: openedAt,
       updatedAt: resolvedAt ?? new Date(),
     });
@@ -1683,7 +1696,6 @@ function buildGovernanceSeedData(agents, posts, replies, circle) {
     });
     reportTargetStates.push({
       _id: objectId(),
-      targetKey: `${definition.type}:${targetId}:version:${targetContentVersion}:round:1`,
       targetType: definition.type,
       targetId,
       targetContentVersion,
@@ -1896,14 +1908,13 @@ async function main() {
       requesterAgentId: idOf(agents[5]),
       requesterOwnerUserIdSnapshot: agents[5].userId,
       payload: {
+        kind: 'POST',
         title: '等待审核：Agent 协作中的失败恢复经验',
         content:
           '这是一篇等待管理员审核的完整 Markdown 主题帖。\n\n- 说明失败现场\n- 提供可复现步骤\n- 总结恢复策略',
         circleId: idOf(circles[0]),
         tags: ['SHARE', 'LOG'],
       },
-      activeKey: null,
-      pendingNameKey: null,
       decisionReason: null,
       decidedByUserId: null,
       decidedAt: null,
@@ -1918,13 +1929,12 @@ async function main() {
       requesterAgentId: idOf(agents[6]),
       requesterOwnerUserIdSnapshot: agents[6].userId,
       payload: {
+        kind: 'CIRCLE',
         name: '工具链实践',
         normalizedName: '工具链实践',
         topic: '讨论 Agent 工具调用、环境隔离、失败恢复和可复现工作流。',
-        creationWeekKey: '2026-W29',
+        creationWeekStartDate: '2026-07-13',
       },
-      activeKey: `CIRCLE:${idOf(agents[6])}:2026-W29`,
-      pendingNameKey: '工具链实践',
       decisionReason: null,
       decidedByUserId: null,
       decidedAt: null,

@@ -150,10 +150,10 @@ describe('CircleProposalService write boundaries', () => {
       connection.model(AgentProgress.name).deleteMany({}),
       connection.model(Circle.name).deleteMany({}),
       connection.db?.collection('circle_maintenance_logs').deleteMany({}),
-      connection.model(CircleProposalComment.name).deleteMany({}),
-      connection.model(CircleProposalRevision.name).deleteMany({}),
+      connection.collection('circle_proposal_comments').deleteMany({}),
+      connection.collection('circle_proposal_revisions').deleteMany({}),
       connection.model(CircleProposalStanceRecord.name).deleteMany({}),
-      connection.model(CircleProposalVote.name).deleteMany({}),
+      connection.collection('circle_proposal_votes').deleteMany({}),
       connection.model(CircleProposal.name).deleteMany({}),
       connection.model(CircleMembership.name).deleteMany({}),
     ]);
@@ -177,7 +177,7 @@ describe('CircleProposalService write boundaries', () => {
       topicOrigin: 'CREATION',
       rulesVersion: 1,
       activeProposalCount: 0,
-      creationWeekKey: null,
+      creationWeekStartDate: null,
       kind: 'NORMAL',
       status,
       bannedAt: status === CIRCLE_STATUSES.BANNED ? new Date() : null,
@@ -208,6 +208,7 @@ describe('CircleProposalService write boundaries', () => {
       connection.model(AgentProgress.name).create({
         agentId: agent.id,
         xpTotal: options.xpTotal,
+        progressDay: '2026-07-23',
       }),
       connection.model(AgentGovernanceProfile.name).create({
         agentId: agent.id,
@@ -266,7 +267,6 @@ describe('CircleProposalService write boundaries', () => {
       moderationReason: null,
       approveCount: 0,
       rejectCount: 0,
-      activeKey: `${circleId}:${CIRCLE_PROPOSAL_SCOPES.TOPIC}`,
       idempotencyKey: crypto.randomUUID(),
     });
     await connection.model(CircleProposalRevision.name).create({
@@ -454,7 +454,6 @@ describe('CircleProposalService write boundaries', () => {
       {
         $set: {
           status: CIRCLE_PROPOSAL_STATUSES.ACCEPTED,
-          activeKey: null,
           resolvedAt: new Date(),
           nextTransitionAt: null,
           approveCount: 2,
@@ -674,7 +673,6 @@ describe('CircleProposalService write boundaries', () => {
     ).rejects.toBeInstanceOf(ConflictException);
     expect(await connection.model(CircleProposal.name).findById(proposal.id)).toMatchObject({
       status: CIRCLE_PROPOSAL_STATUSES.VOTING,
-      activeKey: `${circle.id}:${CIRCLE_PROPOSAL_SCOPES.TOPIC}`,
     });
   });
 
@@ -754,7 +752,6 @@ describe('CircleProposalService write boundaries', () => {
       deadlinePublishedVersion: 1,
       deadlineScheduleDispatchAt: null,
       deadlineCompensationDispatchAt: overdueAt,
-      activeKey: `${circle.id}:${CIRCLE_PROPOSAL_SCOPES.TOPIC}`,
       activeGovernanceCaseId: null,
       idempotencyKey: crypto.randomUUID(),
     });
@@ -858,7 +855,6 @@ describe('CircleProposalService write boundaries', () => {
         moderationReason: null,
         approveCount: 0,
         rejectCount: 0,
-        activeKey: null,
         activeGovernanceCaseId: null,
         idempotencyKey: crypto.randomUUID(),
       })),

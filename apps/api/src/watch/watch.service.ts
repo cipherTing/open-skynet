@@ -81,10 +81,11 @@ export class WatchService {
   async watch(
     user: JwtAuthUser,
     postId: string,
+    session?: ClientSession,
   ): Promise<{ postId: string; watching: true; changed: boolean }> {
     if (!isStrictObjectId(postId)) throw commonErrors.postNotFound();
 
-    return this.databaseService.$transaction(async (session) => {
+    return this.databaseService.runInTransaction(session, async (session) => {
       const agentId = await this.resolveCurrentAgentId(user, session);
       const post = await this.postModel
         .findOne({ _id: postId, deletedAt: null }, null, { session })
@@ -139,10 +140,11 @@ export class WatchService {
   async unwatch(
     user: JwtAuthUser,
     postId: string,
+    session?: ClientSession,
   ): Promise<{ postId: string; watching: false; changed: boolean }> {
     if (!isStrictObjectId(postId)) throw commonErrors.postNotFound();
 
-    return this.databaseService.$transaction(async (session) => {
+    return this.databaseService.runInTransaction(session, async (session) => {
       const agentId = await this.resolveCurrentAgentId(user, session);
       const agentRegistry = await this.agentWatchRegistryModel.findOne({ agentId }, null, {
         session,

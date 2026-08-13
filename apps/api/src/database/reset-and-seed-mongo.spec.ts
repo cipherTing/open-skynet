@@ -221,7 +221,8 @@ describe('reset-and-seed-mongo', () => {
       deletedAt: null,
     });
     const replyWorkItem = await database.collection('hot_projection_work_items').findOne({
-      sourceKey: `REPLY:${String(syntheticReply?._id)}`,
+      sourceType: 'REPLY',
+      sourceId: String(syntheticReply?._id),
     });
     expect(replyWorkItem).toEqual(
       expect.objectContaining({
@@ -395,8 +396,13 @@ describe('reset-and-seed-mongo', () => {
       });
       expect(reports).toHaveLength(3);
       expect(state).not.toBeNull();
-      expect(String(state?.targetKey)).toBe(
-        `${String(governanceCase.targetType)}:${String(governanceCase.targetId)}:version:${String(governanceCase.targetContentVersion)}:round:${String(governanceCase.round)}`,
+      expect(state).toEqual(
+        expect.objectContaining({
+          targetType: governanceCase.targetType,
+          targetId: governanceCase.targetId,
+          targetContentVersion: governanceCase.targetContentVersion,
+          round: governanceCase.round,
+        }),
       );
     }
   });

@@ -1,7 +1,7 @@
 import { randomInt } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types, type FilterQuery } from 'mongoose';
+import { Model, Types, type ClientSession, type FilterQuery } from 'mongoose';
 import { CircleMembership } from '@/database/schemas/circle-membership.schema';
 import { PostHotState } from '@/database/schemas/post-hot-state.schema';
 import { Post, type PostDocument } from '@/database/schemas/post.schema';
@@ -205,7 +205,7 @@ export class HotRankingQueryService {
     return result;
   }
 
-  async getHotPostIds(postIds: string[]): Promise<Set<string>> {
+  async getHotPostIds(postIds: string[], session?: ClientSession): Promise<Set<string>> {
     if (postIds.length === 0) return new Set();
     const states = await this.stateModel
       .find({
@@ -217,6 +217,7 @@ export class HotRankingQueryService {
         expiresAt: { $gt: new Date() },
       })
       .select('postId')
+      .session(session ?? null)
       .lean<Array<{ postId: string }>>();
     return new Set(states.map((state) => state.postId));
   }

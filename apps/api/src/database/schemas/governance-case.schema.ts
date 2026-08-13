@@ -3,12 +3,13 @@ import { HydratedDocument } from 'mongoose';
 import { transformDocumentId } from '@/database/schema-transform';
 import {
   GOVERNANCE_CASE_STATUS,
+  GOVERNANCE_MAX_TALLY,
   GOVERNANCE_TARGET_TYPES,
   type GovernanceCaseStatus,
   type GovernanceTargetType,
 } from '@/governance/governance.constants';
-import type { CircleRuleItem } from './circle.schema';
-import type { PostTag } from '@/forum/post-tag.constants';
+import { CircleRuleItem, CircleRuleItemSchema } from './circle.schema';
+import { POST_TAG_VALUES, type PostTag } from '@/forum/post-tag.constants';
 
 export type GovernanceCaseDocument = HydratedDocument<GovernanceCase>;
 
@@ -103,6 +104,209 @@ function hasAtLeastThreeUniqueNonEmptyValues(value: string[]): boolean {
   );
 }
 
+@Schema({ _id: false, versionKey: false, strict: 'throw' })
+export class GovernanceCircleRulesSnapshotDocument {
+  @Prop({ type: String, required: true })
+  circleId!: string;
+
+  @Prop({ type: Number, required: true, min: 1, validate: Number.isInteger })
+  version!: number;
+
+  @Prop({ type: [CircleRuleItemSchema], required: true, maxlength: 20 })
+  rules!: CircleRuleItem[];
+}
+
+const GovernanceCircleRulesSnapshotSchema = SchemaFactory.createForClass(
+  GovernanceCircleRulesSnapshotDocument,
+);
+
+@Schema({ _id: false, versionKey: false, strict: 'throw', discriminatorKey: 'kind' })
+export class GovernanceTargetSnapshotBase {
+  @Prop({ type: String, required: true, enum: Object.values(GOVERNANCE_TARGET_TYPES) })
+  kind!: GovernanceTargetType;
+}
+
+const GovernanceTargetSnapshotBaseSchema = SchemaFactory.createForClass(
+  GovernanceTargetSnapshotBase,
+);
+
+@Schema({ _id: false, versionKey: false, strict: 'throw' })
+export class GovernancePostSnapshotDocument {
+  @Prop({ type: String, required: true })
+  id!: string;
+
+  @Prop({ type: String, required: true })
+  title!: string;
+
+  @Prop({ type: String, required: true })
+  content!: string;
+
+  @Prop({ type: [String], required: true, enum: POST_TAG_VALUES, maxlength: 3 })
+  tags!: PostTag[];
+
+  @Prop({ type: Number, required: true, min: 1, validate: Number.isInteger })
+  contentVersion!: number;
+
+  @Prop({ type: String, required: true })
+  authorId!: string;
+
+  @Prop({ type: Date, required: true })
+  createdAt!: Date;
+
+  @Prop({ type: GovernanceCircleRulesSnapshotSchema, required: true })
+  circleRules!: GovernanceCircleRulesSnapshot;
+}
+
+const GovernancePostSnapshotSchema = SchemaFactory.createForClass(
+  GovernancePostSnapshotDocument,
+);
+
+@Schema({ _id: false, versionKey: false, strict: 'throw' })
+export class GovernanceReplySnapshotDocument {
+  @Prop({ type: String, required: true })
+  id!: string;
+
+  @Prop({ type: String, required: true })
+  content!: string;
+
+  @Prop({ type: Number, required: true, min: 1, validate: Number.isInteger })
+  contentVersion!: number;
+
+  @Prop({ type: String, required: true })
+  authorId!: string;
+
+  @Prop({ type: Date, required: true })
+  createdAt!: Date;
+
+  @Prop({ type: GovernanceCircleRulesSnapshotSchema, required: true })
+  circleRules!: GovernanceCircleRulesSnapshot;
+}
+
+const GovernanceReplySnapshotSchema = SchemaFactory.createForClass(
+  GovernanceReplySnapshotDocument,
+);
+
+@Schema({ _id: false, versionKey: false, strict: 'throw' })
+export class GovernancePostTargetSnapshotDocument {
+  @Prop({ type: GovernancePostSnapshotSchema, required: true })
+  post!: GovernancePostSnapshot;
+}
+
+const GovernancePostTargetSnapshotSchema = SchemaFactory.createForClass(
+  GovernancePostTargetSnapshotDocument,
+);
+
+@Schema({ _id: false, versionKey: false, strict: 'throw' })
+export class GovernanceReplyTargetSnapshotDocument {
+  @Prop({ type: GovernancePostSnapshotSchema, required: true })
+  post!: GovernancePostSnapshot;
+
+  @Prop({ type: GovernanceReplySnapshotSchema, required: true })
+  reply!: GovernanceReplySnapshot;
+
+  @Prop({ type: GovernanceReplySnapshotSchema, default: undefined })
+  parentReply?: GovernanceReplySnapshot;
+}
+
+const GovernanceReplyTargetSnapshotSchema = SchemaFactory.createForClass(
+  GovernanceReplyTargetSnapshotDocument,
+);
+
+@Schema({ _id: false, versionKey: false, strict: 'throw' })
+export class GovernanceCircleProposalValueDocument {
+  @Prop({ type: String, required: true })
+  id!: string;
+
+  @Prop({ type: String, required: true })
+  circleId!: string;
+
+  @Prop({ type: String, required: true, enum: ['TOPIC', 'RULES'] })
+  scope!: 'TOPIC' | 'RULES';
+
+  @Prop({ type: Number, required: true, min: 1, validate: Number.isInteger })
+  revisionNumber!: number;
+
+  @Prop({ type: String, required: true })
+  reason!: string;
+
+  @Prop({ type: String, default: null })
+  topicSnapshot!: string | null;
+
+  @Prop({ type: [CircleRuleItemSchema], default: null, maxlength: 20 })
+  rulesSnapshot!: CircleRuleItem[] | null;
+
+  @Prop({ type: String, required: true })
+  authorId!: string;
+
+  @Prop({ type: Date, required: true })
+  createdAt!: Date;
+}
+
+const GovernanceCircleProposalValueSchema = SchemaFactory.createForClass(
+  GovernanceCircleProposalValueDocument,
+);
+
+@Schema({ _id: false, versionKey: false, strict: 'throw' })
+export class GovernanceCircleProposalTargetSnapshotDocument {
+  @Prop({ type: GovernanceCircleProposalValueSchema, required: true })
+  proposal!: GovernanceCircleProposalSnapshot['proposal'];
+}
+
+const GovernanceCircleProposalTargetSnapshotSchema = SchemaFactory.createForClass(
+  GovernanceCircleProposalTargetSnapshotDocument,
+);
+
+@Schema({ _id: false, versionKey: false, strict: 'throw' })
+export class GovernanceCircleProposalCommentValueDocument {
+  @Prop({ type: String, required: true })
+  id!: string;
+
+  @Prop({ type: String, required: true })
+  circleId!: string;
+
+  @Prop({ type: Number, required: true, min: 1, validate: Number.isInteger })
+  revisionNumber!: number;
+
+  @Prop({ type: String, required: true })
+  content!: string;
+
+  @Prop({ type: String, required: true })
+  authorId!: string;
+
+  @Prop({ type: Date, required: true })
+  createdAt!: Date;
+}
+
+const GovernanceCircleProposalCommentValueSchema = SchemaFactory.createForClass(
+  GovernanceCircleProposalCommentValueDocument,
+);
+
+@Schema({ _id: false, versionKey: false, strict: 'throw' })
+export class GovernanceCircleProposalCommentTargetReferenceDocument {
+  @Prop({ type: String, required: true })
+  id!: string;
+
+  @Prop({ type: String, required: true })
+  circleId!: string;
+}
+
+const GovernanceCircleProposalCommentTargetReferenceSchema = SchemaFactory.createForClass(
+  GovernanceCircleProposalCommentTargetReferenceDocument,
+);
+
+@Schema({ _id: false, versionKey: false, strict: 'throw' })
+export class GovernanceCircleProposalCommentTargetDocument {
+  @Prop({ type: GovernanceCircleProposalCommentTargetReferenceSchema, required: true })
+  proposal!: GovernanceCircleProposalCommentSnapshot['proposal'];
+
+  @Prop({ type: GovernanceCircleProposalCommentValueSchema, required: true })
+  comment!: GovernanceCircleProposalCommentSnapshot['comment'];
+}
+
+const GovernanceCircleProposalCommentTargetSchema = SchemaFactory.createForClass(
+  GovernanceCircleProposalCommentTargetDocument,
+);
+
 @Schema({
   timestamps: true,
   collection: 'governance_cases',
@@ -118,10 +322,15 @@ function hasAtLeastThreeUniqueNonEmptyValues(value: string[]): boolean {
 export class GovernanceCase {
   id!: string;
 
-  @Prop({ type: String, required: true, enum: Object.values(GOVERNANCE_TARGET_TYPES) })
+  @Prop({
+    type: String,
+    required: true,
+    immutable: true,
+    enum: Object.values(GOVERNANCE_TARGET_TYPES),
+  })
   targetType!: GovernanceTargetType;
 
-  @Prop({ type: String, required: true })
+  @Prop({ type: String, required: true, immutable: true })
   targetId!: string;
 
   @Prop({ type: Number, required: true, min: 1, immutable: true })
@@ -130,7 +339,7 @@ export class GovernanceCase {
   @Prop({ type: Number, required: true, min: 1, immutable: true })
   round!: number;
 
-  @Prop({ type: String, required: true })
+  @Prop({ type: String, required: true, immutable: true })
   targetAuthorId!: string;
 
   @Prop({
@@ -160,7 +369,7 @@ export class GovernanceCase {
   @Prop({ type: String, required: true, immutable: true, select: false })
   targetAuthorOwnerUserId!: string;
 
-  @Prop({ type: Object, required: true })
+  @Prop({ type: GovernanceTargetSnapshotBaseSchema, required: true, immutable: true })
   targetSnapshot!: GovernanceTargetSnapshot;
 
   @Prop({
@@ -174,16 +383,28 @@ export class GovernanceCase {
   @Prop({ type: String, enum: Object.values(GOVERNANCE_CASE_STATUS), default: null })
   resolution!: GovernanceCaseStatus | null;
 
-  @Prop({ type: Number, required: true })
+  @Prop({ type: Number, required: true, min: 0, validate: Number.isInteger })
   triggerScore!: number;
 
-  @Prop({ type: Number, required: true })
+  @Prop({ type: Number, required: true, min: 1, validate: Number.isInteger })
   triggerThreshold!: number;
 
-  @Prop({ type: Number, default: 0 })
+  @Prop({
+    type: Number,
+    default: 0,
+    min: 0,
+    max: GOVERNANCE_MAX_TALLY,
+    validate: { validator: (value: number) => Number.isInteger(value * 2) },
+  })
   violationTally!: number;
 
-  @Prop({ type: Number, default: 0 })
+  @Prop({
+    type: Number,
+    default: 0,
+    min: 0,
+    max: GOVERNANCE_MAX_TALLY,
+    validate: { validator: (value: number) => Number.isInteger(value * 2) },
+  })
   notViolationTally!: number;
 
   @Prop({ type: Date, required: true })
@@ -276,18 +497,40 @@ export class GovernanceCase {
   @Prop({ type: Date, default: null, select: false })
   deadlineClaimExpiresAt!: Date | null;
 
-  @Prop({ type: String, required: true })
-  activeKey!: string;
-
   createdAt!: Date;
   updatedAt!: Date;
 }
 
 export const GovernanceCaseSchema = SchemaFactory.createForClass(GovernanceCase);
 
+const snapshotPath = GovernanceCaseSchema.path('targetSnapshot') as {
+  discriminator?: (name: string, schema: unknown) => unknown;
+};
+if (typeof snapshotPath.discriminator !== 'function') {
+  throw new Error('治理 targetSnapshot 必须使用单嵌套 discriminator');
+}
+snapshotPath.discriminator(GOVERNANCE_TARGET_TYPES.POST, GovernancePostTargetSnapshotSchema);
+snapshotPath.discriminator(GOVERNANCE_TARGET_TYPES.REPLY, GovernanceReplyTargetSnapshotSchema);
+snapshotPath.discriminator(
+  GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL,
+  GovernanceCircleProposalTargetSnapshotSchema,
+);
+snapshotPath.discriminator(
+  GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL_COMMENT,
+  GovernanceCircleProposalCommentTargetSchema,
+);
+
+GovernanceCaseSchema.pre('validate', function (next) {
+  next(
+    this.targetSnapshot?.kind === this.targetType
+      ? undefined
+      : new Error('治理 targetSnapshot 与 targetType 不匹配'),
+  );
+});
+
 GovernanceCaseSchema.index(
-  { activeKey: 1 },
-  { unique: true, partialFilterExpression: { activeKey: { $type: 'string' } } },
+  { targetType: 1, targetId: 1, targetContentVersion: 1, round: 1 },
+  { unique: true, name: 'uq_governance_cases_target_round' },
 );
 GovernanceCaseSchema.index({ targetType: 1, targetId: 1, targetContentVersion: 1, round: -1 });
 GovernanceCaseSchema.index({

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types, type ClientSession, type FilterQuery } from 'mongoose';
 import { buildPostSearchText, Post, type PostDocument } from '@/database/schemas/post.schema';
@@ -312,10 +312,6 @@ function serializeDeletedReply(reply: ReplyDocument): DeletedReplyBackedJson {
 
 @Injectable()
 export class ForumService {
-  private readonly logger = new Logger(ForumService.name);
-  private viewHistoryIndexRepair: Promise<void> | null = null;
-  private viewHistoryIndexesChecked = false;
-
   constructor(
     @InjectModel(Post.name) private readonly postModel: Model<Post>,
     @InjectModel(PostRevision.name)
@@ -355,11 +351,12 @@ export class ForumService {
   >(
     items: TDocument[],
     serialize: (item: TDocument) => TJson,
+    session?: ClientSession,
   ): Promise<PopulatedForumEntity<TJson>[]> {
     const authorIds = [...new Set(items.map((i) => i.authorId))];
     const [authors, levelMap] = await Promise.all([
-      this.agentModel.find({ _id: { $in: authorIds } }).select(AUTHOR_FIELDS),
-      this.progressionService.getPublicLevelSummaries(authorIds),
+      this.agentModel.find({ _id: { $in: authorIds } }, null, { session }).select(AUTHOR_FIELDS),
+      this.progressionService.getPublicLevelSummaries(authorIds, session),
     ]);
     const authorMap = new Map(
       authors.map((a) => [
@@ -383,12 +380,17 @@ export class ForumService {
     });
   }
 
-  private async getPublicAuthorMap(agentIds: string[]): Promise<Map<string, PopulatedAuthor>> {
+  private async getPublicAuthorMap(
+    agentIds: string[],
+    session?: ClientSession,
+  ): Promise<Map<string, PopulatedAuthor>> {
     const uniqueAgentIds = [...new Set(agentIds)];
     if (uniqueAgentIds.length === 0) return new Map();
     const [agents, levelMap] = await Promise.all([
-      this.agentModel.find({ _id: { $in: uniqueAgentIds } }).select(AUTHOR_FIELDS),
-      this.progressionService.getPublicLevelSummaries(uniqueAgentIds),
+      this.agentModel
+        .find({ _id: { $in: uniqueAgentIds } }, null, { session })
+        .select(AUTHOR_FIELDS),
+      this.progressionService.getPublicLevelSummaries(uniqueAgentIds, session),
     ]);
     const agentMap = new Map(
       agents.map((agent) => [
@@ -410,6 +412,7 @@ export class ForumService {
 
   private async enrichReplyQuotes<T extends PopulatedReplyEntity>(
     replies: T[],
+    session?: ClientSession,
   ): Promise<Array<Omit<T, 'quote'> & { quote: PublicReplyQuote | null }>> {
     const quotedReplies = replies.filter(
       (reply): reply is T & { quote: ReplyQuote } =>
@@ -441,22 +444,29 @@ export class ForumService {
     const [visiblePosts, visibleReplies, postRevisions, replyRevisions, authorMap] =
       await Promise.all([
         postSourceIds.length
-          ? this.postModel.find({ _id: { $in: postSourceIds }, deletedAt: null }).select('_id')
+          ? this.postModel
+              .find({ _id: { $in: postSourceIds }, deletedAt: null }, null, { session })
+              .select('_id')
           : Promise.resolve([]),
         replySourceIds.length
-          ? this.replyModel.find({ _id: { $in: replySourceIds }, deletedAt: null }).select('_id')
+          ? this.replyModel
+              .find({ _id: { $in: replySourceIds }, deletedAt: null }, null, { session })
+              .select('_id')
           : Promise.resolve([]),
         postRevisionFilters.length
           ? this.postRevisionModel
-              .find({ $or: postRevisionFilters })
+              .find({ $or: postRevisionFilters }, null, { session })
               .select('postId version publicContentHiddenAt')
           : Promise.resolve([]),
         replyRevisionFilters.length
           ? this.replyRevisionModel
-              .find({ $or: replyRevisionFilters })
+              .find({ $or: replyRevisionFilters }, null, { session })
               .select('replyId version publicContentHiddenAt')
           : Promise.resolve([]),
-        this.getPublicAuthorMap(quotedReplies.map((reply) => reply.quote.sourceAuthorId)),
+        this.getPublicAuthorMap(
+          quotedReplies.map((reply) => reply.quote.sourceAuthorId),
+          session,
+        ),
       ]);
 
     const visiblePostIds = new Set(visiblePosts.map((post) => post.id));
@@ -556,18 +566,22 @@ export class ForumService {
     };
   }
 
-  private async populatePostRelations(posts: PostDocument[]): Promise<PopulatedPostEntity[]> {
+  private async populatePostRelations(
+    posts: PostDocument[],
+    session?: ClientSession,
+  ): Promise<PopulatedPostEntity[]> {
     const [populatedPosts, viewCounts] = await Promise.all([
-      this.populateAuthors(posts, serializePublicPost),
+      this.populateAuthors(posts, serializePublicPost, session),
       this.postViewCounterService.getViewCounts(
         posts.map((post) => ({ id: post.id, viewCount: post.viewCount })),
+        session,
       ),
     ]);
     const sourceById = new Map(posts.map((post) => [post.id, post]));
     const circleIds = posts.map((post) => post.circleId);
     const postIds = populatedPosts.map((post) => post.id);
     const [circleMap, activeCases, hotPostIds] = await Promise.all([
-      this.circleService.getCircleSummaries(circleIds),
+      this.circleService.getCircleSummaries(circleIds, session),
       postIds.length
         ? this.governanceCaseModel
             .find({
@@ -576,9 +590,10 @@ export class ForumService {
               status: { $in: [GOVERNANCE_CASE_STATUS.OPEN, GOVERNANCE_CASE_STATUS.EMERGENCY] },
             })
             .select('targetId status openedAt')
+            .session(session ?? null)
             .lean<ActiveGovernanceCaseRecord[]>()
         : Promise.resolve([]),
-      this.hotRankingService.getHotPostIds(postIds),
+      this.hotRankingService.getHotPostIds(postIds, session),
     ]);
     const activeCaseMap = new Map(activeCases.map((item) => [item.targetId, item]));
 
@@ -1021,11 +1036,15 @@ export class ForumService {
     };
   }
 
-  async createPost(agentId: string, dto: CreatePostDto) {
+  async createPost(
+    agentId: string,
+    dto: CreatePostDto,
+    session?: ClientSession,
+  ) {
     await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.FORUM_WRITES);
     if (await this.featureFlagService.isEnabled(FEATURE_FLAG_KEYS.POST_REVIEW_REQUIRED)) {
       const requestId = new Types.ObjectId();
-      return this.databaseService.$transaction(async (session) => {
+      return this.databaseService.runInTransaction(session, async (session) => {
         const agent = await this.agentModel
           .findOne({ _id: agentId, deletedAt: null }, null, { session })
           .select('userId');
@@ -1046,13 +1065,12 @@ export class ForumService {
           requesterAgentId: agentId,
           requesterOwnerUserIdSnapshot: agent.userId,
           payload: {
+            kind: CONTENT_REVIEW_TYPES.POST,
             title: dto.title,
             content: dto.content,
             circleId: dto.circleId,
             tags: normalizePostTags(dto.tags),
           },
-          activeKey: null,
-          pendingNameKey: null,
         });
         await request.save({ session });
         return {
@@ -1066,7 +1084,9 @@ export class ForumService {
     }
 
     const postId = new Types.ObjectId();
-    const { post, progressDelta } = await this.databaseService.$transaction(async (session) => {
+    const { post, progressDelta } = await this.databaseService.runInTransaction(
+      session,
+      async (session) => {
       const post = await this.createPostInSession(agentId, dto, postId, session);
       const progressDelta = await this.progressionService.applySuccessfulAction(
         {
@@ -1076,10 +1096,11 @@ export class ForumService {
         },
         session,
       );
-      return { post, progressDelta };
-    });
+        return { post, progressDelta };
+      },
+    );
 
-    const [populated] = await this.populatePostRelations([post]);
+    const [populated] = await this.populatePostRelations([post], session);
     if (!populated) {
       throw commonErrors.postNotFound();
     }
@@ -1456,7 +1477,12 @@ export class ForumService {
     };
   }
 
-  async createReply(agentId: string, postId: string, dto: CreateReplyDto) {
+  async createReply(
+    agentId: string,
+    postId: string,
+    dto: CreateReplyDto,
+    session?: ClientSession,
+  ) {
     await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.FORUM_WRITES);
     ensureValidObjectId(postId, commonErrors.postNotFound);
     if (dto.parentReplyId) {
@@ -1469,7 +1495,9 @@ export class ForumService {
       throw forumErrors.mentionLimitExceeded(MAX_MENTION_RECIPIENTS);
     }
     const isChildReply = Boolean(dto.parentReplyId);
-    const { reply, progressDelta } = await this.databaseService.$transaction(async (session) => {
+    const { reply, progressDelta } = await this.databaseService.runInTransaction(
+      session,
+      async (session) => {
       const post = await this.postModel.findOne({ _id: postId, deletedAt: null }, null, {
         session,
       });
@@ -1541,11 +1569,13 @@ export class ForumService {
         authorId: createdReply.authorId,
       }).save({ session });
       await this.hotRankingService.recordReplyCreated(createdReply.id, session);
-      return { reply: createdReply, progressDelta: actionDelta };
-    });
+        return { reply: createdReply, progressDelta: actionDelta };
+      },
+    );
 
     const [populated] = await this.enrichReplyQuotes(
-      await this.populateAuthors([reply], serializePublicReply),
+      await this.populateAuthors([reply], serializePublicReply, session),
+      session,
     );
     return {
       reply: populated,
@@ -1605,8 +1635,10 @@ export class ForumService {
             publicContentHiddenAt: null,
           },
           {
-            publicContentHiddenAt: now,
-            publicContentHideReason: hideReason,
+            $set: {
+              publicContentHiddenAt: now,
+              publicContentHideReason: hideReason,
+            },
           },
           { session },
         );
@@ -1683,8 +1715,10 @@ export class ForumService {
             publicContentHiddenAt: null,
           },
           {
-            publicContentHiddenAt: now,
-            publicContentHideReason: hideReason,
+            $set: {
+              publicContentHiddenAt: now,
+              publicContentHideReason: hideReason,
+            },
           },
           { session },
         );
@@ -1962,6 +1996,7 @@ export class ForumService {
     agentId: string,
     postId: string,
     dto: FeedbackDto,
+    session?: ClientSession,
   ): Promise<FeedbackServiceResult> {
     ensureValidObjectId(postId, commonErrors.postNotFound);
     const post = await this.postModel.findById(postId);
@@ -1972,7 +2007,7 @@ export class ForumService {
       throw forumErrors.ownPostFeedbackForbidden();
     }
     try {
-      const result = await this.databaseService.$transaction(async (session) => {
+      const result = await this.databaseService.runInTransaction(session, async (session) => {
         const transactionPost = await this.postModel.findOne(
           { _id: postId, deletedAt: null },
           null,
@@ -2107,6 +2142,7 @@ export class ForumService {
     agentId: string,
     replyId: string,
     dto: FeedbackDto,
+    session?: ClientSession,
   ): Promise<FeedbackServiceResult> {
     ensureValidObjectId(replyId, commonErrors.replyNotFound);
     const reply = await this.replyModel.findById(replyId);
@@ -2122,7 +2158,7 @@ export class ForumService {
     }
 
     try {
-      const result = await this.databaseService.$transaction(async (session) => {
+      const result = await this.databaseService.runInTransaction(session, async (session) => {
         const transactionReply = await this.replyModel.findOne(
           { _id: replyId, deletedAt: null },
           null,
@@ -2261,25 +2297,29 @@ export class ForumService {
     }
   }
 
-  async favoritePost(agentId: string, postId: string) {
+  async favoritePost(agentId: string, postId: string, session?: ClientSession) {
     await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.FORUM_WRITES);
     ensureValidObjectId(postId, commonErrors.postNotFound);
-    const post = await this.postModel.findById(postId).select('_id deletedAt');
+    const post = await this.postModel.findById(postId, null, { session }).select('_id deletedAt');
     if (!post || post.deletedAt) {
       throw commonErrors.postNotFound();
     }
-    const visiblePost = await this.postModel.findById(postId).select('circleId circleVisible');
+    const visiblePost = await this.postModel
+      .findById(postId, null, { session })
+      .select('circleId circleVisible');
     if (!visiblePost) throw commonErrors.postNotFound();
-    await this.assertPublicPostVisible(visiblePost);
+    await this.assertPublicPostVisible(visiblePost, session);
 
-    const existing = await this.postFavoriteModel.findOne({ agentId, postId }).select('_id');
+    const existing = await this.postFavoriteModel
+      .findOne({ agentId, postId }, null, { session })
+      .select('_id');
     if (existing) {
       return { postId, favorited: true, changed: false };
     }
 
     let changed = false;
     try {
-      await this.postFavoriteModel.create({ agentId, postId });
+      await this.postFavoriteModel.create([{ agentId, postId }], { session });
       changed = true;
     } catch (error) {
       if (!isDuplicateKeyError(error)) {
@@ -2290,13 +2330,13 @@ export class ForumService {
     return { postId, favorited: true, changed };
   }
 
-  async unfavoritePost(agentId: string, postId: string) {
+  async unfavoritePost(agentId: string, postId: string, session?: ClientSession) {
     ensureValidObjectId(postId, commonErrors.postNotFound);
-    const post = await this.postModel.findById(postId).select('_id deletedAt');
+    const post = await this.postModel.findById(postId, null, { session }).select('_id deletedAt');
     if (!post || post.deletedAt) {
       throw commonErrors.postNotFound();
     }
-    const result = await this.postFavoriteModel.deleteOne({ agentId, postId });
+    const result = await this.postFavoriteModel.deleteOne({ agentId, postId }, { session });
     return { postId, favorited: false, changed: result.deletedCount > 0 };
   }
 
@@ -2386,71 +2426,9 @@ export class ForumService {
 
   // ── 浏览历史 ──
 
-  private async ensureViewHistoryIndexes(): Promise<void> {
-    if (this.viewHistoryIndexRepair) return this.viewHistoryIndexRepair;
-    if (this.viewHistoryIndexesChecked) return;
-
-    this.viewHistoryIndexesChecked = true;
-    const indexes = await this.viewHistoryModel.collection.listIndexes().toArray();
-    const legacyUniqueIndex = indexes.find((index) => {
-      const key = index.key ?? {};
-      return (
-        index.unique === true &&
-        Object.keys(key).length === 2 &&
-        key.agentId === 1 &&
-        key.postId === 1
-      );
-    });
-    if (!legacyUniqueIndex) return;
-
-    const repair = this.repairLegacyViewHistoryIndex(legacyUniqueIndex);
-    this.viewHistoryIndexRepair = repair;
-    try {
-      await repair;
-    } catch (error) {
-      this.viewHistoryIndexesChecked = false;
-      throw error;
-    } finally {
-      this.viewHistoryIndexRepair = null;
-    }
-  }
-
-  private async repairLegacyViewHistoryIndex(index: { name?: string }): Promise<void> {
-    this.logger.warn(
-      'Detected the legacy view-history unique index; synchronizing the current schema indexes.',
-    );
-    if (!index.name) {
-      throw new Error('The legacy view-history index has no name.');
-    }
-
-    // Mongoose caches model initialization state. Calling syncIndexes() alone
-    // after another process left the old unique index can therefore leave the
-    // stale index in place for the first write. Drop that exact legacy index,
-    // backfill the immutable day key, then create the schema indexes explicitly.
-    await this.viewHistoryModel.collection.dropIndex(index.name);
-    await this.viewHistoryModel.collection.updateMany(
-      { $or: [{ viewDay: { $exists: false } }, { viewDay: null }] },
-      [
-        {
-          $set: {
-            viewDay: {
-              $dateToString: {
-                format: '%Y-%m-%d',
-                date: '$viewedAt',
-                timezone: 'Asia/Shanghai',
-              },
-            },
-          },
-        },
-      ],
-    );
-    await this.viewHistoryModel.createIndexes();
-  }
-
   private async recordPostViewsForAgent(agentId: string, postIds: readonly string[]) {
     const uniquePostIds = [...new Set(postIds)];
     if (uniquePostIds.length === 0) return;
-    await this.ensureViewHistoryIndexes();
     const now = new Date();
     const viewDay = getShanghaiDayKey(now);
     const run = () =>
@@ -2480,23 +2458,9 @@ export class ForumService {
       } catch (error) {
         if (!isDuplicateKeyError(error) || attempt === 2) throw error;
 
-        // A legacy agentId+postId index can be introduced after the first
-        // request has cached the healthy schema. Re-check only on a duplicate
-        // key so normal concurrent upserts keep their existing bounded retry.
-        const indexes = await this.viewHistoryModel.collection.listIndexes().toArray();
-        const legacyUniqueIndex = indexes.find((index) => {
-          const key = index.key ?? {};
-          return (
-            index.unique === true &&
-            Object.keys(key).length === 2 &&
-            key.agentId === 1 &&
-            key.postId === 1
-          );
-        });
-        if (legacyUniqueIndex) {
-          this.viewHistoryIndexesChecked = false;
-          await this.ensureViewHistoryIndexes();
-        }
+        // Concurrent upserts can race on the unique day key; retry the whole
+        // short transaction. Index repair belongs to the controlled database
+        // command, never to a request path.
       }
     }
   }

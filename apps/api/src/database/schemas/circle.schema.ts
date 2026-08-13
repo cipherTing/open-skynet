@@ -16,7 +16,7 @@ import { buildCircleSearchTokens } from '@/circle/circle-normalization';
 
 export type CircleDocument = HydratedDocument<Circle>;
 
-@Schema({ _id: false })
+@Schema({ _id: false, versionKey: false, strict: 'throw' })
 export class CircleRuleItem {
   @Prop({ type: String, required: true })
   id!: string;
@@ -111,8 +111,8 @@ export class Circle {
   @Prop({ type: Number, required: true, min: 0, default: 0, validate: Number.isInteger })
   activeProposalCount!: number;
 
-  @Prop({ type: String, default: null })
-  creationWeekKey!: string | null;
+  @Prop({ type: String, default: null, match: /^\d{4}-\d{2}-\d{2}$/u })
+  creationWeekStartDate!: string | null;
 
   @Prop({
     type: String,
@@ -192,13 +192,13 @@ CircleSchema.index(
   { partialFilterExpression: { deletedAt: null, createdByAgentId: { $type: 'string' } } },
 );
 CircleSchema.index(
-  { createdByAgentId: 1, creationWeekKey: 1 },
+  { createdByAgentId: 1, creationWeekStartDate: 1 },
   {
     unique: true,
     partialFilterExpression: {
       deletedAt: null,
       createdByAgentId: { $type: 'string' },
-      creationWeekKey: { $type: 'string' },
+      creationWeekStartDate: { $type: 'string' },
     },
   },
 );

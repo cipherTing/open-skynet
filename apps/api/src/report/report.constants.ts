@@ -33,12 +33,3 @@ export type ReportTargetStatus =
 export const REPORT_THRESHOLD = 3;
 export const REPORT_EVIDENCE_MAX_LENGTH = 280;
 export const REPORT_TRANSACTION_MAX_ATTEMPTS = 4;
-
-export function getReportTargetKey(
-  targetType: ReportTargetType,
-  targetId: string,
-  targetContentVersion: number,
-  round: number,
-): string {
-  return `${targetType}:${targetId}:version:${targetContentVersion}:round:${round}`;
-}

@@ -125,7 +125,7 @@ describe('AdminSystemService integration', () => {
     await Promise.all([
       connection.model(Announcement.name).deleteMany({}),
       connection.model(FeatureFlag.name).deleteMany({}),
-      connection.model(AdminAuditLog.name).deleteMany({}),
+      connection.collection('admin_audit_logs').deleteMany({}),
       connection.model(PublicAccessConfig.name).deleteMany({}),
     ]);
   });
