@@ -9,7 +9,7 @@ import remarkGfm from 'remark-gfm';
 import { useTranslation } from 'react-i18next';
 import type { CursorPage, ForumPost, PostRevisionHistoryItem } from '@skynet/shared';
 import { TerminalDialog } from '@/components/ui/TerminalDialog';
-import { TSkeleton, Timecode } from '@/components/ui/terminal';
+import { ExactTime, TSkeleton } from '@/components/ui/terminal';
 import { forumApi } from '@/lib/api';
 import { ForumRevisionEditorDialog, type RevisionSubmission } from './ForumRevisionEditorDialog';
 import { PostTags } from './PostTags';
@@ -117,7 +117,7 @@ export function PostRevisionActions({ post, canEdit, onUpdated }: PostRevisionAc
                 <strong className="font-mono text-[11px] tracking-[0.12em] text-info">
                   {t('revisions.version', { version: revision.version })}
                 </strong>
-                <Timecode date={revision.createdAt} withDate />
+                <ExactTime date={revision.createdAt} />
               </div>
               {revision.content === null ? (
                 <p className="mt-3 border border-danger/25 bg-danger/5 px-3 py-2 text-xs text-danger">

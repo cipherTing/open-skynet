@@ -20,7 +20,7 @@ import { DeletedReplyPlaceholder, ReplyThread } from './ReplyThread';
 import { ReplyInput } from './ReplyInput';
 import { ErrorState } from '@/components/ui/LoadingState';
 import { AuthRequiredDialog, AuthRequiredState } from '@/components/ui/AuthRequiredDialog';
-import { TEmpty, TSkeleton, Timecode } from '@/components/ui/terminal';
+import { RelativeTime, TEmpty, TSkeleton } from '@/components/ui/terminal';
 import { usePageScrollViewport } from '@/components/layout/PageScrollViewport';
 import { Virtuoso } from 'react-virtuoso';
 import { ApiError, forumApi } from '@/lib/api';
@@ -554,7 +554,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
               {t('post.meta.filed')}
             </p>
             <p className="mt-1.5">
-              <Timecode date={post.createdAt} withDate className="text-[11px] text-white/80" />
+              <RelativeTime date={post.createdAt} className="text-[11px] text-white/80" />
             </p>
           </div>
           <div className="bg-[var(--t-panel)] px-4 py-2.5 sm:px-6">

@@ -9,8 +9,9 @@ import { ArrowLeft, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/contexts/AuthContext';
 import { ErrorState, LoadingScreen } from '@/components/ui/LoadingState';
-import { useUtcNow } from '@/components/home/terminal/terminal-hooks';
+import { useClockNow } from '@/components/home/terminal/terminal-hooks';
 import { type AdminSection } from '@/lib/admin-api';
+import { formatLocalClockTime } from '@/lib/date-time';
 import { AdminLoading } from './AdminPrimitives';
 import { AdminActionDialog, type AdminAction } from './AdminSectionShared';
 import { OverviewSection } from './AdminOverviewSection';
@@ -31,6 +32,10 @@ const FeatureFlagsSection = dynamic(
 );
 const PublicAccessSection = dynamic(
   () => import('./AdminSystemSections').then((module) => module.PublicAccessSection),
+  { loading: () => <AdminLoading /> },
+);
+const BusinessCalendarSection = dynamic(
+  () => import('./AdminSystemSections').then((module) => module.BusinessCalendarSection),
   { loading: () => <AdminLoading /> },
 );
 const SecurityEventsSection = dynamic(
@@ -57,7 +62,15 @@ const SECTION_GROUPS: Array<{
   },
   {
     id: 'operations',
-    items: ['announcements', 'publicAccess', 'featureFlags', 'authPolicy', 'invitations', 'audit'],
+    items: [
+      'announcements',
+      'publicAccess',
+      'businessCalendar',
+      'featureFlags',
+      'authPolicy',
+      'invitations',
+      'audit',
+    ],
   },
 ];
 const NAV_SECTION_ITEMS = SECTION_GROUPS.flatMap((group) => group.items);
@@ -79,17 +92,20 @@ function ViewportCorners() {
   );
 }
 
-function UtcClock() {
-  const now = useUtcNow(1000);
+function LocalClock() {
+  const { t } = useTranslation();
+  const now = useClockNow(1000);
   return (
-    <span className="hidden items-center gap-2 font-mono text-[10px] tracking-[0.15em] text-[var(--t-faint)] sm:inline-flex">
+    <span
+      aria-label={t('settings.localTime')}
+      className="hidden items-center gap-2 font-mono text-[10px] tracking-[0.15em] text-[var(--t-faint)] sm:inline-flex"
+    >
       <span aria-hidden className="t-anim-blink text-[var(--t-accent)]">
         ▮
       </span>
       <span className="tabular-nums text-white/70">
-        {now ? now.toISOString().slice(11, 19) : '--:--:--'}
+        {now ? formatLocalClockTime(now) : '--:--:--'}
       </span>
-      <span>UTC</span>
     </span>
   );
 }
@@ -221,7 +237,7 @@ function AdminWorkspace({ section }: { section: AdminSection }) {
               </h1>
             </div>
             <div className="flex shrink-0 items-center gap-3">
-              <UtcClock />
+              <LocalClock />
               <button
                 type="button"
                 aria-label={t('admin.refresh')}
@@ -262,6 +278,7 @@ function AdminWorkspace({ section }: { section: AdminSection }) {
           {section === 'governance' && <GovernanceSection />}
           {section === 'announcements' && <AnnouncementsSection />}
           {section === 'publicAccess' && <PublicAccessSection />}
+          {section === 'businessCalendar' && <BusinessCalendarSection />}
           {section === 'featureFlags' && <FeatureFlagsSection />}
           {section === 'authPolicy' && <AuthPolicySection />}
           {section === 'invitations' && <InvitationCodesSection />}

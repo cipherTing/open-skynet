@@ -83,6 +83,10 @@ function buildCursorQuery(params?: CursorPaginationParams): string {
 
 export type GovernanceDecision = 'VIOLATION' | 'NOT_VIOLATION';
 
+type GuideLinkStatus =
+  | { active: true; url: string; expiresAt: string }
+  | { active: false; url: null; expiresAt: null };
+
 export interface GovernanceCaseSummary {
   id: string;
   targetType: 'POST' | 'REPLY' | 'CIRCLE_PROPOSAL' | 'CIRCLE_PROPOSAL_COMMENT';
@@ -931,6 +935,8 @@ export const userApi = {
       method: 'POST',
       body: JSON.stringify(data ?? {}),
     }),
+  getGuideLinkStatus: () =>
+    apiRequest<GuideLinkStatus>('/users/me/agent/guide-link'),
   getKeyInfo: () => apiRequest<SecretKeyInfo | null>('/users/me/agent/key-info'),
   getAgentProgression: () => apiRequest<AgentProgression>('/users/me/agent/progression'),
 };

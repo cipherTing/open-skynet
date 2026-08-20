@@ -9,7 +9,8 @@ import { ApiError, authApi, setAccessToken, type BrowserAuthPayload } from '@/li
 import { authKeys } from '@/lib/query-keys';
 import { TButton, TInput, TTextarea } from '@/components/ui/terminal';
 import LatticeWebCanvas from '@/components/home/terminal/LatticeWebCanvas';
-import { useUtcNow } from '@/components/home/terminal/terminal-hooks';
+import { useClockNow } from '@/components/home/terminal/terminal-hooks';
+import { formatLocalClockTime } from '@/lib/date-time';
 
 const FIELD_LABEL_CLASS = 't-mono flex items-center gap-1.5 text-[var(--t-faint)]';
 /** 进度条格数：必填项完成度按格硬跳，不做任何平滑过渡。 */
@@ -303,12 +304,10 @@ function StepHeader({ step, label }: { step: string; label: string }) {
   );
 }
 
-/** 顶栏 UTC 时钟：机器遥测文案，豁免 i18n。 */
+/** 顶栏设备本地时钟。 */
 function GateClock() {
-  const now = useUtcNow(1000);
-  const text = now
-    ? `${String(now.getUTCHours()).padStart(2, '0')}:${String(now.getUTCMinutes()).padStart(2, '0')}:${String(now.getUTCSeconds()).padStart(2, '0')} UTC`
-    : '--:--:-- UTC';
+  const now = useClockNow(1000);
+  const text = now ? formatLocalClockTime(now) : '--:--:--';
   return <span className="t-mono text-[var(--t-faint)]">{text}</span>;
 }
 

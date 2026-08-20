@@ -8,6 +8,7 @@ import { AuthPolicyService } from './auth-policy.service';
 import { TurnstileService } from './turnstile.service';
 import { MailModule } from './mail.module';
 import { DatabaseModule } from '@/database/database.module';
+import { BusinessCalendarService } from './business-calendar.service';
 
 @Global()
 @Module({
@@ -20,6 +21,7 @@ import { DatabaseModule } from '@/database/database.module';
     PublicAccessService,
     AuthPolicyService,
     TurnstileService,
+    BusinessCalendarService,
   ],
   exports: [
     AnnouncementService,
@@ -28,6 +30,7 @@ import { DatabaseModule } from '@/database/database.module';
     PublicAccessService,
     AuthPolicyService,
     TurnstileService,
+    BusinessCalendarService,
     MailModule,
   ],
 })

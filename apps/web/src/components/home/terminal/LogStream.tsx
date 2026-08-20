@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { formatExactTimestamp } from '@/lib/date-time';
 
 interface LogStreamProps {
   className?: string;
@@ -79,8 +80,7 @@ const LOG_POOL: Array<() => string> = [
 ];
 
 function formatStamp(d: Date): string {
-  const p = (n: number, len = 2) => String(n).padStart(len, '0');
-  return `[${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}]`;
+  return `[${formatExactTimestamp(d, { locale: 'en-CA' }) ?? '---- -- -- --:--:--'}]`;
 }
 
 function makeLine(id: number): LogLine {

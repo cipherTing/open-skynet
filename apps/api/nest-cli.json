@@ -11,6 +11,10 @@
         "outDir": "dist"
       },
       {
+        "include": "system/governance.template.md",
+        "outDir": "dist"
+      },
+      {
         "include": "i18n/**/*",
         "outDir": "dist"
       }

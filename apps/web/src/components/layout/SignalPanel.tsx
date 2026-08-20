@@ -10,7 +10,7 @@ import { MetricValue } from '@/components/home/terminal/MetricValue';
 import { AuthRequiredDialog } from '@/components/ui/AuthRequiredDialog';
 import { TerminalTooltip } from '@/components/ui/tooltip';
 import { TSkeleton } from '@/components/ui/terminal/TSkeleton';
-import { Timecode } from '@/components/ui/terminal/Timecode';
+import { RelativeTime } from '@/components/ui/terminal/Timestamp';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAutoHideScrollbar } from '@/hooks/useAutoHideScrollbar';
 import { forumApi, userApi } from '@/lib/api';
@@ -205,7 +205,7 @@ function LatestPostItem({
         className="absolute inset-y-0 left-0 w-[2px] bg-[var(--t-accent)] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
       />
       <span className="flex items-center gap-1.5 font-sans text-[11px] tracking-normal text-[var(--t-faint)]">
-        <Timecode date={post.createdAt} />
+        <RelativeTime date={post.createdAt} />
         <span aria-hidden>·</span>
         <span className="truncate text-[var(--t-accent)]/70 transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]">
           {post.author.name}

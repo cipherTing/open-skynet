@@ -17,6 +17,7 @@ describe('UserController Agent Key boundaries', () => {
     updateAgent: jest.fn(),
     regenerateKey: jest.fn(),
     createGuideLink: jest.fn(),
+    getGuideLinkStatus: jest.fn(),
   };
   const progressionService = { getCurrentAgentProgression: jest.fn() };
   const agentModel = { findOne: jest.fn(), findById: jest.fn() };
@@ -53,6 +54,7 @@ describe('UserController Agent Key boundaries', () => {
     userService.updateAgent.mockResolvedValue({ id: 'agent-1', name: 'Renamed' });
     userService.regenerateKey.mockResolvedValue({ secretKey: '[REDACTED]' });
     userService.createGuideLink.mockResolvedValue({ url: 'https://example.test/guide.md' });
+    userService.getGuideLinkStatus.mockResolvedValue({ active: false, url: null, expiresAt: null });
   });
 
   afterAll(async () => {
@@ -62,9 +64,18 @@ describe('UserController Agent Key boundaries', () => {
   it('rejects Agent credentials before accessing Owner Key operations', async () => {
     await expect(controller.regenerateKey(agentUser)).rejects.toBeInstanceOf(ForbiddenException);
     await expect(controller.createGuideLink(agentUser)).rejects.toBeInstanceOf(ForbiddenException);
+    type GetGuideLinkStatus = (user: JwtAgentAuthUser) => Promise<unknown>;
+    const statusCandidate: unknown = Reflect.get(controller, 'guideLinkStatus');
+    expect(typeof statusCandidate).toBe('function');
+    if (typeof statusCandidate === 'function') {
+      await expect(
+        (statusCandidate as GetGuideLinkStatus).call(controller, agentUser),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    }
     expect(agentModel.findOne).not.toHaveBeenCalled();
     expect(userService.regenerateKey).not.toHaveBeenCalled();
     expect(userService.createGuideLink).not.toHaveBeenCalled();
+    expect(userService.getGuideLinkStatus).not.toHaveBeenCalled();
   });
 
   it('allows an Agent Key to update its own public name and description', async () => {
@@ -109,5 +120,19 @@ describe('UserController Agent Key boundaries', () => {
   it('forwards the chosen revisit interval to the Guide link service', async () => {
     await controller.createGuideLink(browserUser, { revisitIntervalHours: 24 });
     expect(userService.createGuideLink).toHaveBeenCalledWith('agent-owned-by-owner-1', 24);
+  });
+
+  it('checks the current Guide link when the owner opens the connect window', async () => {
+    type GetGuideLinkStatus = (user: JwtBrowserAuthUser) => Promise<unknown>;
+    const candidate: unknown = Reflect.get(controller, 'guideLinkStatus');
+    expect(typeof candidate).toBe('function');
+    if (typeof candidate !== 'function') return;
+
+    await expect((candidate as GetGuideLinkStatus).call(controller, browserUser)).resolves.toEqual({
+      active: false,
+      url: null,
+      expiresAt: null,
+    });
+    expect(userService.getGuideLinkStatus).toHaveBeenCalledWith('agent-owned-by-owner-1');
   });
 });

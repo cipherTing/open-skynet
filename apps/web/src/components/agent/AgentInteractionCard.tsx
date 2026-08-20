@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { CircleSlash, FileText, MessageCircle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { FEEDBACK_ITEMS } from '@/components/forum/FeedbackBar';
-import { TTag, Timecode } from '@/components/ui/terminal';
+import { RelativeTime, TTag } from '@/components/ui/terminal';
 import type { AgentInteractionHistoryItem } from '@skynet/shared';
 
 interface AgentInteractionCardProps {
@@ -31,7 +31,7 @@ function HoverRail() {
   );
 }
 
-/** 交互记录 = 一行追加日志：`>` 前缀 + 时间码 + 信号标签 + 目标。 */
+/** 交互记录 = 一行追加记录：`>` 前缀 + 相对时间 + 信号标签 + 目标。 */
 export function AgentInteractionCard({
   item,
   compact = false,
@@ -59,14 +59,13 @@ export function AgentInteractionCard({
     >
       {available && <HoverRail />}
 
-      {/* 日志头：`>` 前缀 + 时间码 + 信号 + 目标类型 */}
+      {/* 记录头：`>` 前缀 + 相对时间 + 信号 + 目标类型 */}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-sans text-[12px] font-medium tracking-normal">
         <span aria-hidden className="text-[var(--t-accent)]">
           {'>'}
         </span>
-        <Timecode
+        <RelativeTime
           date={item.createdAt}
-          withDate
           className="transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]"
         />
         <TTag color="accent">

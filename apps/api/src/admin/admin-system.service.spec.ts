@@ -41,6 +41,11 @@ import { TurnstileService } from '@/system/turnstile.service';
 import { MailDeliveryService } from '@/system/mail.service';
 import { InvitationCodeService } from '@/auth/invitation-code.service';
 import { InvitationCode } from '@/database/schemas/invitation-code.schema';
+import {
+  BusinessCalendarConfig,
+  BusinessCalendarConfigSchema,
+} from '@/database/schemas/business-calendar-config.schema';
+import { BusinessCalendarService } from '@/system/business-calendar.service';
 
 const ADMIN: AdminPrincipal = {
   userId: 'admin-user',
@@ -80,6 +85,7 @@ describe('AdminSystemService integration', () => {
           { name: FeatureFlag.name, schema: FeatureFlagSchema },
           { name: AdminAuditLog.name, schema: AdminAuditLogSchema },
           { name: PublicAccessConfig.name, schema: PublicAccessConfigSchema },
+          { name: BusinessCalendarConfig.name, schema: BusinessCalendarConfigSchema },
         ]),
       ],
       providers: [
@@ -88,6 +94,7 @@ describe('AdminSystemService integration', () => {
         FeatureFlagService,
         AnnouncementService,
         AdminSystemService,
+        BusinessCalendarService,
         { provide: PublicAccessService, useValue: publicAccessServiceMock },
         { provide: AuthPolicyService, useValue: {} },
         { provide: TurnstileService, useValue: {} },
@@ -117,6 +124,7 @@ describe('AdminSystemService integration', () => {
       connection.model(FeatureFlag.name).init(),
       connection.model(AdminAuditLog.name).init(),
       connection.model(PublicAccessConfig.name).init(),
+      connection.model(BusinessCalendarConfig.name).init(),
     ]);
   });
 
@@ -127,6 +135,7 @@ describe('AdminSystemService integration', () => {
       connection.model(FeatureFlag.name).deleteMany({}),
       connection.collection('admin_audit_logs').deleteMany({}),
       connection.model(PublicAccessConfig.name).deleteMany({}),
+      connection.model(BusinessCalendarConfig.name).deleteMany({}),
     ]);
   });
 
@@ -279,5 +288,39 @@ describe('AdminSystemService integration', () => {
       before: { version: 0 },
       after: { version: 1 },
     });
+  });
+
+  it('updates the global business time zone with optimistic version checks', async () => {
+    type UpdateBusinessCalendar = (
+      admin: AdminPrincipal,
+      dto: { timeZone: string; expectedVersion: number },
+    ) => Promise<unknown>;
+    const candidate: unknown = Reflect.get(service, 'updateBusinessCalendarConfig');
+    const isUpdateBusinessCalendar = (value: unknown): value is UpdateBusinessCalendar =>
+      typeof value === 'function';
+
+    if (!isUpdateBusinessCalendar(candidate)) {
+      expect(typeof candidate).toBe('function');
+      return;
+    }
+
+    await expect(
+      candidate.call(service, ADMIN, {
+        timeZone: 'America/New_York',
+        expectedVersion: 0,
+      }),
+    ).resolves.toMatchObject({
+      timeZone: 'America/New_York',
+      version: 1,
+    });
+    await expect(
+      candidate.call(service, ADMIN, {
+        timeZone: 'Europe/London',
+        expectedVersion: 0,
+      }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    await expect(
+      connection.model(AdminAuditLog.name).findOne({ action: 'BUSINESS_CALENDAR_UPDATED' }),
+    ).resolves.toMatchObject({ reason: null });
   });
 });

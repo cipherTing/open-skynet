@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { Eye, Gavel, ShieldCheck } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { Timecode } from '@/components/ui/terminal';
+import { ExactTime } from '@/components/ui/terminal';
 import { useToast } from '@/components/ui/SignalToast';
 import { adminApi } from '@/lib/admin-api';
 import {
@@ -133,10 +133,10 @@ export function GovernanceSection() {
                   {item.triggerScore}/{item.triggerThreshold}
                 </td>
                 <td className="px-3 py-3 text-xs text-[var(--t-sub)]">
-                  <Timecode date={item.openedAt} withDate />
+                  <ExactTime date={item.openedAt} />
                 </td>
                 <td className="px-3 py-3 text-xs text-[var(--t-sub)]">
-                  {item.deadlineAt ? <Timecode date={item.deadlineAt} withDate /> : '-'}
+                  {item.deadlineAt ? <ExactTime date={item.deadlineAt} /> : '-'}
                 </td>
                 <td className="px-3 py-3">
                   <div className="flex justify-end gap-2">

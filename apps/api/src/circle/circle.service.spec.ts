@@ -38,6 +38,11 @@ import {
   CirclePostVisibilityStateSchema,
 } from '@/database/schemas/circle-post-visibility-state.schema';
 import { PostVisibilityService } from '@/post-visibility/post-visibility.service';
+import {
+  BusinessCalendarConfig,
+  BusinessCalendarConfigSchema,
+} from '@/database/schemas/business-calendar-config.schema';
+import { BusinessCalendarService } from '@/system/business-calendar.service';
 
 describe('CircleService creation and memberships', () => {
   jest.setTimeout(60_000);
@@ -75,12 +80,14 @@ describe('CircleService creation and memberships', () => {
           { name: GovernanceCase.name, schema: GovernanceCaseSchema },
           { name: Post.name, schema: PostSchema },
           { name: CirclePostVisibilityState.name, schema: CirclePostVisibilityStateSchema },
+          { name: BusinessCalendarConfig.name, schema: BusinessCalendarConfigSchema },
         ]),
       ],
       providers: [
         DatabaseService,
         CircleService,
         PostVisibilityService,
+        BusinessCalendarService,
         { provide: FeatureFlagService, useValue: featureFlagService },
         { provide: RedisService, useValue: { getClient: () => redisClient } },
         { provide: HotRankingService, useValue: { getCirclesHotPosts } },

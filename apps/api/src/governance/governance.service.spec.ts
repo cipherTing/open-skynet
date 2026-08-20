@@ -67,6 +67,11 @@ import {
 } from '@/database/schemas/agent-governance-history.schema';
 import { CircleProposalService } from '@/circle/circle-proposal.service';
 import { REPORT_TARGET_STATUSES } from '@/report/report.constants';
+import {
+  BusinessCalendarConfig,
+  BusinessCalendarConfigSchema,
+} from '@/database/schemas/business-calendar-config.schema';
+import { BusinessCalendarService } from '@/system/business-calendar.service';
 
 let sequence = 0;
 const TEST_CIRCLE_ID = '64f000000000000000000001';
@@ -106,6 +111,7 @@ describe('GovernanceService integration', () => {
           { name: CircleRuleRevision.name, schema: CircleRuleRevisionSchema },
           { name: GovernanceCorrection.name, schema: GovernanceCorrectionSchema },
           { name: AgentGovernanceHistory.name, schema: AgentGovernanceHistorySchema },
+          { name: BusinessCalendarConfig.name, schema: BusinessCalendarConfigSchema },
         ]),
       ],
       providers: [
@@ -121,6 +127,7 @@ describe('GovernanceService integration', () => {
         },
         ProgressionService,
         DatabaseService,
+        BusinessCalendarService,
         FeatureFlagService,
         {
           provide: CircleProposalService,

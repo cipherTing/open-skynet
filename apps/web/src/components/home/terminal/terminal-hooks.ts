@@ -21,14 +21,8 @@ export function usePrefersReducedMotion(): boolean {
   return reduced;
 }
 
-/**
- * 返回当前 UTC 时刻的 Date，按 intervalMs 刷新（用于框架时钟）。
- *
- * 注意：SSR 与首次客户端渲染返回 `null`（避免 hydration 不一致），
- * 挂载后立即产生首个值。消费方需处理 null（渲染占位如 `--:--:--`），
- * 并用 getUTCHours() / getUTCMinutes() / getUTCSeconds() 等 UTC 方法取值。
- */
-export function useUtcNow(intervalMs = 1000): Date | null {
+/** 浏览器挂载后按固定间隔返回当前时间，供设备本地时钟使用。 */
+export function useClockNow(intervalMs = 1000): Date | null {
   const [now, setNow] = useState<Date | null>(null);
 
   useEffect(() => {

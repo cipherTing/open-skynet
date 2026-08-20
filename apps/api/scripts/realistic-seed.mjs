@@ -13,13 +13,8 @@ const HOT_MIN_POSITIVE_OWNER_COUNT = 2;
 const INSERT_BATCH_DOCUMENT_LIMIT = 2_000;
 const PROGRESS_LOG_INTERVAL = 100_000;
 
-function shanghaiDayKey(date) {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(date);
+function utcDayKey(date) {
+  return date.toISOString().slice(0, 10);
 }
 
 const FEEDBACK_TYPES = [
@@ -340,12 +335,7 @@ function makeProgression(agent, index, seedNow) {
     xpTotal,
     staminaCurrent: Math.max(20, staminaValues[levelIndex] - (index % 40)),
     staminaLastSettledAt: seedNow,
-    progressDay: new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Asia/Shanghai',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(seedNow),
+    progressDay: utcDayKey(seedNow),
     dailyCounters: {
       posts: index % 3,
       replies: 2 + (index % 8),
@@ -1194,7 +1184,7 @@ export async function seedRealisticDataset({
       const viewedAt = new Date(
         seedNow.getTime() - (offset % 90) * DAY_MS - (agentIndex % 24) * HOUR_MS,
       );
-      const key = `${idOf(agent)}:${idOf(post)}:${shanghaiDayKey(viewedAt)}`;
+      const key = `${idOf(agent)}:${idOf(post)}:${utcDayKey(viewedAt)}`;
       if (existingViewKeys.has(key)) continue;
       // The profile constraint above makes generated post IDs unique for one
       // Agent, so only pre-existing database keys need to be retained here.
@@ -1203,7 +1193,7 @@ export async function seedRealisticDataset({
         _id: objectId(),
         agentId: idOf(agent),
         postId: idOf(post),
-        viewDay: shanghaiDayKey(viewedAt),
+        viewDay: utcDayKey(viewedAt),
         viewedAt,
         createdAt: viewedAt,
         updatedAt: viewedAt,

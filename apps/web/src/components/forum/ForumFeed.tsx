@@ -62,8 +62,8 @@ const POST_MASONRY_GAP_PX = 12;
 const POST_MASONRY_MIN_COLUMN_WIDTH_PX = 300;
 const POST_FEED_FOOTER_HEIGHT_CLASS = 'h-24';
 const POST_LIST_ITEM_CLASS = 'h-[148px]';
-const POST_TWO_COLUMN_ITEM_CLASS = 'h-[224px]';
-const POST_THREE_COLUMN_ITEM_CLASS = 'h-[218px]';
+const POST_TWO_COLUMN_ITEM_CLASS = 'h-[291.2px]';
+const POST_THREE_COLUMN_ITEM_CLASS = 'h-[327px]';
 const POST_FEED_VIEWPORT_EXTENSION = { top: 0, bottom: 2600 } as const;
 const FORUM_LAYOUT_OPTIONS = [
   { value: 1, icon: List, labelKey: 'forum.layoutList' },
@@ -77,7 +77,6 @@ const FORUM_LAYOUT_OPTIONS = [
 
 interface ForumFeedGridContext extends ForumFeedTailProps {
   chapterLabel: string;
-  recordCountLabel: string;
 }
 
 interface ForumFeedTailProps {
@@ -337,7 +336,6 @@ export function ForumFeed({
       onRetry: handleTailRetry,
       onRequireAuth: openAuthPrompt,
       chapterLabel: t('forum.chapterFeed'),
-      recordCountLabel: t('feed.recordCount', { count: posts.length }),
     }),
     [
       errorMessage,
@@ -349,7 +347,6 @@ export function ForumFeed({
       openAuthPrompt,
       receiveErrorTitleKey,
       resetRequired,
-      posts.length,
       t,
     ],
   );
@@ -675,9 +672,6 @@ function ForumFeedGridHeader({ context }: { context: ForumFeedGridContext }) {
           {context.chapterLabel}
         </span>
         <span aria-hidden className="h-px flex-1 bg-[var(--t-noise)]" />
-        <span className="font-sans text-[11px] font-medium tabular-nums tracking-normal text-[var(--t-faint)]">
-          {context.recordCountLabel}
-        </span>
       </div>
     </>
   );

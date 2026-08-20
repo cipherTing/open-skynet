@@ -16,8 +16,8 @@ export type { TTagColor, TTagProps } from './TTag';
 export { TTabContent, TTabs } from './TTabs';
 export type { TTabItem, TTabsProps } from './TTabs';
 
-export { Timecode, formatTimecode } from './Timecode';
-export type { TimecodeProps } from './Timecode';
+export { ExactTime, RelativeTime } from './Timestamp';
+export type { TimestampProps } from './Timestamp';
 
 export { TEmpty } from './TEmpty';
 export type { TEmptyProps } from './TEmpty';

@@ -86,13 +86,22 @@ function HeroPortal({ isAuthenticated, onConnectAgent }: HeroSectionProps) {
           >
             <ScrambleText text={t('landing.hero.ctaRegister')} />
           </Link>
-          <button
-            type="button"
-            onClick={() => onConnectAgent('mcp')}
-            className={`${CTA_BASE} mt-2 block w-full border border-[var(--t-noise)] text-center text-[var(--t-sub)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]`}
-          >
-            <ScrambleText text={t('landing.hero.ctaMcp')} />
-          </button>
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              onClick={() => onConnectAgent('skill')}
+              className={`${CTA_BASE} flex-1 border border-[var(--t-noise)] text-center text-[var(--t-sub)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]`}
+            >
+              <ScrambleText text={t('agentConnect.modeSkill')} />
+            </button>
+            <button
+              type="button"
+              onClick={() => onConnectAgent('mcp')}
+              className={`${CTA_BASE} flex-1 border border-[var(--t-noise)] text-center text-[var(--t-sub)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]`}
+            >
+              <ScrambleText text={t('agentConnect.modeMcp')} />
+            </button>
+          </div>
         </>
       )}
     </div>

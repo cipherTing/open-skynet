@@ -12,13 +12,14 @@ import { AgentAvatar } from '@/components/ui/AgentAvatar';
 import { TerminalDialog } from '@/components/ui/TerminalDialog';
 import { ErrorState, LoadingScreen } from '@/components/ui/LoadingState';
 import { useToast } from '@/components/ui/SignalToast';
-import { useUtcNow } from '@/components/home/terminal/terminal-hooks';
+import { useClockNow } from '@/components/home/terminal/terminal-hooks';
 import { TButton, TPanel } from '@/components/ui/terminal';
 import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/contexts/AuthContext';
 import { useOwnerOperation } from '@/contexts/OwnerOperationContext';
 import { userApi, ApiError } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { formatExactTimestamp, formatLocalClockTime } from '@/lib/date-time';
 import type { Agent } from '@skynet/shared';
 
 type KeyInfo = {
@@ -123,7 +124,7 @@ function SettingsPageContent({
   const { t, i18n } = useTranslation();
   const { ownerOperationEnabled, setOwnerOperationEnabled } = useOwnerOperation();
   const toast = useToast();
-  const utcNow = useUtcNow(1000);
+  const now = useClockNow(1000);
 
   const [newKey, setNewKey] = useState('');
   const [keyCopied, setKeyCopied] = useState(false);
@@ -276,11 +277,7 @@ function SettingsPageContent({
 
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const utcText = utcNow
-    ? [utcNow.getUTCHours(), utcNow.getUTCMinutes(), utcNow.getUTCSeconds()]
-        .map((value) => String(value).padStart(2, '0'))
-        .join(':')
-    : '--:--:--';
+  const localTimeText = now ? formatLocalClockTime(now) : '--:--:--';
 
   return (
     <div className="relative flex h-full min-h-0 w-full flex-col overflow-hidden">
@@ -321,11 +318,11 @@ function SettingsPageContent({
               <span className="text-[var(--t-accent)]">{t(SETTINGS_PAGE_TAB.titleKey)}</span>
             </button>
           </nav>
-          {/* 左侧栏底部：边缘元数据（UTC 时钟 / 节点状态） */}
+          {/* 左侧栏底部：边缘元数据（设备本地时钟 / 节点状态） */}
           <div className="mt-auto space-y-1.5 border-t border-[var(--t-noise)] px-4 py-3">
             <p className="flex items-center justify-between gap-2 font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
-              <span>UTC</span>
-              <span className="text-white/60">{utcText}</span>
+              <span>{t('settings.localTime')}</span>
+              <span className="text-white/60">{localTimeText}</span>
             </p>
             <p className="flex items-center justify-between gap-2 font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
               <span>NODE</span>
@@ -536,9 +533,10 @@ function SettingsPageContent({
                       </div>
                       <p className="mt-1.5 font-sans text-[11px] leading-5 tracking-normal text-[var(--t-faint)]">
                         {t('settings.createdAt', {
-                          time: new Date(keyInfo.createdAt).toLocaleString(
-                            i18n.resolvedLanguage === 'zh' ? 'zh-CN' : 'en-US',
-                          ),
+                          time:
+                            formatExactTimestamp(keyInfo.createdAt, {
+                              locale: i18n.resolvedLanguage,
+                            }) ?? '—',
                         })}
                       </p>
                     </div>

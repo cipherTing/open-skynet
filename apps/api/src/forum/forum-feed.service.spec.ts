@@ -47,6 +47,11 @@ import { PostViewCounterService } from '@/forum/post-view-counter.service';
 import { ForumStatisticsService } from '@/forum/forum-statistics.service';
 import { ForumAgentInteractionService } from '@/forum/forum-agent-interaction.service';
 import { FEEDBACK_TARGET_TYPES } from '@/forum/feedback.constants';
+import {
+  BusinessCalendarConfig,
+  BusinessCalendarConfigSchema,
+} from '@/database/schemas/business-calendar-config.schema';
+import { BusinessCalendarService } from '@/system/business-calendar.service';
 
 type ForumServiceReplyItem = Awaited<ReturnType<ForumService['listReplies']>>['items'][number];
 
@@ -135,6 +140,7 @@ describe('ForumService circle feeds', () => {
           { name: ViewHistory.name, schema: ViewHistorySchema },
           { name: PostViewCounterShard.name, schema: PostViewCounterShardSchema },
           { name: InteractionHistory.name, schema: InteractionHistorySchema },
+          { name: BusinessCalendarConfig.name, schema: BusinessCalendarConfigSchema },
         ]),
       ],
       providers: [
@@ -144,6 +150,7 @@ describe('ForumService circle feeds', () => {
         ReplyCounterService,
         PostViewCounterService,
         DatabaseService,
+        BusinessCalendarService,
         {
           provide: CircleService,
           useValue: circleServiceMock,

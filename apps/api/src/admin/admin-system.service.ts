@@ -36,6 +36,13 @@ import { MailDeliveryService } from '@/system/mail.service';
 import { InvitationCodeService } from '@/auth/invitation-code.service';
 import type { UpdateAuthPolicyDto } from './dto/auth-policy.dto';
 import { adminErrors } from '@/common/errors/business-errors';
+import {
+  BUSINESS_CALENDAR_CONFIG_KEY,
+  BusinessCalendarConfig,
+  DEFAULT_BUSINESS_TIME_ZONE,
+} from '@/database/schemas/business-calendar-config.schema';
+import { BusinessCalendarService } from '@/system/business-calendar.service';
+import type { UpdateBusinessCalendarConfigDto } from './dto/update-business-calendar-config.dto';
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -67,6 +74,8 @@ export class AdminSystemService {
     private readonly featureFlagModel: Model<FeatureFlag>,
     @InjectModel(PublicAccessConfig.name)
     private readonly publicAccessConfigModel: Model<PublicAccessConfig>,
+    @InjectModel(BusinessCalendarConfig.name)
+    private readonly businessCalendarConfigModel: Model<BusinessCalendarConfig>,
     private readonly databaseService: DatabaseService,
     private readonly auditService: AdminAuditService,
     private readonly featureFlagService: FeatureFlagService,
@@ -76,6 +85,7 @@ export class AdminSystemService {
     private readonly turnstileService: TurnstileService,
     private readonly mailDeliveryService: MailDeliveryService,
     private readonly invitationCodeService: InvitationCodeService,
+    private readonly businessCalendarService: BusinessCalendarService,
   ) {}
 
   getAuthPolicy() {
@@ -154,6 +164,55 @@ export class AdminSystemService {
 
   getPublicAccessConfig() {
     return this.publicAccessService.getPublicConfig();
+  }
+
+  getBusinessCalendarConfig() {
+    return this.businessCalendarService.getAdminConfig();
+  }
+
+  async updateBusinessCalendarConfig(
+    admin: AdminPrincipal,
+    dto: UpdateBusinessCalendarConfigDto,
+  ) {
+    const timeZone = this.businessCalendarService.normalizeTimeZone(dto.timeZone);
+    const updated = await this.databaseService.$transaction(async (session) => {
+      const config = await this.businessCalendarConfigModel.findOne(
+        { key: BUSINESS_CALENDAR_CONFIG_KEY },
+        null,
+        { session },
+      );
+      const currentVersion = config?.version ?? 0;
+      if (currentVersion !== dto.expectedVersion) {
+        throw adminErrors.businessCalendarVersionConflict();
+      }
+      const previousTimeZone = config?.timeZone ?? DEFAULT_BUSINESS_TIME_ZONE;
+      if (previousTimeZone === timeZone) {
+        throw adminErrors.businessCalendarUnchanged();
+      }
+
+      const nextConfig =
+        config ?? new this.businessCalendarConfigModel({ key: BUSINESS_CALENDAR_CONFIG_KEY });
+      nextConfig.timeZone = timeZone;
+      nextConfig.version = currentVersion + 1;
+      nextConfig.updatedByUserId = admin.userId;
+      await nextConfig.save({ session });
+      const view = this.businessCalendarService.serialize(nextConfig);
+      await this.auditService.record({
+        actorUserId: admin.userId,
+        action: ADMIN_AUDIT_ACTIONS.BUSINESS_CALENDAR_UPDATED,
+        targetType: 'BUSINESS_CALENDAR_CONFIG',
+        targetId: BUSINESS_CALENDAR_CONFIG_KEY,
+        reason: null,
+        changes: {
+          before: { timeZone: previousTimeZone, version: currentVersion },
+          after: { timeZone, version: nextConfig.version },
+        },
+        session,
+      });
+      return view;
+    });
+    this.businessCalendarService.activate(updated);
+    return updated;
   }
 
   async updatePublicAccessConfig(

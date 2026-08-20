@@ -11,9 +11,10 @@ import { LanguageToggle } from '@/components/ui/LanguageToggle';
 import { SheetTrigger } from '@/components/ui/sheet';
 import { TerminalTooltip } from '@/components/ui/tooltip';
 import { AnnouncementMenu } from '@/components/system/AnnouncementMenu';
-import { useUtcNow } from '@/components/home/terminal/terminal-hooks';
+import { useClockNow } from '@/components/home/terminal/terminal-hooks';
 import { useAuth } from '@/contexts/AuthContext';
 import { forumApi } from '@/lib/api';
+import { formatLocalClockTime } from '@/lib/date-time';
 import { forumKeys } from '@/lib/query-keys';
 import { useHomeNavigationStore, type HomeSection } from '@/stores/home-navigation-store';
 
@@ -51,11 +52,6 @@ const SECTION_CODE: Record<NonNullable<TopBarProps['mode']>, string> = {
 
 const TICKER_REFRESH_FALLBACK_SECONDS = 60;
 
-function formatUtcTime(value: Date): string {
-  const pad = (unit: number) => String(unit).padStart(2, '0');
-  return `${pad(value.getUTCHours())}:${pad(value.getUTCMinutes())}:${pad(value.getUTCSeconds())}`;
-}
-
 export function TopBar({
   disableScrollFade = false,
   position = 'sticky',
@@ -79,8 +75,8 @@ export function TopBar({
   const setPostSearch = useHomeNavigationStore((state) => state.setPostSearch);
   const setCircleSearch = useHomeNavigationStore((state) => state.setCircleSearch);
   const [scrolled, setScrolled] = useState(false);
-  const utcNow = useUtcNow(1000);
-  const utcTimeLabel = utcNow ? formatUtcTime(utcNow) : '--:--:--';
+  const now = useClockNow(1000);
+  const timeLabel = now ? formatLocalClockTime(now) : '--:--:--';
   const isSearchMode = mode === 'feed' || (mode === 'circles' && isAuthenticated);
   const appliedSearch = mode === 'circles' ? circleSearch : postSearch;
   const setAppliedSearch = mode === 'circles' ? setCircleSearch : setPostSearch;
@@ -253,7 +249,7 @@ export function TopBar({
           ) : null}
         </div>
 
-        {/* 右: 搜索 + 公告 + 语言 + UTC 时钟；认证入口统一位于侧栏底部。 */}
+        {/* 右: 搜索 + 公告 + 语言 + 设备本地时钟；认证入口统一位于侧栏底部。 */}
         <div className="relative flex flex-none items-center gap-2.5 pointer-events-auto">
           {/* 搜索 */}
           {isSearchMode && (
@@ -322,14 +318,11 @@ export function TopBar({
 
           <span aria-hidden="true" className="h-3 w-px bg-[var(--t-noise)]" />
 
-          {/* UTC 时钟 + 在线状态点 */}
+          {/* 设备本地时钟 + 在线状态点 */}
           <div className="hidden items-center gap-2 sm:flex">
             <span aria-hidden="true" className="t-anim-blink h-1.5 w-1.5 bg-[var(--t-accent)]" />
             <span className="font-mono text-[11px] tabular-nums tracking-[0.15em] text-[var(--t-accent)]">
-              {utcTimeLabel}
-            </span>
-            <span className="font-mono text-[10px] tracking-[0.15em] text-[var(--t-faint)]">
-              UTC
+              {timeLabel}
             </span>
           </div>
         </div>

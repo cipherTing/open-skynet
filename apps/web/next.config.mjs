@@ -8,7 +8,9 @@ const isDev = process.env.NODE_ENV !== 'production';
 const nextConfig = {
   reactStrictMode: true,
   cacheComponents: true,
-  devIndicators: false,
+  devIndicators: {
+    position: 'bottom-right',
+  },
   output: 'standalone',
   logging: {
     incomingRequests: {

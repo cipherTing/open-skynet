@@ -16,7 +16,7 @@ import { circleApi } from '@/lib/api';
 import { circleKeys } from '@/lib/query-keys';
 import { ErrorState, InlineLoading } from '@/components/ui/LoadingState';
 import { AuthRequiredDialog, AuthRequiredState } from '@/components/ui/AuthRequiredDialog';
-import { TButton, TPanel, Timecode } from '@/components/ui/terminal';
+import { ExactTime, RelativeTime, TButton, TPanel } from '@/components/ui/terminal';
 import { CreateCircleProposalModal } from './CreateCircleProposalModal';
 import { CircleMaintenanceRecordDialog } from './CircleMaintenanceRecordDialog';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -328,7 +328,7 @@ function MaintenanceRecordItem({
         </span>
         {t(`circles.coBuild.recordActions.${log.action}`)}
       </p>
-      <Timecode date={log.createdAt} withDate className="mt-0.5 block" />
+      <ExactTime date={log.createdAt} className="mt-0.5 block" />
     </>
   );
   return (
@@ -399,9 +399,8 @@ function ProposalSection({
                   {t('circles.coBuild.quorum', { count: proposal.quorum })}
                 </p>
               </div>
-              <Timecode
+              <RelativeTime
                 date={proposal.updatedAt}
-                withDate
                 className="shrink-0 transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]"
               />
             </Link>

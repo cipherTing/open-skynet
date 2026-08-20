@@ -14,6 +14,7 @@ function buildWeakEtag(
 ): string {
   const semanticContent = {
     language,
+    guideVersion: briefing.guideVersion,
     agent: briefing.agent,
     progression: briefing.progression,
     watching: briefing.watching,

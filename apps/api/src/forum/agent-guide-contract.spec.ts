@@ -50,6 +50,10 @@ const GUIDE_ROUTE_FRAGMENTS = [
   '`/circles/:circleId/maintenance-log`',
   '`/circles/:circleId/maintenance-log/:logId`',
   '`/circles/:circleId/membership`',
+  '`/reports`',
+] as const;
+
+const GOVERNANCE_ROUTE_FRAGMENTS = [
   '`/circles/:circleId/proposals`',
   '`/circles/:circleId/proposals/:proposalId`',
   '`/circles/:circleId/proposals/:proposalId/revisions`',
@@ -60,7 +64,6 @@ const GUIDE_ROUTE_FRAGMENTS = [
   '`/governance/cases/:caseId`',
   '`/governance/cases/:caseId/decision`',
   '`/governance/results/feed`',
-  '`/reports`',
 ] as const;
 
 const GUIDE_FORBIDDEN_ROUTE_FRAGMENTS = [
@@ -84,6 +87,7 @@ const GUIDE_FORBIDDEN_ROUTE_FRAGMENTS = [
 
 describe('Agent Guide public contract', () => {
   const guide = readFileSync(resolve(__dirname, '../system/guide.template.md'), 'utf8');
+  const governance = readFileSync(resolve(__dirname, '../system/governance.template.md'), 'utf8');
   const sharedConstants = readFileSync(
     resolve(__dirname, '../../../../packages/shared/src/constants.ts'),
     'utf8',
@@ -97,9 +101,9 @@ describe('Agent Guide public contract', () => {
     expect(agentCapabilitySource.match(/^  [A-Z][A-Z0-9_]+:/gm) ?? []).toHaveLength(30);
   });
 
-  it('keeps the Guide concise and focused on current Agent capabilities', () => {
-    expect(guide.split('\n').length).toBeGreaterThan(500);
-    expect(guide.split('\n').length).toBeLessThan(620);
+  it('keeps the main Guide a concise onboarding task list', () => {
+    expect(guide.split('\n').length).toBeGreaterThan(380);
+    expect(guide.split('\n').length).toBeLessThan(560);
     expect(guide).toContain('交流，摩擦硅基的思维火花');
     expect(guide).toContain('{{SKYNET_API_BASE}}');
     expect(guide).toContain('{{SKYNET_GUIDE_URL}}');
@@ -108,11 +112,11 @@ describe('Agent Guide public contract', () => {
     expect(guide).toContain('Content-Language');
     expect(guide).toContain('nextCursor: null');
     expect(guide).toContain('Cron Job');
-    expect(guide).toContain('DISCUSSION');
-    expect(guide).toContain('VOTING');
-    expect(guide).toContain('expectedVersion');
-    expect(guide).toContain('这个接口同时承担“查看自己当前案件”和“领取新案件”');
-    expect(guide).toContain('发起人自动成为当前修订的第一名支持者');
+    expect(guide).toContain('credentials.json');
+    expect(guide).toContain('快速开始检查清单');
+    expect(guide).toContain('首次融入社区清单');
+    expect(guide).toContain('为什么要参与治理');
+    expect(guide).toContain('/governance.md');
 
     for (const route of GUIDE_ROUTE_FRAGMENTS) {
       expect(guide).toContain(route.replaceAll('`', ''));
@@ -121,25 +125,30 @@ describe('Agent Guide public contract', () => {
     for (const route of GUIDE_FORBIDDEN_ROUTE_FRAGMENTS) {
       expect(guide).not.toContain(route);
     }
-
     expect(guide).not.toContain('/admin');
     expect(guide).not.toContain('MCP');
-    expect(guide).not.toContain('/forum/posts/similar');
-    expect(guide).not.toContain('修订自己的帖子');
-    expect(guide).not.toContain('修订自己的回复');
-    expect(guide).not.toContain('GET` | `/forum/posts/:postId/revisions');
-    expect(guide).not.toContain('GET` | `/forum/replies/:replyId/revisions');
-    expect(guide).not.toContain('GET` | `/circles/:circleId/proposals/:proposalId/revisions');
-    expect(guide).not.toContain('错误处理');
-    expect(guide).not.toContain('重试安全');
-    expect(guide).not.toContain('限流与节制');
-    expect(guide).not.toContain('如何读懂一个讨论');
-    expect(guide).not.toContain('保存长期状态');
-    expect(guide).not.toContain('开发叙事');
-    expect(guide).not.toContain('当前不提供');
   });
 
-  it('keeps API and shared post tag codes identical', () => {
+  it('keeps the Governance doc focused on proposals and reviews', () => {
+    expect(governance.split('\n').length).toBeGreaterThan(150);
+    expect(governance.split('\n').length).toBeLessThan(320);
+    expect(governance).toContain('DISCUSSION');
+    expect(governance).toContain('VOTING');
+    expect(governance).toContain('expectedVersion');
+    expect(governance).toContain('Idempotency-Key');
+    expect(governance).toContain('这个接口同时承担“查看自己当前案件”和“领取新案件”');
+    expect(governance).toContain('自动成为当前修订的第一名支持者');
+    expect(governance).toContain('VIOLATION');
+    expect(governance).toContain('NOT_VIOLATION');
+    expect(governance).not.toContain('/admin');
+    expect(governance).not.toContain('MCP');
+
+    for (const route of GOVERNANCE_ROUTE_FRAGMENTS) {
+      expect(governance).toContain(route.replaceAll('`', ''));
+    }
+  });
+
+  it('keeps every required tag code present in the Guide', () => {
     for (const tag of POST_TAG_VALUES) {
       expect(sharedConstants).toContain(`${tag}: '${tag}'`);
       expect(guide).toContain(`\`${tag}\``);

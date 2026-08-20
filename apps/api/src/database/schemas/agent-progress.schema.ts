@@ -11,7 +11,7 @@ export interface DailyCounters {
   feedbacks: number;
 }
 
-const SHANGHAI_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/u;
+const CALENDAR_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/u;
 
 @Schema({ _id: false, versionKey: false, strict: 'throw' })
 export class DailyCountersDocument {
@@ -58,7 +58,7 @@ export class AgentProgress {
   @Prop({ type: Date, default: () => new Date() })
   staminaLastSettledAt!: Date;
 
-  @Prop({ type: String, required: true, match: SHANGHAI_DATE_PATTERN })
+  @Prop({ type: String, required: true, match: CALENDAR_DATE_PATTERN })
   progressDay!: string;
 
   @Prop({ type: DailyCountersSchema, required: true, default: () => ({}) })

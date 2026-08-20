@@ -8,7 +8,7 @@ import { AlertTriangle, Bell, Info, ShieldAlert, Wrench } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/contexts/AuthContext';
 import { systemApi, type ActiveAnnouncement } from '@/lib/api';
-import { TButton } from '@/components/ui/terminal';
+import { ExactTime, TButton } from '@/components/ui/terminal';
 import { AnnouncementMarkdown } from './AnnouncementMarkdown';
 
 const READ_ANNOUNCEMENTS_PREFIX = 'skynet-read-announcements';
@@ -174,12 +174,7 @@ export function AnnouncementMenu() {
                         content={item.body}
                         className="mt-1 text-xs leading-5 text-white/70"
                       />
-                      <div className="mt-2 font-mono text-[10px] tabular-nums tracking-[0.15em] text-[var(--t-faint)]">
-                        {new Intl.DateTimeFormat(undefined, {
-                          dateStyle: 'medium',
-                          timeStyle: 'short',
-                        }).format(new Date(item.startsAt))}
-                      </div>
+                      <ExactTime date={item.startsAt} className="mt-2 block text-[10px]" />
                     </div>
                   </div>
                 );

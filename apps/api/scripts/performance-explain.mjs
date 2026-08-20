@@ -2,6 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
+import { TZDateMini } from '@date-fns/tz';
 
 const HOT_DISPATCH_SCAN_LIMIT = 20;
 const HOT_PROJECTION_WORK_BATCH_SIZE = 12;
@@ -79,7 +80,7 @@ const CIRCLE_PROPOSAL_LIST_INDEX = 'circleId_1_updatedAt_-1__id_-1';
 const AGENT_XP_HISTORY_MINIMUM_COUNT = 100_000;
 const AGENT_XP_HISTORY_INDEX = 'agentId_1_occurredAt_1_xp_1';
 const SCORE_HISTORY_DAY_LIMIT = 90;
-const PROGRESSION_TIME_ZONE = 'Asia/Shanghai';
+const DEFAULT_BUSINESS_TIME_ZONE = 'UTC';
 const GOVERNANCE_DEADLINE_BATCH_SIZE = 50;
 const GOVERNANCE_DEADLINE_PUBLISH_INDEX = 'status_1_deadlineScheduleDispatchAt_1__id_1';
 const GOVERNANCE_DEADLINE_COMPENSATION_INDEX = 'status_1_deadlineCompensationDispatchAt_1__id_1';
@@ -92,7 +93,6 @@ const GOVERNANCE_DECISIONS = {
   VIOLATION: 'VIOLATION',
   NOT_VIOLATION: 'NOT_VIOLATION',
 };
-const GOVERNANCE_TIMEZONE = 'Asia/Shanghai';
 const GOVERNANCE_DISPATCH_SORT = {
   status: 1,
   emergencyDeadlineAt: 1,
@@ -119,24 +119,14 @@ const CIRCLE_PROPOSAL_ELIGIBILITY_COLLECTIONS = {
 };
 const CIRCLE_PROPOSAL_STANCES = { SUPPORT: 'SUPPORT', OBJECTION: 'OBJECTION' };
 
-function getShanghaiDayKey(date) {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: PROGRESSION_TIME_ZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(date);
-}
-
-function getShanghaiDayStart(dayKey) {
-  const [year, month, day] = dayKey.split('-').map(Number);
-  return new Date(Date.UTC(year, month - 1, day, -8));
-}
-
-function addDays(date, days) {
-  const next = new Date(date);
-  next.setUTCDate(next.getUTCDate() + days);
-  return next;
+function getRecentBusinessDayRange(date, count, timeZone) {
+  const zonedDate = new TZDateMini(date.getTime(), timeZone);
+  const year = zonedDate.getFullYear();
+  const month = zonedDate.getMonth();
+  const day = zonedDate.getDate();
+  const start = new TZDateMini(year, month, day - (count - 1), timeZone);
+  const end = new TZDateMini(year, month, day + 1, timeZone);
+  return { start: new Date(start.getTime()), end: new Date(end.getTime()) };
 }
 
 function parseHotHistoryProfiles(metadata) {
@@ -561,6 +551,10 @@ async function main() {
   await mongoose.connect(uri, getMongoConnectionOptions());
   const db = mongoose.connection.db;
   if (!db) throw new Error('MongoDB is not connected');
+  const businessCalendarConfig = await db
+    .collection('business_calendar_configs')
+    .findOne({ key: 'BUSINESS_CALENDAR' });
+  const businessTimeZone = businessCalendarConfig?.timeZone ?? DEFAULT_BUSINESS_TIME_ZONE;
   const [circle, hotState, governanceCase, circleProposal, visibilityState, fixtureMetadata] =
     await Promise.all([
       db.collection('circles').findOne({}),
@@ -982,7 +976,7 @@ async function main() {
           $dateToString: {
             date: '$createdAt',
             format: '%Y-%m-%d',
-            timezone: GOVERNANCE_TIMEZONE,
+            timezone: businessTimeZone,
           },
         },
         voterCount: { $sum: 1 },
@@ -1074,9 +1068,11 @@ async function main() {
     );
   }
 
-  const scoreTodayStart = getShanghaiDayStart(getShanghaiDayKey(now));
-  const scoreHistoryStart = addDays(scoreTodayStart, -(SCORE_HISTORY_DAY_LIMIT - 1));
-  const scoreHistoryEnd = addDays(scoreTodayStart, 1);
+  const { start: scoreHistoryStart, end: scoreHistoryEnd } = getRecentBusinessDayRange(
+    now,
+    SCORE_HISTORY_DAY_LIMIT,
+    businessTimeZone,
+  );
   const scoreHistoryPipeline = [
     {
       $match: {
@@ -1090,7 +1086,7 @@ async function main() {
           $dateToString: {
             date: '$occurredAt',
             format: '%Y-%m-%d',
-            timezone: PROGRESSION_TIME_ZONE,
+            timezone: businessTimeZone,
           },
         },
         value: { $sum: '$xp' },

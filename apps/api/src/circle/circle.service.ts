@@ -46,7 +46,7 @@ import { CircleProposal } from '@/database/schemas/circle-proposal.schema';
 import { Post } from '@/database/schemas/post.schema';
 import { GovernanceCase } from '@/database/schemas/governance-case.schema';
 import { GOVERNANCE_CASE_STATUS, GOVERNANCE_TARGET_TYPES } from '@/governance/governance.constants';
-import { addDays, getShanghaiDayKey, getShanghaiDayStart } from '@/progression/progression.service';
+import { BusinessCalendarService } from '@/system/business-calendar.service';
 import { ListCircleMaintenanceLogsDto } from './dto/list-circle-maintenance-logs.dto';
 import {
   buildCircleQueryTokens,
@@ -176,30 +176,6 @@ function toSlugBase(name: string): string {
   return ascii || `circle-${Date.now().toString(36)}`;
 }
 
-function getShanghaiDateParts(date: Date): { year: number; month: number; day: number } {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(date);
-  const read = (type: string) => Number(parts.find((part) => part.type === type)?.value ?? 0);
-  return { year: read('year'), month: read('month'), day: read('day') };
-}
-
-function getShanghaiWeekStart(date = new Date()): Date {
-  const { year, month, day } = getShanghaiDateParts(date);
-  const shanghaiMidnightUtc = Date.UTC(year, month - 1, day) - 8 * 60 * 60 * 1000;
-  const localDate = new Date(Date.UTC(year, month - 1, day));
-  const dayOfWeek = localDate.getUTCDay();
-  const daysSinceMonday = (dayOfWeek + 6) % 7;
-  return new Date(shanghaiMidnightUtc - daysSinceMonday * 24 * 60 * 60 * 1000);
-}
-
-function getShanghaiWeekKey(date = new Date()): string {
-  return getShanghaiWeekStart(date).toISOString().slice(0, 10);
-}
-
 export function normalizeCircleName(name: string): string {
   return normalizeCircleVisibleText(name).toLocaleLowerCase('und');
 }
@@ -239,6 +215,7 @@ export class CircleService {
     private readonly featureFlagService: FeatureFlagService,
     private readonly hotRankingService: HotRankingService,
     private readonly postVisibilityService: PostVisibilityService,
+    private readonly businessCalendarService: BusinessCalendarService,
   ) {}
 
   async getCircleBySlug(slug: string, currentUserId?: string): Promise<PublicCircle> {
@@ -487,7 +464,7 @@ export class CircleService {
       throw circleErrors.nameAndTopicRequired();
     }
     const normalizedName = normalizeCircleName(name);
-    const creationWeekKey = getShanghaiWeekKey();
+    const creationWeekKey = this.businessCalendarService.getWeekKey();
     const existing = await this.circleModel.findOne(
       { normalizedName, deletedAt: null },
       null,
@@ -1046,8 +1023,8 @@ export class CircleService {
 
   async getCirclePanel(circleId: string) {
     const circle = await this.ensureCircleExists(circleId);
-    const todayStart = getShanghaiDayStart(getShanghaiDayKey(new Date()));
-    const tomorrowStart = addDays(todayStart, 1);
+    const { start: todayStart, end: tomorrowStart } =
+      this.businessCalendarService.getDayWindow();
     const [todayPostCount, latestPosts, activeProposals, activeCases] = await Promise.all([
       this.postModel.countDocuments({
         circleId: circle.id,
@@ -1254,7 +1231,7 @@ export class CircleService {
   }
 
   private async assertCanCreateCircle(agentId: string, session?: ClientSession): Promise<void> {
-    const creationWeekKey = getShanghaiWeekKey();
+    const creationWeekKey = this.businessCalendarService.getWeekKey();
     const [progress, healthProfile, createdThisWeek] = await Promise.all([
       this.agentProgressModel
         .findOne({ agentId }, null, { session })

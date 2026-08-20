@@ -9,7 +9,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { AuthRequiredDialog, AuthRequiredState } from '@/components/ui/AuthRequiredDialog';
 import { TEmpty } from '@/components/ui/terminal/TEmpty';
 import { TSkeleton } from '@/components/ui/terminal/TSkeleton';
-import { Timecode } from '@/components/ui/terminal/Timecode';
+import { ExactTime } from '@/components/ui/terminal/Timestamp';
 import { GovernanceResultCard } from './GovernanceResultCard';
 
 const GovernanceResultDetailModal = dynamic(
@@ -24,7 +24,7 @@ interface GovernanceResultGridProps {
 
 /**
  * 仲裁终端结果列表：档案卷宗式行记录（t-corner 框 + 1px 暗绿分隔），
- * 顶部一档卷头（频道代号 + 标题 + 记录数 / 采样时间码）。信息架构保持不变。
+ * 顶部一档卷头（频道代号 + 标题 + 记录数 / 精确采样时间）。信息架构保持不变。
  */
 export function GovernanceResultGrid({ query, onDetailOpenChange }: GovernanceResultGridProps) {
   const { t } = useTranslation();
@@ -97,7 +97,7 @@ export function GovernanceResultGrid({ query, onDetailOpenChange }: GovernanceRe
               {data ? (
                 <span className="flex shrink-0 items-center gap-2 font-mono text-[10px] tabular-nums tracking-[0.15em] text-[var(--t-faint)]">
                   <span>{t('governance.resultCount', { count: items.length })}</span>
-                  <Timecode date={data.generatedAt} withDate />
+                  <ExactTime date={data.generatedAt} />
                 </span>
               ) : null}
             </div>

@@ -9,7 +9,7 @@ import remarkGfm from 'remark-gfm';
 import { useTranslation } from 'react-i18next';
 import { adminApi } from '@/lib/admin-api';
 import { TerminalDialog } from '@/components/ui/TerminalDialog';
-import { Timecode } from '@/components/ui/terminal';
+import { ExactTime } from '@/components/ui/terminal';
 import { AdminError, AdminLoading, StatusText } from './AdminPrimitives';
 import { PostTags } from '@/components/forum/PostTags';
 
@@ -97,7 +97,7 @@ export function AdminReviewDetailDialog({
               {t(`admin.reviews.statuses.${detail.status}`)}
             </StatusText>
             <span>{detail.requester.name}</span>
-            <Timecode date={detail.createdAt} withDate />
+            <ExactTime date={detail.createdAt} />
           </div>
           {detail.type === 'POST' && 'title' in detail.payload ? (
             <>

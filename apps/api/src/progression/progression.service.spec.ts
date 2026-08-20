@@ -5,17 +5,15 @@ import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { AgentProgress, AgentProgressSchema } from '@/database/schemas/agent-progress.schema';
 import { AgentXpEvent, AgentXpEventSchema } from '@/database/schemas/agent-xp-event.schema';
 import { DatabaseService } from '@/database/database.service';
+import { getModelToken } from '@nestjs/mongoose';
+import { BusinessCalendarConfig } from '@/database/schemas/business-calendar-config.schema';
+import { BusinessCalendarService } from '@/system/business-calendar.service';
 import {
   EXTERNAL_XP_SOURCE_TYPES,
   PROGRESSION_ACTIONS,
   XP_EVENT_REASON_KEYS,
 } from './progression.constants';
-import {
-  addDays,
-  getShanghaiDayKey,
-  getShanghaiDayStart,
-  ProgressionService,
-} from './progression.service';
+import { ProgressionService } from './progression.service';
 
 describe('ProgressionService precharged actions', () => {
   jest.setTimeout(60_000);
@@ -25,6 +23,7 @@ describe('ProgressionService precharged actions', () => {
   let connection: Connection;
   let databaseService: DatabaseService;
   let service: ProgressionService;
+  let businessCalendarService: BusinessCalendarService;
 
   beforeAll(async () => {
     mongod = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
@@ -36,11 +35,17 @@ describe('ProgressionService precharged actions', () => {
           { name: AgentXpEvent.name, schema: AgentXpEventSchema },
         ]),
       ],
-      providers: [ProgressionService, DatabaseService],
+      providers: [
+        ProgressionService,
+        DatabaseService,
+        BusinessCalendarService,
+        { provide: getModelToken(BusinessCalendarConfig.name), useValue: {} },
+      ],
     }).compile();
     connection = moduleRef.get<Connection>(getConnectionToken());
     databaseService = moduleRef.get(DatabaseService);
     service = moduleRef.get(ProgressionService);
+    businessCalendarService = moduleRef.get(BusinessCalendarService);
     await Promise.all([
       connection.model(AgentProgress.name).init(),
       connection.model(AgentXpEvent.name).init(),
@@ -48,6 +53,7 @@ describe('ProgressionService precharged actions', () => {
   });
 
   beforeEach(async () => {
+    businessCalendarService.activate({ timeZone: 'UTC', version: 0, updatedAt: null });
     await Promise.all([
       connection.model(AgentProgress.name).deleteMany({}),
       connection.collection('agent_xp_events').deleteMany({}),
@@ -255,15 +261,52 @@ describe('ProgressionService precharged actions', () => {
     ).toBe(0);
   });
 
-  it('aggregates score history by Shanghai day before returning it to the application', async () => {
-    const todayKey = getShanghaiDayKey(new Date());
-    const todayStart = getShanghaiDayStart(todayKey);
-    const firstDay = addDays(todayStart, -2);
-    const secondDay = addDays(todayStart, -1);
+  it('uses UTC day boundaries for the default business calendar', () => {
+    expect(
+      businessCalendarService.getDayWindow(new Date('2025-12-31T16:30:00.000Z')),
+    ).toEqual({
+      dayKey: '2025-12-31',
+      start: new Date('2025-12-31T00:00:00.000Z'),
+      end: new Date('2026-01-01T00:00:00.000Z'),
+    });
+  });
+
+  it('uses the configured business time zone for daily progression state', async () => {
+    businessCalendarService.activate({
+      timeZone: 'America/New_York',
+      version: 1,
+      updatedAt: null,
+    });
+    const occurredAt = new Date('2026-08-20T03:30:00.000Z');
+
+    await databaseService.$transaction((session) =>
+      service.chargeActionStamina(
+        {
+          agentId: 'agent-business-time-zone',
+          action: PROGRESSION_ACTIONS.CREATE_REPLY,
+          sourceId: 'reply-business-time-zone',
+          occurredAt,
+        },
+        session,
+      ),
+    );
+
+    const progress = await connection
+      .model(AgentProgress.name)
+      .findOne({ agentId: 'agent-business-time-zone' })
+      .lean();
+    expect(progress).toMatchObject({ progressDay: '2026-08-19' });
+  });
+
+  it('aggregates score history by the business calendar day before returning it to the application', async () => {
+    const [firstWindow, secondWindow, todayWindow] =
+      businessCalendarService.getRecentDayWindows(new Date(), 3);
+    const firstDay = firstWindow.start;
+    const secondDay = secondWindow.start;
     await connection.model(AgentProgress.name).create({
       agentId: 'agent-score-history',
       xpTotal: 8,
-      progressDay: getShanghaiDayKey(new Date()),
+      progressDay: todayWindow.dayKey,
     });
     await connection.model(AgentXpEvent.name).create([
       {
@@ -293,9 +336,9 @@ describe('ProgressionService precharged actions', () => {
     ]);
 
     await expect(service.getScoreHistory('agent-score-history', 3)).resolves.toEqual([
-      { date: getShanghaiDayKey(firstDay).slice(5), value: 5 },
-      { date: getShanghaiDayKey(secondDay).slice(5), value: 8 },
-      { date: todayKey.slice(5), value: 8 },
+      { date: firstWindow.dayKey.slice(5), value: 5 },
+      { date: secondWindow.dayKey.slice(5), value: 8 },
+      { date: todayWindow.dayKey.slice(5), value: 8 },
     ]);
   });
 });

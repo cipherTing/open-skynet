@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrambleText } from '@/components/home/terminal/ScrambleText';
-import { useUtcNow } from '@/components/home/terminal/terminal-hooks';
+import { useClockNow } from '@/components/home/terminal/terminal-hooks';
 import { ProjectGithubLink } from '@/components/ui/ProjectGithubLink';
+import { formatLocalClockTime } from '@/lib/date-time';
 
 type TerminalSectionId = 'manifesto' | 'systems' | 'telemetry' | 'protocol';
 
@@ -19,19 +20,15 @@ const NAV_ITEMS: readonly { id: TerminalSectionId; href: string }[] = [
   { id: 'protocol', href: '#protocol' },
 ];
 
-function pad2(value: number): string {
-  return value.toString().padStart(2, '0');
-}
-
 /**
  * 终端 HUD 框架层：fixed 定位，不随内容滚动。
- * 顶栏（logo / 锚点导航 / ONLINE 状态点 / UTC 时钟）、左右竖排边轨、
+ * 顶栏（logo / 锚点导航 / ONLINE 状态点 / 设备本地时钟）、左右竖排边轨、
  * 底栏（坐标 / 项目地址 / 滚动提示与进度）与四角 L 型角标。
  * 容器本身不拦截指针，仅可交互子元素恢复 pointer-events。
  */
 export function TerminalFrame({ activeSection }: TerminalFrameProps) {
   const { t } = useTranslation();
-  const now = useUtcNow(1000);
+  const now = useClockNow(1000);
   const [scrollPct, setScrollPct] = useState(0);
 
   // 页面滚动发生在主滚动容器（main）内，scroll 事件不冒泡，
@@ -51,9 +48,7 @@ export function TerminalFrame({ activeSection }: TerminalFrameProps) {
     return () => window.removeEventListener('scroll', onScroll, { capture: true });
   }, []);
 
-  const clock = now
-    ? `${pad2(now.getUTCHours())}:${pad2(now.getUTCMinutes())}:${pad2(now.getUTCSeconds())}`
-    : '--:--:--';
+  const clock = now ? formatLocalClockTime(now) : '--:--:--';
 
   return (
     <div className="pointer-events-none fixed inset-0 z-40 select-none">

@@ -9,7 +9,7 @@ import LogStream from '@/components/home/terminal/LogStream';
 import { AgentAvatar } from '@/components/ui/AgentAvatar';
 import { ErrorState } from '@/components/ui/LoadingState';
 import { useToast } from '@/components/ui/SignalToast';
-import { TButton, TEmpty, TSkeleton, Timecode } from '@/components/ui/terminal';
+import { RelativeTime, TButton, TEmpty, TSkeleton } from '@/components/ui/terminal';
 import { useAuth } from '@/contexts/AuthContext';
 import { forumApi } from '@/lib/api';
 import { forumKeys, watchKeys } from '@/lib/query-keys';
@@ -148,18 +148,17 @@ function WatchedRow({
     />
   );
   const frameRail = item.source.available ? (
-    <span className="flex w-[92px] shrink-0 flex-col items-start gap-1 pt-0.5">
-      <Timecode
+    <span className="flex w-[112px] shrink-0 flex-col items-start gap-1 pt-0.5 sm:w-[168px]">
+      <RelativeTime
         date={item.source.post.updatedAt}
-        withDate
-        className="transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]"
+        className="whitespace-normal transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)] sm:whitespace-nowrap"
       />
       <span className="font-sans text-[11px] tracking-normal text-[var(--t-faint)]">
         {t('inbox.watching')}
       </span>
     </span>
   ) : (
-    <span className="flex w-[92px] shrink-0 flex-col items-start gap-1 pt-0.5">
+    <span className="flex w-[112px] shrink-0 flex-col items-start gap-1 pt-0.5 sm:w-[168px]">
       <span className="font-sans text-[11px] tracking-normal text-[var(--t-faint)]">
         {t('inbox.sourceUnavailable')}
       </span>

@@ -100,15 +100,8 @@ const GOVERNANCE_TIMELINE_VOTE_COUNT = 10_000;
 const GOVERNANCE_TIMELINE_DAY_COUNT = 2;
 const PERFORMANCE_FUTURE_OFFSET_MS = 60 * 60 * 1000;
 
-const SHANGHAI_DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', {
-  timeZone: 'Asia/Shanghai',
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-});
-
-function shanghaiDayKey(date) {
-  return SHANGHAI_DATE_FORMATTER.format(date);
+function utcDayKey(date) {
+  return date.toISOString().slice(0, 10);
 }
 
 function resolveReplyFixtureTarget(replyIndex, postCount) {
@@ -1366,7 +1359,7 @@ async function main() {
       _id: objectId(),
       agentId: agentIds[0].toString(),
       postId: posts[index]._id.toString(),
-      viewDay: shanghaiDayKey(viewedAt),
+      viewDay: utcDayKey(viewedAt),
       viewedAt,
       createdAt: viewedAt,
       updatedAt: viewedAt,

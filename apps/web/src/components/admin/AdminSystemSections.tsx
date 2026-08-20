@@ -1,6 +1,6 @@
 'use client';
 
-import { useDeferredValue, useEffect, useRef, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { Turnstile } from '@marsidev/react-turnstile';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -18,14 +18,25 @@ import {
   Copy,
   KeyRound,
   Mail,
+  ChevronsUpDown,
+  Clock3,
 } from 'lucide-react';
 import { AnnouncementMarkdown } from '@/components/system/AnnouncementMarkdown';
 import { useAppForm } from '@/components/forms/skynet-form';
 import { ComposerTextarea } from '@/components/ui/ComposerTextarea';
 import { TerminalDialog } from '@/components/ui/TerminalDialog';
-import { TButton, TInput, TTag, Timecode, formatTimecode } from '@/components/ui/terminal';
+import { ExactTime, TButton, TInput, TTag } from '@/components/ui/terminal';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/components/ui/SignalToast';
 import { ApiError } from '@/lib/api';
@@ -36,6 +47,7 @@ import {
   type AdminFeatureFlag,
   type AdminPublicAccessConfig,
   type AdminAuthPolicy,
+  type AdminBusinessCalendarConfig,
 } from '@/lib/admin-api';
 import {
   ActionButton,
@@ -238,10 +250,10 @@ export function AnnouncementsSection() {
                 </td>
                 <td className="px-3 py-3 text-xs text-[var(--t-sub)]">
                   <div>
-                    <Timecode date={item.startsAt} withDate />
+                    <ExactTime date={item.startsAt} />
                   </div>
                   <div className="mt-1">
-                    {item.endsAt ? <Timecode date={item.endsAt} withDate /> : '—'}
+                    {item.endsAt ? <ExactTime date={item.endsAt} /> : '—'}
                   </div>
                 </td>
                 <td className="px-3 py-3">
@@ -504,11 +516,7 @@ function AnnouncementDateTimeField({
   clearable?: boolean;
 }) {
   const { t } = useTranslation();
-  const formattedValue = value
-    ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(
-        new Date(value),
-      )
-    : t('admin.announcements.notSet');
+  const formattedValue = value ? formatAdminTime(value) : t('admin.announcements.notSet');
 
   return (
     <div>
@@ -739,6 +747,157 @@ export function PublicAccessSection() {
   return <PublicAccessEditor key={query.data.version} config={query.data} />;
 }
 
+function BusinessTimeZoneSelect({
+  value,
+  onValueChange,
+}: {
+  value: string;
+  onValueChange: (value: string) => void;
+}) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const timeZones = useMemo(
+    () => ['UTC', ...Intl.supportedValuesOf('timeZone').filter((timeZone) => timeZone !== 'UTC')],
+    [],
+  );
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <TButton
+          type="button"
+          variant="secondary"
+          aria-expanded={open}
+          className="h-10 w-full justify-between px-3 normal-case tracking-normal"
+        >
+          <span className="truncate font-mono text-[12px]">{value}</span>
+          <ChevronsUpDown className="h-4 w-4 shrink-0 text-[var(--t-faint)]" />
+        </TButton>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-0">
+        <Command>
+          <CommandInput placeholder={t('admin.businessCalendar.searchPlaceholder')} />
+          <CommandList>
+            <CommandEmpty>{t('admin.businessCalendar.noResults')}</CommandEmpty>
+            <CommandGroup>
+              {timeZones.map((timeZone) => (
+                <CommandItem
+                  key={timeZone}
+                  value={timeZone}
+                  onSelect={() => {
+                    onValueChange(timeZone);
+                    setOpen(false);
+                  }}
+                  className="gap-3"
+                >
+                  <Check className={`h-4 w-4 ${timeZone === value ? 'opacity-100' : 'opacity-0'}`} />
+                  <span className="font-mono text-[12px]">{timeZone}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function BusinessCalendarEditor({ config }: { config: AdminBusinessCalendarConfig }) {
+  const { t } = useTranslation();
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const form = useAppForm({
+    defaultValues: { timeZone: config.timeZone },
+    validators: {
+      onSubmit: z.object({ timeZone: z.string().trim().min(1).max(100) }),
+    },
+    onSubmit: async ({ value }) => {
+      try {
+        const updated = await adminApi.updateBusinessCalendarConfig({
+          timeZone: value.timeZone,
+          expectedVersion: config.version,
+        });
+        queryClient.setQueryData(['admin', 'businessCalendar'], updated);
+        form.reset({ timeZone: updated.timeZone });
+        toast.success(t('admin.businessCalendar.saved'));
+      } catch (error) {
+        toast.error(
+          error instanceof ApiError ? error.message : t('admin.businessCalendar.saveFailed'),
+        );
+      }
+    },
+  });
+
+  return (
+    <section className="max-w-4xl">
+      <div className="flex items-center gap-2">
+        <Clock3 className="h-4 w-4 text-[var(--t-accent)]" />
+        <AdminSectionTitle>{t('admin.businessCalendar.title')}</AdminSectionTitle>
+      </div>
+      <p className="mt-1 text-xs leading-5 text-[var(--t-sub)]">
+        {t('admin.businessCalendar.description')}
+      </p>
+      <form
+        className="t-corner mt-5 space-y-5 rounded-none border border-[var(--t-noise)] bg-black/25 p-5"
+        onSubmit={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          void form.handleSubmit();
+        }}
+      >
+        <form.AppForm>
+          <form.AppField name="timeZone">
+            {(field) => (
+              <div>
+                <label className="mb-2 block text-xs font-medium text-white/60">
+                  {t('admin.businessCalendar.timeZone')}
+                </label>
+                <BusinessTimeZoneSelect
+                  value={field.state.value}
+                  onValueChange={field.handleChange}
+                />
+              </div>
+            )}
+          </form.AppField>
+          <p className="border-l-2 border-[var(--t-hazard)] bg-[var(--t-hazard-dim)]/10 px-3 py-2 text-xs leading-5 text-white/65">
+            {t('admin.businessCalendar.changeWarning')}
+          </p>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-[11px] text-[var(--t-sub)]">
+              {config.updatedAt
+                ? t('admin.businessCalendar.updatedAt', {
+                    time: formatAdminTime(config.updatedAt),
+                  })
+                : t('admin.businessCalendar.defaultValue')}
+            </span>
+            <form.Subscribe selector={(state) => !state.isDefaultValue}>
+              {(hasUnsavedChanges) => (
+                <form.SubmitButton
+                  variant="primary"
+                  disabled={!hasUnsavedChanges}
+                  submittingContent={t('admin.action.running')}
+                >
+                  {t('admin.businessCalendar.save')}
+                </form.SubmitButton>
+              )}
+            </form.Subscribe>
+          </div>
+        </form.AppForm>
+      </form>
+    </section>
+  );
+}
+
+export function BusinessCalendarSection() {
+  const query = useQuery({
+    queryKey: ['admin', 'businessCalendar'],
+    queryFn: adminApi.businessCalendarConfig,
+  });
+  if (query.isPending) return <AdminLoading />;
+  if (query.isError || !query.data) return <AdminError retry={() => void query.refetch()} />;
+  return <BusinessCalendarEditor key={query.data.version} config={query.data} />;
+}
+
 export function FeatureFlagsSection() {
   const { t } = useTranslation();
   const toast = useToast();
@@ -786,7 +945,7 @@ export function FeatureFlagsSection() {
               <div className="text-xs text-[var(--t-sub)]">
                 {flag.updatedAt
                   ? t('admin.featureFlags.updatedAt', {
-                      time: formatTimecode(flag.updatedAt, true) ?? '',
+                      time: formatAdminTime(flag.updatedAt),
                     })
                   : t('admin.featureFlags.notChanged')}
               </div>
@@ -932,7 +1091,7 @@ export function SecurityEventsSection() {
                 </td>
                 <td className="px-3 py-3 font-mono text-sm text-white/60">{event.sampleCount}</td>
                 <td className="px-3 py-3 text-xs text-[var(--t-sub)]">
-                  <Timecode date={event.lastSeenAt} withDate />
+                  <ExactTime date={event.lastSeenAt} />
                 </td>
               </tr>
             ))}
@@ -1267,22 +1426,15 @@ export function InvitationCodesSection() {
     queryKey: ['admin', 'invitations', page, status],
     queryFn: () => adminApi.invitationCodes({ page, pageSize: 20, status }),
   });
-  const createForm = useAppForm({
-    defaultValues: { expiresAt: '' },
-    validators: { onSubmit: z.object({ expiresAt: z.string() }) },
-    onSubmit: async ({ value }) => {
-      try {
-        const item = await adminApi.createInvitationCode(
-          value.expiresAt ? new Date(value.expiresAt).toISOString() : undefined,
-        );
-        setCreatedCode(item.code ?? '');
-        createForm.reset({ expiresAt: '' });
-        toast.success(t('admin.invitations.created'));
-        await query.refetch();
-      } catch (error) {
-        toast.error(error instanceof ApiError ? error.message : t('admin.invitations.failed'));
-      }
+  const create = useMutation({
+    mutationFn: adminApi.createInvitationCode,
+    onSuccess: async (item) => {
+      setCreatedCode(item.code ?? '');
+      toast.success(t('admin.invitations.created'));
+      await query.refetch();
     },
+    onError: (error) =>
+      toast.error(error instanceof ApiError ? error.message : t('admin.invitations.failed')),
   });
   const revoke = useMutation({
     mutationFn: adminApi.revokeInvitationCode,
@@ -1297,36 +1449,15 @@ export function InvitationCodesSection() {
           <AdminSectionTitle>{t('admin.invitations.title')}</AdminSectionTitle>
           <p className="mt-1 text-xs text-[var(--t-sub)]">{t('admin.invitations.description')}</p>
         </div>
-        <form
-          className="flex gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            void createForm.handleSubmit();
-          }}
+        <TButton
+          type="button"
+          variant="primary"
+          disabled={create.isPending}
+          onClick={() => create.mutate()}
         >
-          <createForm.AppForm>
-            <createForm.AppField name="expiresAt">
-              {(field) => (
-                <TInput
-                  type="datetime-local"
-                  value={field.state.value}
-                  onBlur={field.handleBlur}
-                  onChange={(event) => field.handleChange(event.target.value)}
-                  className="h-9 w-56"
-                  aria-label={t('admin.invitations.expires')}
-                />
-              )}
-            </createForm.AppField>
-            <createForm.SubmitButton
-              variant="primary"
-              submittingContent={t('admin.action.running')}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              {t('admin.invitations.create')}
-            </createForm.SubmitButton>
-          </createForm.AppForm>
-        </form>
+          <Plus className="h-3.5 w-3.5" />
+          {create.isPending ? t('admin.action.running') : t('admin.invitations.create')}
+        </TButton>
       </div>
       {createdCode && (
         <div className="t-corner mb-4 flex items-center gap-3 rounded-none border border-[var(--t-accent-dim)] bg-[var(--t-accent-wash)] p-3">
@@ -1404,7 +1535,7 @@ export function InvitationCodesSection() {
                 </td>
                 <td className="px-3 py-3 text-xs text-[var(--t-sub)]">
                   {item.expiresAt ? (
-                    <Timecode date={item.expiresAt} withDate />
+                    <ExactTime date={item.expiresAt} />
                   ) : (
                     t('admin.invitations.never')
                   )}

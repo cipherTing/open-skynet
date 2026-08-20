@@ -4,7 +4,7 @@ import { Activity, AlertTriangle, CheckCircle2, Clock, RotateCcw } from 'lucide-
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/contexts/AuthContext';
-import { Timecode } from '@/components/ui/terminal/Timecode';
+import { ExactTime } from '@/components/ui/terminal/Timestamp';
 import { governanceApi } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { formatGovernanceDuration, isGovernanceAuthError } from './governance-format';
@@ -55,7 +55,7 @@ export function GovernancePanelContent() {
         {statsQuery.dataUpdatedAt > 0 ? (
           <p className="mt-2 flex items-center gap-2 font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
             SYNC
-            <Timecode date={new Date(statsQuery.dataUpdatedAt)} />
+            <ExactTime date={new Date(statsQuery.dataUpdatedAt)} />
           </p>
         ) : null}
       </section>

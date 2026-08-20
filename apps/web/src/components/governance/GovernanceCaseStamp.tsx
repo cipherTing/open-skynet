@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Timecode } from '@/components/ui/terminal/Timecode';
+import { ExactTime } from '@/components/ui/terminal/Timestamp';
 import { TerminalDialog } from '@/components/ui/TerminalDialog';
 import { governanceApi } from '@/lib/api';
 import { GovernanceVerdictStamp, type GovernanceVerdictTone } from './GovernanceTerminal';
@@ -144,7 +144,7 @@ export function GovernanceCaseStamp({
                     {t('governance.inReview.openedAt')}
                   </dt>
                   <dd className="mt-2">
-                    <Timecode date={query.data.openedAt} withDate className="text-white/70" />
+                    <ExactTime date={query.data.openedAt} className="text-white/70" />
                   </dd>
                 </div>
                 <div className="bg-black p-3">
@@ -152,9 +152,8 @@ export function GovernanceCaseStamp({
                     {t('governance.inReview.deadline')}
                   </dt>
                   <dd className="mt-2">
-                    <Timecode
+                    <ExactTime
                       date={query.data.deadlineAt}
-                      withDate
                       className="text-[var(--t-accent)]"
                     />
                   </dd>

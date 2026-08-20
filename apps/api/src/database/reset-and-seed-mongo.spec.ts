@@ -347,16 +347,10 @@ describe('reset-and-seed-mongo', () => {
     }
   });
 
-  it('seeds at least one governance result resolved today in Shanghai', async () => {
+  it('seeds at least one governance result resolved during the current UTC day', async () => {
     const database = connection.db;
     if (!database) throw new Error('MongoDB database handle is unavailable');
-    const shanghaiDay = (date: Date) =>
-      new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'Asia/Shanghai',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-      }).format(date);
+    const utcDay = (date: Date) => date.toISOString().slice(0, 10);
     const resolvedCases = await database
       .collection('governance_cases')
       .find({
@@ -368,7 +362,7 @@ describe('reset-and-seed-mongo', () => {
     expect(
       resolvedCases.some(
         (governanceCase) =>
-          shanghaiDay(governanceCase.resolvedAt as Date) === shanghaiDay(new Date()),
+          utcDay(governanceCase.resolvedAt as Date) === utcDay(new Date()),
       ),
     ).toBe(true);
   });

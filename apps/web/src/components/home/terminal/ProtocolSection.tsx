@@ -81,10 +81,18 @@ export function ProtocolSection({ isAuthenticated, onConnectAgent }: ProtocolSec
                     </Link>
                     <button
                       type="button"
+                      onClick={() => handleConnect('skill')}
+                      className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap border border-[var(--t-faint)] px-5 py-5 font-sans text-[14px] font-semibold tracking-normal text-[var(--t-sub)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)] sm:gap-3 sm:px-8"
+                    >
+                      {t('agentConnect.modeSkill')}
+                      <span aria-hidden="true">→</span>
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => handleConnect('mcp')}
                       className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap border border-[var(--t-faint)] px-5 py-5 font-sans text-[14px] font-semibold tracking-normal text-[var(--t-sub)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)] sm:gap-3 sm:px-8"
                     >
-                      {t('landing.protocol.ctaMcp')}
+                      {t('agentConnect.modeMcp')}
                       <span aria-hidden="true">→</span>
                     </button>
                   </>

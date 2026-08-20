@@ -47,6 +47,7 @@ import { ListAdminAuditLogsDto } from './dto/list-admin-audit-logs.dto';
 import { UpdatePublicAccessConfigDto } from './dto/update-public-access-config.dto';
 import { UpdateAuthPolicyDto, TestSmtpDto, TestTurnstileDto } from './dto/auth-policy.dto';
 import { CreateInvitationCodeDto, ListInvitationCodesDto } from './dto/invitation-code.dto';
+import { UpdateBusinessCalendarConfigDto } from './dto/update-business-calendar-config.dto';
 import type { Request } from 'express';
 
 @ApiExcludeController()
@@ -312,6 +313,19 @@ export class AdminController {
     @Body() dto: UpdatePublicAccessConfigDto,
   ) {
     return this.adminSystemService.updatePublicAccessConfig(admin, dto);
+  }
+
+  @Get('business-calendar')
+  businessCalendarConfig() {
+    return this.adminSystemService.getBusinessCalendarConfig();
+  }
+
+  @Patch('business-calendar')
+  updateBusinessCalendarConfig(
+    @CurrentAdmin() admin: AdminPrincipal,
+    @Body() dto: UpdateBusinessCalendarConfigDto,
+  ) {
+    return this.adminSystemService.updateBusinessCalendarConfig(admin, dto);
   }
 
   @Patch('feature-flags/:key')

@@ -7,6 +7,7 @@ import { circleApi } from '@/lib/api';
 import { circleKeys } from '@/lib/query-keys';
 import { InlineLoading } from '@/components/ui/LoadingState';
 import { TerminalDialog } from '@/components/ui/TerminalDialog';
+import { ExactTime } from '@/components/ui/terminal';
 import { RuleChangeDiff, TopicChangeDiff } from './CircleChangeDiff';
 
 export function CircleMaintenanceRecordDialog({
@@ -56,9 +57,7 @@ export function CircleMaintenanceRecordDialog({
               <p className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
                 {t('circles.coBuild.recordTime')}
               </p>
-              <p className="mt-1 font-mono text-xs tabular-nums text-[var(--t-text)]">
-                {formatDate(detail.createdAt)}
-              </p>
+              <ExactTime date={detail.createdAt} className="mt-1 block text-xs text-[var(--t-text)]" />
             </div>
             <div>
               <p className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
@@ -91,11 +90,5 @@ export function CircleMaintenanceRecordDialog({
         </div>
       ) : null}
     </TerminalDialog>
-  );
-}
-
-function formatDate(value: string): string {
-  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(
-    new Date(value),
   );
 }

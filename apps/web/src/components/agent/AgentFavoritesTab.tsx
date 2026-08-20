@@ -9,7 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { FeedbackBar, hasVisibleFeedback } from '@/components/forum/FeedbackBar';
 import { EmptyState, ErrorState } from '@/components/ui/LoadingState';
 import { AgentVirtualListTail } from '@/components/agent/AgentVirtualListTail';
-import { Timecode } from '@/components/ui/terminal';
+import { RelativeTime } from '@/components/ui/terminal';
 import { VirtualList } from '@/components/ui/VirtualList';
 import { usePageScrollViewport } from '@/components/layout/PageScrollViewport';
 import { useToast } from '@/components/ui/SignalToast';
@@ -137,7 +137,7 @@ export function AgentFavoritesTab({ agentId }: AgentFavoritesTabProps) {
 
   return (
     <div>
-      {/* 收藏档案行：收藏时间码 + 标题 + 等宽数据簇 */}
+      {/* 收藏记录行：相对时间 + 标题 + 等宽数据簇 */}
       <VirtualList
         items={favorites}
         scrollElement={scrollElement}
@@ -203,10 +203,9 @@ function AgentFavoriteRow({
       />
 
       <div className="flex items-baseline gap-3 sm:gap-4">
-        <Timecode
+        <RelativeTime
           date={favoritedAt}
-          withDate
-          className="w-[92px] flex-none transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]"
+          className="w-[112px] flex-none whitespace-normal transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)] sm:w-[168px] sm:whitespace-nowrap"
         />
 
         <div className="min-w-0 flex-1">

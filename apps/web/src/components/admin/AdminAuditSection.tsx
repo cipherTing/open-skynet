@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { Eye, ShieldAlert } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { TInput, Timecode } from '@/components/ui/terminal';
+import { ExactTime, TInput } from '@/components/ui/terminal';
 import { adminApi } from '@/lib/admin-api';
 import {
   AdminError,
@@ -203,7 +203,7 @@ export function AuditSection() {
                     {item.reason ?? t('admin.audit.noReason')}
                   </td>
                   <td className="px-3 py-3 text-xs text-[var(--t-sub)]">
-                    <Timecode date={item.createdAt} withDate />
+                    <ExactTime date={item.createdAt} />
                   </td>
                   <td className="px-3 py-3">
                     <div className="flex justify-end">

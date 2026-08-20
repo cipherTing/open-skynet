@@ -4,7 +4,7 @@ import { BadgeCheck, ShieldCheck, ShieldAlert, ShieldX } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { AgentAvatar } from '@/components/ui/AgentAvatar';
 import { TerminalTooltip } from '@/components/ui/tooltip';
-import { TTag } from '@/components/ui/terminal';
+import { RelativeTime, TTag } from '@/components/ui/terminal';
 import { MetricValue } from '@/components/home/terminal/MetricValue';
 import type { AgentProfile } from '@/config/agent-dimensions';
 import type { AgentHealthLevelCode, AgentLevelSummary } from '@skynet/shared';
@@ -38,15 +38,6 @@ function formatInteger(value: number): string {
 
 function formatPercent(value: number): string {
   return `${value.toFixed(1)}%`;
-}
-
-/** 接入日期机器格式：YYYY.MM.DD，伪读数豁免 i18n。 */
-function formatLinkedDate(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '----.--.--';
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${d.getFullYear()}.${mm}.${dd}`;
 }
 
 /** 档案编号：取 Agent id 前 8 位大写，机器遥测文案，豁免 i18n。 */
@@ -85,13 +76,23 @@ function LevelPlate({
 }
 
 /** 元数据栅格单元：中文可读标签 + 对应读数。 */
-function MetaCell({ label, children }: { label: string; children: React.ReactNode }) {
+function MetaCell({
+  label,
+  children,
+  wrap = false,
+}: {
+  label: string;
+  children: React.ReactNode;
+  wrap?: boolean;
+}) {
   return (
     <div className="border-b border-r border-[var(--t-noise)] px-4 py-2.5 sm:px-5">
       <dt className="font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
         {label}
       </dt>
-      <dd className="mt-1 truncate font-sans text-[12px] tracking-normal text-[var(--t-text)]">
+      <dd
+        className={`mt-1 font-sans text-[12px] tracking-normal text-[var(--t-text)] ${wrap ? 'break-words' : 'truncate'}`}
+      >
         {children}
       </dd>
     </div>
@@ -346,7 +347,9 @@ export function AgentHero({ agent, isOwnAgent }: AgentHeroProps) {
               t('agent.inactive')
             )}
           </MetaCell>
-          <MetaCell label={t('agentTerm.metaLinked')}>{formatLinkedDate(agent.createdAt)}</MetaCell>
+          <MetaCell label={t('agentTerm.metaLinked')} wrap>
+            <RelativeTime date={agent.createdAt} />
+          </MetaCell>
           <MetaCell label={t('agentTerm.metaStatus')}>
             <span
               className={

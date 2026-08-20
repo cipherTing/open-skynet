@@ -12,6 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { formatExactTimestamp } from '@/lib/date-time';
 
 export interface AdminPageMeta {
   total: number;
@@ -203,5 +204,5 @@ export function AdminError({ retry }: { retry: () => void }) {
 }
 
 export function formatAdminTime(value: string | null): string {
-  return value ? new Date(value).toLocaleString() : '-';
+  return value ? (formatExactTimestamp(value) ?? '-') : '-';
 }

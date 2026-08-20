@@ -31,7 +31,7 @@ import { circleApi } from '@/lib/api';
 import { circleKeys } from '@/lib/query-keys';
 import { ErrorState, InlineLoading } from '@/components/ui/LoadingState';
 import { AuthRequiredDialog, AuthRequiredState } from '@/components/ui/AuthRequiredDialog';
-import { TButton, TPanel, Timecode } from '@/components/ui/terminal';
+import { ExactTime, RelativeTime, TButton, TPanel } from '@/components/ui/terminal';
 import { VirtualList } from '@/components/ui/VirtualList';
 import { CoBuildMarkdownComposer } from './CoBuildMarkdownComposer';
 import { RuleChangeDiff, TopicChangeDiff } from './CircleChangeDiff';
@@ -339,7 +339,7 @@ export function CircleProposalDetailPage({
             />
             <div className="flex justify-end border-b border-[var(--t-noise2)] py-2.5 pl-6 pr-5 font-sans text-[11px] tracking-normal text-[var(--t-faint)]">
               <span className="inline-flex items-center gap-1.5">
-                <Timecode date={proposal.updatedAt} withDate />
+                <RelativeTime date={proposal.updatedAt} />
               </span>
             </div>
 
@@ -558,7 +558,7 @@ export function CircleProposalDetailPage({
                     <p className="text-xs font-semibold text-[var(--t-text)]/80">
                       {t('circles.coBuild.revision', { number: revision.revisionNumber })}
                     </p>
-                    <Timecode date={revision.createdAt} withDate className="mt-1 block" />
+                    <ExactTime date={revision.createdAt} className="mt-1 block" />
                   </div>
                 )}
               />
@@ -667,7 +667,7 @@ export function CircleProposalDetailPage({
                               >
                                 {t(`circles.coBuild.voteChoices.${voter.choice}`)}
                               </span>
-                              <Timecode date={voter.createdAt} withDate />
+                              <ExactTime date={voter.createdAt} />
                             </span>
                           </div>
                         )}
@@ -701,7 +701,7 @@ export function CircleProposalDetailPage({
                         {item.author.name}
                       </p>
                       <div className="flex shrink-0 items-center gap-3">
-                        <Timecode date={item.createdAt} withDate />
+                        <RelativeTime date={item.createdAt} />
                         {agent && agent.id !== item.author.id ? (
                           <ReportDialog
                             targetType="CIRCLE_PROPOSAL_COMMENT"

@@ -10,8 +10,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { TerminalDialog } from '@/components/ui/TerminalDialog';
 import { TButton, TTabContent, TTabs } from '@/components/ui/terminal';
 import LatticeWebCanvas from '@/components/home/terminal/LatticeWebCanvas';
-import { useUtcNow } from '@/components/home/terminal/terminal-hooks';
+import { useClockNow } from '@/components/home/terminal/terminal-hooks';
 import { ForgotPasswordForm, LoginForm, RegisterForm } from '@/app/auth/_components/AuthModeForms';
+import { formatLocalClockTime } from '@/lib/date-time';
 
 type AuthMode = 'login' | 'register' | 'forgot';
 
@@ -244,10 +245,8 @@ function GateBoot() {
 }
 
 function GateClock() {
-  const now = useUtcNow(1000);
-  const text = now
-    ? `${String(now.getUTCHours()).padStart(2, '0')}:${String(now.getUTCMinutes()).padStart(2, '0')}:${String(now.getUTCSeconds()).padStart(2, '0')} UTC`
-    : '--:--:-- UTC';
+  const now = useClockNow(1000);
+  const text = now ? formatLocalClockTime(now) : '--:--:--';
   return <span className="t-mono text-[var(--t-faint)]">{text}</span>;
 }
 

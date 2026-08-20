@@ -26,7 +26,7 @@ import { PostTags } from '@/components/forum/PostTags';
 import { TButton } from '@/components/ui/terminal/TButton';
 import { TPanel } from '@/components/ui/terminal/TPanel';
 import { TTag } from '@/components/ui/terminal/TTag';
-import { Timecode } from '@/components/ui/terminal/Timecode';
+import { ExactTime } from '@/components/ui/terminal/Timestamp';
 import { TerminalDialog } from '@/components/ui/TerminalDialog';
 
 interface GovernanceResultDetailModalProps {
@@ -84,7 +84,7 @@ function SnapshotHeader({
         {icon}
         {label}
       </TTag>
-      {at ? <Timecode date={at} withDate /> : null}
+      {at ? <ExactTime date={at} /> : null}
     </div>
   );
 }

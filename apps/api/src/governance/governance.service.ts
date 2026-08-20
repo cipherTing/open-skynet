@@ -44,7 +44,6 @@ import {
   GOVERNANCE_CASE_STATUS,
   GOVERNANCE_DECISIONS,
   GOVERNANCE_HEALTH_LEVEL,
-  GOVERNANCE_TIMEZONE,
   GOVERNANCE_TARGET_TYPES,
   type GovernanceCaseStatus,
   type GovernanceDecision,
@@ -57,8 +56,8 @@ import {
   canAgentParticipateInGovernance,
   getGovernancePenaltyXpForHealthLevel,
   getGovernanceQuotaTotal,
-  toShanghaiDateKey,
 } from './governance.rules';
+import { BusinessCalendarService } from '@/system/business-calendar.service';
 import {
   calculateGovernanceDeadlineTransition,
   GOVERNANCE_DEADLINE_TRANSITION_KINDS,
@@ -362,6 +361,7 @@ export class GovernanceService {
     private readonly circleProposalService: CircleProposalService,
     private readonly hotRankingService: HotRankingService,
     private readonly replyCounterService: ReplyCounterService,
+    private readonly businessCalendarService: BusinessCalendarService,
   ) {}
 
   async assertCanReportViolation(agentId: string, session?: ClientSession) {
@@ -516,8 +516,7 @@ export class GovernanceService {
   async getStats(): Promise<GovernanceStats> {
     const now = new Date();
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    const todayStart = new Date(now);
-    todayStart.setHours(0, 0, 0, 0);
+    const todayStart = this.businessCalendarService.getDayWindow(now).start;
     const terminalRecentFilter = {
       status: { $in: GOVERNANCE_PUBLIC_RESULT_STATUSES },
       resolvedAt: { $gte: sevenDaysAgo },
@@ -628,7 +627,7 @@ export class GovernanceService {
     if (this.isAgentOrOwnerExcluded(governanceCase, agentId, ownerUserId)) return null;
 
     const level = assignment.agentLevelSnapshot;
-    const quotaDay = toShanghaiDateKey();
+    const quotaDay = this.businessCalendarService.getDayWindow().dayKey;
     const quota = await this.quotaModel.findOne({ agentId, quotaDay });
     const quotaSnapshot: GovernanceQuotaSnapshot = quota ?? {
       quotaDay,
@@ -1081,7 +1080,7 @@ export class GovernanceService {
     healthLevel: number,
     session?: ClientSession,
   ) {
-    const quotaDay = toShanghaiDateKey();
+    const quotaDay = this.businessCalendarService.getDayWindow().dayKey;
     const existing = await this.quotaModel.findOne({ agentId, quotaDay }, null, { session });
     if (existing) return existing;
     try {
@@ -1544,7 +1543,7 @@ export class GovernanceService {
             $dateToString: {
               date: '$createdAt',
               format: '%Y-%m-%d',
-              timezone: GOVERNANCE_TIMEZONE,
+              timezone: this.businessCalendarService.getTimeZone(),
             },
           },
           voterCount: { $sum: 1 },
@@ -1578,7 +1577,7 @@ export class GovernanceService {
     const events: GovernanceTimelineEvent[] = [
       {
         type: 'CASE_OPENED',
-        date: toShanghaiDateKey(governanceCase.openedAt),
+        date: this.businessCalendarService.getDayWindow(governanceCase.openedAt).dayKey,
         occurredAt: governanceCase.openedAt.toISOString(),
       },
     ];
@@ -1604,7 +1603,7 @@ export class GovernanceService {
     if (resolvedAt) {
       events.push({
         type: 'CASE_RESOLVED',
-        date: toShanghaiDateKey(resolvedAt),
+        date: this.businessCalendarService.getDayWindow(resolvedAt).dayKey,
         occurredAt: resolvedAt.toISOString(),
         result: this.toPublicResultCode(governanceCase.status),
         durationMinutes,
@@ -1615,7 +1614,7 @@ export class GovernanceService {
     for (const correction of corrections) {
       events.push({
         type: 'ADMIN_CORRECTION',
-        date: toShanghaiDateKey(correction.createdAt),
+        date: this.businessCalendarService.getDayWindow(correction.createdAt).dayKey,
         occurredAt: correction.createdAt.toISOString(),
         action: correction.action,
         publicReason: correction.publicReason,

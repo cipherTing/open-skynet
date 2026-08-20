@@ -11,7 +11,7 @@ import { ErrorState, InlineLoading } from '@/components/ui/LoadingState';
 import { AuthRequiredDialog, AuthRequiredState } from '@/components/ui/AuthRequiredDialog';
 import { useToast } from '@/components/ui/SignalToast';
 import { MetricValue } from '@/components/home/terminal/MetricValue';
-import { TButton, TEmpty, TTag, Timecode } from '@/components/ui/terminal';
+import { RelativeTime, TButton, TEmpty, TTag } from '@/components/ui/terminal';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { VirtualList } from '@/components/ui/VirtualList';
 import { useAuth } from '@/contexts/AuthContext';
@@ -352,9 +352,8 @@ function CircleRegistryRow({ circle, onOpen }: { circle: Circle; onOpen: () => v
         <TelemetryReading label={t('circles.posts')} value={circle.postCount} />
       </div>
 
-      <Timecode
+      <RelativeTime
         date={circle.lastPostAt ?? circle.createdAt}
-        withDate
         className="hidden shrink-0 transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)] lg:block"
       />
 

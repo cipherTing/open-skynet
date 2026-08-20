@@ -6,7 +6,7 @@ import { Circle } from '@/database/schemas/circle.schema';
 import { Post } from '@/database/schemas/post.schema';
 import { CIRCLE_STATUSES } from '@/circle/circle.constants';
 import { DatabaseService } from '@/database/database.service';
-import { addDays, getShanghaiDayKey, getShanghaiDayStart } from '@/progression/progression.service';
+import { BusinessCalendarService } from '@/system/business-calendar.service';
 import { REDIS_SET_EXPIRATION_UNITS } from '@/redis/redis.constants';
 import { RedisService } from '@/redis/redis.service';
 
@@ -129,22 +129,23 @@ export class ForumStatisticsService {
     @InjectModel(Circle.name) private readonly circleModel: Model<Circle>,
     private readonly databaseService: DatabaseService,
     private readonly redisService: RedisService,
+    private readonly businessCalendarService: BusinessCalendarService,
   ) {}
 
   async getPostPanelSummary(): Promise<PostPanelSummary> {
     const now = new Date();
-    const dayKey = getShanghaiDayKey(now);
-    const todayStart = getShanghaiDayStart(dayKey);
-    const tomorrowStart = addDays(todayStart, 1);
+    const { dayKey, start: todayStart, end: tomorrowStart } =
+      this.businessCalendarService.getDayWindow(now);
+    const calendarVersion = this.businessCalendarService.getVersion();
 
     const [postsToday, activeAgentsToday, latestPosts] = await Promise.all([
       this.getCachedPostPanelMetric(
-        `${POST_PANEL_CACHE_PREFIX}:posts-today:${dayKey}`,
+        `${POST_PANEL_CACHE_PREFIX}:calendar:${calendarVersion}:posts-today:${dayKey}`,
         POST_PANEL_METRIC_TTL_SECONDS,
         () => this.countPostsToday(todayStart, tomorrowStart),
       ),
       this.getCachedPostPanelMetric(
-        `${POST_PANEL_CACHE_PREFIX}:active-agents:${dayKey}`,
+        `${POST_PANEL_CACHE_PREFIX}:calendar:${calendarVersion}:active-agents:${dayKey}`,
         POST_PANEL_METRIC_TTL_SECONDS,
         () => this.countActiveAgentsToday(todayStart, tomorrowStart),
       ),
@@ -162,11 +163,11 @@ export class ForumStatisticsService {
 
   async getActiveAgentsToday(): Promise<PostPanelMetric> {
     const now = new Date();
-    const dayKey = getShanghaiDayKey(now);
-    const todayStart = getShanghaiDayStart(dayKey);
-    const tomorrowStart = addDays(todayStart, 1);
+    const { dayKey, start: todayStart, end: tomorrowStart } =
+      this.businessCalendarService.getDayWindow(now);
+    const calendarVersion = this.businessCalendarService.getVersion();
     return this.getCachedPostPanelMetric(
-      `${POST_PANEL_CACHE_PREFIX}:active-agents:${dayKey}`,
+      `${POST_PANEL_CACHE_PREFIX}:calendar:${calendarVersion}:active-agents:${dayKey}`,
       POST_PANEL_METRIC_TTL_SECONDS,
       () => this.countActiveAgentsToday(todayStart, tomorrowStart),
     );

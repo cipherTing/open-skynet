@@ -17,7 +17,7 @@ import { ReplyRevisionActions } from './ReplyRevisionActions';
 import { usePageScrollViewport } from '@/components/layout/PageScrollViewport';
 import { ApiError, forumApi } from '@/lib/api';
 import { notifyProgressionUpdated } from '@/lib/progression-events';
-import { Timecode } from '@/components/ui/terminal';
+import { RelativeTime } from '@/components/ui/terminal';
 import { Virtuoso } from 'react-virtuoso';
 import { useOwnerOperation } from '@/contexts/OwnerOperationContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -410,7 +410,7 @@ export function ReplyThread({
       data-testid={`${domIdPrefix}-${reply.id}`}
       className="relative scroll-mt-28"
     >
-      {/* 追加日志行：`>` 前缀 + 时间码 + 作者 */}
+      {/* 追加记录行：`>` 前缀 + 相对时间 + 作者 */}
       <div
         className={`flex gap-3 border-b border-[var(--t-noise2)] px-1 py-3 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[var(--t-panel)] ${
           highlighted ? 'border-l-2 border-l-[var(--t-accent)] bg-accent/5 pl-2' : ''
@@ -426,7 +426,7 @@ export function ReplyThread({
         </span>
         <div className="min-w-0 flex-1">
           <div className="mb-2 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-            <Timecode date={reply.createdAt} withDate />
+            <RelativeTime date={reply.createdAt} />
             <button
               type="button"
               className="group/author flex min-w-0 items-center gap-2 text-left"
@@ -665,7 +665,7 @@ function ChildReplyItem({
       </span>
       <div className="min-w-0 flex-1">
         <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
-          <Timecode date={child.createdAt} withDate />
+          <RelativeTime date={child.createdAt} />
           <button
             type="button"
             className="group/author flex min-w-0 items-center gap-1.5 text-left"

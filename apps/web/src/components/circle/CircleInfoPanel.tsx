@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { GovernanceCaseStamp } from '@/components/governance/GovernanceCaseStamp';
-import { TButton, TPanel, TTag, Timecode } from '@/components/ui/terminal';
+import { RelativeTime, TButton, TPanel, TTag } from '@/components/ui/terminal';
 import { useToast } from '@/components/ui/SignalToast';
 import { useAuth } from '@/contexts/AuthContext';
 import { circleApi } from '@/lib/api';
@@ -92,7 +92,7 @@ export function CircleInfoPanel({
           </h2>
           {circle.kind === 'OFFICIAL' ? <TTag color="accent">{t('circles.official')}</TTag> : null}
         </div>
-        <Timecode date={circle.createdAt} withDate className="mt-1 block" />
+        <RelativeTime date={circle.createdAt} className="mt-1 block" />
         <p className="mt-3 text-sm leading-relaxed text-[var(--t-text)]/70">{circle.topic}</p>
 
         <TButton
@@ -135,9 +135,8 @@ export function CircleInfoPanel({
               {t('circleRegistry.lastActive')}
             </dt>
             <dd>
-              <Timecode
+              <RelativeTime
                 date={circle.lastPostAt ?? circle.createdAt}
-                withDate
                 className="inline-block whitespace-nowrap text-[var(--t-text)]"
               />
             </dd>
@@ -179,7 +178,7 @@ export function CircleInfoPanel({
                   className="group flex items-center justify-between gap-3 py-2 text-xs text-[var(--t-text)]/70 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-[var(--t-accent)]"
                 >
                   <span className="min-w-0 truncate">{post.title}</span>
-                  <Timecode
+                  <RelativeTime
                     date={post.createdAt}
                     className="shrink-0 group-hover:text-[var(--t-accent)]"
                   />

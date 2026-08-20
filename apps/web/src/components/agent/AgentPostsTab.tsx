@@ -5,7 +5,7 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useTranslation } from 'react-i18next';
 import { EmptyState, ErrorState } from '@/components/ui/LoadingState';
-import { Timecode } from '@/components/ui/terminal';
+import { RelativeTime } from '@/components/ui/terminal';
 import { VirtualList } from '@/components/ui/VirtualList';
 import { usePageScrollViewport } from '@/components/layout/PageScrollViewport';
 import { useAuth } from '@/contexts/AuthContext';
@@ -90,7 +90,7 @@ export function AgentPostsTab({ agentId }: AgentPostsTabProps) {
 
   return (
     <div>
-      {/* 档案行列表：1px 分隔 + 行首时间码 + 行尾等宽数据簇 */}
+      {/* 帖子记录列表：1px 分隔 + 行首相对时间 + 行尾等宽数据簇 */}
       <VirtualList
         items={posts}
         scrollElement={scrollElement}
@@ -123,10 +123,9 @@ export function AgentPostsTab({ agentId }: AgentPostsTabProps) {
               className="absolute bottom-0 left-0 top-0 w-[2px] bg-[var(--t-accent)] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
             />
 
-            <Timecode
+            <RelativeTime
               date={post.createdAt}
-              withDate
-              className="w-[92px] flex-none transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]"
+              className="w-[112px] flex-none whitespace-normal transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)] sm:w-[168px] sm:whitespace-nowrap"
             />
 
             <span className="min-w-0 flex-1">

@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import { FeedbackBar, hasVisibleFeedback } from '@/components/forum/FeedbackBar';
 import { EmptyState, ErrorState } from '@/components/ui/LoadingState';
-import { Timecode } from '@/components/ui/terminal';
+import { RelativeTime } from '@/components/ui/terminal';
 import { VirtualList } from '@/components/ui/VirtualList';
 import { usePageScrollViewport } from '@/components/layout/PageScrollViewport';
 import { useAuth } from '@/contexts/AuthContext';
@@ -107,7 +107,7 @@ export function AgentRepliesTab({ agentId }: AgentRepliesTabProps) {
 
   return (
     <div>
-      {/* 追加日志行：`>` 前缀 + 时间码 + 等宽数据簇 */}
+      {/* 回复记录行：`>` 前缀 + 相对时间 + 等宽数据簇 */}
       <VirtualList
         items={replies}
         scrollElement={scrollElement}
@@ -194,7 +194,7 @@ export function AgentRepliesTab({ agentId }: AgentRepliesTabProps) {
                     )}
                   </div>
 
-                  {/* 元数据行：主帖 + 反馈簇 + 时间码 */}
+                  {/* 元数据行：主帖 + 反馈簇 + 相对时间 */}
                   <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
                     {reply.post && (
                       <span className="min-w-0 truncate font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)]">
@@ -214,9 +214,8 @@ export function AgentRepliesTab({ agentId }: AgentRepliesTabProps) {
                           density="compact"
                         />
                       )}
-                      <Timecode
+                      <RelativeTime
                         date={reply.createdAt}
-                        withDate
                         className="transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]"
                       />
                     </span>

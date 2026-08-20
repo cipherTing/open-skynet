@@ -15,7 +15,6 @@ import {
   DAILY_TASKS,
   EXTERNAL_XP_SOURCE_TYPES,
   PROGRESSION_ACTION_CONFIG,
-  PROGRESSION_TIME_ZONE,
   SECONDS_PER_DAY,
   XP_EVENT_SOURCE_TYPES,
   XP_EVENT_REASON_KEYS,
@@ -25,6 +24,7 @@ import {
   type XpEventReasonKey,
   type XpEventSourceType,
 } from './progression.constants';
+import { BusinessCalendarService } from '@/system/business-calendar.service';
 
 export interface AgentLevelSummary {
   level: number;
@@ -143,27 +143,6 @@ function clampNumber(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-export function getShanghaiDayKey(date: Date): string {
-  const formatter = new Intl.DateTimeFormat('en-CA', {
-    timeZone: PROGRESSION_TIME_ZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-  return formatter.format(date);
-}
-
-export function getShanghaiDayStart(dayKey: string): Date {
-  const [year, month, day] = dayKey.split('-').map(Number);
-  return new Date(Date.UTC(year, month - 1, day, -8, 0, 0, 0));
-}
-
-export function addDays(date: Date, days: number): Date {
-  const next = new Date(date);
-  next.setUTCDate(next.getUTCDate() + days);
-  return next;
-}
-
 function formatChartDate(dayKey: string): string {
   return dayKey.slice(5);
 }
@@ -198,6 +177,7 @@ export class ProgressionService {
     @InjectModel(AgentXpEvent.name)
     private readonly xpEventModel: Model<AgentXpEvent>,
     private readonly databaseService: DatabaseService,
+    private readonly businessCalendarService: BusinessCalendarService,
   ) {}
 
   private buildLevelSummary(xpTotal: number): AgentLevelSummary {
@@ -274,8 +254,7 @@ export class ProgressionService {
       };
     });
     const remainingCount = items.filter((item) => !item.completed).length;
-    const todayStart = getShanghaiDayStart(getShanghaiDayKey(now));
-    const resetAt = addDays(todayStart, 1).toISOString();
+    const resetAt = this.businessCalendarService.getDayWindow(now).end.toISOString();
 
     return {
       remainingCount,
@@ -304,7 +283,7 @@ export class ProgressionService {
     const existing = await this.progressModel.findOne({ agentId }, null, { session });
     if (existing) return existing;
 
-    const dayKey = getShanghaiDayKey(now);
+    const dayKey = this.businessCalendarService.getDayWindow(now).dayKey;
     const created = new this.progressModel({
       agentId,
       xpTotal: 0,
@@ -326,7 +305,7 @@ export class ProgressionService {
   }
 
   private resetDailyProgressIfNeeded(progress: AgentProgressDocument, now: Date): boolean {
-    const dayKey = getShanghaiDayKey(now);
+    const dayKey = this.businessCalendarService.getDayWindow(now).dayKey;
     if (progress.progressDay === dayKey) return false;
     progress.progressDay = dayKey;
     progress.dailyCounters = cloneEmptyCounters();
@@ -760,10 +739,9 @@ export class ProgressionService {
   async getScoreHistory(agentId: string, days = 30): Promise<AgentScorePoint[]> {
     const safeDays = clampNumber(Math.floor(days), 1, 90);
     const now = new Date();
-    const todayKey = getShanghaiDayKey(now);
-    const todayStart = getShanghaiDayStart(todayKey);
-    const start = addDays(todayStart, -(safeDays - 1));
-    const end = addDays(todayStart, 1);
+    const dayWindows = this.businessCalendarService.getRecentDayWindows(now, safeDays);
+    const start = dayWindows[0].start;
+    const end = dayWindows[dayWindows.length - 1].end;
     const progress = await this.progressModel
       .findOne({ agentId })
       .select('xpTotal')
@@ -778,7 +756,7 @@ export class ProgressionService {
             $dateToString: {
               date: '$occurredAt',
               format: '%Y-%m-%d',
-              timezone: PROGRESSION_TIME_ZONE,
+              timezone: this.businessCalendarService.getTimeZone(),
             },
           },
           value: { $sum: '$xp' },
@@ -790,9 +768,7 @@ export class ProgressionService {
     const inWindowXp = dailyDeltas.reduce((sum, item) => sum + item.value, 0);
     let running = Math.max(0, progress.xpTotal - inWindowXp);
     const points: AgentScorePoint[] = [];
-    for (let index = 0; index < safeDays; index += 1) {
-      const date = addDays(start, index);
-      const dayKey = getShanghaiDayKey(date);
+    for (const { dayKey } of dayWindows) {
       running += perDay.get(dayKey) ?? 0;
       points.push({
         date: formatChartDate(dayKey),

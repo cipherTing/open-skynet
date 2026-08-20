@@ -13,6 +13,7 @@ import { TerminalDialog } from '@/components/ui/TerminalDialog';
 import { TerminalTooltip } from '@/components/ui/tooltip';
 import { TTabContent, TTabs } from '@/components/ui/terminal';
 import { McpConnectPanel } from './McpConnectPanel';
+import { formatExactTimestamp } from '@/lib/date-time';
 
 function localDateKey(): string {
   const now = new Date();
@@ -42,7 +43,7 @@ function ConnectStep({ index, text }: { index: number; text: string }) {
 }
 
 export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolean }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const toast = useToast();
   const { user, agent, isAuthenticated } = useAuth();
   const open = useAgentConnectStore((state) => state.open);
@@ -61,6 +62,12 @@ export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolea
     queryFn: userApi.getKeyInfo,
     enabled: isAuthenticated && Boolean(agent),
   });
+  const linkStatusQuery = useQuery({
+    queryKey: ['agent-connect', 'guide-link-status', agent?.id],
+    queryFn: userApi.getGuideLinkStatus,
+    enabled: open && accessMode === 'skill' && isAuthenticated && Boolean(agent),
+    staleTime: 0,
+  });
   const hasKey = Boolean(keyQuery.data);
 
   useEffect(() => {
@@ -73,10 +80,10 @@ export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolea
     if (keyQuery.isError) return;
     setBusy(true);
     try {
-      if (!hasKey) await userApi.regenerateKey();
       const result = await userApi.createGuideLink({ revisitIntervalHours });
       setLink(result.url);
       setExpiresAt(result.expiresAt);
+      await linkStatusQuery.refetch();
       await keyQuery.refetch();
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : t('agentConnect.failed'));
@@ -85,7 +92,10 @@ export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolea
     }
   };
 
-  const connectCommand = link ? `curl -sS "${link}"` : '';
+  const currentLink = link || (linkStatusQuery.data?.active ? linkStatusQuery.data.url : '');
+  const currentExpiresAt =
+    expiresAt || (linkStatusQuery.data?.active ? linkStatusQuery.data.expiresAt : '');
+  const connectCommand = currentLink ? `curl -sS "${currentLink}"` : '';
 
   const copy = async () => {
     try {
@@ -113,6 +123,7 @@ export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolea
       onOpenChange={(next) => {
         if (!next) {
           setLink('');
+          setExpiresAt('');
           setOpen(false, 'skill');
           return;
         }
@@ -161,7 +172,22 @@ export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolea
                 {t('agentConnect.loginRequiredAction')}
               </Link>
             </div>
-          ) : !link ? (
+          ) : linkStatusQuery.isFetching && !link ? (
+            <div className="mt-5 border border-[var(--t-noise)] bg-black p-4 font-sans text-[12px] leading-5 tracking-normal text-text-secondary">
+              {t('agentConnect.checkingLink')}
+            </div>
+          ) : linkStatusQuery.isError && !link ? (
+            <div className="mt-5 flex items-center justify-between gap-3 border border-danger/30 bg-danger/10 px-3 py-2 font-sans text-[12px] leading-5 tracking-normal text-danger">
+              <span>{t('agentConnect.linkStatusFailed')}</span>
+              <button
+                type="button"
+                onClick={() => void linkStatusQuery.refetch()}
+                className="font-bold hover:text-accent"
+              >
+                {t('app.retry')}
+              </button>
+            </div>
+          ) : !currentLink ? (
             <div className="mt-5 space-y-3">
               {keyQuery.isError && (
                 <div className="flex items-center justify-between gap-3 border border-danger/30 bg-danger/10 px-3 py-2 font-sans text-[12px] leading-5 tracking-normal text-danger">
@@ -250,15 +276,28 @@ export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolea
                 </code>
               </div>
               <p className="font-sans text-[12px] tracking-normal text-text-tertiary">
-                {t('agentConnect.expiresAt', { time: new Date(expiresAt).toLocaleTimeString() })}
+                {t('agentConnect.expiresAt', {
+                  time:
+                    formatExactTimestamp(currentExpiresAt, { locale: i18n.resolvedLanguage }) ??
+                    '—',
+                })}
               </p>
               <button
                 type="button"
                 onClick={() => void copy()}
-                className="t-btn t-btn--ghost h-10 w-full"
+                className="t-btn t-btn--primary h-10 w-full"
               >
                 {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                 {copied ? t('app.copied') : t('agentConnect.copyLink')}
+              </button>
+              <button
+                type="button"
+                disabled={busy || keyQuery.isPending || keyQuery.isError}
+                onClick={() => void generateLink()}
+                className="t-btn t-btn--ghost h-10 w-full"
+              >
+                <KeyRound className="h-4 w-4" />
+                {busy ? t('agentConnect.generating') : t('agentConnect.regenerateLink')}
               </button>
             </div>
           )}

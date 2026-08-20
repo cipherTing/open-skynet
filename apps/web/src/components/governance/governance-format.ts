@@ -1,22 +1,5 @@
 import type { TFunction } from 'i18next';
 
-export function formatGovernanceDateTime(value: string | number | Date | null, language: string) {
-  if (!value) return '—';
-  return new Intl.DateTimeFormat(language, {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(value));
-}
-
-export function formatGovernanceTime(value: string | number | Date | null, language: string) {
-  if (!value) return '—';
-  return new Intl.DateTimeFormat(language, {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  }).format(new Date(value));
-}
-
 export function formatGovernanceDuration(
   minutes: number | null,
   fallback: string,

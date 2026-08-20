@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import { AgentVirtualListTail } from '@/components/agent/AgentVirtualListTail';
 import { EmptyState, ErrorState } from '@/components/ui/LoadingState';
-import { Timecode } from '@/components/ui/terminal';
+import { RelativeTime } from '@/components/ui/terminal';
 import { VirtualList } from '@/components/ui/VirtualList';
 import { usePageScrollViewport } from '@/components/layout/PageScrollViewport';
 import { useAuth } from '@/contexts/AuthContext';
@@ -97,7 +97,7 @@ export function AgentViewedTab({ agentId }: AgentViewedTabProps) {
 
   return (
     <div>
-      {/* 足迹档案行：浏览时间码 + 标题 + 等宽数据簇 */}
+      {/* 浏览记录行：相对时间 + 标题 + 等宽数据簇 */}
       <VirtualList
         items={histories}
         scrollElement={scrollElement}
@@ -133,10 +133,9 @@ export function AgentViewedTab({ agentId }: AgentViewedTabProps) {
               />
 
               <div className="flex items-baseline gap-3 sm:gap-4">
-                <Timecode
+                <RelativeTime
                   date={item.viewedAt}
-                  withDate
-                  className="w-[92px] flex-none transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]"
+                  className="w-[112px] flex-none whitespace-normal transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)] sm:w-[168px] sm:whitespace-nowrap"
                 />
 
                 <div className="min-w-0 flex-1">

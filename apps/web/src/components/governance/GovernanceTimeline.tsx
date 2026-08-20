@@ -4,12 +4,12 @@ import { AlertTriangle, CheckCircle2, CircleDot, RotateCcw, Users } from 'lucide
 import { useTranslation } from 'react-i18next';
 import type { GovernanceTimelineEvent } from '@skynet/shared';
 import {
-  formatGovernanceDateTime,
   formatGovernanceDuration,
   getGovernanceResultKey,
 } from './governance-format';
 import { GovernanceVoteCompare } from './GovernanceTerminal';
 import { cn } from '@/lib/utils';
+import { ExactTime } from '@/components/ui/terminal';
 
 interface GovernanceTimelineProps {
   events: GovernanceTimelineEvent[];
@@ -56,16 +56,22 @@ function TimelineEvent({
   );
 }
 
-function TimelineDate({ value }: { value: string }) {
+function TimelineDate({ value, endValue }: { value: string; endValue?: string }) {
   return (
-    <p className="mb-1 font-mono text-[10px] tabular-nums tracking-[0.15em] text-[var(--t-faint)]">
-      {value}
-    </p>
+    <div className="mb-1 flex flex-wrap items-center gap-1.5 text-[10px] text-[var(--t-faint)]">
+      <ExactTime date={value} className="text-[10px]" />
+      {endValue && endValue !== value ? (
+        <>
+          <span aria-hidden>–</span>
+          <ExactTime date={endValue} className="text-[10px]" />
+        </>
+      ) : null}
+    </div>
   );
 }
 
 export function GovernanceTimeline({ events }: GovernanceTimelineProps) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   if (events.length === 0) {
     return (
       <p className="font-sans text-[13px] leading-5 text-[var(--t-sub)]">
@@ -86,13 +92,10 @@ export function GovernanceTimeline({ events }: GovernanceTimelineProps) {
               icon={<CircleDot className="h-3.5 w-3.5" />}
               isLast={isLast}
             >
-              <TimelineDate value={event.date} />
+              <TimelineDate value={event.occurredAt} />
               <h4 className="text-[13px] font-bold text-white/90">
                 {t('governance.timeline.caseOpened')}
               </h4>
-              <p className="mt-0.5 font-sans text-[12px] tabular-nums tracking-normal text-[var(--t-sub)]">
-                {formatGovernanceDateTime(event.occurredAt, i18n.language)}
-              </p>
             </TimelineEvent>
           );
         }
@@ -104,7 +107,7 @@ export function GovernanceTimeline({ events }: GovernanceTimelineProps) {
               icon={<Users className="h-3.5 w-3.5" />}
               isLast={isLast}
             >
-              <TimelineDate value={event.date} />
+              <TimelineDate value={event.firstOccurredAt} endValue={event.lastOccurredAt} />
               <h4 className="text-[13px] font-bold text-white/90">
                 {t('governance.timeline.votesCast', { count: event.voterCount })}
               </h4>
@@ -130,7 +133,7 @@ export function GovernanceTimeline({ events }: GovernanceTimelineProps) {
               icon={<RotateCcw className="h-3.5 w-3.5" />}
               isLast={isLast}
             >
-              <TimelineDate value={event.date} />
+              <TimelineDate value={event.occurredAt} />
               <h4 className="text-[13px] font-bold text-white/90">
                 {t('governance.timeline.adminCorrection')}
               </h4>
@@ -153,7 +156,7 @@ export function GovernanceTimeline({ events }: GovernanceTimelineProps) {
             }
             isLast={isLast}
           >
-            <TimelineDate value={event.date} />
+            <TimelineDate value={event.occurredAt} />
             <h4 className="text-[13px] font-bold text-white/90">
               {t('governance.timeline.caseResolved')}
             </h4>

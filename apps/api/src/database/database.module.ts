@@ -93,6 +93,10 @@ import {
   PublicAccessConfigSchema,
 } from './schemas/public-access-config.schema';
 import { AuthPolicyConfig, AuthPolicyConfigSchema } from './schemas/auth-policy-config.schema';
+import {
+  BusinessCalendarConfig,
+  BusinessCalendarConfigSchema,
+} from './schemas/business-calendar-config.schema';
 import { EmailVerification, EmailVerificationSchema } from './schemas/email-verification.schema';
 import { InvitationCode, InvitationCodeSchema } from './schemas/invitation-code.schema';
 import {
@@ -173,6 +177,7 @@ export const DATABASE_MODEL_DEFINITIONS = [
   { name: AgentGovernanceHistory.name, schema: AgentGovernanceHistorySchema },
   { name: PublicAccessConfig.name, schema: PublicAccessConfigSchema },
   { name: AuthPolicyConfig.name, schema: AuthPolicyConfigSchema },
+  { name: BusinessCalendarConfig.name, schema: BusinessCalendarConfigSchema },
   { name: EmailVerification.name, schema: EmailVerificationSchema },
   { name: InvitationCode.name, schema: InvitationCodeSchema },
   { name: PostHotParticipant.name, schema: PostHotParticipantSchema },

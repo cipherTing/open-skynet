@@ -63,6 +63,11 @@ import { ReportService } from './report.service';
 import { HotRankingService } from '@/hot-ranking/hot-ranking.service';
 import { CIRCLE_PROPOSAL_SCOPES, CIRCLE_PROPOSAL_STATUSES } from '@/circle/circle.constants';
 import { ReplyCounterService } from '@/forum/reply-counter.service';
+import {
+  BusinessCalendarConfig,
+  BusinessCalendarConfigSchema,
+} from '@/database/schemas/business-calendar-config.schema';
+import { BusinessCalendarService } from '@/system/business-calendar.service';
 
 const TEST_CIRCLE_ID = '64f100000000000000000001';
 let sequence = 0;
@@ -102,6 +107,7 @@ describe('ReportService integration', () => {
           { name: ReportTargetState.name, schema: ReportTargetStateSchema },
           { name: GovernanceCorrection.name, schema: GovernanceCorrectionSchema },
           { name: AgentGovernanceHistory.name, schema: AgentGovernanceHistorySchema },
+          { name: BusinessCalendarConfig.name, schema: BusinessCalendarConfigSchema },
         ]),
       ],
       providers: [
@@ -117,6 +123,7 @@ describe('ReportService integration', () => {
         },
         ProgressionService,
         DatabaseService,
+        BusinessCalendarService,
         FeatureFlagService,
         {
           provide: CircleProposalService,

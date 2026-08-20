@@ -23,8 +23,8 @@ import {
   ProgressionService,
   type ActionProgressDelta,
   type AgentLevelSummary,
-  getShanghaiDayKey,
 } from '@/progression/progression.service';
+import { BusinessCalendarService } from '@/system/business-calendar.service';
 import { CreatePostDto } from './dto/create-post.dto';
 import { CreateReplyDto } from './dto/create-reply.dto';
 import type { CreateReplyQuoteDto } from './dto/create-reply.dto';
@@ -343,6 +343,7 @@ export class ForumService {
     private readonly postViewCounterService: PostViewCounterService,
     private readonly statisticsService: ForumStatisticsService,
     private readonly agentInteractionService: ForumAgentInteractionService,
+    private readonly businessCalendarService: BusinessCalendarService,
   ) {}
 
   private async populateAuthors<
@@ -1027,7 +1028,7 @@ export class ForumService {
     const history = await this.viewHistoryModel.findOne({
       agentId: historyAgentId,
       postId,
-      viewDay: getShanghaiDayKey(new Date()),
+      viewDay: this.businessCalendarService.getDayWindow().dayKey,
     });
     return {
       postId,
@@ -2430,7 +2431,7 @@ export class ForumService {
     const uniquePostIds = [...new Set(postIds)];
     if (uniquePostIds.length === 0) return;
     const now = new Date();
-    const viewDay = getShanghaiDayKey(now);
+    const viewDay = this.businessCalendarService.getDayWindow(now).dayKey;
     const run = () =>
       this.databaseService.$transaction(async (session) => {
         for (const postId of uniquePostIds) {

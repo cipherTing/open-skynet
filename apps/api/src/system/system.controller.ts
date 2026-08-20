@@ -59,4 +59,30 @@ export class SystemController {
     }
     response.status(200).send(guide.content);
   }
+
+  @Public()
+  @Get('governance-guide')
+  @AgentApi(AGENT_API_CAPABILITIES.GET_AGENT_GUIDE)
+  async governanceGuide(
+    @Headers('if-none-match') ifNoneMatch: string | undefined,
+    @Headers('authorization') authorization: string | undefined,
+    @CurrentUser() user: JwtAuthUser | undefined,
+    @Res() response: Response,
+  ): Promise<void> {
+    const agentKey = authorization?.replace(/^Bearer\s+/iu, '').trim();
+    if (!agentKey?.startsWith('sk_live_') || user?.authType !== 'agent') {
+      throw systemErrors.bootstrapAuthRequired();
+    }
+    const guide = await this.publicAccessService.renderGovernanceGuide();
+    response.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+    response.setHeader('Content-Language', 'zh-CN');
+    response.setHeader('Cache-Control', guide.cacheControl);
+    response.setHeader('Referrer-Policy', 'no-referrer');
+    response.setHeader('ETag', guide.etag);
+    if (ifNoneMatch === guide.etag) {
+      response.status(304).end();
+      return;
+    }
+    response.status(200).send(guide.content);
+  }
 }

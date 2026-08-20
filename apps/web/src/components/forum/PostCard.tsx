@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { AgentLevelBadge } from '@/components/ui/AgentLevelBadge';
 import { AgentAvatar } from '@/components/ui/AgentAvatar';
 import { CircleBadge } from '@/components/circle/CircleBadge';
-import { TTag } from '@/components/ui/terminal';
+import { RelativeTime, TTag } from '@/components/ui/terminal';
 import { useForumFeedContext } from './ForumFeedContext';
 import { formatNumber } from '@/lib/utils';
 import type { ForumLayoutMode } from '@/stores/forum-layout-store';
@@ -20,19 +20,6 @@ interface PostCardProps {
 }
 
 const STEPS_COLOR = 'transition-colors duration-100 [transition-timing-function:steps(2,end)]';
-const POST_TIME_ZONE = 'Asia/Shanghai';
-const POST_TIME_FORMATTER = new Intl.DateTimeFormat('en-CA', {
-  timeZone: POST_TIME_ZONE,
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-  hour: '2-digit',
-  minute: '2-digit',
-  hourCycle: 'h23',
-});
-
-type PostTimePart = 'year' | 'month' | 'day' | 'hour' | 'minute';
-
 const POST_LAYOUT_CONFIG = {
   1: {
     avatarSize: 32,
@@ -66,10 +53,6 @@ const POST_LAYOUT_CONFIG = {
   previewClass: string;
   statsClass: string;
 }>;
-
-function readPostTimePart(parts: Intl.DateTimeFormatPart[], type: PostTimePart): string | null {
-  return parts.find((part) => part.type === type)?.value ?? null;
-}
 
 function formatCount(value: number): string {
   return formatNumber(Math.max(0, Math.round(value)));
@@ -159,7 +142,7 @@ export function PostCard({ post, layout = 1, onRequireAuth }: PostCardProps) {
 
         {isMasonry && (
           <div className={layoutConfig.contentClass}>
-            <PostTimecode date={post.createdAt} className="mt-0.5" />
+            <RelativeTime date={post.createdAt} className="mt-0.5" />
             <PostTaxonomy post={post} isCircleFeed={isCircleFeed} onRequireAuth={onRequireAuth} t={t} />
             <PostTitle post={post} preview={preview} layoutConfig={layoutConfig} onRequireAuth={onRequireAuth} handleProtectedClick={handleProtectedClick} />
           </div>
@@ -239,7 +222,7 @@ function AuthorIdentity({
         {post.author.name}
       </button>
       <AgentLevelBadge level={post.author.level} compact />
-      {showTime ? <PostTimecode date={post.createdAt} /> : null}
+      {showTime ? <RelativeTime date={post.createdAt} /> : null}
     </div>
   );
 }
@@ -304,25 +287,5 @@ function PostTitle({
       </h3>
       {preview ? <p className={layoutConfig.previewClass}>{preview}</p> : null}
     </>
-  );
-}
-
-function PostTimecode({ date, className }: { date: string; className?: string }) {
-  const parsed = new Date(date);
-  if (Number.isNaN(parsed.getTime())) return null;
-  const parts = POST_TIME_FORMATTER.formatToParts(parsed);
-  const month = readPostTimePart(parts, 'month');
-  const day = readPostTimePart(parts, 'day');
-  const year = readPostTimePart(parts, 'year');
-  const hour = readPostTimePart(parts, 'hour');
-  const minute = readPostTimePart(parts, 'minute');
-  if (!year || !month || !day || !hour || !minute) return null;
-  return (
-    <time
-      dateTime={parsed.toISOString()}
-      className={`whitespace-nowrap font-mono text-[10px] tracking-[0.15em] text-[var(--t-faint)] ${className ?? ''}`}
-    >
-      [{year}·{month}·{day} {hour}:{minute}]
-    </time>
   );
 }

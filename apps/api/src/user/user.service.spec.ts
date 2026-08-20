@@ -13,7 +13,7 @@ describe('UserService Agent Key operations', () => {
   let moduleRef: TestingModule;
   let connection: Connection;
   let service: UserService;
-  const redis = { set: jest.fn() };
+  const redis = { del: jest.fn(), eval: jest.fn(), get: jest.fn(), set: jest.fn() };
   const publicAccess = { getPublicConfig: jest.fn() };
   const previousEncryptionKey = process.env.APP_ENCRYPTION_KEY;
   const previousJwtSecret = process.env.JWT_SECRET;
@@ -42,6 +42,9 @@ describe('UserService Agent Key operations', () => {
     await connection.db?.dropDatabase();
     await connection.model(Agent.name).syncIndexes();
     redis.set.mockResolvedValue('OK');
+    redis.get.mockResolvedValue(null);
+    redis.del.mockResolvedValue(1);
+    redis.eval.mockResolvedValue(1);
     publicAccess.getPublicConfig.mockResolvedValue({
       guideUrl: 'https://community.example.com/guide.md',
       version: 6,
@@ -138,13 +141,17 @@ describe('UserService Agent Key operations', () => {
     await service.regenerateKey(agent.id);
     const result = await service.createGuideLink(agent.id, 6);
     const redisRecord = JSON.parse(redis.set.mock.calls[0]?.[1] as string) as {
-      agentId: string;
+      tokenHash: string;
+      tokenCiphertext: string;
+      expiresAt: string;
       keyVersion: number;
       publicAccessVersion: number;
       revisitIntervalHours: number;
     };
-    expect(redisRecord).toEqual({
-      agentId: agent.id,
+    expect(redisRecord).toMatchObject({
+      tokenHash: expect.any(String),
+      tokenCiphertext: expect.any(String),
+      expiresAt: expect.any(String),
       keyVersion: 1,
       publicAccessVersion: 6,
       revisitIntervalHours: 6,
@@ -155,7 +162,108 @@ describe('UserService Agent Key operations', () => {
       expect.any(String),
       'EX',
       30 * 60,
-      'NX',
+    );
+  });
+
+  it('stores one current bootstrap record under the Agent identity', async () => {
+    const agent = await connection.model(Agent.name).create({
+      name: 'SingleBootstrapAgent',
+      userId: 'single-bootstrap-user',
+    });
+    await service.regenerateKey(agent.id);
+
+    await service.createGuideLink(agent.id, 6);
+
+    expect(redis.set).toHaveBeenCalledWith(
+      `agent-guide-bootstrap:${agent.id}`,
+      expect.any(String),
+      'EX',
+      30 * 60,
+    );
+    const stored = JSON.parse(redis.set.mock.calls.at(-1)?.[1] as string) as {
+      tokenHash?: string;
+      tokenCiphertext?: string;
+      expiresAt?: string;
+    };
+    expect(stored.tokenHash).toEqual(expect.any(String));
+    expect(stored.tokenCiphertext).toEqual(expect.any(String));
+    expect(stored.expiresAt).toEqual(expect.any(String));
+  });
+
+  it('returns the current usable bootstrap link when the connect window opens again', async () => {
+    const agent = await connection.model(Agent.name).create({
+      name: 'ActiveBootstrapAgent',
+      userId: 'active-bootstrap-user',
+    });
+    await service.regenerateKey(agent.id);
+    const created = await service.createGuideLink(agent.id, 6);
+    redis.get.mockResolvedValue(redis.set.mock.calls.at(-1)?.[1]);
+
+    await expect(service.getGuideLinkStatus(agent.id)).resolves.toEqual({
+      active: true,
+      url: created.url,
+      expiresAt: created.expiresAt,
+    });
+  });
+
+  it('clears a bootstrap that no longer matches the current Agent Key', async () => {
+    const agent = await connection.model(Agent.name).create({
+      name: 'RotatedBootstrapAgent',
+      userId: 'rotated-bootstrap-user',
+      secretKeyVersion: 2,
+    });
+    redis.get.mockResolvedValue(
+      JSON.stringify({
+        tokenHash: 'opaque-token-hash',
+        tokenCiphertext: 'not-used-before-version-rejection',
+        expiresAt: '2099-08-19T08:00:00.000Z',
+        keyVersion: 1,
+        publicAccessVersion: 6,
+        revisitIntervalHours: 6,
+      }),
+    );
+
+    await expect(service.getGuideLinkStatus(agent.id)).resolves.toEqual({
+      active: false,
+      url: null,
+      expiresAt: null,
+    });
+    expect(redis.eval).toHaveBeenCalledWith(
+      expect.any(String),
+      1,
+      `agent-guide-bootstrap:${agent.id}`,
+      expect.any(String),
+    );
+    expect(redis.del).not.toHaveBeenCalled();
+  });
+
+  it('clears a bootstrap whose usable link can no longer be recovered', async () => {
+    const agent = await connection.model(Agent.name).create({
+      name: 'UnreadableBootstrapAgent',
+      userId: 'unreadable-bootstrap-user',
+      secretKeyVersion: 1,
+    });
+    redis.get.mockResolvedValue(
+      JSON.stringify({
+        tokenHash: 'opaque-token-hash',
+        tokenCiphertext: 'corrupted-ciphertext',
+        expiresAt: '2099-08-19T08:00:00.000Z',
+        keyVersion: 1,
+        publicAccessVersion: 6,
+        revisitIntervalHours: 6,
+      }),
+    );
+
+    await expect(service.getGuideLinkStatus(agent.id)).resolves.toEqual({
+      active: false,
+      url: null,
+      expiresAt: null,
+    });
+    expect(redis.eval).toHaveBeenCalledWith(
+      expect.any(String),
+      1,
+      `agent-guide-bootstrap:${agent.id}`,
+      expect.any(String),
     );
   });
 
@@ -170,5 +278,58 @@ describe('UserService Agent Key operations', () => {
       revisitIntervalHours: number;
     };
     expect(redisRecord.revisitIntervalHours).toBe(24);
+  });
+
+  it('creates a missing Agent Key without returning it through the Guide link endpoint', async () => {
+    const agent = await connection.model(Agent.name).create({
+      name: 'BootstrapCreatesKeyAgent',
+      userId: 'bootstrap-creates-key-user',
+    });
+
+    await expect(service.createGuideLink(agent.id, 6)).resolves.toMatchObject({
+      url: expect.stringContaining('bootstrap='),
+    });
+    const updated = await connection
+      .model(Agent.name)
+      .findById(agent.id)
+      .select('+secretKeyCiphertext');
+    expect(updated).toMatchObject({ secretKeyVersion: 1 });
+    expect(updated?.secretKeyCiphertext).toEqual(expect.any(String));
+  });
+
+  it('retries once when public access changes while creating a bootstrap', async () => {
+    const agent = await connection.model(Agent.name).create({
+      name: 'BootstrapConfigRaceAgent',
+      userId: 'bootstrap-config-race-user',
+    });
+    await service.regenerateKey(agent.id);
+    publicAccess.getPublicConfig
+      .mockResolvedValueOnce({ guideUrl: 'https://v1.example/guide.md', version: 6 })
+      .mockResolvedValueOnce({ guideUrl: 'https://v2.example/guide.md', version: 7 })
+      .mockResolvedValueOnce({ guideUrl: 'https://v2.example/guide.md', version: 7 })
+      .mockResolvedValueOnce({ guideUrl: 'https://v2.example/guide.md', version: 7 });
+
+    await expect(service.createGuideLink(agent.id, 6)).resolves.toMatchObject({
+      url: expect.stringMatching(/^https:\/\/v2\.example\/guide\.md\?bootstrap=/u),
+    });
+    expect(redis.set).toHaveBeenCalledTimes(2);
+    expect(redis.eval).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears an unreadable bootstrap only if the same Redis value is still current', async () => {
+    const raw = '{not-json';
+    redis.get.mockResolvedValue(raw);
+
+    await expect(service.getGuideLinkStatus('agent-1')).resolves.toEqual({
+      active: false,
+      url: null,
+      expiresAt: null,
+    });
+    expect(redis.eval).toHaveBeenCalledWith(
+      expect.any(String),
+      1,
+      'agent-guide-bootstrap:agent-1',
+      raw,
+    );
   });
 });

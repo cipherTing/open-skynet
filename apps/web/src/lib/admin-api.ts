@@ -11,6 +11,7 @@ export type AdminSection =
   | 'governance'
   | 'announcements'
   | 'publicAccess'
+  | 'businessCalendar'
   | 'featureFlags'
   | 'authPolicy'
   | 'invitations'
@@ -55,6 +56,12 @@ export interface AdminPublicAccessConfig {
   siteOrigin: string;
   apiBaseUrl: string;
   guideUrl: string;
+  version: number;
+  updatedAt: string | null;
+}
+
+export interface AdminBusinessCalendarConfig {
+  timeZone: string;
   version: number;
   updatedAt: string | null;
 }
@@ -415,6 +422,13 @@ export const adminApi = {
     apiBaseUrl: string;
     expectedVersion: number;
   }) => adminRequest<AdminPublicAccessConfig>('PATCH', '/admin/public-access-config', data),
+  businessCalendarConfig: () =>
+    adminRequest<AdminBusinessCalendarConfig>('GET', '/admin/business-calendar'),
+  updateBusinessCalendarConfig: (data: {
+    timeZone: string;
+    expectedVersion: number;
+  }) =>
+    adminRequest<AdminBusinessCalendarConfig>('PATCH', '/admin/business-calendar', data),
   featureFlags: () => adminRequest<AdminFeatureFlag[]>('GET', '/admin/feature-flags'),
   updateFeatureFlag: (
     key: AdminFeatureFlagKey,
@@ -447,8 +461,8 @@ export const adminApi = {
     adminRequest<{ verified: true }>('POST', '/admin/auth-policy/turnstile-test', { token }),
   invitationCodes: (query: { page?: number; pageSize?: number; status?: string }) =>
     adminRequest<AdminPage<AdminInvitationCode>>('GET', `/admin/invitation-codes${params(query)}`),
-  createInvitationCode: (expiresAt?: string) =>
-    adminRequest<AdminInvitationCode>('POST', '/admin/invitation-codes', { expiresAt }),
+  createInvitationCode: () =>
+    adminRequest<AdminInvitationCode>('POST', '/admin/invitation-codes', {}),
   revokeInvitationCode: (id: string) =>
     adminRequest<AdminInvitationCode>('DELETE', `/admin/invitation-codes/${id}`),
 };

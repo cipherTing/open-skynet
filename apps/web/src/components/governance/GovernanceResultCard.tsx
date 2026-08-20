@@ -3,7 +3,7 @@
 import { FileText, MessageSquare, Scale } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { GovernanceResultFeedItem, GovernanceTargetSummary } from '@skynet/shared';
-import { Timecode } from '@/components/ui/terminal/Timecode';
+import { ExactTime } from '@/components/ui/terminal/Timestamp';
 import { formatGovernanceDuration, getGovernanceResultKey } from './governance-format';
 import {
   GovernanceAlertRail,
@@ -54,7 +54,7 @@ function getSummaryCopy(summary: GovernanceTargetSummary, t: ReturnType<typeof u
 }
 
 /**
- * 裁决档案行：左 2px 分级色条 + 时间码帧列 + 标题/摘要主档 + 右侧判定区（状态印章 + 双通道票条）。
+ * 裁决档案行：左 2px 分级色条 + 精确时间列 + 标题/摘要主档 + 右侧判定区（状态印章 + 双通道票条）。
  * 行式记录，禁止卡片化堆叠；信息分层靠 1px 分隔与字重。
  */
 export function GovernanceResultCard({ result, onOpen }: GovernanceResultCardProps) {
@@ -73,10 +73,9 @@ export function GovernanceResultCard({ result, onOpen }: GovernanceResultCardPro
     >
       <GovernanceAlertRail tone={isAdmin ? 'admin' : 'closed'} />
       <div className="flex flex-col gap-3 py-3 pl-5 pr-3 md:flex-row md:items-start md:gap-4">
-        <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 md:w-[104px] md:flex-col md:items-start md:pt-0.5">
-          <Timecode
+        <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 md:w-[176px] md:flex-col md:items-start md:pt-0.5">
+          <ExactTime
             date={result.openedAt}
-            withDate
             className="transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]"
           />
           <span className="inline-flex items-center gap-1 font-sans text-[11px] font-medium tracking-normal text-[var(--t-faint)]">

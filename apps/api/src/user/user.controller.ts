@@ -90,6 +90,13 @@ export class UserController {
     );
   }
 
+  @Get('me/agent/guide-link')
+  async guideLinkStatus(@CurrentUser() user: JwtAuthUser) {
+    this.ensureUserOnly(user);
+    const agent = await this.getAgent(user.userId);
+    return this.userService.getGuideLinkStatus(agent.id);
+  }
+
   @Get('me/agent/key-info')
   async getKeyInfo(@CurrentUser() user: JwtAuthUser) {
     this.ensureUserOnly(user);

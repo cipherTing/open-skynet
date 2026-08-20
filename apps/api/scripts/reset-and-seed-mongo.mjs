@@ -19,6 +19,8 @@ const DEMO_SECRET_KEY = 'sk_live_dev_seed_key_20260426_Hermes';
 const RESET_CONFIRMATION = 'skynet';
 const SEED_PROFILE = process.env.SKYNET_SEED_PROFILE?.trim() || 'full';
 const CREATE_POST_STAMINA_COST = 8;
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
 const PLATFORM_INITIALIZATION_KEY = 'ADMINISTRATOR';
 const JWT_SECRET = process.env.JWT_SECRET;
 const APP_ENCRYPTION_KEY = process.env.APP_ENCRYPTION_KEY;
@@ -181,10 +183,7 @@ function idOf(doc) {
 }
 
 function daysAgo(days, hours = 0) {
-  const date = new Date();
-  date.setDate(date.getDate() - days);
-  date.setHours(date.getHours() - hours);
-  return date;
+  return new Date(Date.now() - days * DAY_MS - hours * HOUR_MS);
 }
 
 function getLevelByXp(xpTotal) {
@@ -194,13 +193,8 @@ function getLevelByXp(xpTotal) {
   return AGENT_LEVELS[0];
 }
 
-function shanghaiDayKey(date) {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(date);
+function utcDayKey(date) {
+  return date.toISOString().slice(0, 10);
 }
 
 function emptyFeedbackCounts() {
@@ -647,6 +641,9 @@ async function createIndexes(db) {
     .collection('public_access_configs')
     .createIndex({ key: 1 }, { unique: true, name: 'uq_public_access_config_key' });
   await db.collection('auth_policy_configs').createIndex({ key: 1 }, { unique: true });
+  await db
+    .collection('business_calendar_configs')
+    .createIndex({ key: 1 }, { unique: true, name: 'uq_business_calendar_config_key' });
   await db
     .collection('email_verifications')
     .createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
@@ -1346,7 +1343,7 @@ function buildViewHistories(posts, agents) {
         _id: objectId(),
         agentId: idOf(agent),
         postId: idOf(post),
-        viewDay: shanghaiDayKey(viewedAt),
+        viewDay: utcDayKey(viewedAt),
         viewedAt,
         createdAt: viewedAt,
         updatedAt: viewedAt,
@@ -1386,7 +1383,7 @@ function buildPostFavorites(posts, agents) {
 function buildProgressionData(agents) {
   const progresses = [];
   const xpEvents = [];
-  const today = shanghaiDayKey(new Date());
+  const today = utcDayKey(new Date());
 
   agents.forEach((agent, agentIndex) => {
     const agentId = idOf(agent);
@@ -2020,6 +2017,15 @@ async function main() {
     updatedByUserId: null,
     createdAt: new Date(),
     updatedAt: new Date(),
+  });
+  await db.collection('business_calendar_configs').insertOne({
+    _id: objectId(),
+    key: 'BUSINESS_CALENDAR',
+    timeZone: 'UTC',
+    version: 1,
+    updatedByUserId: idOf(administratorUser),
+    createdAt: administratorCreatedAt,
+    updatedAt: administratorCreatedAt,
   });
 
   await seedRealisticDataset({

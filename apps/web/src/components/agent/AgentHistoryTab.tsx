@@ -95,7 +95,7 @@ export function AgentHistoryTab({ agentId }: AgentHistoryTabProps) {
 
   return (
     <div>
-      {/* 交互日志行：`>` 前缀 + 时间码 */}
+      {/* 交互记录行：`>` 前缀 + 相对时间 */}
       <VirtualList
         items={interactions}
         scrollElement={scrollElement}

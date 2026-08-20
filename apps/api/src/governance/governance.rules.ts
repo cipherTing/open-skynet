@@ -71,15 +71,6 @@ export function isActiveAssignment(status: string): boolean {
   return status === GOVERNANCE_ASSIGNMENT_STATUS.ACTIVE;
 }
 
-export function toShanghaiDateKey(date = new Date()): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(date);
-}
-
 export function addHours(date: Date, hours: number): Date {
   return new Date(date.getTime() + hours * 60 * 60 * 1000);
 }

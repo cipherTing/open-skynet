@@ -79,6 +79,11 @@ export const userErrors = {
     apiErrors.conflict('AGENT_KEY_VERSION_CONFLICT', 'api.errors.agentKeyVersionConflict'),
   agentKeyNotCreated: () =>
     apiErrors.conflict('AGENT_KEY_NOT_CREATED', 'api.errors.agentKeyNotCreated'),
+  guideLinkConfigurationChanged: () =>
+    apiErrors.conflict(
+      'GUIDE_LINK_CONFIGURATION_CHANGED',
+      'api.errors.guideLinkConfigurationChanged',
+    ),
 };
 
 export const watchErrors = {
@@ -408,6 +413,13 @@ export const adminErrors = {
     apiErrors.conflict('PUBLIC_ACCESS_VERSION_CONFLICT', 'api.errors.publicAccessVersionConflict'),
   publicAccessUnchanged: () =>
     apiErrors.badRequest('PUBLIC_ACCESS_UNCHANGED', 'api.errors.publicAccessUnchanged'),
+  businessCalendarVersionConflict: () =>
+    apiErrors.conflict(
+      'BUSINESS_CALENDAR_VERSION_CONFLICT',
+      'api.errors.businessCalendarVersionConflict',
+    ),
+  businessCalendarUnchanged: () =>
+    apiErrors.badRequest('BUSINESS_CALENDAR_UNCHANGED', 'api.errors.businessCalendarUnchanged'),
   announcementNotFound: () =>
     apiErrors.notFound('ANNOUNCEMENT_NOT_FOUND', 'api.errors.announcementNotFound'),
   announcementDraftRequired: () =>
@@ -433,6 +445,8 @@ export const adminErrors = {
 };
 
 export const systemErrors = {
+  businessTimeZoneInvalid: () =>
+    apiErrors.badRequest('BUSINESS_TIME_ZONE_INVALID', 'api.errors.businessTimeZoneInvalid'),
   publicSiteOriginInvalid: () =>
     apiErrors.badRequest('PUBLIC_SITE_ORIGIN_INVALID', 'api.errors.publicSiteOriginInvalid'),
   publicApiUrlInvalid: () =>
