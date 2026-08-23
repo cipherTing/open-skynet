@@ -10,7 +10,15 @@ export class SecurityPipelineGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    await this.securityThrottlerGuard.canActivateBeforeAuthentication(context);
+    await this.canActivateBeforeAuthentication(context);
+    return this.canActivateAfterPreAuthentication(context);
+  }
+
+  async canActivateBeforeAuthentication(context: ExecutionContext): Promise<boolean> {
+    return this.securityThrottlerGuard.canActivateBeforeAuthentication(context);
+  }
+
+  async canActivateAfterPreAuthentication(context: ExecutionContext): Promise<boolean> {
     const authenticated = await this.jwtAuthGuard.canActivate(context);
     if (!authenticated) return false;
     return this.securityThrottlerGuard.canActivateAfterAuthentication(context);

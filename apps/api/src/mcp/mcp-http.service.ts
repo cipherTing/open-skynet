@@ -10,6 +10,7 @@ import { getCorsOrigins } from '@/config/env';
 import { McpAgentToolsService, type McpAgentPrincipal } from './mcp-agent-tools.service';
 import { McpToolError } from './mcp.errors';
 import { McpRoute } from '@/auth/decorators/agent-api.decorator';
+import { PreAuthThrottle } from '@/common/guards/pre-auth-throttle.decorator';
 
 type McpRequestWithAuth = Request & {
   user?: JwtAuthUser;
@@ -18,6 +19,7 @@ type McpRequestWithAuth = Request & {
 
 class McpRouteBoundary {}
 @McpRoute()
+@PreAuthThrottle()
 class McpRouteHandler {}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -71,6 +73,7 @@ export class McpHttpService {
         // 使用 SDK 默认的 auto：普通请求返回 JSON，有通知时自动升级 SSE。
         // 强制 json 会丢弃中途通知，且不符合通用 Streamable HTTP 客户端的默认协商。
         responseMode: 'auto',
+        maxSubscriptions: 10_000,
         onerror: (error) => this.logger.error(error.message, error.stack),
       },
     );
@@ -83,10 +86,9 @@ export class McpHttpService {
     return this.nodeHandler;
   }
 
-  async authenticate(request: Request, response: Response): Promise<void> {
+  async authenticate(request: Request, response: Response): Promise<McpAgentPrincipal> {
     response.setHeader('Cache-Control', 'no-store');
     response.setHeader('Pragma', 'no-cache');
-    this.assertOrigin(request);
     const requestWithAuth = request as McpRequestWithAuth;
     const context = new ExecutionContextHost(
       [requestWithAuth, response, () => undefined],
@@ -94,7 +96,9 @@ export class McpHttpService {
       McpRouteHandler,
     );
     context.setType('http');
-    await this.securityPipelineGuard.canActivate(context);
+    await this.securityPipelineGuard.canActivateBeforeAuthentication(context);
+    this.assertOrigin(request);
+    await this.securityPipelineGuard.canActivateAfterPreAuthentication(context);
 
     const user = requestWithAuth.user;
     if (!user || user.authType !== 'agent') {
@@ -102,22 +106,16 @@ export class McpHttpService {
     }
 
     const token = this.readBearerToken(request);
+    const principal = readPrincipal(user);
     requestWithAuth.auth = {
       token,
       clientId: user.agentId,
       scopes: ['agent'],
       extra: {
-        principal: {
-          authType: 'agent',
-          agentId: user.agentId,
-          userId: user.userId,
-          username: user.username,
-          dbTokenVersion: user.dbTokenVersion,
-          payloadTokenVersion: user.payloadTokenVersion,
-          role: user.role,
-        },
+        principal,
       },
     };
+    return principal;
   }
 
   private readBearerToken(request: Request): string {

@@ -27,8 +27,10 @@ function readHttpExceptionCode(exception: HttpException): string | null {
 
 function readHttpExceptionDetails(exception: HttpException): McpErrorDetails {
   const response = exception.getResponse();
-  if (!isRecord(response) || !isRecord(response.details)) return {};
-  const retryAfterSeconds = response.details.retryAfterSeconds;
+  if (!isRecord(response)) return {};
+  const retryAfterSeconds = isRecord(response.details)
+    ? response.details.retryAfterSeconds
+    : response.retryAfterSeconds;
   return typeof retryAfterSeconds === 'number' ? { retryAfterSeconds } : {};
 }
 

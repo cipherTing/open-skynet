@@ -27,6 +27,7 @@ import { UserService } from '@/user/user.service';
 import { WatchService } from '@/watch/watch.service';
 import { McpIdempotencyService } from './mcp-idempotency.service';
 import { McpToolError, normalizeMcpError, serializeMcpError } from './mcp.errors';
+import { McpExecutionPolicyService } from './mcp-execution-policy.service';
 
 export interface McpAgentPrincipal {
   readonly authType: 'agent';
@@ -117,6 +118,7 @@ export class McpAgentToolsService {
     private readonly userService: UserService,
     private readonly publicAccessService: PublicAccessService,
     private readonly idempotencyService: McpIdempotencyService,
+    private readonly executionPolicyService: McpExecutionPolicyService,
   ) {}
 
   createServer(principal: McpAgentPrincipal): McpServer {
@@ -133,42 +135,39 @@ export class McpAgentToolsService {
     return server;
   }
 
+  private toolErrorResult(error: unknown) {
+    const normalized = normalizeMcpError(error);
+    if (normalized.code === 'MCP_INTERNAL_ERROR') {
+      this.logger.error(normalized.message, error instanceof Error ? error.stack : undefined);
+    }
+    return {
+      content: [{ type: 'text' as const, text: serializeMcpError(normalized) }],
+      isError: true as const,
+    };
+  }
+
   private async run(operation: string, callback: () => Promise<unknown>) {
     try {
-      const result = await callback();
+      const result = await this.executionPolicyService.executeTool(callback);
       const structuredContent = { operation, result };
       return {
         content: [{ type: 'text' as const, text: JSON.stringify(structuredContent) }],
         structuredContent,
       };
     } catch (error) {
-      const normalized = normalizeMcpError(error);
-      if (normalized.code === 'MCP_INTERNAL_ERROR') {
-        this.logger.error(normalized.message, error instanceof Error ? error.stack : undefined);
-      }
-      return {
-        content: [{ type: 'text' as const, text: serializeMcpError(normalized) }],
-        isError: true,
-      };
+      return this.toolErrorResult(error);
     }
   }
 
   private async runGuide(callback: () => Promise<string>) {
     try {
-      const guide = await callback();
+      const guide = await this.executionPolicyService.executeTool(callback);
       return {
         content: [{ type: 'text' as const, text: guide }],
         structuredContent: { operation: 'READ_GUIDE', result: { guide } },
       };
     } catch (error) {
-      const normalized = normalizeMcpError(error);
-      if (normalized.code === 'MCP_INTERNAL_ERROR') {
-        this.logger.error(normalized.message, error instanceof Error ? error.stack : undefined);
-      }
-      return {
-        content: [{ type: 'text' as const, text: serializeMcpError(normalized) }],
-        isError: true,
-      };
+      return this.toolErrorResult(error);
     }
   }
 
@@ -963,7 +962,13 @@ export class McpAgentToolsService {
               'proposal_write',
               { operation: args.operation, ...args.input },
               (session) =>
-                this.proposalService.create(circleId, principal.agentId, idempotencyKey, dto, session),
+                this.proposalService.create(
+                  circleId,
+                  principal.agentId,
+                  idempotencyKey,
+                  dto,
+                  session,
+                ),
             ),
           );
         }
@@ -1046,9 +1051,7 @@ export class McpAgentToolsService {
                 proposalId,
                 principal.agentId,
                 idempotencyKey,
-                {
-                  content,
-                },
+                { content },
                 session,
               ),
           ),

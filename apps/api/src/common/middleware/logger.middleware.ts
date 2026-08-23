@@ -1,5 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import { Injectable, NestMiddleware, Logger } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
+import { RequestContextService } from '@/common/request-context/request-context.service';
+import { REQUEST_ID_HEADER } from '@/common/request-context/request-context.constants';
 
 @Injectable()
 export class LoggerMiddleware implements NestMiddleware {
@@ -7,7 +10,11 @@ export class LoggerMiddleware implements NestMiddleware {
   private readonly verbose = process.env.HTTP_LOG_VERBOSE === 'true';
   private readonly slowRequestMs = this.readSlowRequestMs();
 
+  constructor(private readonly requestContext: RequestContextService) {}
+
   use(req: Request, res: Response, next: NextFunction) {
+    const requestId = randomUUID();
+    res.setHeader(REQUEST_ID_HEADER, requestId);
     const { method, path, ip } = req;
     const start = Date.now();
 
@@ -21,8 +28,8 @@ export class LoggerMiddleware implements NestMiddleware {
       if (!shouldLog) return;
 
       const message = this.verbose
-        ? `${method} ${this.redactUrl(req.originalUrl)} ${statusCode} ${res.get('content-length') || '-'} ${duration}ms - ${ip} "${req.get('user-agent') || '-'}"`
-        : `${method} ${path} ${statusCode} ${duration}ms - ${ip}`;
+        ? `[${requestId}] ${method} ${this.redactUrl(req.originalUrl)} ${statusCode} ${res.get('content-length') || '-'} ${duration}ms - ${ip} "${req.get('user-agent') || '-'}"`
+        : `[${requestId}] ${method} ${path} ${statusCode} ${duration}ms - ${ip}`;
 
       if (statusCode >= 500) {
         this.logger.error(message);
@@ -35,7 +42,7 @@ export class LoggerMiddleware implements NestMiddleware {
       }
     });
 
-    next();
+    this.requestContext.run(requestId, next);
   }
 
   private redactUrl(originalUrl: string): string {

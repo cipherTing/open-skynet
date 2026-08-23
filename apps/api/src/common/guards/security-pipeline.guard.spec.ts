@@ -61,4 +61,39 @@ describe('SecurityPipelineGuard', () => {
     await expect(guard.canActivate(context)).resolves.toBe(false);
     expect(securityThrottlerGuard.canActivateAfterAuthentication).not.toHaveBeenCalled();
   });
+
+  it('supports running the pre-auth stage before an MCP Origin check without double charging', async () => {
+    const calls: string[] = [];
+    const jwtAuthGuard = {
+      canActivate: jest.fn(async () => {
+        calls.push('authenticate');
+        return true;
+      }),
+    };
+    const securityThrottlerGuard = {
+      canActivateBeforeAuthentication: jest.fn(async () => {
+        calls.push('pre-auth');
+        return true;
+      }),
+      canActivateAfterAuthentication: jest.fn(async () => {
+        calls.push('post-auth');
+        return true;
+      }),
+    };
+    const moduleRef = await Test.createTestingModule({
+      providers: [
+        SecurityPipelineGuard,
+        { provide: JwtAuthGuard, useValue: jwtAuthGuard },
+        { provide: SecurityThrottlerGuard, useValue: securityThrottlerGuard },
+      ],
+    }).compile();
+    const guard = moduleRef.get(SecurityPipelineGuard);
+
+    await expect(guard.canActivateBeforeAuthentication(context)).resolves.toBe(true);
+    calls.push('origin');
+    await expect(guard.canActivateAfterPreAuthentication(context)).resolves.toBe(true);
+
+    expect(calls).toEqual(['pre-auth', 'origin', 'authenticate', 'post-auth']);
+    expect(securityThrottlerGuard.canActivateBeforeAuthentication).toHaveBeenCalledTimes(1);
+  });
 });

@@ -1,6 +1,10 @@
 import type { ClientSession } from 'mongoose';
 import { McpAgentToolsService } from './mcp-agent-tools.service';
 
+const ALLOW_EXECUTION_POLICY = {
+  executeTool: <T>(operation: () => Promise<T>) => operation(),
+};
+
 describe('McpAgentToolsService write session propagation', () => {
   it('passes the idempotency transaction session to the business operation', async () => {
     const session = { id: 'mcp-session' } as unknown as ClientSession;
@@ -28,6 +32,7 @@ describe('McpAgentToolsService write session propagation', () => {
       {} as never,
       {} as never,
       idempotencyService as never,
+      ALLOW_EXECUTION_POLICY as never,
     );
     const operation = jest.fn(async (activeSession: ClientSession) => activeSession);
 
@@ -40,12 +45,7 @@ describe('McpAgentToolsService write session propagation', () => {
           operation: (activeSession: ClientSession) => Promise<ClientSession>,
         ) => Promise<ClientSession>;
       }
-    ).runWrite(
-      { agentId: 'agent-1' },
-      'forum_write',
-      { idempotencyKey: 'key-1' },
-      operation,
-    );
+    ).runWrite({ agentId: 'agent-1' }, 'forum_write', { idempotencyKey: 'key-1' }, operation);
 
     expect(result).toBe(session);
     expect(operation).toHaveBeenCalledWith(session);
@@ -84,6 +84,7 @@ describe('McpAgentToolsService write session propagation', () => {
       {} as never,
       {} as never,
       idempotencyService as never,
+      ALLOW_EXECUTION_POLICY as never,
     );
 
     const server = service.createServer({
@@ -157,6 +158,7 @@ describe('McpAgentToolsService write session propagation', () => {
       {} as never,
       {} as never,
       idempotencyService as never,
+      ALLOW_EXECUTION_POLICY as never,
     );
     const server = service.createServer({
       authType: 'agent',
@@ -244,6 +246,7 @@ describe('McpAgentToolsService write session propagation', () => {
       {} as never,
       {} as never,
       idempotencyService as never,
+      ALLOW_EXECUTION_POLICY as never,
     );
     const server = service.createServer({
       authType: 'agent',

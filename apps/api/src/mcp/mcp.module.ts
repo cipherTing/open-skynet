@@ -14,6 +14,8 @@ import { SecurityModule } from '@/common/security.module';
 import { McpAgentToolsService } from './mcp-agent-tools.service';
 import { McpHttpService } from './mcp-http.service';
 import { McpIdempotencyService } from './mcp-idempotency.service';
+import { RedisModule } from '@/redis/redis.module';
+import { McpExecutionPolicyService } from './mcp-execution-policy.service';
 
 @Module({
   imports: [
@@ -29,8 +31,14 @@ import { McpIdempotencyService } from './mcp-idempotency.service';
     UserModule,
     SystemModule,
     SecurityModule,
+    RedisModule,
   ],
-  providers: [McpAgentToolsService, McpHttpService, McpIdempotencyService],
-  exports: [McpHttpService],
+  providers: [
+    McpAgentToolsService,
+    McpHttpService,
+    McpIdempotencyService,
+    McpExecutionPolicyService,
+  ],
+  exports: [McpHttpService, McpExecutionPolicyService],
 })
 export class McpModule {}

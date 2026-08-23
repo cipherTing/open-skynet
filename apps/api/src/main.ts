@@ -28,8 +28,10 @@ import {
 } from './config/env';
 import { ApiValidationPipe } from './common/pipes/api-validation.pipe';
 import { McpHttpService } from './mcp/mcp-http.service';
-import { normalizeMcpError } from './mcp/mcp.errors';
-import { HttpException } from '@nestjs/common';
+import { LoggerMiddleware } from './common/middleware/logger.middleware';
+import { REQUEST_ID_HEADER } from './common/request-context/request-context.constants';
+import { McpExecutionPolicyService } from './mcp/mcp-execution-policy.service';
+import { registerMcpHttpRoute } from './mcp/mcp-http-route';
 
 async function bootstrap() {
   validateSecuritySecrets();
@@ -37,6 +39,9 @@ async function bootstrap() {
     bodyParser: false,
   });
   const expressApp: Express = app.getHttpAdapter().getInstance();
+  const loggerMiddleware = app.get(LoggerMiddleware);
+
+  expressApp.use(loggerMiddleware.use.bind(loggerMiddleware));
 
   expressApp.disable('etag');
   expressApp.disable('x-powered-by');
@@ -48,6 +53,31 @@ async function bootstrap() {
       crossOriginEmbedderPolicy: false,
     }),
   );
+
+  const allowedOrigins = getCorsOrigins();
+  app.enableCors({
+    origin: allowedOrigins,
+    credentials: true,
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: [
+      'Authorization',
+      'Content-Type',
+      'Idempotency-Key',
+      'X-Skynet-Csrf',
+      'Accept-Language',
+      'MCP-Protocol-Version',
+      'Mcp-Method',
+      'Mcp-Name',
+      'Mcp-Session-Id',
+      'Last-Event-ID',
+    ],
+    exposedHeaders: ['Content-Language', 'Mcp-Session-Id', REQUEST_ID_HEADER],
+  });
+
+  const mcpHttpService = app.get(McpHttpService);
+  const mcpExecutionPolicyService = app.get(McpExecutionPolicyService);
+  registerMcpHttpRoute(expressApp, mcpHttpService, mcpExecutionPolicyService);
+
   app.use(json({ limit: '256kb' }));
   app.use(urlencoded({ extended: false, limit: '64kb' }));
   app.use((request: Request, response: Response, next: NextFunction) => {
@@ -71,27 +101,6 @@ async function bootstrap() {
     }),
   );
 
-  // CORS — 限制允许的来源
-  const allowedOrigins = getCorsOrigins();
-  app.enableCors({
-    origin: allowedOrigins,
-    credentials: true,
-    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: [
-      'Authorization',
-      'Content-Type',
-      'Idempotency-Key',
-      'X-Skynet-Csrf',
-      'Accept-Language',
-      'MCP-Protocol-Version',
-      'Mcp-Method',
-      'Mcp-Name',
-      'Mcp-Session-Id',
-      'Last-Event-ID',
-    ],
-    exposedHeaders: ['Content-Language', 'Mcp-Session-Id'],
-  });
-
   if (isSwaggerEnabled()) {
     const swaggerConfig = new DocumentBuilder()
       .setTitle('Skynet API')
@@ -102,40 +111,6 @@ async function bootstrap() {
     const document = SwaggerModule.createDocument(app, swaggerConfig);
     SwaggerModule.setup('api/docs', app, document);
   }
-
-  const mcpHttpService = app.get(McpHttpService);
-  const mcpNodeHandler = mcpHttpService.getNodeHandler();
-  expressApp.all('/api/v1/mcp', (request: Request, response: Response) => {
-    void (async () => {
-      try {
-        await mcpHttpService.authenticate(request, response);
-        if (response.headersSent) return;
-        await mcpNodeHandler(request, response, request.body);
-      } catch (error) {
-        const normalized = normalizeMcpError(error);
-        const status =
-          error instanceof HttpException
-            ? error.getStatus()
-            : normalized.code === 'UNAUTHORIZED'
-              ? 401
-              : normalized.code === 'MCP_ORIGIN_FORBIDDEN'
-                ? 403
-                : 500;
-        if (status === 401) response.setHeader('WWW-Authenticate', 'Bearer');
-        if (normalized.details.retryAfterSeconds !== undefined) {
-          response.setHeader('Retry-After', String(normalized.details.retryAfterSeconds));
-        }
-        if (!response.headersSent) {
-          response.status(status).json({
-            error: {
-              code: normalized.code,
-              message: normalized.message,
-            },
-          });
-        }
-      }
-    })();
-  });
 
   const port = process.env.API_PORT || 8081;
   await app.listen(port);

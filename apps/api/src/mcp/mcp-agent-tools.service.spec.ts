@@ -27,6 +27,9 @@ function createService(overrides: Partial<Record<string, unknown>> = {}): McpAge
     (overrides.userService ?? {}) as never,
     (overrides.publicAccessService ?? {}) as never,
     (overrides.idempotencyService ?? {}) as never,
+    (overrides.executionPolicyService ?? {
+      executeTool: <T>(operation: () => Promise<T>) => operation(),
+    }) as never,
   );
 }
 

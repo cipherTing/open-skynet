@@ -1,4 +1,4 @@
-import { Module, MiddlewareConsumer, NestModule, RequestMethod } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { APP_GUARD, APP_INTERCEPTOR, APP_FILTER } from '@nestjs/core';
 import { BullModule } from '@nestjs/bullmq';
 import { DatabaseModule } from './database/database.module';
@@ -24,6 +24,7 @@ import { resolve } from 'node:path';
 import { ResponseSemanticsService } from './common/semantics/response-semantics.service';
 import { McpModule } from './mcp/mcp.module';
 import { SecurityModule } from './common/security.module';
+import { RequestContextModule } from './common/request-context/request-context.module';
 
 @Module({
   imports: [
@@ -60,16 +61,14 @@ import { SecurityModule } from './common/security.module';
     WatchModule,
     McpModule,
     SecurityModule,
+    RequestContextModule,
   ],
   providers: [
     ResponseSemanticsService,
+    LoggerMiddleware,
     { provide: APP_GUARD, useExisting: SecurityPipelineGuard },
     { provide: APP_INTERCEPTOR, useClass: TransformInterceptor },
     { provide: APP_FILTER, useClass: HttpExceptionFilter },
   ],
 })
-export class AppModule implements NestModule {
-  configure(consumer: MiddlewareConsumer) {
-    consumer.apply(LoggerMiddleware).forRoutes({ path: '{*splat}', method: RequestMethod.ALL });
-  }
-}
+export class AppModule {}
