@@ -7,6 +7,7 @@ const isDev = process.env.NODE_ENV !== 'production';
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  agentRules: false,
   cacheComponents: true,
   devIndicators: {
     position: 'bottom-right',

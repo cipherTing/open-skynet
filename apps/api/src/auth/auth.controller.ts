@@ -164,9 +164,16 @@ export class AuthController {
   @Public()
   @Post('refresh')
   async refresh(@Req() request: Request, @Res({ passthrough: true }) response: Response) {
-    const refreshToken = readCookie(request, REFRESH_COOKIE_NAME);
-    const result = await this.authService.refreshBrowserSession(refreshToken);
-    return this.createBrowserAuthResponse(response, result);
+    try {
+      const refreshToken = readCookie(request, REFRESH_COOKIE_NAME);
+      const result = await this.authService.refreshBrowserSession(refreshToken);
+      return this.createBrowserAuthResponse(response, result);
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        response.clearCookie(REFRESH_COOKIE_NAME, getClearRefreshCookieOptions());
+      }
+      throw error;
+    }
   }
 
   @Post('logout')

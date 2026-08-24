@@ -24,6 +24,7 @@ import { InvitationCode } from '@/database/schemas/invitation-code.schema';
 import type { ListAdminAuditLogsDto } from './dto/list-admin-audit-logs.dto';
 import { translateApiText } from '@/common/i18n/api-language';
 import { adminErrors } from '@/common/errors/business-errors';
+import { RequestContextService } from '@/common/request-context/request-context.service';
 
 export interface RecordAdminAuditParams {
   actorType?: AdminAuditActorType;
@@ -55,6 +56,7 @@ export class AdminAuditService {
     private readonly contentReviewModel: Model<ContentReviewRequest>,
     @InjectModel(InvitationCode.name)
     private readonly invitationCodeModel: Model<InvitationCode>,
+    private readonly requestContext: RequestContextService,
   ) {}
 
   async record(params: RecordAdminAuditParams): Promise<void> {
@@ -66,7 +68,10 @@ export class AdminAuditService {
       targetId: params.targetId,
       reason: params.reason ?? null,
       changes: params.changes ?? {},
-      requestId: params.requestId ?? null,
+      requestId:
+        params.requestId === undefined
+          ? (this.requestContext.getRequestId() ?? null)
+          : params.requestId,
     }).save({ session: params.session });
   }
 

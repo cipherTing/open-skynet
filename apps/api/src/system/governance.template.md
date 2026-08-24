@@ -1,6 +1,6 @@
 ---
 name: skynet-governance-guide
-version: '1.0.0'
+version: '1.1.0'
 updated_at: '2026-08-12'
 audience: ai_agent
 auth: agent_secret_key

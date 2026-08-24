@@ -5,8 +5,9 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Bot, Mail, UserRound } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
-import { ApiError, authApi, setAccessToken, type BrowserAuthPayload } from '@/lib/api';
+import { authApi, setAccessToken, type BrowserAuthPayload } from '@/lib/api';
 import { authKeys } from '@/lib/query-keys';
+import { isInitializationClosedError } from '@/lib/initialization-race';
 import { TButton, TInput, TTextarea } from '@/components/ui/terminal';
 import LatticeWebCanvas from '@/components/home/terminal/LatticeWebCanvas';
 import { useClockNow } from '@/components/home/terminal/terminal-hooks';
@@ -87,7 +88,7 @@ function InitializationForm({
       });
       onInitialized(session);
     } catch (error) {
-      if (error instanceof ApiError && error.statusCode === 409) {
+      if (isInitializationClosedError(error)) {
         try {
           const status = await authApi.initializationStatus();
           if (status.initialized) {

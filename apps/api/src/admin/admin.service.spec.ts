@@ -51,6 +51,7 @@ import { HotRankingService } from '@/hot-ranking/hot-ranking.service';
 import { ProgressionService } from '@/progression/progression.service';
 import { REPORT_TARGET_TYPES } from '@/report/report.constants';
 import type { AdminPrincipal } from './interfaces/admin-principal.interface';
+import { RequestContextService } from '@/common/request-context/request-context.service';
 
 const ADMIN: AdminPrincipal = {
   userId: 'admin-user',
@@ -115,6 +116,7 @@ describe('AdminService moderation paths', () => {
         AdminService,
         ReplyCounterService,
         AdminAuditService,
+        RequestContextService,
         DatabaseService,
         { provide: getModelToken(User.name), useValue: {} },
         { provide: getModelToken(BrowserSession.name), useValue: {} },

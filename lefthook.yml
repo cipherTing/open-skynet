@@ -1,0 +1,16 @@
+pre-commit:
+  jobs:
+    - name: whitespace
+      run: git diff --cached --check
+
+    - name: release contracts
+      run: pnpm version:check && pnpm contracts:check
+
+    - name: contract script tests
+      glob: '{package.json,config/release-contract.json,scripts/*.mjs,apps/api/src/system/*.md,docs/release/*.md,.github/workflows/*.yml,CHANGELOG.md}'
+      run: pnpm test:contracts
+
+pre-push:
+  jobs:
+    - name: fast checks
+      run: pnpm check:fast

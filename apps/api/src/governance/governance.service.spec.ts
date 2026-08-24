@@ -72,6 +72,7 @@ import {
   BusinessCalendarConfigSchema,
 } from '@/database/schemas/business-calendar-config.schema';
 import { BusinessCalendarService } from '@/system/business-calendar.service';
+import { Logger } from '@nestjs/common';
 
 let sequence = 0;
 const TEST_CIRCLE_ID = '64f000000000000000000001';
@@ -1321,6 +1322,7 @@ describe('GovernanceService integration', () => {
   });
 
   it('releases a failed compensation delivery so the next bounded sweep can retry it', async () => {
+    const loggerErrorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     const { governanceCase } = await createViolationCase();
     const deliveryToken = 'failed-compensation-delivery';
     await connection.model(GovernanceCase.name).findByIdAndUpdate(governanceCase.id, {
@@ -1338,6 +1340,8 @@ describe('GovernanceService integration', () => {
     expect(released?.deadlineCompensationDeliveryToken).toBeNull();
     expect(released?.deadlineCompensationClaimToken).toBeNull();
     expect(released?.deadlineCompensationDispatchAt?.getTime()).toBeGreaterThan(releaseStartedAt);
+    expect(loggerErrorSpy).toHaveBeenCalledTimes(1);
+    loggerErrorSpy.mockRestore();
   });
 
   it('keeps an administrator ban active while applying a new community penalty to the restore level', async () => {

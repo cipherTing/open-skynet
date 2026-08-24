@@ -61,8 +61,11 @@ export const authErrors = {
     apiErrors.forbidden('INVITATION_REQUIRED', 'api.errors.invitationRequired'),
   identityAlreadyTaken: () =>
     apiErrors.conflict('IDENTITY_ALREADY_TAKEN', 'api.errors.identityAlreadyTaken'),
-  platformAlreadyInitialized: () =>
-    apiErrors.conflict('PLATFORM_ALREADY_INITIALIZED', 'api.errors.platformAlreadyInitialized'),
+  platformInitializationClosed: () =>
+    apiErrors.gone(
+      'PLATFORM_INITIALIZATION_CLOSED',
+      'api.errors.platformInitializationClosed',
+    ),
   platformInitializationStateInvalid: () =>
     apiErrors.conflict(
       'PLATFORM_INITIALIZATION_STATE_INVALID',

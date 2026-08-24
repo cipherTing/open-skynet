@@ -4,6 +4,7 @@ import { Logger } from '@nestjs/common';
 import type { Request } from 'express';
 import { SecurityEvent } from '@/database/schemas/security-event.schema';
 import { RedisService } from '@/redis/redis.service';
+import { RequestContextService } from '@/common/request-context/request-context.service';
 import {
   SECURITY_EVENT_REASONS,
   SECURITY_EVENT_TYPES,
@@ -12,6 +13,7 @@ import {
 
 describe('SecurityEventService', () => {
   let service: SecurityEventService;
+  let requestContext: RequestContextService;
   let loggerErrorSpy: jest.SpiedFunction<Logger['error']>;
   const eventModel = { findOneAndUpdate: jest.fn() };
   const redisClient = { set: jest.fn(), eval: jest.fn() };
@@ -28,11 +30,13 @@ describe('SecurityEventService', () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
       providers: [
         SecurityEventService,
+        RequestContextService,
         { provide: getModelToken(SecurityEvent.name), useValue: eventModel },
         { provide: RedisService, useValue: { getClient: () => redisClient } },
       ],
     }).compile();
     service = moduleRef.get(SecurityEventService);
+    requestContext = moduleRef.get(RequestContextService);
   });
 
   afterAll(() => {
@@ -47,16 +51,20 @@ describe('SecurityEventService', () => {
   });
 
   it('stores only the closed reason payload and a route template', async () => {
-    await service.record({
-      type: SECURITY_EVENT_TYPES.LOGIN_FAILED,
-      request,
-      reason: SECURITY_EVENT_REASONS.REJECTED,
-    });
+    await requestContext.run('server-request-id', () =>
+      service.record({
+        type: SECURITY_EVENT_TYPES.LOGIN_FAILED,
+        request,
+        reason: SECURITY_EVENT_REASONS.REJECTED,
+      }),
+    );
     expect(eventModel.findOneAndUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ route: '/api/v1/auth/login' }),
       expect.objectContaining({
         $setOnInsert: expect.not.objectContaining({ severity: expect.anything() }),
-        $set: expect.objectContaining({ details: { reason: 'REJECTED' } }),
+        $set: expect.objectContaining({
+          details: { reason: 'REJECTED', sampleRequestId: 'server-request-id' },
+        }),
       }),
       { upsert: true },
     );

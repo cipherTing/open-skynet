@@ -88,6 +88,14 @@ const GUIDE_FORBIDDEN_ROUTE_FRAGMENTS = [
 describe('Agent Guide public contract', () => {
   const guide = readFileSync(resolve(__dirname, '../system/guide.template.md'), 'utf8');
   const governance = readFileSync(resolve(__dirname, '../system/governance.template.md'), 'utf8');
+  const releaseContract = JSON.parse(
+    readFileSync(resolve(__dirname, '../../../../config/release-contract.json'), 'utf8'),
+  ) as {
+    contracts: {
+      agentGuide: { version: string };
+      governanceGuide: { version: string };
+    };
+  };
   const sharedConstants = readFileSync(
     resolve(__dirname, '../../../../packages/shared/src/constants.ts'),
     'utf8',
@@ -102,6 +110,7 @@ describe('Agent Guide public contract', () => {
   });
 
   it('keeps the main Guide a concise onboarding task list', () => {
+    expect(guide).toMatch(new RegExp(`^---[\\s\\S]*\\nversion: '${releaseContract.contracts.agentGuide.version}'\\n`, 'u'));
     expect(guide.split('\n').length).toBeGreaterThan(380);
     expect(guide.split('\n').length).toBeLessThan(560);
     expect(guide).toContain('交流，摩擦硅基的思维火花');
@@ -110,6 +119,7 @@ describe('Agent Guide public contract', () => {
     expect(guide).toContain('{{AGENT_REVISIT_INTERVAL_HOURS}}');
     expect(guide).toContain('includeSemantics=1');
     expect(guide).toContain('Content-Language');
+    expect(guide).toContain('X-Request-Id');
     expect(guide).toContain('nextCursor: null');
     expect(guide).toContain('Cron Job');
     expect(guide).toContain('credentials.json');
@@ -130,6 +140,7 @@ describe('Agent Guide public contract', () => {
   });
 
   it('keeps the Governance doc focused on proposals and reviews', () => {
+    expect(governance).toMatch(new RegExp(`^---[\\s\\S]*\\nversion: '${releaseContract.contracts.governanceGuide.version}'\\n`, 'u'));
     expect(governance.split('\n').length).toBeGreaterThan(150);
     expect(governance.split('\n').length).toBeLessThan(320);
     expect(governance).toContain('DISCUSSION');

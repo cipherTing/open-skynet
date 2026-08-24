@@ -6,7 +6,10 @@ import * as bcrypt from 'bcrypt';
 import { createHash, randomBytes } from 'crypto';
 import { User, USER_ROLES, type UserRole } from '@/database/schemas/user.schema';
 import { Agent } from '@/database/schemas/agent.schema';
-import { BrowserSession } from '@/database/schemas/browser-session.schema';
+import {
+  BrowserSession,
+  type BrowserSessionDocument,
+} from '@/database/schemas/browser-session.schema';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { isUserSuspended } from './auth-security';
@@ -37,6 +40,20 @@ export interface ActiveBrowserUser {
 const BROWSER_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const BROWSER_SESSION_ABSOLUTE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const REFRESH_REPLAY_GRACE_MS = 10_000;
+const REFRESH_TOKEN_PREFIX = 'sk_rt_v2';
+const REFRESH_TOKEN_VERSION = 2;
+const REFRESH_SELECTOR_BYTES = 24;
+const REFRESH_SECRET_BYTES = 32;
+const REFRESH_SELECTOR_LENGTH = 32;
+const REFRESH_SECRET_LENGTH = 43;
+const REFRESH_ROTATION_ATTEMPTS = 4;
+const BASE64URL_PATTERN = /^[A-Za-z0-9_-]+$/u;
+
+interface ParsedRefreshToken {
+  selector: string;
+  selectorHash: string;
+  secretHash: string;
+}
 
 interface DuplicateKeyError {
   code: 11000;
@@ -121,7 +138,7 @@ export class AuthService {
 
   async initializeAdministrator(dto: InitializeAdministratorDto) {
     if ((await this.getInitializationStatus()).initialized) {
-      throw authErrors.platformAlreadyInitialized();
+      throw authErrors.platformInitializationClosed();
     }
     const passwordHash = await bcrypt.hash(dto.password, 12);
     try {
@@ -133,7 +150,7 @@ export class AuthService {
           this.userModel.exists({ role: USER_ROLES.ADMIN, deletedAt: null }).session(session),
         ]);
         if (initialization) {
-          throw authErrors.platformAlreadyInitialized();
+          throw authErrors.platformInitializationClosed();
         }
         if (administrator) throw authErrors.platformInitializationStateInvalid();
 
@@ -156,7 +173,7 @@ export class AuthService {
       if (isDuplicateKeyError(error)) {
         const field = duplicateKeyField(error);
         if (field === 'key' || (await this.getInitializationStatus()).initialized) {
-          throw authErrors.platformAlreadyInitialized();
+          throw authErrors.platformInitializationClosed();
         }
         if (field === 'username') throw authErrors.usernameTaken();
         if (field === 'email') throw authErrors.emailAlreadyRegistered();
@@ -233,6 +250,7 @@ export class AuthService {
         $match: {
           _id: new Types.ObjectId(browserSessionId),
           userId,
+          refreshTokenVersion: REFRESH_TOKEN_VERSION,
           revokedAt: null,
           expiresAt: { $gt: now },
           absoluteExpiresAt: { $gt: now },
@@ -287,72 +305,83 @@ export class AuthService {
   }
 
   async refreshBrowserSession(refreshToken: string | null) {
-    if (!refreshToken) {
-      throw authErrors.sessionExpired();
-    }
+    const parsedToken = this.parseRefreshToken(refreshToken);
+    if (!parsedToken) throw authErrors.sessionExpired();
 
-    const now = new Date();
-    const tokenHash = this.hashRefreshToken(refreshToken);
-    const browserSession = await this.browserSessionModel.findOne({
-      revokedAt: null,
-      $or: [{ currentTokenHash: tokenHash }, { previousTokenHash: tokenHash }],
-    });
+    for (let attempt = 0; attempt < REFRESH_ROTATION_ATTEMPTS; attempt += 1) {
+      const now = new Date();
+      const browserSession = await this.browserSessionModel.findOne({
+        selectorHash: parsedToken.selectorHash,
+        refreshTokenVersion: REFRESH_TOKEN_VERSION,
+        revokedAt: null,
+      });
 
-    if (
-      !browserSession ||
-      browserSession.expiresAt.getTime() <= now.getTime() ||
-      browserSession.absoluteExpiresAt.getTime() <= now.getTime()
-    ) {
-      throw authErrors.sessionExpired();
-    }
-
-    const usedPreviousToken = browserSession.previousTokenHash === tokenHash;
-    if (usedPreviousToken) {
       if (
-        !browserSession.previousTokenValidUntil ||
-        browserSession.previousTokenValidUntil.getTime() <= now.getTime()
+        !browserSession ||
+        browserSession.expiresAt.getTime() <= now.getTime() ||
+        browserSession.absoluteExpiresAt.getTime() <= now.getTime()
       ) {
-        await this.revokeBrowserSession(browserSession.id);
-        throw authErrors.refreshTokenReused();
+        throw authErrors.sessionExpired();
       }
-    }
 
-    const user = await this.userModel.findById(browserSession.userId);
-    if (!user || user.deletedAt) {
-      await this.revokeBrowserSession(browserSession.id);
-      throw commonErrors.userNotFound();
-    }
+      if (browserSession.currentTokenHash === parsedToken.secretHash) {
+        const nextSecret = randomBytes(REFRESH_SECRET_BYTES).toString('base64url');
+        const nextRefreshToken = this.formatRefreshToken(parsedToken.selector, nextSecret);
+        const rotated = await this.browserSessionModel.findOneAndUpdate(
+          {
+            _id: browserSession.id,
+            selectorHash: parsedToken.selectorHash,
+            refreshTokenVersion: REFRESH_TOKEN_VERSION,
+            rotationVersion: browserSession.rotationVersion,
+            currentTokenHash: parsedToken.secretHash,
+            revokedAt: null,
+            expiresAt: { $gt: now },
+            absoluteExpiresAt: { $gt: now },
+          },
+          {
+            $set: {
+              currentTokenHash: this.hashRefreshToken(nextSecret),
+              previousTokenHash: parsedToken.secretHash,
+              previousTokenValidUntil: new Date(now.getTime() + REFRESH_REPLAY_GRACE_MS),
+              expiresAt: new Date(
+                Math.min(
+                  now.getTime() + BROWSER_SESSION_TTL_MS,
+                  browserSession.absoluteExpiresAt.getTime(),
+                ),
+              ),
+            },
+            $inc: { rotationVersion: 1 },
+          },
+          { new: true },
+        );
+        if (!rotated) continue;
+        return this.completeBrowserSessionRefresh(rotated, nextRefreshToken);
+      }
 
-    if (isUserSuspended(user)) {
-      await this.revokeBrowserSession(browserSession.id);
-      throw authErrors.accountSuspended();
-    }
+      if (
+        browserSession.previousTokenHash === parsedToken.secretHash &&
+        browserSession.previousTokenValidUntil &&
+        browserSession.previousTokenValidUntil.getTime() > now.getTime()
+      ) {
+        return this.completeBrowserSessionRefresh(browserSession, null);
+      }
 
-    let nextRefreshToken: string | null = null;
-    if (!usedPreviousToken) {
-      nextRefreshToken = randomBytes(32).toString('base64url');
-      browserSession.previousTokenHash = browserSession.currentTokenHash;
-      browserSession.previousTokenValidUntil = new Date(now.getTime() + REFRESH_REPLAY_GRACE_MS);
-      browserSession.currentTokenHash = this.hashRefreshToken(nextRefreshToken);
-      browserSession.expiresAt = new Date(
-        Math.min(
-          now.getTime() + BROWSER_SESSION_TTL_MS,
-          browserSession.absoluteExpiresAt.getTime(),
-        ),
+      const revoked = await this.browserSessionModel.findOneAndUpdate(
+        {
+          _id: browserSession.id,
+          selectorHash: parsedToken.selectorHash,
+          refreshTokenVersion: REFRESH_TOKEN_VERSION,
+          rotationVersion: browserSession.rotationVersion,
+          revokedAt: null,
+        },
+        { $set: { revokedAt: now } },
+        { new: true },
       );
-      await browserSession.save();
+      if (!revoked) continue;
+      throw authErrors.refreshTokenReused();
     }
 
-    const agent = await this.agentModel.findOne({ userId: user.id });
-    const token = this.generateToken(user, browserSession.id);
-
-    return {
-      user: this.serializeUser(user),
-      agent: agent ? this.serializeAgent(agent) : null,
-      token,
-      refreshToken: nextRefreshToken,
-      refreshExpiresAt: browserSession.expiresAt,
-    };
+    throw authErrors.sessionExpired();
   }
 
   async isBrowserSessionActive(userId: string, browserSessionId?: string) {
@@ -361,6 +390,7 @@ export class AuthService {
     const browserSession = await this.browserSessionModel.findOne({
       _id: browserSessionId,
       userId,
+      refreshTokenVersion: REFRESH_TOKEN_VERSION,
       revokedAt: null,
     });
 
@@ -435,13 +465,18 @@ export class AuthService {
   }
 
   private async createBrowserSession(userId: string, session?: ClientSession) {
-    const refreshToken = randomBytes(32).toString('base64url');
+    const selector = randomBytes(REFRESH_SELECTOR_BYTES).toString('base64url');
+    const secret = randomBytes(REFRESH_SECRET_BYTES).toString('base64url');
+    const refreshToken = this.formatRefreshToken(selector, secret);
     const now = Date.now();
     const expiresAt = new Date(now + BROWSER_SESSION_TTL_MS);
     const absoluteExpiresAt = new Date(now + BROWSER_SESSION_ABSOLUTE_TTL_MS);
     const browserSession = await new this.browserSessionModel({
       userId,
-      currentTokenHash: this.hashRefreshToken(refreshToken),
+      selectorHash: this.hashRefreshToken(selector),
+      refreshTokenVersion: REFRESH_TOKEN_VERSION,
+      rotationVersion: 0,
+      currentTokenHash: this.hashRefreshToken(secret),
       previousTokenHash: null,
       previousTokenValidUntil: null,
       expiresAt,
@@ -457,6 +492,56 @@ export class AuthService {
 
   private hashRefreshToken(token: string) {
     return createHash('sha256').update(token).digest('hex');
+  }
+
+  private parseRefreshToken(token: string | null): ParsedRefreshToken | null {
+    if (!token) return null;
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const [prefix, selector, secret] = parts;
+    if (
+      prefix !== REFRESH_TOKEN_PREFIX ||
+      selector.length !== REFRESH_SELECTOR_LENGTH ||
+      secret.length !== REFRESH_SECRET_LENGTH ||
+      !BASE64URL_PATTERN.test(selector) ||
+      !BASE64URL_PATTERN.test(secret)
+    ) {
+      return null;
+    }
+    return {
+      selector,
+      selectorHash: this.hashRefreshToken(selector),
+      secretHash: this.hashRefreshToken(secret),
+    };
+  }
+
+  private formatRefreshToken(selector: string, secret: string): string {
+    return `${REFRESH_TOKEN_PREFIX}.${selector}.${secret}`;
+  }
+
+  private async completeBrowserSessionRefresh(
+    browserSession: BrowserSessionDocument,
+    refreshToken: string | null,
+  ) {
+    const user = await this.userModel.findById(browserSession.userId);
+    if (!user || user.deletedAt) {
+      await this.revokeBrowserSession(browserSession.id);
+      throw commonErrors.userNotFound();
+    }
+
+    if (isUserSuspended(user)) {
+      await this.revokeBrowserSession(browserSession.id);
+      throw authErrors.accountSuspended();
+    }
+
+    const agent = await this.agentModel.findOne({ userId: user.id });
+    return {
+      user: this.serializeUser(user),
+      agent: agent ? this.serializeAgent(agent) : null,
+      token: this.generateToken(user, browserSession.id),
+      refreshToken,
+      refreshExpiresAt: browserSession.expiresAt,
+    };
   }
 
   private serializeUser(user: User) {

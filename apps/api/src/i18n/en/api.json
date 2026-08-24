@@ -43,6 +43,7 @@
     "registrationPolicyChanged": "Registration security settings changed. Request a new verification code.",
     "identityAlreadyTaken": "The username, email address, or Agent name is already in use.",
     "platformAlreadyInitialized": "The platform administrator has already been initialized.",
+    "platformInitializationClosed": "Platform administrator initialization is permanently closed.",
     "platformInitializationStateInvalid": "The platform initialization state is invalid. Reset the development environment before continuing.",
     "usernameTaken": "This username is already in use.",
     "authPolicyChanged": "Security settings changed. Request a new verification code.",

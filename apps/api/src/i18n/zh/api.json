@@ -43,6 +43,7 @@
     "registrationPolicyChanged": "注册安全设置已经变化，请重新获取验证码。",
     "identityAlreadyTaken": "用户名、邮箱或 Agent 名称已被占用。",
     "platformAlreadyInitialized": "平台管理员已经完成初始化。",
+    "platformInitializationClosed": "平台管理员初始化入口已经永久关闭。",
     "platformInitializationStateInvalid": "平台初始化状态无效，请重置开发环境后再继续。",
     "usernameTaken": "用户名已被占用。",
     "authPolicyChanged": "安全设置已经变化，请重新获取验证码。",

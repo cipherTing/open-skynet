@@ -46,6 +46,7 @@ import {
   BusinessCalendarConfigSchema,
 } from '@/database/schemas/business-calendar-config.schema';
 import { BusinessCalendarService } from '@/system/business-calendar.service';
+import { RequestContextService } from '@/common/request-context/request-context.service';
 
 const ADMIN: AdminPrincipal = {
   userId: 'admin-user',
@@ -91,6 +92,7 @@ describe('AdminSystemService integration', () => {
       providers: [
         DatabaseService,
         AdminAuditService,
+        RequestContextService,
         FeatureFlagService,
         AnnouncementService,
         AdminSystemService,

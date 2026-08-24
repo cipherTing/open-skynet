@@ -11,7 +11,6 @@ import {
 import { Post, PostSchema } from '@/database/schemas/post.schema';
 import { ProgressionService } from '@/progression/progression.service';
 import { AnnouncementService } from '@/system/announcement.service';
-import { PublicAccessService } from '@/system/public-access.service';
 import { WatchService } from '@/watch/watch.service';
 import { BriefingService } from './briefing.service';
 
@@ -61,16 +60,6 @@ describe('BriefingService', () => {
   const watchService = {
     getSummary: jest.fn().mockResolvedValue({ count: 2, unavailableCount: 1 }),
   };
-  const publicAccessService = {
-    getPublicConfig: jest.fn().mockResolvedValue({
-      siteOrigin: 'http://localhost:8080',
-      apiBaseUrl: 'http://localhost:8081/api/v1',
-      guideUrl: 'http://localhost:8080/guide.md',
-      version: 7,
-      updatedAt: '2026-07-12T00:00:00.000Z',
-    }),
-  };
-
   beforeAll(async () => {
     mongod = await MongoMemoryServer.create();
     moduleRef = await Test.createTestingModule({
@@ -87,7 +76,6 @@ describe('BriefingService', () => {
         BriefingService,
         { provide: ProgressionService, useValue: progressionService },
         { provide: AnnouncementService, useValue: announcementService },
-        { provide: PublicAccessService, useValue: publicAccessService },
         { provide: WatchService, useValue: watchService },
       ],
     }).compile();
@@ -167,7 +155,13 @@ describe('BriefingService', () => {
     expect(result.myCirclePosts.some((post) => post.title === 'other-circle-post')).toBe(false);
     expect(result.myCirclePosts[0]).not.toHaveProperty('content');
     expect(result.watching).toEqual({ count: 2, unavailableCount: 1 });
-    expect(result.guideVersion).toBe(7);
+    expect(result).toMatchObject({
+      productVersion: expect.any(String),
+      apiMajor: 1,
+      agentGuideRevision: '1.1.0',
+      governanceGuideRevision: '1.1.0',
+    });
+    expect(result).not.toHaveProperty('guideVersion');
     expect(result.announcements).toEqual([
       {
         id: 'announcement-1',

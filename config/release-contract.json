@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "发布时需要保持一致的公开版本合同。产品版本唯一来源是根 package.json。",
+  "productVersionSource": "package.json",
+  "contracts": {
+    "restApi": {
+      "major": 1,
+      "revision": "1"
+    },
+    "agentGuide": {
+      "version": "1.1.0",
+      "template": "apps/api/src/system/guide.template.md"
+    },
+    "governanceGuide": {
+      "version": "1.1.0",
+      "template": "apps/api/src/system/governance.template.md"
+    },
+    "mcpBusiness": {
+      "version": "1.0.0"
+    }
+  },
+  "mirrors": ["apps/api/package.json", "apps/web/package.json", "packages/shared/package.json"],
+  "release": {
+    "tagPrefix": "v",
+    "changelog": "CHANGELOG.md",
+    "requiredFiles": [
+      "CHANGELOG.md",
+      "docs/release/VERSIONING.md",
+      "docs/release/API-COMPATIBILITY.md",
+      "docs/release/release-runbook.md",
+      "docs/release/deferred-decisions.md"
+    ]
+  }
+}

@@ -12,6 +12,7 @@ import {
 } from '@/redis/redis.constants';
 import { getRequiredJwtSecret } from '@/config/env';
 import { apiErrors } from '@/common/i18n/api-message';
+import { RequestContextService } from '@/common/request-context/request-context.service';
 
 const EVENT_BUCKET_MS = 15 * 60 * 1000;
 const EVENT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -111,6 +112,7 @@ export class SecurityEventService {
     @InjectModel(SecurityEvent.name)
     private readonly eventModel: Model<SecurityEvent>,
     private readonly redisService: RedisService,
+    private readonly requestContext: RequestContextService,
   ) {}
 
   async record(input: SecurityEventInput): Promise<void> {
@@ -169,7 +171,10 @@ export class SecurityEventService {
             $set: {
               severity,
               lastSeenAt: now,
-              details: { reason: input.reason },
+              details: {
+                reason: input.reason,
+                sampleRequestId: this.requestContext.getRequestId() ?? null,
+              },
               expiresAt: new Date(now.getTime() + EVENT_RETENTION_MS),
             },
             $inc: { count: 1 },

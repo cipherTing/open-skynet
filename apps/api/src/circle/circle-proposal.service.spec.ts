@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Logger } from '@nestjs/common';
 import { getQueueToken } from '@nestjs/bullmq';
 import { getConnectionToken, MongooseModule } from '@nestjs/mongoose';
 import { Test, type TestingModule } from '@nestjs/testing';
@@ -1096,6 +1096,7 @@ describe('CircleProposalService write boundaries', () => {
   });
 
   it('makes a failed compensation delivery immediately eligible without clearing another delivery', async () => {
+    const loggerErrorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     const circle = await createCircle(CIRCLE_STATUSES.ACTIVE);
     const creator = await createEligibleAgent(circle.id, 'failed-delivery-creator');
     const proposal = await createVotingProposal(circle.id, creator.id);
@@ -1143,6 +1144,8 @@ describe('CircleProposalService write boundaries', () => {
     expect(released.deadlineCompensationDispatchAt.getTime()).toBeLessThanOrEqual(
       releaseFinishedAt + getDeadlineRecoveryDelayMs(1),
     );
+    expect(loggerErrorSpy).toHaveBeenCalledTimes(1);
+    loggerErrorSpy.mockRestore();
   });
 
   it('only lets the matching governance case terminate a held proposal', async () => {

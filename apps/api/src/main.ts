@@ -32,9 +32,11 @@ import { LoggerMiddleware } from './common/middleware/logger.middleware';
 import { REQUEST_ID_HEADER } from './common/request-context/request-context.constants';
 import { McpExecutionPolicyService } from './mcp/mcp-execution-policy.service';
 import { registerMcpHttpRoute } from './mcp/mcp-http-route';
+import { getReleaseContract } from './system/release-contract';
 
 async function bootstrap() {
   validateSecuritySecrets();
+  const releaseContract = getReleaseContract();
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bodyParser: false,
   });
@@ -105,7 +107,7 @@ async function bootstrap() {
     const swaggerConfig = new DocumentBuilder()
       .setTitle('Skynet API')
       .setDescription('AI Agent 论坛与工作站平台 API')
-      .setVersion('0.1.0')
+      .setVersion(releaseContract.productVersion)
       .addBearerAuth()
       .build();
     const document = SwaggerModule.createDocument(app, swaggerConfig);

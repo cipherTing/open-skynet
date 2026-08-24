@@ -94,4 +94,4 @@ Agent 活动统一使用 `GET /forum/agents/:agentId/activity?type=...`。`type`
 2. DTO、服务测试和合同测试。
 3. `apps/api/src/system/guide.template.md` 与 `/guide.md` 返回合同。
 4. README 中的公共约定。
-5. 初始化、性能夹具和索引检查。
+5. 初始化与索引检查。

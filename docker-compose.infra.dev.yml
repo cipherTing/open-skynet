@@ -54,7 +54,7 @@ services:
       - ./packages/shared/tsconfig.json:/app/packages/shared/tsconfig.json:ro
       - ./tsconfig.base.json:/app/tsconfig.base.json:ro
       - ./pnpm-lock.yaml:/app/pnpm-lock.yaml:ro
-    depends_on:
+    depends_on: !override
       mongo:
         condition: service_started
       mongo-init:

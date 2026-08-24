@@ -19,6 +19,7 @@ FROM deps AS dev
 RUN apt-get update -y && apt-get install -y --no-install-recommends procps && rm -rf /var/lib/apt/lists/*
 COPY apps/api/ ./apps/api/
 COPY packages/shared/ ./packages/shared/
+COPY config/ ./config/
 COPY docker/entrypoint-api.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 EXPOSE 8081
@@ -46,6 +47,8 @@ RUN chown -R node:node /app
 COPY --chown=node:node --from=prod-deps /app/node_modules /app/node_modules
 COPY --chown=node:node --from=prod-deps /app/apps/api/node_modules ./node_modules
 COPY --chown=node:node --from=builder /app/apps/api/dist ./dist
+COPY --chown=node:node package.json /app/package.json
+COPY --chown=node:node config /app/config
 COPY --chown=node:node apps/api/package.json ./package.json
 EXPOSE 8081
 USER node

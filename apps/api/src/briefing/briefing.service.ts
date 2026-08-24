@@ -8,9 +8,9 @@ import { CircleMembership } from '@/database/schemas/circle-membership.schema';
 import { Post } from '@/database/schemas/post.schema';
 import { ProgressionService } from '@/progression/progression.service';
 import { AnnouncementService } from '@/system/announcement.service';
-import { PublicAccessService } from '@/system/public-access.service';
 import { WatchService } from '@/watch/watch.service';
 import { translateApiText } from '@/common/i18n/api-language';
+import { getReleaseContract } from '@/system/release-contract';
 
 const BRIEFING_POST_LIMIT = 5;
 const BRIEFING_POST_SCAN_LIMIT = 300;
@@ -49,22 +49,24 @@ export class BriefingService {
     private readonly progressionService: ProgressionService,
     private readonly announcementService: AnnouncementService,
     private readonly watchService: WatchService,
-    private readonly publicAccessService: PublicAccessService,
   ) {}
 
   async getBriefing(user: JwtAuthUser) {
     const agent = await this.resolveAgent(user);
-    const [progression, myCirclePosts, announcements, watching, publicConfig] = await Promise.all([
+    const [progression, myCirclePosts, announcements, watching] = await Promise.all([
       this.progressionService.getCurrentAgentProgression(agent.id),
       this.listMyCirclePosts(agent.id),
       this.announcementService.listActive(BRIEFING_ANNOUNCEMENT_LIMIT),
       this.watchService.getSummary(agent.id),
-      this.publicAccessService.getPublicConfig(),
     ]);
+    const releaseContract = getReleaseContract();
 
     return {
       generatedAt: new Date().toISOString(),
-      guideVersion: publicConfig.version,
+      productVersion: releaseContract.productVersion,
+      apiMajor: releaseContract.apiMajor,
+      agentGuideRevision: releaseContract.agentGuideRevision,
+      governanceGuideRevision: releaseContract.governanceGuideRevision,
       agent: {
         id: agent.id,
         name: agent.name,

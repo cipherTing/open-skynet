@@ -1,5 +1,6 @@
 import { getConnectionToken, MongooseModule } from '@nestjs/mongoose';
-import { ConflictException } from '@nestjs/common';
+import { GoneException } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { JwtService } from '@nestjs/jwt';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { Connection } from 'mongoose';
@@ -84,6 +85,15 @@ describe('AuthService administrator initialization', () => {
     ]);
   });
 
+  async function initializeTestAdministrator(suffix: string) {
+    return service.initializeAdministrator({
+      username: `admin_${suffix}`,
+      email: `admin-${suffix}@example.com`,
+      password: 'Password123',
+      agentName: `AdminAgent${suffix}`,
+    });
+  }
+
   afterAll(async () => {
     await moduleRef.close();
     await replicaSet.stop();
@@ -111,7 +121,10 @@ describe('AuthService administrator initialization', () => {
         password: 'Password123',
         agentName: 'SecondAdminAgent',
       }),
-    ).rejects.toBeInstanceOf(ConflictException);
+    ).rejects.toMatchObject({
+      status: 410,
+      response: expect.objectContaining({ code: 'PLATFORM_INITIALIZATION_CLOSED' }),
+    });
   });
 
   it('allows only one winner when two clients initialize concurrently', async () => {
@@ -134,7 +147,11 @@ describe('AuthService administrator initialization', () => {
     expect(attempts.filter((result) => result.status === 'rejected')).toHaveLength(1);
     expect(
       attempts.some(
-        (result) => result.status === 'rejected' && result.reason instanceof ConflictException,
+        (result) =>
+          result.status === 'rejected' &&
+          result.reason instanceof GoneException &&
+          (result.reason.getResponse() as { code?: string }).code ===
+            'PLATFORM_INITIALIZATION_CLOSED',
       ),
     ).toBe(true);
     await expect(
@@ -257,6 +274,166 @@ describe('AuthService administrator initialization', () => {
     await expect(
       service.findActiveBrowserUser(result.user.id, browserSession?.id),
     ).resolves.toBeNull();
+  });
+
+  it('creates a v2 refresh token with selector state', async () => {
+    const result = await initializeTestAdministrator('refresh_v2');
+    const browserSession = await connection.model(BrowserSession.name).findOne({
+      userId: result.user.id,
+    });
+
+    expect(result.refreshToken).toMatch(/^sk_rt_v2\.[A-Za-z0-9_-]{32}\.[A-Za-z0-9_-]{43}$/u);
+    expect(browserSession).toMatchObject({
+      refreshTokenVersion: 2,
+      rotationVersion: 0,
+      selectorHash: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      previousTokenHash: null,
+      previousTokenValidUntil: null,
+    });
+  });
+
+  it('rotates one concurrent current token and accepts the loser through previous grace', async () => {
+    const result = await initializeTestAdministrator('refresh_race');
+    const originalRefreshToken = result.refreshToken;
+
+    const refreshes = await Promise.all([
+      service.refreshBrowserSession(originalRefreshToken),
+      service.refreshBrowserSession(originalRefreshToken),
+    ]);
+    const rotatedTokens = refreshes.flatMap((refresh) =>
+      refresh.refreshToken ? [refresh.refreshToken] : [],
+    );
+
+    expect(rotatedTokens).toHaveLength(1);
+    expect(refreshes.filter((refresh) => refresh.refreshToken === null)).toHaveLength(1);
+    await expect(service.refreshBrowserSession(rotatedTokens[0])).resolves.toMatchObject({
+      refreshToken: expect.stringMatching(/^sk_rt_v2\./u),
+    });
+  });
+
+  it('revokes the token family when an older generation is replayed', async () => {
+    const result = await initializeTestAdministrator('refresh_replay');
+    const originalRefreshToken = result.refreshToken;
+    const firstRotation = await service.refreshBrowserSession(originalRefreshToken);
+    const secondRotation = await service.refreshBrowserSession(firstRotation.refreshToken);
+    expect(secondRotation.refreshToken).toMatch(/^sk_rt_v2\./u);
+
+    await expect(service.refreshBrowserSession(originalRefreshToken)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'REFRESH_TOKEN_REUSED' }),
+    });
+    const browserSession = await connection.model(BrowserSession.name).findOne({
+      userId: result.user.id,
+    });
+    expect(browserSession?.revokedAt).toBeInstanceOf(Date);
+    await expect(
+      service.findActiveBrowserUser(result.user.id, browserSession?.id),
+    ).resolves.toBeNull();
+  });
+
+  it('revokes the token family when previous-token grace has expired', async () => {
+    const result = await initializeTestAdministrator('refresh_previous_expired');
+    const originalRefreshToken = result.refreshToken;
+    await service.refreshBrowserSession(originalRefreshToken);
+    await connection.model(BrowserSession.name).findOneAndUpdate(
+      { userId: result.user.id },
+      { $set: { previousTokenValidUntil: new Date(Date.now() - 1_000) } },
+    );
+
+    await expect(service.refreshBrowserSession(originalRefreshToken)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'REFRESH_TOKEN_REUSED' }),
+    });
+    await expect(
+      connection.model(BrowserSession.name).findOne({ userId: result.user.id }),
+    ).resolves.toMatchObject({ revokedAt: expect.any(Date) });
+  });
+
+  it('does not modify sessions for a well-formed token with an unknown selector', async () => {
+    const result = await initializeTestAdministrator('refresh_unknown_selector');
+    const unknownFamilyToken = `sk_rt_v2.${'A'.repeat(32)}.${'B'.repeat(43)}`;
+
+    await expect(service.refreshBrowserSession(unknownFamilyToken)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'SESSION_EXPIRED' }),
+    });
+    await expect(
+      connection.model(BrowserSession.name).findOne({ userId: result.user.id }),
+    ).resolves.toMatchObject({
+      revokedAt: null,
+      rotationVersion: 0,
+    });
+  });
+
+  it('rejects refresh after logout revokes the browser session', async () => {
+    const result = await initializeTestAdministrator('refresh_logout');
+    const browserSession = await connection.model(BrowserSession.name).findOne({
+      userId: result.user.id,
+    });
+
+    await service.logout(result.user.id, browserSession?.id);
+
+    await expect(service.refreshBrowserSession(result.refreshToken)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'SESSION_EXPIRED' }),
+    });
+    await expect(
+      connection.model(BrowserSession.name).findById(browserSession?.id),
+    ).resolves.toMatchObject({ revokedAt: expect.any(Date) });
+  });
+
+  it('rejects refresh after password reset revokes every browser session', async () => {
+    const result = await initializeTestAdministrator('refresh_password_reset');
+
+    await service.resetPassword({
+      email: result.user.email,
+      verificationChallengeId: '507f1f77bcf86cd799439011',
+      verificationCode: '123456',
+      newPassword: 'NewPassword456',
+    });
+
+    await expect(service.refreshBrowserSession(result.refreshToken)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'SESSION_EXPIRED' }),
+    });
+    await expect(
+      connection.model(BrowserSession.name).findOne({ userId: result.user.id }),
+    ).resolves.toMatchObject({ revokedAt: expect.any(Date) });
+  });
+
+  it('rejects refresh and revokes the browser session for a suspended account', async () => {
+    const result = await initializeTestAdministrator('refresh_suspended');
+    await connection.model(User.name).findByIdAndUpdate(result.user.id, {
+      $set: { suspendedAt: new Date(), suspendedUntil: null },
+    });
+
+    await expect(service.refreshBrowserSession(result.refreshToken)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'ACCOUNT_SUSPENDED' }),
+    });
+    await expect(
+      connection.model(BrowserSession.name).findOne({ userId: result.user.id }),
+    ).resolves.toMatchObject({ revokedAt: expect.any(Date) });
+  });
+
+  it('rejects legacy browser sessions for both access and refresh authentication', async () => {
+    const result = await initializeTestAdministrator('legacy_session');
+    const legacyRefreshToken = 'legacy-refresh-token';
+    const now = new Date();
+    const legacySessionId = (
+      await connection.model(BrowserSession.name).collection.insertOne({
+        userId: result.user.id,
+        currentTokenHash: createHash('sha256').update(legacyRefreshToken).digest('hex'),
+        previousTokenHash: null,
+        previousTokenValidUntil: null,
+        expiresAt: new Date(now.getTime() + 60_000),
+        absoluteExpiresAt: new Date(now.getTime() + 120_000),
+        revokedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      })
+    ).insertedId.toString();
+
+    await expect(
+      service.findActiveBrowserUser(result.user.id, legacySessionId),
+    ).resolves.toBeNull();
+    await expect(service.refreshBrowserSession(legacyRefreshToken)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'SESSION_EXPIRED' }),
+    });
   });
 
   it('allows initialization to reuse soft-deleted usernames and Agent names', async () => {

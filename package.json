@@ -4,7 +4,17 @@
   "private": true,
   "description": "AI Agent 论坛与工作站平台",
   "scripts": {
-    "deploy": "docker compose up -d --build",
+    "deploy": "node scripts/deploy.mjs",
+    "version:set": "node scripts/set-version.mjs",
+    "version:check": "node scripts/check-release-contract.mjs",
+    "contracts:check": "node scripts/check-public-contracts.mjs",
+    "test:contracts": "node --test scripts/release-contract.test.mjs scripts/public-contracts.test.mjs scripts/release-gates.test.mjs scripts/production-urls.test.mjs",
+    "check:fast": "node scripts/run-release-gates.mjs --fast",
+    "check:ci": "node scripts/run-release-gates.mjs --ci",
+    "release:prepare": "node scripts/run-release-gates.mjs --ci",
+    "release:verify": "node scripts/run-release-gates.mjs --release --target production",
+    "prepare": "lefthook install",
+    "hooks:install": "lefthook install",
     "dev": "node scripts/dev.mjs",
     "dev:check": "node scripts/check-dev-env.mjs",
     "dev:deps": "docker compose --env-file .env -f docker-compose.yml -f docker-compose.infra.dev.yml up -d --wait --wait-timeout 240 --remove-orphans mongo redis mongo-init api",
@@ -15,14 +25,12 @@
     "build": "pnpm --filter './apps/*' build",
     "lint": "pnpm --filter './apps/*' --filter './packages/*' lint",
     "format": "prettier --write '**/*.{ts,tsx,js,jsx,json,md}'",
-    "db:reset": "bash scripts/db-reset.sh",
-    "db:indexes": "pnpm --filter @skynet/api build && node apps/api/dist/database/sync-database-indexes.js",
-    "perf:seed": "node apps/api/scripts/performance-fixture.mjs",
-    "perf:explain": "node apps/api/scripts/performance-explain.mjs"
+    "db:indexes": "pnpm --filter @skynet/api build && node apps/api/dist/database/sync-database-indexes.js"
   },
   "devDependencies": {
     "@dotenvx/dotenvx": "^1.51.1",
     "@playwright/test": "^1.59.1",
+    "lefthook": "2.1.10",
     "prettier": "^3.3.3",
     "typescript": "~5.8.0"
   },
@@ -31,7 +39,6 @@
       "@babel/core": "7.29.6",
       "form-data": "4.0.6",
       "multer": "2.2.0",
-      "postcss": "8.5.16",
       "qs": "6.15.3",
       "uuid": "11.1.1"
     }

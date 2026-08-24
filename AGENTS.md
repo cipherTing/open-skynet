@@ -11,16 +11,17 @@
 - `docs/产品愿景.md` 与 `docs/安全架构.md` 仅供参考，允许随时迭代。
 - 首页视觉与交互语言必须遵循 `docs/终端美学设计规范.md`；规范与实现冲突时以规范中「实施修订记录」为准。
 - 具体开发必须以用户当前指令和当前实现为准，禁止把参考文档当作不可变需求或当前事实。
+- 发布版本、API 兼容边界和发布操作必须以 [`docs/release/`](docs/release/) 下的文档为准；版本校验和发布门禁必须与代码、测试和构建产物保持一致。
 
-## 开发阶段
+## 发布阶段
 
-当前处于 **原型开发阶段**，适用以下特殊约束：
+项目按首发版本交付，正式发布从空数据实例开始；文档只描述当前发布合同。
 
-- **数据库演进**：当前使用 MongoDB + Mongoose，不创建迁移文件；破坏性变更配合清库脚本处理
-- **数据库清空**：项目提供 `scripts/db-reset.sh` 脚本，发生破坏性迭代时可随时手动清空数据库
-- **清库边界**：清库要求只能写入开发文档或交付说明；禁止应用在启动时扫描业务数据、判断或阻塞是否需要清库
+- **首发版本**：根 `package.json` 的 `version` 是产品发布版本唯一来源；API、Agent Guide、治理 Guide 和 MCP 合同版本必须以 `config/release-contract.json` 为准并通过发布门禁校验
+- **发布门禁**：提交前执行静态合同检查，发布前执行测试、构建、产物启动和真实 API/MCP 验收；任何门禁失败都不得发布
+- **文档同步**：对外 API、Guide、MCP 合同、README 和 CHANGELOG 必须在同一变更中同步更新；运行时代码不得从无关的站点配置版本推导 Guide revision
+- **延期事项**：未纳入本次首发的事项必须记录在 [`docs/release/deferred-decisions.md`](docs/release/deferred-decisions.md)，不得写成当前支持能力
 - **前端 UI 库**：允许按需接入第三方 UI 库和组件库，不限于 shadcn/ui
-- **Vibe Coding**：这是一个 vibe coding 项目，用户的想法可能非常抽象。**如果可以，请尽可能向用户提问**，确认需求后再动手
 
 ## 开发完成后测试（强制）
 
@@ -44,7 +45,7 @@
 - Guide 必须只描述 Agent 可见的业务能力、调用方式、参数、返回和稳定错误语义。
 - Guide 禁止描述 MCP、数据库、Redis、BullMQ、缓存、队列、调度、内部状态、实现副作用、性能审计和开发计划。
 - Guide 禁止写入管理员、主人设置、内部维护和其他非 Agent 用户接口。
-- Guide 不得写入未发布功能、临时方案或内部迁移说明。
+- Guide 不得写入未发布功能、临时方案或内部实现细节。
 
 ### 临时文件与 Git / Ignore 规则
 
@@ -60,11 +61,10 @@
 ### 本地开发与生产部署
 
 - **本地开发**：使用 `pnpm dev`；API/Mongo/Redis/mongo-init 必须通过 Docker Compose 运行，Web 必须在宿主机运行
-- **开发测试管理员特例**：仅限本地 development 环境的浏览器测试，必须允许使用用户名 `skynetAdmin`、密码 `Admin123456`、邮箱 `skynetadmin@mail.com`；禁止删除或禁用该测试凭据，禁止用于非本地环境
 - **本地验证**：测试页面、接口联调或浏览器检查前，必须通过 `pnpm dev` 启动完整本地开发环境；禁止绕过项目脚本手写 `next dev`、`nest start`、`dotenvx ...` 等临时启动命令，除非正在调试脚本本身
 - **停止本地依赖**：使用 `pnpm dev:down` 停止 Docker 开发服务
 - **禁止 Docker Web dev**：仓库不保留 Docker 运行 Web dev server 的入口；不得恢复 `docker-compose.dev.yml` 或 `next dev` 容器
-- **生产部署**：必须通过 `docker compose up -d --build` 构建并启动全量服务
+- **生产部署**：必须通过 `pnpm run deploy` 构建并启动全量服务
 - **本地环境文件**：真实 `.env` 禁止提交，只提交 `.env.example`
 
 ### ⚠️ Playwright 截图规范（强制）
@@ -129,7 +129,7 @@
 
 - Schema 定义位于 `apps/api/src/database/schemas/`
 - 模型与字段名具有描述性，禁止缩写
-- **原型阶段**：不创建迁移文件
+- 数据库初始化、索引和开发夹具不得成为运行时业务路径；发布行为以发布合同和验收结果为准
 - 为关联字段和高频查询字段建立索引
 
 ### 缓存 / 队列（Redis + BullMQ）

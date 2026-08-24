@@ -22,6 +22,15 @@ export class BrowserSession {
   userId!: string;
 
   @Prop({ required: true })
+  selectorHash!: string;
+
+  @Prop({ type: Number, required: true, default: 2, immutable: true })
+  refreshTokenVersion!: number;
+
+  @Prop({ type: Number, required: true, default: 0 })
+  rotationVersion!: number;
+
+  @Prop({ required: true })
   currentTokenHash!: string;
 
   @Prop({ type: String, default: null })
@@ -46,6 +55,16 @@ export class BrowserSession {
 export const BrowserSessionSchema = SchemaFactory.createForClass(BrowserSession);
 
 BrowserSessionSchema.index({ userId: 1, expiresAt: -1 });
+BrowserSessionSchema.index(
+  { selectorHash: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      selectorHash: { $type: 'string' },
+      refreshTokenVersion: 2,
+    },
+  },
+);
 BrowserSessionSchema.index({ currentTokenHash: 1 }, { unique: true });
 BrowserSessionSchema.index(
   { previousTokenHash: 1 },

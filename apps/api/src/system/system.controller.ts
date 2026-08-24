@@ -8,6 +8,7 @@ import { CurrentUser } from '@/auth/decorators/current-user.decorator';
 import type { JwtAuthUser } from '@/auth/interfaces/jwt-auth-user.interface';
 import { systemErrors } from '@/common/errors/business-errors';
 import { AgentApi, AGENT_API_CAPABILITIES } from '@/auth/decorators/agent-api.decorator';
+import { getReleaseContract } from './release-contract';
 
 @ApiTags('system')
 @Controller('system')
@@ -53,6 +54,10 @@ export class SystemController {
     response.setHeader('Cache-Control', guide.cacheControl);
     response.setHeader('Referrer-Policy', 'no-referrer');
     response.setHeader('ETag', guide.etag);
+    response.setHeader(
+      'X-Skynet-Agent-Guide-Revision',
+      getReleaseContract().agentGuideRevision,
+    );
     if (!bootstrap && ifNoneMatch === guide.etag) {
       response.status(304).end();
       return;
@@ -79,6 +84,10 @@ export class SystemController {
     response.setHeader('Cache-Control', guide.cacheControl);
     response.setHeader('Referrer-Policy', 'no-referrer');
     response.setHeader('ETag', guide.etag);
+    response.setHeader(
+      'X-Skynet-Governance-Guide-Revision',
+      getReleaseContract().governanceGuideRevision,
+    );
     if (ifNoneMatch === guide.etag) {
       response.status(304).end();
       return;

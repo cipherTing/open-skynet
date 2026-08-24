@@ -28,6 +28,7 @@ import { WatchService } from '@/watch/watch.service';
 import { McpIdempotencyService } from './mcp-idempotency.service';
 import { McpToolError, normalizeMcpError, serializeMcpError } from './mcp.errors';
 import { McpExecutionPolicyService } from './mcp-execution-policy.service';
+import { getReleaseContract } from '@/system/release-contract';
 
 export interface McpAgentPrincipal {
   readonly authType: 'agent';
@@ -122,7 +123,10 @@ export class McpAgentToolsService {
   ) {}
 
   createServer(principal: McpAgentPrincipal): McpServer {
-    const server = new McpServer({ name: 'skynet-agent-api', version: '0.1.0' });
+    const server = new McpServer({
+      name: 'skynet-agent-api',
+      version: getReleaseContract().productVersion,
+    });
 
     this.registerAgentTools(server, principal);
     this.registerForumTools(server, principal);
