@@ -17,6 +17,14 @@ const containerAction = readOptionalGithubFile(
   path.join('actions', 'build-and-smoke', 'action.yml'),
 );
 const publishAction = readOptionalGithubFile(path.join('actions', 'push-and-verify', 'action.yml'));
+const node24ActionPins = [
+  ['actions/checkout', '3d3c42e5aac5ba805825da76410c181273ba90b1'],
+  ['actions/setup-node', '820762786026740c76f36085b0efc47a31fe5020'],
+  ['pnpm/action-setup', '0977fd99725f1db4007ccb2928dbb4e90d06cc86'],
+  ['docker/setup-buildx-action', '37fe631027851001ddb9b187196cc803df7f5f0e'],
+  ['docker/build-push-action', '53b7df96c91f9c12dcc8a07bcb9ccacbed38856a'],
+  ['docker/login-action', 'dbcb813823bdd20940b903addbd779551569679f'],
+];
 
 function assertShaPinnedExternalActions(source, file) {
   for (const match of source.matchAll(/^\s*-?\s*uses:\s*([^\s]+)$/gmu)) {
@@ -29,6 +37,17 @@ function assertShaPinnedExternalActions(source, file) {
     );
   }
 }
+
+test('external workflow actions use the approved Node 24 pins', () => {
+  const workflowSources = [ciWorkflow, releaseWorkflow, containerAction];
+
+  for (const [action, revision] of node24ActionPins) {
+    assert.ok(
+      workflowSources.some((source) => source.includes(`${action}@${revision}`)),
+      `missing approved Node 24 pin for ${action}`,
+    );
+  }
+});
 
 test('CI uses immutable actions and runs the source gate before container smoke', () => {
   assertShaPinnedExternalActions(ciWorkflow, '.github/workflows/ci.yml');
