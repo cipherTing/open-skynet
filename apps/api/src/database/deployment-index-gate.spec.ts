@@ -1,6 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 type ComposeDependency = { condition?: string };
@@ -29,18 +28,21 @@ function readComposeConfig(files: string[]): ComposeConfig {
 }
 
 describe('production database index gate', () => {
-  it('routes the public deploy command through the repeatable gate script', () => {
+  it('uses standard Compose as the public deployment entrypoint', () => {
     const packageJson = JSON.parse(
       readFileSync(path.join(workspaceRoot, 'package.json'), 'utf8'),
     ) as { scripts?: Record<string, string> };
     const agentInstructions = readFileSync(path.join(workspaceRoot, 'AGENTS.md'), 'utf8');
 
-    expect(packageJson.scripts?.deploy).toBe('node scripts/deploy.mjs');
-    expect(agentInstructions).toContain('**生产部署**：必须通过 `pnpm run deploy`');
+    expect(packageJson.scripts?.deploy).toBeUndefined();
+    expect(existsSync(path.join(workspaceRoot, 'scripts/deploy.mjs'))).toBe(false);
+    expect(agentInstructions).toContain(
+      '**生产部署**：必须先从 `compose.yaml.example` 复制本地 `compose.yaml`，再复制并填写 `.env`，然后通过 `docker compose up -d` 启动全量服务',
+    );
   });
 
   it('blocks the production API until the one-shot index service succeeds', () => {
-    const config = readComposeConfig(['docker-compose.yml']);
+    const config = readComposeConfig(['compose.yaml.example']);
 
     expect(config.services['db-indexes']).toEqual(
       expect.objectContaining({
@@ -55,39 +57,9 @@ describe('production database index gate', () => {
   });
 
   it('keeps the local development API independent from the production index service', () => {
-    const config = readComposeConfig(['docker-compose.yml', 'docker-compose.infra.dev.yml']);
+    const config = readComposeConfig(['compose.yaml.example', 'compose.dev.yaml']);
 
     expect(config.services.api.depends_on?.['db-indexes']).toBeUndefined();
-  });
-
-  it('removes the completed index container before every deployment', () => {
-    const fixtureRoot = mkdtempSync(path.join(tmpdir(), 'skynet-deploy-'));
-    const dockerPath = path.join(fixtureRoot, 'docker');
-    const logPath = path.join(fixtureRoot, 'docker.log');
-    writeFileSync(
-      dockerPath,
-      '#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$DEPLOY_TEST_LOG"\n',
-      'utf8',
-    );
-    chmodSync(dockerPath, 0o755);
-
-    try {
-      execFileSync('pnpm', ['run', 'deploy'], {
-        cwd: workspaceRoot,
-        env: {
-          ...process.env,
-          DEPLOY_TEST_LOG: logPath,
-          PATH: `${fixtureRoot}:${process.env.PATH ?? ''}`,
-        },
-      });
-
-      expect(readFileSync(logPath, 'utf8').trim().split('\n')).toEqual([
-        'compose rm -sf db-indexes',
-        'compose up -d --build --wait --wait-timeout 240',
-      ]);
-    } finally {
-      rmSync(fixtureRoot, { recursive: true, force: true });
-    }
   });
 
   it('requires write traffic to stop before an approved production index drop', () => {
@@ -96,10 +68,10 @@ describe('production database index gate', () => {
     const allowDropAt = readme.indexOf(
       'docker compose run --rm db-indexes node dist/database/sync-database-indexes.js --allow-drop',
     );
-    const guardedDeployAt = readme.indexOf('pnpm run deploy', allowDropAt);
+    const guardedComposeUpAt = readme.indexOf('docker compose up -d', allowDropAt);
 
     expect(stopServicesAt).toBeGreaterThanOrEqual(0);
     expect(allowDropAt).toBeGreaterThan(stopServicesAt);
-    expect(guardedDeployAt).toBeGreaterThan(allowDropAt);
+    expect(guardedComposeUpAt).toBeGreaterThan(allowDropAt);
   });
 });

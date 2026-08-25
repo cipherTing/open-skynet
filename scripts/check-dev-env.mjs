@@ -6,7 +6,8 @@ import process from 'node:process';
 
 const ENV_PATH = '.env';
 const EXAMPLE_PATH = '.env.example';
-const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
+const COMPOSE_PATH = 'compose.yaml';
+const COMPOSE_TEMPLATE_PATH = 'compose.yaml.example';
 
 function parseEnvFile(path) {
   const env = {};
@@ -87,54 +88,16 @@ function isPortOpen(port) {
   });
 }
 
-function assertLocalHttpUrl(value, expectedPort, expectedPath, name) {
-  let url;
-  try {
-    url = new URL(value);
-  } catch {
-    throw new Error(`${name} must be a valid URL`);
-  }
-
-  const expectedPathname = expectedPath || '/';
-  if (
-    url.protocol !== 'http:' ||
-    !LOCAL_HOSTS.has(url.hostname) ||
-    url.port !== String(expectedPort) ||
-    url.pathname !== expectedPathname
-  ) {
-    throw new Error(`${name} must point to localhost:${expectedPort}${expectedPath}`);
-  }
-}
-
-function assertLocalMongoUri(value, expectedPort) {
-  let url;
-  try {
-    url = new URL(value);
-  } catch {
-    throw new Error('MONGODB_URI must be a valid MongoDB URI');
-  }
-
-  if (
-    url.protocol !== 'mongodb:' ||
-    !LOCAL_HOSTS.has(url.hostname) ||
-    url.port !== String(expectedPort)
-  ) {
-    throw new Error(`MONGODB_URI must point to local MongoDB port ${expectedPort}`);
-  }
-}
-
 function isComposeServiceRunning(serviceName) {
   try {
     const output = execFileSync(
       'docker',
       [
         'compose',
-        '--env-file',
-        ENV_PATH,
         '-f',
-        'docker-compose.yml',
+        'compose.yaml',
         '-f',
-        'docker-compose.infra.dev.yml',
+        'compose.dev.yaml',
         'ps',
         '--services',
         '--filter',
@@ -170,12 +133,10 @@ function getComposePublishedPort(serviceName, containerPort) {
       'docker',
       [
         'compose',
-        '--env-file',
-        ENV_PATH,
         '-f',
-        'docker-compose.yml',
+        'compose.yaml',
         '-f',
-        'docker-compose.infra.dev.yml',
+        'compose.dev.yaml',
         'port',
         serviceName,
         String(containerPort),
@@ -242,6 +203,10 @@ async function assertPortAvailable(name, port) {
   );
 }
 
+if (!existsSync(COMPOSE_PATH)) {
+  fail(`${COMPOSE_PATH} is missing. Run: cp ${COMPOSE_TEMPLATE_PATH} ${COMPOSE_PATH}`);
+}
+
 if (!existsSync(ENV_PATH)) {
   fail(`${ENV_PATH} is missing. Run: cp ${EXAMPLE_PATH} ${ENV_PATH}`);
 }
@@ -258,10 +223,6 @@ try {
 
   assertUniquePorts(ports);
 
-  if (env.NODE_ENV !== 'development') {
-    throw new Error('NODE_ENV must be development');
-  }
-
   for (const name of [
     'MONGO_USERNAME',
     'MONGO_PASSWORD',
@@ -271,15 +232,6 @@ try {
   ]) {
     if (!env[name]) throw new Error(`${name} must be configured in .env`);
   }
-
-  assertLocalMongoUri(env.MONGODB_URI, ports.MONGO_PORT);
-
-  if (!LOCAL_HOSTS.has(env.REDIS_HOST)) {
-    throw new Error('REDIS_HOST must point to localhost');
-  }
-
-  assertLocalHttpUrl(env.CORS_ORIGIN, ports.WEB_PORT, '', 'CORS_ORIGIN');
-  assertLocalHttpUrl(env.NEXT_PUBLIC_API_URL, ports.API_PORT, '/api/v1', 'NEXT_PUBLIC_API_URL');
 
   await assertPortAvailable('WEB_PORT', ports.WEB_PORT);
 

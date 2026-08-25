@@ -12,6 +12,7 @@ test('Next 16.3.1 standalone production build uses the supported Webpack path', 
   ) as WebPackage;
 
   assert.equal(packageJson.scripts?.build, 'NODE_ENV=production next build --webpack');
+  assert.equal(packageJson.scripts?.start, 'node .next/standalone/apps/web/server.js');
 });
 
 test('the dev server does not generate nested Agent instruction files', () => {

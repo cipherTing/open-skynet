@@ -7,7 +7,7 @@ const root = process.cwd();
 
 function help() {
   console.log(
-    `Usage: node scripts/run-release-gates.mjs [--fast | --ci | --release] [--target production]\n\nModes:\n  --fast    Static contracts, lint, and focused tests; no Compose or Redis.\n  --ci      Full local CI gate; no Compose or Redis.\n  --release  CI gate plus an exact v<root.version> release tag and clean-worktree check.\nTargets:\n  --target production  Require HTTPS, non-loopback public URL environment values.`,
+    `Usage: node scripts/run-release-gates.mjs [--fast | --ci | --release]\n\nModes:\n  --fast    Static contracts, lint, and focused tests; no Compose or Redis.\n  --ci      Full local CI gate; no Compose or Redis.\n  --release  CI gate plus an exact v<root.version> release tag and clean-worktree check.`,
   );
 }
 
@@ -78,25 +78,13 @@ if (args.includes('--help') || args.length === 0) {
 const modeFlag = args[0];
 const mode =
   modeFlag === '--fast' ? 'fast' : modeFlag === '--ci' || modeFlag === '--release' ? 'ci' : null;
-const targetFlag = args[1] === '--target' ? args[2] : undefined;
-if (
-  !mode ||
-  (args.length > 1 && (args[1] !== '--target' || !targetFlag || args.length > 3)) ||
-  (targetFlag && targetFlag !== 'production')
-) {
+if (!mode || args.length !== 1) {
   help();
   process.exitCode = 1;
 } else {
   try {
     if (modeFlag === '--release') {
       run('release tag', process.execPath, ['scripts/check-release-contract.mjs', '--release']);
-      if (targetFlag === 'production') {
-        run('production URLs', process.execPath, [
-          'scripts/check-production-urls.mjs',
-          '--target',
-          'production',
-        ]);
-      }
     }
     for (const [label, command, commandArgs] of gateList(mode)) run(label, command, commandArgs);
     console.log(`[release-gates] ${modeFlag.slice(2)} gates passed`);

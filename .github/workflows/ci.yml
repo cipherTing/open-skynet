@@ -9,20 +9,97 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  check:
+  source:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
         with:
           version: 9.15.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm check:ci
+
+  containers:
+    needs: source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+
+      - name: Define image tag
+        id: image
+        shell: bash
+        run: |
+          echo "version=dev-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "smoke-tag=ci-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and smoke production images
+        id: smoke
+        uses: ./.github/actions/build-and-smoke
+        with:
+          image-tag: ${{ steps.image.outputs.smoke-tag }}
+          image-version: ${{ steps.image.outputs.version }}
+
+      - name: Log in to Docker Hub
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+        with:
+          registry: docker.io
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Push and verify smoke-tested images
+        id: publish
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: ./.github/actions/push-and-verify
+        with:
+          api-local-image: sundayting/skynet-api:${{ steps.image.outputs.smoke-tag }}
+          api-remote-image: sundayting/skynet-api:dev-${{ github.sha }}
+          api-build-digest: ${{ steps.smoke.outputs.api-digest }}
+          web-local-image: sundayting/skynet-web:${{ steps.image.outputs.smoke-tag }}
+          web-remote-image: sundayting/skynet-web:dev-${{ github.sha }}
+          web-build-digest: ${{ steps.smoke.outputs.web-digest }}
+
+      - name: Write image summary
+        if: ${{ success() }}
+        env:
+          API_BUILD_DIGEST: ${{ steps.smoke.outputs.api-digest }}
+          WEB_BUILD_DIGEST: ${{ steps.smoke.outputs.web-digest }}
+          API_REMOTE_DIGEST: ${{ steps.publish.outputs.api-remote-digest }}
+          WEB_REMOTE_DIGEST: ${{ steps.publish.outputs.web-remote-digest }}
+          IMAGE_VERSION: ${{ steps.image.outputs.version }}
+        shell: bash
+        run: |
+          {
+            echo '## Container images'
+            echo
+            echo "- API: \`sundayting/skynet-api:${IMAGE_VERSION}\`"
+            echo "- Web: \`sundayting/skynet-web:${IMAGE_VERSION}\`"
+            echo "- API build digest: \`${API_BUILD_DIGEST}\`"
+            echo "- Web build digest: \`${WEB_BUILD_DIGEST}\`"
+            echo "- API remote digest: \`${API_REMOTE_DIGEST:-not published}\`"
+            echo "- Web remote digest: \`${WEB_REMOTE_DIGEST:-not published}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

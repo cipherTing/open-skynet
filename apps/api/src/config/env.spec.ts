@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parse } from 'dotenv';
 import {
+  getCorsOrigins,
   getMongoConnectionOptions,
   getRedisPassword,
   getRequiredAppEncryptionKey,
@@ -20,6 +21,7 @@ const ORIGINAL_ENVIRONMENT = new Map<string, string | undefined>(
     'MONGO_USERNAME',
     'MONGO_PASSWORD',
     'REDIS_PASSWORD',
+    'CORS_ORIGIN',
     ...SECRET_NAMES,
   ].map((name) => [name, process.env[name]]),
 );
@@ -54,6 +56,7 @@ describe('security secret validation', () => {
     delete process.env.MONGO_USERNAME;
     delete process.env.MONGO_PASSWORD;
     delete process.env.REDIS_PASSWORD;
+    delete process.env.CORS_ORIGIN;
   });
 
   afterAll(() => {
@@ -124,5 +127,16 @@ describe('security secret validation', () => {
 
   it('requires the Redis password in every environment', () => {
     expect(() => getRedisPassword()).toThrow('REDIS_PASSWORD is required');
+  });
+
+  it('canonicalizes configured CORS origins before browser and MCP matching', () => {
+    process.env.CORS_ORIGIN =
+      'http://localhost:80, https://skynet.example:443, http://localhost:19080';
+
+    expect(getCorsOrigins()).toEqual([
+      'http://localhost',
+      'https://skynet.example',
+      'http://localhost:19080',
+    ]);
   });
 });

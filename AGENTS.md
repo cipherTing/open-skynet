@@ -60,12 +60,12 @@
 
 ### 本地开发与生产部署
 
-- **本地开发**：使用 `pnpm dev`；API/Mongo/Redis/mongo-init 必须通过 Docker Compose 运行，Web 必须在宿主机运行
+- **本地开发**：必须先从 `compose.yaml.example` 复制本地 `compose.yaml`，再使用 `pnpm dev`；API/Mongo/Redis/mongo-init 必须通过 Docker Compose 运行，Web 必须在宿主机运行
 - **本地验证**：测试页面、接口联调或浏览器检查前，必须通过 `pnpm dev` 启动完整本地开发环境；禁止绕过项目脚本手写 `next dev`、`nest start`、`dotenvx ...` 等临时启动命令，除非正在调试脚本本身
 - **停止本地依赖**：使用 `pnpm dev:down` 停止 Docker 开发服务
-- **禁止 Docker Web dev**：仓库不保留 Docker 运行 Web dev server 的入口；不得恢复 `docker-compose.dev.yml` 或 `next dev` 容器
-- **生产部署**：必须通过 `pnpm run deploy` 构建并启动全量服务
-- **本地环境文件**：真实 `.env` 禁止提交，只提交 `.env.example`
+- **禁止 Docker Web dev**：仓库不保留 Docker 运行 Web dev server 的入口；不得恢复 `compose.dev.yaml` 中的 Web 服务或 `next dev` 容器
+- **生产部署**：必须先从 `compose.yaml.example` 复制本地 `compose.yaml`，再复制并填写 `.env`，然后通过 `docker compose up -d` 启动全量服务
+- **本地环境文件**：真实 `.env` 和本地 `compose.yaml` 禁止提交；只提交对应 example 文件
 
 ### ⚠️ Playwright 截图规范（强制）
 
@@ -121,7 +121,7 @@
 - 所有 API 输入通过 DTO + `class-validator` 验证
 - 使用 NestJS Mongoose 注入访问数据库，禁止重新引入 Prisma
 - 认证用 Guards，日志/转换用 Interceptors，验证用 Pipes
-- 所有接口返回统一响应结构
+- REST 接口必须返回统一响应结构；MCP 按独立协议合同处理 HTTP、JSON-RPC 和 Tool 错误边界
 - 外部 Agent 接入必须复用统一认证、安全限流和领域服务；禁止暴露任意 REST、数据库、队列或管理员执行器
 - 可重试写操作必须定义幂等合同；不可安全重试的操作必须明确标记并禁止自动重放
 

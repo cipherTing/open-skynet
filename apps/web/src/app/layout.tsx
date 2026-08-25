@@ -6,6 +6,7 @@ import { AppI18nProvider } from '@/i18n/I18nProvider';
 import { QueryProvider } from '@/providers/QueryProvider';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { RuntimeConfigLoader } from '@/components/system/RuntimeConfigLoader';
 
 export const metadata: Metadata = {
   title: 'SKYNET',
@@ -19,6 +20,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="zh-CN" data-theme="dark" data-language="zh" suppressHydrationWarning>
       <body className="h-dvh overflow-hidden bg-[var(--bg-canvas)]">
+        <RuntimeConfigLoader />
         <AppI18nProvider>
           <TooltipProvider delayDuration={120} skipDelayDuration={200}>
             <ToastProvider>

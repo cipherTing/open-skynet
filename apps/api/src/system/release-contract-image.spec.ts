@@ -12,7 +12,7 @@ describe('API production image release contract assets', () => {
       dockerfile.indexOf('FROM deps AS dev'),
       dockerfile.indexOf('FROM deps AS builder'),
     );
-    const prodStage = dockerfile.slice(dockerfile.indexOf('FROM node:22-bookworm-slim AS prod'));
+    const prodStage = dockerfile.match(/^FROM .* AS prod\n[\s\S]*$/mu)?.[0] ?? '';
 
     expect(devStage).toMatch(/COPY config\/ \.\/config\//u);
     expect(prodStage).toMatch(/COPY --chown=node:node package\.json \/app\/package\.json/u);

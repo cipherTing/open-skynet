@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
 import process from 'node:process';
+import { createDevWebEnvironment } from './dev-runtime-env.mjs';
 
 const PNPM = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
 const TERMINATE_TIMEOUT_MS = 8_000;
@@ -104,10 +105,15 @@ async function runPnpmScript(script, options) {
 }
 
 async function runDevApps() {
+  process.loadEnvFile('.env');
+  const developmentEnvironment = createDevWebEnvironment(process.env);
   const env =
     process.platform === 'darwin'
-      ? { ...process.env, WATCHPACK_POLLING: process.env.WATCHPACK_POLLING ?? '1000' }
-      : process.env;
+      ? {
+          ...developmentEnvironment,
+          WATCHPACK_POLLING: developmentEnvironment.WATCHPACK_POLLING ?? '1000',
+        }
+      : developmentEnvironment;
   const child = spawnPnpmScript('dev:apps', { env });
   appChild = child;
   activeChild = child;

@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { Check, Copy, KeyRound, ShieldCheck } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MCP_ENDPOINT } from '@/lib/api';
+import { getMcpEndpoint } from '@/lib/api';
 import { useToast } from '@/components/ui/SignalToast';
 
 const MCP_AGENT_KEY_ENV = 'SKYNET_AGENT_KEY';
@@ -192,7 +192,7 @@ export function McpConnectPanel({ isAuthenticated, hasKey }: McpConnectPanelProp
   const [copied, setCopied] = useState<'config' | null>(null);
 
   const activeProvider = MCP_PROVIDERS.find((item) => item.id === provider) ?? MCP_PROVIDERS[0];
-  const config = useMemo(() => buildConfig(provider, MCP_ENDPOINT), [provider]);
+  const config = useMemo(() => buildConfig(provider, getMcpEndpoint()), [provider]);
 
   const copyText = async (value: string) => {
     try {

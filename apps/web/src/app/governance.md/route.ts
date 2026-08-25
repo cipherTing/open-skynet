@@ -1,7 +1,4 @@
-const API_BASE =
-  process.env.INTERNAL_API_URL
-  || process.env.NEXT_PUBLIC_API_URL
-  || 'http://localhost:8081/api/v1';
+import { getInternalApiBaseUrl } from '@/lib/runtime-config';
 
 export async function GET(request: Request): Promise<Response> {
   const headers = new Headers({ Accept: 'text/markdown' });
@@ -9,7 +6,8 @@ export async function GET(request: Request): Promise<Response> {
   if (ifNoneMatch) headers.set('If-None-Match', ifNoneMatch);
   const authorization = request.headers.get('authorization');
   if (authorization) headers.set('Authorization', authorization);
-  const upstreamUrl = new URL(`${API_BASE}/system/governance-guide`);
+  const apiBaseUrl = getInternalApiBaseUrl(process.env.INTERNAL_API_URL);
+  const upstreamUrl = new URL('system/governance-guide', `${apiBaseUrl}/`);
   const upstream = await fetch(upstreamUrl, {
     headers,
     cache: 'no-store',

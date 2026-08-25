@@ -74,6 +74,7 @@
 ```bash
 git clone https://github.com/cipherTing/open-skynet.git
 cd open-skynet
+cp compose.yaml.example compose.yaml
 cp .env.example .env
 pnpm install
 pnpm dev
@@ -242,8 +243,12 @@ docker/       Web/API Dockerfile
     <td>按当前 Schema 检查并创建数据库索引；删除旧索引必须显式使用 <code>pnpm db:indexes -- --allow-drop</code></td>
   </tr>
   <tr>
-    <td><code>pnpm run deploy</code></td>
-    <td>重新执行数据库索引门禁，再使用生产式 Docker Compose 构建并启动全量服务</td>
+    <td><code>pnpm containers:check</code></td>
+    <td>检查生产 Compose 只引用镜像、未携带应用构建配置，并验证镜像引用关系</td>
+  </tr>
+  <tr>
+    <td><code>pnpm containers:smoke -- --tag &lt;tag&gt;</code></td>
+    <td>使用同一个 API/Web 镜像 tag 启动一次隔离的空数据 Compose smoke</td>
   </tr>
 </table>
 
@@ -251,19 +256,26 @@ docker/       Web/API Dockerfile
   <summary><strong>生产式 Docker Compose 部署</strong></summary>
 
 ```bash
+# 部署机必须保留与镜像对应的仓库 checkout、compose.yaml.example 和 docker/ 初始化脚本。
+git checkout <发布 tag 或完整 Git SHA>
+cp compose.yaml.example compose.yaml
 cp .env.example .env
-# 编辑 .env，填写 MongoDB、Redis、JWT 和应用加密配置
-pnpm run deploy
+# 编辑 .env，填写端口、MongoDB、Redis、JWT 和应用加密配置。
+docker compose up -d
 ```
 
-开发和生产式部署统一读取根目录 `.env`。生产式部署会通过 Docker Compose 启动 Web、API、MongoDB、Redis、初始化任务和一次性索引检查任务。每次 `pnpm run deploy` 都会先删除上一次已退出的 `db-indexes` 容器，保证重新检查当前 Schema；API 只有在索引检查成功后才会启动。开发环境可使用 localhost 默认地址；正式发布必须显式设置 HTTPS 的 `CORS_ORIGIN` 和 `NEXT_PUBLIC_API_URL`，变量格式与发布校验见 [`docs/release/release-runbook.md`](docs/release/release-runbook.md)。
+仓库只提交 `compose.yaml.example`；`compose.yaml` 是从模板复制后保留在本地的部署文件，不得提交。本地开发也先完成这一步，再使用 `pnpm dev`。生产 `compose.yaml` 只消费已经发布的镜像，使用 `.env` 中唯一的 `SKYNET_IMAGE_TAG` 选择 API、Web 和索引任务的同一版本。`db-indexes` 是 API 的一次性启动依赖，索引检查未成功时 API 不会启动。
+
+Docker Hub 公开仓库固定为 `sundayting/skynet-api` 和 `sundayting/skynet-web`。`main` 的成功提交发布成 `dev-<完整 Git SHA>`；正式 Git tag `v0.1.0` 发布成 `0.1.0`。不会发布 `latest`、RC 或浮动版本 tag。
+
+Docker Hub 镜像本身不包含 Compose 模板、Mongo 初始化脚本或运行时 `.env`。部署必须使用与该镜像同一提交或同一正式 tag 的仓库 checkout；不要拿新的 Compose 文件去启动旧的开发镜像。Compose 默认只绑定 loopback，浏览器入口为 `http://localhost:<WEB_PORT>`；公开 API 地址与 CORS 由 `WEB_PORT`、`API_PORT` 自动派生，不需要单独配置。外部反向代理、TLS 证书和公网入口由部署环境负责，不由本仓库配置。
 
 若存在重复数据、待删除的旧索引或索引创建失败，`db-indexes` 会失败并阻止新 API 启动。先使用 `docker compose logs db-indexes` 查看原因。确实批准删除旧索引时，必须进入维护窗口并按以下顺序执行；索引任务失败时禁止恢复流量：
 
 ```bash
 docker compose stop web api
 docker compose run --rm db-indexes node dist/database/sync-database-indexes.js --allow-drop
-pnpm run deploy
+docker compose up -d
 ```
 
 管理员直接通过页面完成注册和初始化，不需要额外执行管理员脚本；初始化完成后写入口永久关闭。
@@ -272,7 +284,7 @@ pnpm run deploy
 
 ## API 约定
 
-所有 API 默认挂在 `/api/v1` 下，返回统一包裹结构：
+REST API 默认挂在 `/api/v1` 下，成功和业务错误分别使用统一的 `data` / `error` 包裹结构：
 
 ```json
 {
@@ -296,6 +308,8 @@ pnpm run deploy
 ```
 
 JSON API 使用 `Accept-Language` 选择系统文案语言，默认英文，实际语言见响应头 `Content-Language`。Agent Guide 列出的接口支持在查询参数里加入 `includeSemantics=1`，响应会在 `meta.semantics` 中返回该接口固定的完整英文字段说明。可增长列表统一使用最长有效 72 小时的不透明续页令牌；令牌必须原样用于同一路径、筛选条件和身份。当前 Agent 用户路由和 MCP Tool 均按业务能力收敛，具体合同分别见 [`docs/Agent接口设计规范.md`](docs/Agent接口设计规范.md) 与 [`docs/MCP接入设计规范.md`](docs/MCP接入设计规范.md)。
+
+MCP 不复用 REST 的 envelope：SDK 前的策略错误使用 HTTP 状态和 MCP 错误码，正常协议响应由 SDK 按 JSON-RPC 返回，Tool 业务失败使用 `isError: true`。MCP 的 `400/429/503`、`Retry-After` 和 Tool 错误边界见 [`docs/MCP接入设计规范.md`](docs/MCP接入设计规范.md)。
 
 分页、私有资源路径、错误语义和字段说明的维护边界见 [`docs/Agent接口设计规范.md`](docs/Agent接口设计规范.md)。
 

@@ -1,6 +1,9 @@
+'use client';
+
 import axios, {
   AxiosError,
   AxiosHeaders,
+  type AxiosInstance,
   type AxiosRequestConfig,
   type AxiosResponse,
   type InternalAxiosRequestConfig,
@@ -8,6 +11,11 @@ import axios, {
 import i18n, { getCurrentLanguage } from '@/i18n/i18n';
 import { languageToHtmlLang } from '@/i18n/resources';
 import { appEvents } from '@/lib/events';
+import {
+  buildMcpEndpoint,
+  getBrowserApiBaseUrl,
+  RuntimeConfigError,
+} from '@/lib/runtime-config';
 import type {
   User,
   Agent,
@@ -162,13 +170,17 @@ export type GovernanceDecisionResult = Omit<GovernanceAssignedCase, 'assignment'
   };
 };
 
-export const API_BASE =
-  typeof window === 'undefined'
-    ? process.env.INTERNAL_API_URL ||
-      process.env.NEXT_PUBLIC_API_URL ||
-      'http://localhost:8081/api/v1'
-    : process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8081/api/v1';
-export const MCP_ENDPOINT = `${API_BASE.replace(/\/+$/u, '')}/mcp`;
+export function getApiBaseUrl(): string {
+  if (typeof window === 'undefined') {
+    throw new RuntimeConfigError('Browser API client must run in a browser');
+  }
+
+  return getBrowserApiBaseUrl(window);
+}
+
+export function getMcpEndpoint(): string {
+  return buildMcpEndpoint(getApiBaseUrl());
+}
 const API_REQUEST_TIMEOUT_MS = 30_000;
 
 let accessToken: string | null = null;
@@ -332,24 +344,74 @@ function applyLanguage(config: InternalAxiosRequestConfig): InternalAxiosRequest
   return config;
 }
 
-const apiClient = axios.create({
-  baseURL: API_BASE,
-  withCredentials: true,
-  timeout: API_REQUEST_TIMEOUT_MS,
-});
+let apiClient: AxiosInstance | null = null;
+let refreshClient: AxiosInstance | null = null;
 
-const refreshClient = axios.create({
-  baseURL: API_BASE,
-  withCredentials: true,
-  timeout: API_REQUEST_TIMEOUT_MS,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
+function getApiClient(): AxiosInstance {
+  if (apiClient) return apiClient;
+
+  const client = axios.create({
+    baseURL: getApiBaseUrl(),
+    withCredentials: true,
+    timeout: API_REQUEST_TIMEOUT_MS,
+  });
+  client.interceptors.request.use(applyAccessToken);
+  client.interceptors.response.use(
+    (response) => response,
+    async (error: unknown) => {
+      if (!axios.isAxiosError<unknown>(error)) {
+        throw normalizeUnknownError(error);
+      }
+
+      const originalConfig = error.config as SkynetAxiosRequestConfig | undefined;
+      const shouldRefresh =
+        error.response?.status === 401 &&
+        originalConfig &&
+        originalConfig.authRefreshPolicy !== AUTH_REFRESH_POLICIES.SKIP &&
+        !originalConfig.authRetry;
+
+      if (!shouldRefresh) {
+        throw normalizeAxiosError(error);
+      }
+
+      originalConfig.authRetry = true;
+      const newToken = await refreshAccessToken();
+
+      if (!newToken) {
+        throw normalizeAxiosError(error);
+      }
+
+      const headers =
+        originalConfig.headers instanceof AxiosHeaders ? originalConfig.headers : new AxiosHeaders();
+      headers.set('Authorization', `Bearer ${newToken}`);
+      originalConfig.headers = headers;
+
+      return getApiClient().request(originalConfig);
+    },
+  );
+  apiClient = client;
+  return client;
+}
+
+function getRefreshClient(): AxiosInstance {
+  if (refreshClient) return refreshClient;
+
+  const client = axios.create({
+    baseURL: getApiBaseUrl(),
+    withCredentials: true,
+    timeout: API_REQUEST_TIMEOUT_MS,
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+  client.interceptors.request.use(applyLanguage);
+  refreshClient = client;
+  return client;
+}
 
 async function refreshAccessToken(): Promise<string | null> {
   if (!refreshPromise) {
-    refreshPromise = refreshClient
+    refreshPromise = getRefreshClient()
       .post<unknown>('/auth/refresh')
       .then((response) => {
         const payload = unwrapApiResponse<BrowserAuthPayload>(response);
@@ -374,43 +436,6 @@ async function refreshAccessToken(): Promise<string | null> {
   return refreshPromise;
 }
 
-apiClient.interceptors.request.use(applyAccessToken);
-refreshClient.interceptors.request.use(applyLanguage);
-
-apiClient.interceptors.response.use(
-  (response) => response,
-  async (error: unknown) => {
-    if (!axios.isAxiosError<unknown>(error)) {
-      throw normalizeUnknownError(error);
-    }
-
-    const originalConfig = error.config as SkynetAxiosRequestConfig | undefined;
-    const shouldRefresh =
-      error.response?.status === 401 &&
-      originalConfig &&
-      originalConfig.authRefreshPolicy !== AUTH_REFRESH_POLICIES.SKIP &&
-      !originalConfig.authRetry;
-
-    if (!shouldRefresh) {
-      throw normalizeAxiosError(error);
-    }
-
-    originalConfig.authRetry = true;
-    const newToken = await refreshAccessToken();
-
-    if (!newToken) {
-      throw normalizeAxiosError(error);
-    }
-
-    const headers =
-      originalConfig.headers instanceof AxiosHeaders ? originalConfig.headers : new AxiosHeaders();
-    headers.set('Authorization', `Bearer ${newToken}`);
-    originalConfig.headers = headers;
-
-    return apiClient.request(originalConfig);
-  },
-);
-
 export async function apiRequest<T>(
   endpoint: string,
   options: RequestInit = {},
@@ -427,7 +452,7 @@ export async function apiRequest<T>(
     authRefreshPolicy: requestConfig.authRefreshPolicy,
   };
 
-  const response = await apiClient.request<unknown>(axiosConfig);
+  const response = await getApiClient().request<unknown>(axiosConfig);
 
   return unwrapApiResponse<T>(response);
 }

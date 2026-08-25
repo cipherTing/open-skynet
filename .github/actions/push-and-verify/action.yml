@@ -1,0 +1,120 @@
+name: Push and verify images
+description: Publish smoke-tested local images without replacing an existing different image.
+
+inputs:
+  api-local-image:
+    description: Local API image reference that completed smoke.
+    required: true
+  api-remote-image:
+    description: Docker Hub API image reference to publish.
+    required: true
+  api-build-digest:
+    description: API manifest digest returned by the smoke build.
+    required: true
+  web-local-image:
+    description: Local Web image reference that completed smoke.
+    required: true
+  web-remote-image:
+    description: Docker Hub Web image reference to publish.
+    required: true
+  web-build-digest:
+    description: Web manifest digest returned by the smoke build.
+    required: true
+
+outputs:
+  api-remote-digest:
+    description: API digest confirmed by Docker Hub after push.
+    value: ${{ steps.push.outputs.api-remote-digest }}
+  web-remote-digest:
+    description: Web digest confirmed by Docker Hub after push.
+    value: ${{ steps.push.outputs.web-remote-digest }}
+
+runs:
+  using: composite
+  steps:
+    - name: Push and verify image digests
+      id: push
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        get_remote_digest() {
+          docker buildx imagetools inspect --format '{{json .Manifest.Digest}}' "$1" 2>/dev/null | tr -d '"[:space:]'
+        }
+
+        assert_digest() {
+          local digest="$1"
+          local image_name="$2"
+          if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "$image_name build digest is missing or invalid: $digest" >&2
+            return 1
+          fi
+        }
+
+        assert_existing_or_empty() {
+          local remote_image="$1"
+          local expected_digest="$2"
+          local existing_digest
+
+          existing_digest="$(get_remote_digest "$remote_image" || true)"
+          if [[ -n "$existing_digest" && "$existing_digest" != "$expected_digest" ]]; then
+            echo "remote tag already exists with a different digest: $remote_image" >&2
+            return 1
+          fi
+        }
+
+        push_and_verify() {
+          local local_image="$1"
+          local remote_image="$2"
+          local expected_digest="$3"
+          local push_output
+          local existing_digest
+          local remote_digest
+
+          assert_remote_matches_expected_digest() {
+            local remote_image="$1"
+            local actual_digest="$2"
+
+            if [[ "$actual_digest" != "$expected_digest" ]]; then
+              echo "remote tag already exists with a different digest: $remote_image" >&2
+              return 1
+            fi
+          }
+
+          existing_digest="$(get_remote_digest "$remote_image" || true)"
+          if [[ -n "$existing_digest" ]]; then
+            assert_remote_matches_expected_digest "$remote_image" "$existing_digest"
+            printf '%s\n' "$existing_digest"
+            return 0
+          fi
+
+          docker image tag "$local_image" "$remote_image"
+          if ! push_output="$(docker image push "$remote_image" 2>&1)"; then
+            printf '%s\n' "$push_output" >&2
+            existing_digest="$(get_remote_digest "$remote_image" || true)"
+            if [[ -z "$existing_digest" ]]; then
+              return 1
+            fi
+            assert_remote_matches_expected_digest "$remote_image" "$existing_digest"
+            printf '%s\n' "$existing_digest"
+            return 0
+          fi
+          printf '%s\n' "$push_output" >&2
+          remote_digest="$(get_remote_digest "$remote_image")"
+          test -n "$remote_digest"
+          test "$remote_digest" = "$expected_digest"
+          printf '%s\n' "$remote_digest"
+        }
+
+        # Preflight both tags before either image is pushed. Cross-repository
+        # publication is not transactional, but deterministic conflicts fail
+        # before creating a partial pair.
+        assert_digest "${{ inputs.api-build-digest }}" "API"
+        assert_digest "${{ inputs.web-build-digest }}" "Web"
+        assert_existing_or_empty "${{ inputs.api-remote-image }}" "${{ inputs.api-build-digest }}"
+        assert_existing_or_empty "${{ inputs.web-remote-image }}" "${{ inputs.web-build-digest }}"
+
+        api_remote_digest="$(push_and_verify "${{ inputs.api-local-image }}" "${{ inputs.api-remote-image }}" "${{ inputs.api-build-digest }}")"
+        web_remote_digest="$(push_and_verify "${{ inputs.web-local-image }}" "${{ inputs.web-remote-image }}" "${{ inputs.web-build-digest }}")"
+        echo "api-remote-digest=$api_remote_digest" >> "$GITHUB_OUTPUT"
+        echo "web-remote-digest=$web_remote_digest" >> "$GITHUB_OUTPUT"

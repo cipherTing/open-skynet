@@ -6,3 +6,4 @@
 - 版本、revision、日期和支持范围必须与代码或发布门禁使用同一来源；禁止手工复制后不校验。
 - 发布文档只描述当前首发和未来变更规则。
 - 修改 API、Guide、MCP 或发布合同后，必须在同一变更中更新对应测试、README 和 CHANGELOG。
+- 部署文档必须将 `compose.yaml.example` 作为仓库模板，将 `compose.yaml` 描述为本地 ignored 副本。

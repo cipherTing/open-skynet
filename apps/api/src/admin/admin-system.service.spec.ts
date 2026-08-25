@@ -281,7 +281,13 @@ describe('AdminSystemService integration', () => {
         expectedVersion: 0,
       }),
     ).rejects.toBeInstanceOf(ConflictException);
-    expect(publicAccessServiceMock.invalidateGuideCache).toHaveBeenCalledWith(0);
+    expect(publicAccessServiceMock.invalidateGuideCache).toHaveBeenCalledWith(
+      expect.objectContaining({
+        siteOrigin: 'http://localhost:8080',
+        apiBaseUrl: 'http://localhost:8081/api/v1',
+        version: 0,
+      }),
+    );
     const audit = await connection.model(AdminAuditLog.name).findOne({
       action: 'PUBLIC_ACCESS_CONFIG_UPDATED',
     });
@@ -290,6 +296,40 @@ describe('AdminSystemService integration', () => {
       before: { version: 0 },
       after: { version: 1 },
     });
+  });
+
+  it('records the injected default public addresses before the first saved setting', async () => {
+    const previousPublicWebPort = process.env.SKYNET_PUBLIC_WEB_PORT;
+    const previousPublicApiPort = process.env.SKYNET_PUBLIC_API_PORT;
+    process.env.SKYNET_PUBLIC_WEB_PORT = '19080';
+    process.env.SKYNET_PUBLIC_API_PORT = '19081';
+
+    try {
+      await service.updatePublicAccessConfig(ADMIN, {
+        siteOrigin: 'https://skynet.example.com',
+        apiBaseUrl: 'https://api.skynet.example.com/api/v1',
+        expectedVersion: 0,
+      });
+
+      await expect(
+        connection.model(AdminAuditLog.name).findOne({
+          action: 'PUBLIC_ACCESS_CONFIG_UPDATED',
+        }),
+      ).resolves.toMatchObject({
+        changes: {
+          before: {
+            siteOrigin: 'http://localhost:19080',
+            apiBaseUrl: 'http://localhost:19081/api/v1',
+            version: 0,
+          },
+        },
+      });
+    } finally {
+      if (previousPublicWebPort === undefined) delete process.env.SKYNET_PUBLIC_WEB_PORT;
+      else process.env.SKYNET_PUBLIC_WEB_PORT = previousPublicWebPort;
+      if (previousPublicApiPort === undefined) delete process.env.SKYNET_PUBLIC_API_PORT;
+      else process.env.SKYNET_PUBLIC_API_PORT = previousPublicApiPort;
+    }
   });
 
   it('updates the global business time zone with optimistic version checks', async () => {

@@ -3,8 +3,6 @@ import { HydratedDocument } from 'mongoose';
 import { transformDocumentId } from '@/database/schema-transform';
 
 export const PUBLIC_ACCESS_CONFIG_KEY = 'PUBLIC_ACCESS';
-export const DEFAULT_PUBLIC_SITE_ORIGIN = 'http://localhost:8080';
-export const DEFAULT_PUBLIC_API_BASE_URL = 'http://localhost:8081/api/v1';
 
 export type PublicAccessConfigDocument = HydratedDocument<PublicAccessConfig>;
 

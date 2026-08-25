@@ -5,18 +5,18 @@ import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { Model } from 'mongoose';
 import {
-  DEFAULT_PUBLIC_API_BASE_URL,
-  DEFAULT_PUBLIC_SITE_ORIGIN,
   PUBLIC_ACCESS_CONFIG_KEY,
   PublicAccessConfig,
 } from '@/database/schemas/public-access-config.schema';
-import { isProduction } from '@/config/env';
 import { RedisService } from '@/redis/redis.service';
 import { REDIS_SET_EXPIRATION_UNITS } from '@/redis/redis.constants';
 import { Agent } from '@/database/schemas/agent.schema';
 import { decryptSecret } from '@/common/security/encrypted-secret';
 import { hashOpaqueToken } from '@/auth/auth-security';
-import { DEFAULT_AGENT_REVISIT_INTERVAL_HOURS } from './public-access.constants';
+import {
+  DEFAULT_AGENT_REVISIT_INTERVAL_HOURS,
+  getDefaultPublicAccessAddresses,
+} from './public-access.constants';
 import { systemErrors } from '@/common/errors/business-errors';
 import {
   getAgentGuideBootstrapRedisKey,
@@ -55,6 +55,11 @@ export interface RenderedAgentGuide {
   cacheControl: string;
 }
 
+type PublicAccessCacheConfig = Pick<
+  PublicAccessConfigView,
+  'siteOrigin' | 'apiBaseUrl' | 'version'
+>;
+
 function removeTrailingSlashes(value: string): string {
   return value.replace(/\/+$/u, '');
 }
@@ -81,10 +86,11 @@ export class PublicAccessService {
   async getPublicConfig(): Promise<PublicAccessConfigView> {
     const config = await this.configModel.findOne({ key: PUBLIC_ACCESS_CONFIG_KEY });
     if (!config) {
+      const defaults = getDefaultPublicAccessAddresses();
       return {
-        siteOrigin: DEFAULT_PUBLIC_SITE_ORIGIN,
-        apiBaseUrl: DEFAULT_PUBLIC_API_BASE_URL,
-        guideUrl: `${DEFAULT_PUBLIC_SITE_ORIGIN}/guide.md`,
+        siteOrigin: defaults.siteOrigin,
+        apiBaseUrl: defaults.apiBaseUrl,
+        guideUrl: `${defaults.siteOrigin}/guide.md`,
         version: 0,
         updatedAt: null,
       };
@@ -113,7 +119,7 @@ export class PublicAccessService {
     ) {
       throw systemErrors.publicSiteOriginInvalid();
     }
-    this.assertProductionHttps(normalized, 'siteOrigin');
+    this.assertHttpLocalhostOnly(normalized, systemErrors.publicSiteOriginInvalid);
     return normalized.origin;
   }
 
@@ -122,7 +128,7 @@ export class PublicAccessService {
     if (normalized.search || normalized.hash || normalized.username || normalized.password) {
       throw systemErrors.publicApiUrlInvalid();
     }
-    this.assertProductionHttps(normalized, 'apiBaseUrl');
+    this.assertHttpLocalhostOnly(normalized, systemErrors.publicApiUrlInvalid);
     return removeTrailingSlashes(normalized.toString());
   }
 
@@ -134,7 +140,7 @@ export class PublicAccessService {
   private async renderAgentGuideWithConfig(
     config: PublicAccessConfigView,
   ): Promise<RenderedAgentGuide> {
-    const cacheKey = this.getGuideCacheKey(config.version);
+    const cacheKey = this.getGuideCacheKey(config);
     const redis = this.redisService.getClient();
     const cached = await redis.get(cacheKey);
     if (cached) return this.buildRenderedGuide(cached);
@@ -149,7 +155,7 @@ export class PublicAccessService {
 
   async renderGovernanceGuide(): Promise<RenderedAgentGuide> {
     const config = await this.getPublicConfig();
-    const cacheKey = `${GOVERNANCE_CACHE_PREFIX}:${this.templateHash}:config:${config.version}`;
+    const cacheKey = this.getGovernanceGuideCacheKey(config);
     const redis = this.redisService.getClient();
     const cached = await redis.get(cacheKey);
     if (cached) return this.buildRenderedGuide(cached);
@@ -202,16 +208,32 @@ export class PublicAccessService {
     return this.buildPersonalizedGuide(content, publicAccessConfig, agentKey);
   }
 
-  async invalidateGuideCache(version: number): Promise<void> {
+  async invalidateGuideCache(config: PublicAccessCacheConfig): Promise<void> {
     const redis = this.redisService.getClient();
     await redis.del(
-      this.getGuideCacheKey(version),
-      `${GOVERNANCE_CACHE_PREFIX}:${this.templateHash}:config:${version}`,
+      this.getGuideCacheKey(config),
+      this.getGovernanceGuideCacheKey(config),
     );
   }
 
-  private getGuideCacheKey(version: number): string {
-    return `${GUIDE_CACHE_PREFIX}:${this.templateHash}:config:${version}`;
+  private getGuideCacheKey(config: PublicAccessCacheConfig): string {
+    return `${GUIDE_CACHE_PREFIX}:${this.templateHash}:config:${this.getPublicAccessCacheIdentity(config)}`;
+  }
+
+  private getGovernanceGuideCacheKey(config: PublicAccessCacheConfig): string {
+    return `${GOVERNANCE_CACHE_PREFIX}:${this.templateHash}:config:${this.getPublicAccessCacheIdentity(config)}`;
+  }
+
+  private getPublicAccessCacheIdentity(config: PublicAccessCacheConfig): string {
+    return createHash('sha256')
+      .update(
+        JSON.stringify({
+          version: config.version,
+          siteOrigin: config.siteOrigin,
+          apiBaseUrl: config.apiBaseUrl,
+        }),
+      )
+      .digest('hex');
   }
 
   private buildRenderedGuide(content: string): RenderedAgentGuide {
@@ -263,9 +285,9 @@ export class PublicAccessService {
     }
   }
 
-  private assertProductionHttps(url: URL, fieldName: string): void {
-    if (isProduction() && url.protocol !== 'https:') {
-      throw systemErrors.productionHttpsRequired(fieldName);
+  private assertHttpLocalhostOnly(url: URL, invalidError: () => Error): void {
+    if (url.protocol === 'http:' && url.hostname !== 'localhost') {
+      throw invalidError();
     }
   }
 }

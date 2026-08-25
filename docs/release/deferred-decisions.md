@@ -2,7 +2,6 @@
 
 以下事项不属于本次首发合同，不得在 README、Guide 或 API/MCP 对外文档中宣称已经支持：
 
-- 生产 Docker Compose 的公网监听、TLS、反向代理和镜像固定策略。
 - MCP 底层不可取消操作的 cancellation/fencing 完整方案。
 - 持久订阅的生产事件源、跨实例事件总线、断线恢复和容量验收。
 - 更细粒度的 Owner 配额、公平性和跨 Agent 资源治理。

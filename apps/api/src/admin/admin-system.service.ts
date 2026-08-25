@@ -23,12 +23,11 @@ import type { UpdateFeatureFlagDto } from './dto/update-feature-flag.dto';
 import type { ListAnnouncementsDto } from './dto/list-announcements.dto';
 import type { ListSecurityEventsDto } from './dto/list-security-events.dto';
 import {
-  DEFAULT_PUBLIC_API_BASE_URL,
-  DEFAULT_PUBLIC_SITE_ORIGIN,
   PUBLIC_ACCESS_CONFIG_KEY,
   PublicAccessConfig,
 } from '@/database/schemas/public-access-config.schema';
 import { PublicAccessService } from '@/system/public-access.service';
+import { getDefaultPublicAccessAddresses } from '@/system/public-access.constants';
 import type { UpdatePublicAccessConfigDto } from './dto/update-public-access-config.dto';
 import { AuthPolicyService } from '@/system/auth-policy.service';
 import { TurnstileService } from '@/system/turnstile.service';
@@ -231,9 +230,10 @@ export class AdminSystemService {
       if (currentVersion !== dto.expectedVersion) {
         throw adminErrors.publicAccessVersionConflict();
       }
+      const defaults = getDefaultPublicAccessAddresses();
       const previous = {
-        siteOrigin: config?.siteOrigin ?? DEFAULT_PUBLIC_SITE_ORIGIN,
-        apiBaseUrl: config?.apiBaseUrl ?? DEFAULT_PUBLIC_API_BASE_URL,
+        siteOrigin: config?.siteOrigin ?? defaults.siteOrigin,
+        apiBaseUrl: config?.apiBaseUrl ?? defaults.apiBaseUrl,
         version: currentVersion,
       };
       if (previous.siteOrigin === siteOrigin && previous.apiBaseUrl === apiBaseUrl) {
@@ -264,10 +264,10 @@ export class AdminSystemService {
       });
       return {
         config: this.publicAccessService.serialize(nextConfig),
-        previousVersion: currentVersion,
+        previous,
       };
     });
-    await this.publicAccessService.invalidateGuideCache(result.previousVersion);
+    await this.publicAccessService.invalidateGuideCache(result.previous);
     return result.config;
   }
 

@@ -22,7 +22,8 @@ export function getCorsOrigins(): string[] {
   return (process.env.CORS_ORIGIN || 'http://localhost:8080')
     .split(',')
     .map((origin) => origin.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .map(normalizeCorsOrigin);
 }
 
 export function getRedisConfig(): { host: string; port: number } {
@@ -116,6 +117,28 @@ function getRequiredSecret(name: SecuritySecretName): string {
 
 function readSecret(name: string): string | undefined {
   return process.env[name]?.trim();
+}
+
+function normalizeCorsOrigin(value: string): string {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(`CORS_ORIGIN must contain an absolute HTTP origin, received ${value}`);
+  }
+
+  if (
+    (url.protocol !== 'http:' && url.protocol !== 'https:') ||
+    url.username ||
+    url.password ||
+    url.pathname !== '/' ||
+    url.search ||
+    url.hash
+  ) {
+    throw new Error(`CORS_ORIGIN must contain an absolute HTTP origin, received ${value}`);
+  }
+
+  return url.origin;
 }
 
 export function isSwaggerEnabled(): boolean {

@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev --turbopack -p ${WEB_PORT:-${PORT:-8080}}",
     "build": "NODE_ENV=production next build --webpack",
-    "start": "next start -p ${WEB_PORT:-${PORT:-8080}}",
+    "start": "node .next/standalone/apps/web/server.js",
     "lint": "eslint src --max-warnings=0",
     "typecheck": "tsc --noEmit",
     "test:unit": "node --experimental-default-type=module --test src/lib/*.test.ts",

@@ -56,6 +56,26 @@ describe('McpHttpService', () => {
     expect(response.setHeader).toHaveBeenCalledWith('Pragma', 'no-cache');
   });
 
+  it('accepts the browser Origin canonicalized from a configured default HTTP port', async () => {
+    const previousCorsOrigin = process.env.CORS_ORIGIN;
+    process.env.CORS_ORIGIN = 'http://localhost:80';
+    const { service } = buildService();
+    const request = {
+      headers: {
+        authorization: 'Bearer sk_live_test_key',
+        origin: 'http://localhost',
+      },
+    } as ExpressRequest;
+    const response = { setHeader: jest.fn() } as unknown as ExpressResponse;
+
+    try {
+      await expect(service.authenticate(request, response)).resolves.toEqual(principal);
+    } finally {
+      if (previousCorsOrigin === undefined) delete process.env.CORS_ORIGIN;
+      else process.env.CORS_ORIGIN = previousCorsOrigin;
+    }
+  });
+
   it('marks the synthetic MCP route for unconditional pre-auth throttling', async () => {
     const reflector = new Reflector();
     const securityPipelineGuard = {
