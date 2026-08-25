@@ -8,113 +8,188 @@ inputs:
   api-remote-image:
     description: Docker Hub API image reference to publish.
     required: true
-  api-build-digest:
-    description: API manifest digest returned by the smoke build.
-    required: true
   web-local-image:
     description: Local Web image reference that completed smoke.
     required: true
   web-remote-image:
     description: Docker Hub Web image reference to publish.
     required: true
-  web-build-digest:
-    description: Web manifest digest returned by the smoke build.
-    required: true
 
 outputs:
-  api-remote-digest:
-    description: API digest confirmed by Docker Hub after push.
-    value: ${{ steps.push.outputs.api-remote-digest }}
-  web-remote-digest:
-    description: Web digest confirmed by Docker Hub after push.
-    value: ${{ steps.push.outputs.web-remote-digest }}
+  api-remote-manifest-digest:
+    description: API manifest digest confirmed by Docker Hub after push.
+    value: ${{ steps.push.outputs.api-remote-manifest-digest }}
+  web-remote-manifest-digest:
+    description: Web manifest digest confirmed by Docker Hub after push.
+    value: ${{ steps.push.outputs.web-remote-manifest-digest }}
 
 runs:
   using: composite
   steps:
-    - name: Push and verify image digests
+    - name: Push and verify image identities
       id: push
       shell: bash
       run: |
         set -euo pipefail
 
-        get_remote_digest() {
-          docker buildx imagetools inspect --format '{{json .Manifest.Digest}}' "$1" 2>/dev/null | tr -d '"[:space:]'
-        }
+        readonly DOCKER_HUB_AUTH_URL='https://auth.docker.io/token'
+        readonly DOCKER_HUB_REGISTRY_URL='https://registry-1.docker.io'
+        readonly DOCKER_HUB_MANIFEST_ACCEPT='application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json'
+        readonly DIGEST_PATTERN='^sha256:[0-9a-f]{64}$'
+
+        REMOTE_IMAGE_STATE=''
+        REMOTE_CONFIG_DIGEST=''
+        REMOTE_MANIFEST_DIGEST=''
+        PUBLISHED_MANIFEST_DIGEST=''
 
         assert_digest() {
           local digest="$1"
-          local image_name="$2"
-          if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-            echo "$image_name build digest is missing or invalid: $digest" >&2
+          local name="$2"
+
+          if [[ ! "$digest" =~ $DIGEST_PATTERN ]]; then
+            echo "invalid ${name}: ${digest}" >&2
             return 1
           fi
         }
 
-        assert_existing_or_empty() {
+        get_local_config_digest() {
+          local local_image="$1"
+          local digest
+
+          if ! digest="$(docker image inspect --format '{{.Id}}' "$local_image")"; then
+            echo "failed to inspect smoke-tested local image: ${local_image}" >&2
+            return 1
+          fi
+          digest="$(printf '%s' "$digest" | tr -d '[:space:]')"
+          if ! assert_digest "$digest" 'local image config digest'; then
+            return 1
+          fi
+          printf '%s\n' "$digest"
+        }
+
+        get_docker_hub_pull_token() {
+          local repository="$1"
+          local token
+
+          if ! token="$(curl --silent --show-error --get "$DOCKER_HUB_AUTH_URL" --data-urlencode 'service=registry.docker.io' --data-urlencode "scope=repository:${repository}:pull" | jq -er '.token')"; then
+            echo "failed to request Docker Hub pull token for ${repository}" >&2
+            return 1
+          fi
+          printf '%s\n' "$token"
+        }
+
+        read_remote_image() {
           local remote_image="$1"
-          local expected_digest="$2"
-          local existing_digest
+          local repository
+          local tag
+          local token
+          local response_directory
+          local response_body
+          local response_headers
+          local status
 
-          existing_digest="$(get_remote_digest "$remote_image" || true)"
-          if [[ -n "$existing_digest" && "$existing_digest" != "$expected_digest" ]]; then
-            echo "remote tag already exists with a different digest: $remote_image" >&2
+          case "$remote_image" in
+            sundayting/skynet-api:* | sundayting/skynet-web:*) ;;
+            *)
+              echo "unsupported Docker Hub image: ${remote_image}" >&2
+              return 1
+              ;;
+          esac
+
+          repository="${remote_image%:*}"
+          tag="${remote_image##*:}"
+          token="$(get_docker_hub_pull_token "$repository")" || return 1
+          response_directory="$(mktemp -d)" || {
+            echo 'failed to create Docker Hub response directory' >&2
+            return 1
+          }
+          response_body="${response_directory}/body.json"
+          response_headers="${response_directory}/headers.txt"
+
+          if ! status="$(curl --silent --show-error --dump-header "$response_headers" --output "$response_body" --write-out '%{http_code}' -H "Authorization: Bearer ${token}" -H "Accept: ${DOCKER_HUB_MANIFEST_ACCEPT}" "${DOCKER_HUB_REGISTRY_URL}/v2/${repository}/manifests/${tag}")"; then
+            rm -rf "$response_directory"
+            echo "failed to read Docker Hub manifest: ${remote_image}" >&2
+            return 1
+          fi
+
+          REMOTE_IMAGE_STATE=''
+          REMOTE_CONFIG_DIGEST=''
+          REMOTE_MANIFEST_DIGEST=''
+          case "$status" in
+            404)
+              REMOTE_IMAGE_STATE='missing'
+              ;;
+            200)
+              if ! REMOTE_CONFIG_DIGEST="$(jq -er 'select(.manifests? | not) | .config.digest' "$response_body")"; then
+                rm -rf "$response_directory"
+                echo "Docker Hub image must be a single-platform manifest: ${remote_image}" >&2
+                return 1
+              fi
+              REMOTE_MANIFEST_DIGEST="$(awk 'tolower($1) == "docker-content-digest:" { gsub("\\r", "", $2); print $2; exit }' "$response_headers")"
+              rm -rf "$response_directory"
+              if ! assert_digest "$REMOTE_CONFIG_DIGEST" 'remote image config digest'; then
+                return 1
+              fi
+              if ! assert_digest "$REMOTE_MANIFEST_DIGEST" 'remote image manifest digest'; then
+                return 1
+              fi
+              REMOTE_IMAGE_STATE='present'
+              ;;
+            *)
+              cat "$response_body" >&2
+              rm -rf "$response_directory"
+              echo "Docker Hub returned HTTP ${status} for ${remote_image}" >&2
+              return 1
+              ;;
+          esac
+        }
+
+        assert_matching_remote_or_missing() {
+          local remote_image="$1"
+          local local_config_digest="$2"
+
+          read_remote_image "$remote_image" || return 1
+          if [[ "$REMOTE_IMAGE_STATE" == 'present' && "$REMOTE_CONFIG_DIGEST" != "$local_config_digest" ]]; then
+            echo "remote tag already exists with a different smoke identity: ${remote_image}" >&2
             return 1
           fi
         }
 
-        push_and_verify() {
+        publish_and_verify() {
           local local_image="$1"
           local remote_image="$2"
-          local expected_digest="$3"
-          local push_output
-          local existing_digest
-          local remote_digest
+          local local_config_digest="$3"
 
-          assert_remote_matches_expected_digest() {
-            local remote_image="$1"
-            local actual_digest="$2"
-
-            if [[ "$actual_digest" != "$expected_digest" ]]; then
-              echo "remote tag already exists with a different digest: $remote_image" >&2
-              return 1
-            fi
-          }
-
-          existing_digest="$(get_remote_digest "$remote_image" || true)"
-          if [[ -n "$existing_digest" ]]; then
-            assert_remote_matches_expected_digest "$remote_image" "$existing_digest"
-            printf '%s\n' "$existing_digest"
-            return 0
+          read_remote_image "$remote_image" || return 1
+          if [[ "$REMOTE_IMAGE_STATE" == 'missing' ]]; then
+            docker image tag "$local_image" "$remote_image"
+            docker image push "$remote_image"
+            read_remote_image "$remote_image" || return 1
           fi
 
-          docker image tag "$local_image" "$remote_image"
-          if ! push_output="$(docker image push "$remote_image" 2>&1)"; then
-            printf '%s\n' "$push_output" >&2
-            existing_digest="$(get_remote_digest "$remote_image" || true)"
-            if [[ -z "$existing_digest" ]]; then
-              return 1
-            fi
-            assert_remote_matches_expected_digest "$remote_image" "$existing_digest"
-            printf '%s\n' "$existing_digest"
-            return 0
+          if [[ "$REMOTE_IMAGE_STATE" != 'present' ]]; then
+            echo "Docker Hub tag was not available after publish: ${remote_image}" >&2
+            return 1
           fi
-          printf '%s\n' "$push_output" >&2
-          remote_digest="$(get_remote_digest "$remote_image")"
-          test -n "$remote_digest"
-          test "$remote_digest" = "$expected_digest"
-          printf '%s\n' "$remote_digest"
+          if [[ "$REMOTE_CONFIG_DIGEST" != "$local_config_digest" ]]; then
+            echo "remote image config does not match smoke-tested local image: ${remote_image}" >&2
+            return 1
+          fi
+
+          PUBLISHED_MANIFEST_DIGEST="$REMOTE_MANIFEST_DIGEST"
         }
 
-        # Preflight both tags before either image is pushed. Cross-repository
-        # publication is not transactional, but deterministic conflicts fail
-        # before creating a partial pair.
-        assert_digest "${{ inputs.api-build-digest }}" "API"
-        assert_digest "${{ inputs.web-build-digest }}" "Web"
-        assert_existing_or_empty "${{ inputs.api-remote-image }}" "${{ inputs.api-build-digest }}"
-        assert_existing_or_empty "${{ inputs.web-remote-image }}" "${{ inputs.web-build-digest }}"
+        api_local_config_digest="$(get_local_config_digest "${{ inputs.api-local-image }}")" || exit 1
+        web_local_config_digest="$(get_local_config_digest "${{ inputs.web-local-image }}")" || exit 1
 
-        api_remote_digest="$(push_and_verify "${{ inputs.api-local-image }}" "${{ inputs.api-remote-image }}" "${{ inputs.api-build-digest }}")"
-        web_remote_digest="$(push_and_verify "${{ inputs.web-local-image }}" "${{ inputs.web-remote-image }}" "${{ inputs.web-build-digest }}")"
-        echo "api-remote-digest=$api_remote_digest" >> "$GITHUB_OUTPUT"
-        echo "web-remote-digest=$web_remote_digest" >> "$GITHUB_OUTPUT"
+        # 两个镜像都完成冲突预检后，才开始任何一次远端写入。
+        assert_matching_remote_or_missing "${{ inputs.api-remote-image }}" "$api_local_config_digest"
+        assert_matching_remote_or_missing "${{ inputs.web-remote-image }}" "$web_local_config_digest"
+
+        publish_and_verify "${{ inputs.api-local-image }}" "${{ inputs.api-remote-image }}" "$api_local_config_digest"
+        api_remote_manifest_digest="$PUBLISHED_MANIFEST_DIGEST"
+        publish_and_verify "${{ inputs.web-local-image }}" "${{ inputs.web-remote-image }}" "$web_local_config_digest"
+        web_remote_manifest_digest="$PUBLISHED_MANIFEST_DIGEST"
+
+        echo "api-remote-manifest-digest=$api_remote_manifest_digest" >> "$GITHUB_OUTPUT"
+        echo "web-remote-manifest-digest=$web_remote_manifest_digest" >> "$GITHUB_OUTPUT"

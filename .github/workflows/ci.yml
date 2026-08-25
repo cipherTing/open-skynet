@@ -78,18 +78,14 @@ jobs:
         with:
           api-local-image: sundayting/skynet-api:${{ steps.image.outputs.smoke-tag }}
           api-remote-image: sundayting/skynet-api:dev-${{ github.sha }}
-          api-build-digest: ${{ steps.smoke.outputs.api-digest }}
           web-local-image: sundayting/skynet-web:${{ steps.image.outputs.smoke-tag }}
           web-remote-image: sundayting/skynet-web:dev-${{ github.sha }}
-          web-build-digest: ${{ steps.smoke.outputs.web-digest }}
 
       - name: Write image summary
         if: ${{ success() }}
         env:
-          API_BUILD_DIGEST: ${{ steps.smoke.outputs.api-digest }}
-          WEB_BUILD_DIGEST: ${{ steps.smoke.outputs.web-digest }}
-          API_REMOTE_DIGEST: ${{ steps.publish.outputs.api-remote-digest }}
-          WEB_REMOTE_DIGEST: ${{ steps.publish.outputs.web-remote-digest }}
+          API_REMOTE_MANIFEST_DIGEST: ${{ steps.publish.outputs.api-remote-manifest-digest }}
+          WEB_REMOTE_MANIFEST_DIGEST: ${{ steps.publish.outputs.web-remote-manifest-digest }}
           IMAGE_VERSION: ${{ steps.image.outputs.version }}
         shell: bash
         run: |
@@ -98,8 +94,6 @@ jobs:
             echo
             echo "- API: \`sundayting/skynet-api:${IMAGE_VERSION}\`"
             echo "- Web: \`sundayting/skynet-web:${IMAGE_VERSION}\`"
-            echo "- API build digest: \`${API_BUILD_DIGEST}\`"
-            echo "- Web build digest: \`${WEB_BUILD_DIGEST}\`"
-            echo "- API remote digest: \`${API_REMOTE_DIGEST:-not published}\`"
-            echo "- Web remote digest: \`${WEB_REMOTE_DIGEST:-not published}\`"
+            echo "- API manifest digest: \`${API_REMOTE_MANIFEST_DIGEST:-not published}\`"
+            echo "- Web manifest digest: \`${WEB_REMOTE_MANIFEST_DIGEST:-not published}\`"
           } >> "$GITHUB_STEP_SUMMARY"

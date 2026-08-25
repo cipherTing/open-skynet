@@ -82,11 +82,13 @@ test('container smoke builds loadable linux/amd64 images under one local tag', (
     assert.match(containerAction, new RegExp(`scope=skynet-${image}`, 'u'));
   }
   assert.match(containerAction, /pnpm containers:smoke -- --tag "\$\{\{ inputs\.image-tag \}\}"/u);
-  assert.match(containerAction, /if \[\[ ! -e compose\.yaml \]\]; then[\s\S]*cp compose\.yaml\.example compose\.yaml/u);
+  assert.match(
+    containerAction,
+    /if \[\[ ! -e compose\.yaml \]\]; then[\s\S]*cp compose\.yaml\.example compose\.yaml/u,
+  );
   assert.match(containerAction, /if \[\[ ! -e \.env \]\]; then[\s\S]*cp \.env\.example \.env/u);
   assert.match(containerAction, /pnpm containers:check/u);
-  assert.match(containerAction, /api-digest:[\s\S]*steps\.build-api\.outputs\.digest/u);
-  assert.match(containerAction, /web-digest:[\s\S]*steps\.build-web\.outputs\.digest/u);
+  assert.doesNotMatch(containerAction, /outputs:[\s\S]*build-api\.outputs\.digest/u);
 });
 
 test('CI pushes only the smoke-tested main images under full-SHA dev tags', () => {
@@ -131,47 +133,39 @@ test('release verifies the tag and origin/main ancestry before smoke and SemVer 
   assert.ok(verifyIndex < ancestryIndex && ancestryIndex < smokeIndex && smokeIndex < pushIndex);
 });
 
-test('publish gate preserves existing Docker Hub tags by comparing manifest digests to smoke builds', () => {
-  assert.match(publishAction, /docker image push "\$remote_image" 2>&1/u);
+test('publish gate compares remote image config identity with the smoke-tested local image', () => {
+  assert.match(publishAction, /docker image inspect --format '\{\{\.Id\}\}' "\$local_image"/u);
+  assert.match(publishAction, /https:\/\/registry-1\.docker\.io/u);
+  assert.match(publishAction, /select\(\.manifests\? \| not\) \| \.config\.digest/u);
+  assert.match(publishAction, /docker-content-digest:/u);
+  assert.match(publishAction, /remote image config does not match smoke-tested local image/u);
   assert.match(
     publishAction,
-    /existing_digest="\$\(get_remote_digest "\$remote_image" \|\| true\)"/u,
+    /assert_matching_remote_or_missing "\$\{\{ inputs\.api-remote-image \}\}"[\s\S]*assert_matching_remote_or_missing "\$\{\{ inputs\.web-remote-image \}\}"[\s\S]*publish_and_verify/u,
   );
-  assert.match(publishAction, /remote tag already exists with a different digest/u);
-  assert.match(
-    publishAction,
-    /docker buildx imagetools inspect --format '\{\{json \.Manifest\.Digest\}\}'/u,
-  );
-  assert.match(publishAction, /local expected_digest="\$3"/u);
-  assert.match(publishAction, /if \[\[ "\$actual_digest" != "\$expected_digest" \]\]; then/u);
-  assert.match(
-    publishAction,
-    /assert_remote_matches_expected_digest "\$remote_image" "\$existing_digest"/u,
-  );
-  assert.match(publishAction, /test "\$remote_digest" = "\$expected_digest"/u);
-  assert.match(publishAction, /api-remote-digest=\$api_remote_digest/u);
-  assert.match(publishAction, /web-remote-digest=\$web_remote_digest/u);
-  assert.match(publishAction, /api-build-digest/u);
-  assert.match(publishAction, /web-build-digest/u);
-  assert.match(
-    publishAction,
-    /assert_existing_or_empty "\$\{\{ inputs\.api-remote-image \}\}"[\s\S]*assert_existing_or_empty "\$\{\{ inputs\.web-remote-image \}\}"[\s\S]*api_remote_digest=/u,
-  );
-  assert.match(publishAction, /assert_digest "\$\{\{ inputs\.api-build-digest \}\}" "API"/u);
-  assert.match(publishAction, /assert_digest "\$\{\{ inputs\.web-build-digest \}\}" "Web"/u);
+  assert.match(publishAction, /api-remote-manifest-digest=\$api_remote_manifest_digest/u);
+  assert.match(publishAction, /web-remote-manifest-digest=\$web_remote_manifest_digest/u);
+  assert.doesNotMatch(publishAction, /api-build-digest|web-build-digest/u);
+  assert.doesNotMatch(publishAction, /=\$\(push_and_verify/u);
   assert.match(
     ciWorkflow,
-    /API_BUILD_DIGEST: \$\{\{ steps\.smoke\.outputs\.api-digest \}\}/u,
+    /API_REMOTE_MANIFEST_DIGEST: \$\{\{ steps\.publish\.outputs\.api-remote-manifest-digest \}\}/u,
   );
   assert.match(
     releaseWorkflow,
-    /API_BUILD_DIGEST: \$\{\{ steps\.smoke\.outputs\.api-digest \}\}/u,
+    /API_REMOTE_MANIFEST_DIGEST: \$\{\{ steps\.publish\.outputs\.api-remote-manifest-digest \}\}/u,
+  );
+  const publishFunctionStart = publishAction.indexOf('publish_and_verify()');
+  const remoteReadAt = publishAction.indexOf(
+    'read_remote_image "$remote_image" || return 1',
+    publishFunctionStart,
+  );
+  const tagAt = publishAction.indexOf(
+    'docker image tag "$local_image" "$remote_image"',
+    publishFunctionStart,
   );
   assert.ok(
-    publishAction.indexOf('existing_digest="$(get_remote_digest') <
-      publishAction.indexOf('docker image tag "$local_image" "$remote_image"') &&
-      publishAction.indexOf('docker image tag "$local_image" "$remote_image"') <
-        publishAction.indexOf('docker image push "$remote_image" 2>&1'),
-    'the registry must be checked before a local tag is created or pushed',
+    publishFunctionStart >= 0 && remoteReadAt > publishFunctionStart && tagAt > remoteReadAt,
+    'each image must be read from Docker Hub before the local image is tagged and pushed',
   );
 });

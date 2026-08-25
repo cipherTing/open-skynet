@@ -10,7 +10,7 @@
     "version:set": "node scripts/set-version.mjs",
     "version:check": "node scripts/check-release-contract.mjs",
     "contracts:check": "node scripts/check-public-contracts.mjs",
-    "test:contracts": "node --test scripts/release-contract.test.mjs scripts/public-contracts.test.mjs scripts/release-gates.test.mjs scripts/containers.test.mjs scripts/dev-runtime-env.test.mjs .github/workflows/workflow-contract.test.mjs",
+    "test:contracts": "node --test scripts/release-contract.test.mjs scripts/public-contracts.test.mjs scripts/release-gates.test.mjs scripts/containers.test.mjs scripts/dev-runtime-env.test.mjs scripts/publish-and-verify.test.mjs .github/workflows/workflow-contract.test.mjs",
     "check:fast": "node scripts/run-release-gates.mjs --fast",
     "check:ci": "node scripts/run-release-gates.mjs --ci",
     "release:prepare": "node scripts/run-release-gates.mjs --ci",

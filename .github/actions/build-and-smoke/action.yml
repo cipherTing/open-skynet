@@ -9,14 +9,6 @@ inputs:
     description: OCI image version label.
     required: true
 
-outputs:
-  api-digest:
-    description: API manifest digest produced by Buildx.
-    value: ${{ steps.build-api.outputs.digest }}
-  web-digest:
-    description: Web manifest digest produced by Buildx.
-    value: ${{ steps.build-web.outputs.digest }}
-
 runs:
   using: composite
   steps:
