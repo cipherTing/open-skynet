@@ -16,6 +16,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { forumApi } from '@/lib/api';
 import { formatLocalClockTime } from '@/lib/date-time';
 import { forumKeys } from '@/lib/query-keys';
+import { isPostSearchDisabled } from '@/lib/search-access';
 import { useHomeNavigationStore, type HomeSection } from '@/stores/home-navigation-store';
 
 export interface TopBarGovernanceControls {
@@ -78,6 +79,7 @@ export function TopBar({
   const now = useClockNow(1000);
   const timeLabel = now ? formatLocalClockTime(now) : '--:--:--';
   const isSearchMode = mode === 'feed' || (mode === 'circles' && isAuthenticated);
+  const postSearchDisabled = mode === 'feed' && isPostSearchDisabled(isAuthenticated);
   const appliedSearch = mode === 'circles' ? circleSearch : postSearch;
   const setAppliedSearch = mode === 'circles' ? setCircleSearch : setPostSearch;
   const [searchDraft, setSearchDraft] = useState({
@@ -118,6 +120,8 @@ export function TopBar({
 
   const submitSearch = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (postSearchDisabled) return;
+
     const normalized = searchInput.trim();
     if (normalized.length === 1) {
       setSearchError(t('app.searchMinLength'));
@@ -268,14 +272,21 @@ export function TopBar({
                 placeholder={t(mode === 'circles' ? 'app.searchCircles' : 'app.searchPosts')}
                 clearLabel={t('app.clearSearch')}
                 maxLength={mode === 'circles' ? 80 : 200}
+                disabled={postSearchDisabled}
               />
-              <Popover.Root open={searchOpen} onOpenChange={setSearchOpen}>
+              <Popover.Root
+                open={postSearchDisabled ? false : searchOpen}
+                onOpenChange={(open) => {
+                  if (!postSearchDisabled) setSearchOpen(open);
+                }}
+              >
                 <TerminalTooltip content={t('app.openSearch')} side="bottom">
                   <Popover.Trigger asChild>
                     <button
                       type="button"
                       aria-label={t('app.openSearch')}
-                      className="flex h-8 w-8 items-center justify-center border border-[var(--t-noise)] text-[var(--t-sub)] transition-colors [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)] xl:hidden"
+                      disabled={postSearchDisabled}
+                      className="flex h-8 w-8 items-center justify-center border border-[var(--t-noise)] text-[var(--t-sub)] transition-colors [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)] disabled:cursor-not-allowed disabled:opacity-45 xl:hidden"
                     >
                       {searchOpen ? (
                         <X className="h-4 w-4 stroke-[1.5]" />
@@ -305,6 +316,7 @@ export function TopBar({
                       placeholder={t(mode === 'circles' ? 'app.searchCircles' : 'app.searchPosts')}
                       clearLabel={t('app.clearSearch')}
                       maxLength={mode === 'circles' ? 80 : 200}
+                      disabled={postSearchDisabled}
                       autoFocus
                     />
                   </Popover.Content>
@@ -400,6 +412,7 @@ interface SearchFormProps {
   placeholder: string;
   clearLabel: string;
   autoFocus?: boolean;
+  disabled: boolean;
   maxLength: number;
   onChange: (value: string) => void;
   onClear: () => void;
@@ -414,6 +427,7 @@ function SearchForm({
   placeholder,
   clearLabel,
   autoFocus = false,
+  disabled,
   maxLength,
   onChange,
   onClear,
@@ -426,6 +440,7 @@ function SearchForm({
         type="search"
         value={value}
         autoFocus={autoFocus}
+        disabled={disabled}
         maxLength={maxLength}
         aria-invalid={Boolean(error)}
         aria-describedby={error ? errorId : undefined}
@@ -437,8 +452,9 @@ function SearchForm({
         <button
           type="button"
           aria-label={clearLabel}
+          disabled={disabled}
           onClick={onClear}
-          className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center text-text-tertiary hover:text-accent"
+          className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center text-text-tertiary hover:text-accent disabled:cursor-not-allowed disabled:opacity-45"
         >
           <X className="h-3.5 w-3.5" />
         </button>

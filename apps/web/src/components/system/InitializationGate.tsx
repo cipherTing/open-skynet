@@ -1,7 +1,7 @@
 'use client';
 
 import { startTransition, useEffect, useState, type ReactNode } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useSuspenseQuery } from '@tanstack/react-query';
 import { motion, useReducedMotion } from 'framer-motion';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
@@ -13,37 +13,57 @@ import { RouteNetworkCanvas } from '@/components/effects/RouteNetworkCanvas';
 import { SystemAnnouncementBar } from '@/components/system/SystemAnnouncementBar';
 import { HomeShell } from '@/components/home/HomeShell';
 import { authApi } from '@/lib/api';
+import { getInitializationGateState } from '@/lib/initialization-gate-state';
 import { authKeys } from '@/lib/query-keys';
 
 const PAGE_FADE_MS = 100;
+const INITIALIZATION_STATUS_ATTEMPTS = 2;
+
+type InitializationStatus =
+  | { kind: 'ready'; initialized: boolean }
+  | { kind: 'unavailable' };
+
+async function loadInitializationStatus(): Promise<InitializationStatus> {
+  for (let attempt = 0; attempt < INITIALIZATION_STATUS_ATTEMPTS; attempt += 1) {
+    try {
+      const { initialized } = await authApi.initializationStatus();
+      return { kind: 'ready', initialized };
+    } catch {
+      // 最终不可用状态会在下方展示明确的重试入口。
+    }
+  }
+
+  return { kind: 'unavailable' };
+}
 
 export function InitializationGate({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
   const pathname = usePathname();
   const router = useRouter();
-  const statusQuery = useQuery({
+  const statusQuery = useSuspenseQuery({
     queryKey: authKeys.initialization(),
-    queryFn: authApi.initializationStatus,
-    retry: 1,
+    queryFn: loadInitializationStatus,
     staleTime: Number.POSITIVE_INFINITY,
     refetchOnWindowFocus: 'always',
   });
-  const initialized = statusQuery.data?.initialized;
+  const status = statusQuery.data;
   const isInitializationRoute = pathname === '/initialization';
+  const gateState = getInitializationGateState({
+    initialized: status.kind === 'ready' ? status.initialized : undefined,
+    isInitializationRoute,
+  });
 
   useEffect(() => {
-    if (initialized === undefined) return;
-    if (!initialized && !isInitializationRoute) {
+    if (gateState.kind === 'redirect-to-initialization') {
       router.replace('/initialization');
       return;
     }
-    if (initialized && isInitializationRoute) {
+    if (gateState.kind === 'redirect-to-workspace') {
       router.replace('/workspace');
     }
-  }, [initialized, isInitializationRoute, router]);
+  }, [gateState.kind, router]);
 
-  if (statusQuery.isPending) return <AppBootstrapLoading />;
-  if (statusQuery.isError && initialized === undefined) {
+  if (status.kind === 'unavailable') {
     return (
       <div className="flex h-dvh items-center justify-center px-4">
         <ErrorState
@@ -54,11 +74,10 @@ export function InitializationGate({ children }: { children: ReactNode }) {
       </div>
     );
   }
-  if (initialized === undefined) return <AppBootstrapLoading />;
-  if (!initialized) {
-    return isInitializationRoute ? <PageFade>{children}</PageFade> : <AppBootstrapLoading />;
+  if (gateState.kind === 'loading' || gateState.kind === 'redirect-to-initialization') {
+    return <AppBootstrapLoading />;
   }
-  if (isInitializationRoute) return <AppBootstrapLoading />;
+  if (gateState.kind === 'redirect-to-workspace') return <AppBootstrapLoading />;
 
   return (
     <PageFade>

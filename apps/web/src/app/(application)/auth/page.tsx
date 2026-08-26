@@ -13,6 +13,7 @@ import LatticeWebCanvas from '@/components/home/terminal/LatticeWebCanvas';
 import { useClockNow } from '@/components/home/terminal/terminal-hooks';
 import { ForgotPasswordForm, LoginForm, RegisterForm } from '@/app/auth/_components/AuthModeForms';
 import { formatLocalClockTime } from '@/lib/date-time';
+import { authKeys } from '@/lib/query-keys';
 
 type AuthMode = 'login' | 'register' | 'forgot';
 
@@ -45,9 +46,9 @@ function AuthPageContent() {
   });
   const [agreementOpen, setAgreementOpen] = useState(false);
   const configQuery = useQuery({
-    queryKey: ['auth', 'config'],
+    queryKey: authKeys.publicConfig(),
     queryFn: authApi.config,
-    staleTime: 30_000,
+    refetchOnMount: 'always',
   });
 
   useEffect(() => {
@@ -72,7 +73,7 @@ function AuthPageContent() {
   if (isLoading || configQuery.isPending) return <GateBoot />;
   if (isUnavailable || configQuery.isError) {
     return (
-      <main className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-black px-4 text-white">
+      <main className="relative flex h-full min-h-0 items-center justify-center overflow-hidden bg-black px-4 text-white">
         <div aria-hidden className="t-dotgrid pointer-events-none absolute inset-0 opacity-30" />
         <div aria-hidden className="t-ambient-scan pointer-events-none absolute inset-0" />
         <ViewportCorners />
@@ -122,7 +123,7 @@ function AuthPageContent() {
   const config = configQuery.data;
 
   return (
-    <main className="relative min-h-dvh overflow-hidden bg-black text-white">
+    <main className="relative flex h-full min-h-0 flex-col overflow-hidden bg-black text-white">
       <div aria-hidden className="pointer-events-none absolute inset-0">
         <LatticeWebCanvas className="opacity-25" />
       </div>
@@ -131,7 +132,7 @@ function AuthPageContent() {
       <div aria-hidden className="t-vignette pointer-events-none absolute inset-0" />
       <ViewportCorners />
 
-      <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center justify-between gap-4 px-4 py-3 sm:px-8">
+      <header className="pointer-events-none relative z-20 flex flex-none items-center justify-between gap-4 bg-black/80 px-4 py-3 backdrop-blur-sm sm:px-8">
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -145,71 +146,73 @@ function AuthPageContent() {
         </div>
         <GateClock />
       </header>
-      <footer className="pointer-events-none fixed inset-x-0 bottom-0 z-10 flex items-center justify-between gap-4 bg-black/80 px-4 py-3 backdrop-blur-sm sm:px-8">
-        <span className="t-mono text-[var(--t-faint)]">{t('auth.gateVersionLabel')}</span>
-        <span className="t-mono hidden text-[var(--t-faint)] sm:inline">{t('auth.footer')}</span>
-      </footer>
       <span
         aria-hidden
-        className="pointer-events-none absolute left-7 top-1/2 z-10 hidden -translate-y-1/2 font-mono text-[10px] uppercase tracking-[0.3em] text-[var(--t-faint)] [writing-mode:vertical-rl] xl:block"
+        className="pointer-events-none absolute left-7 top-1/2 z-20 hidden -translate-y-1/2 font-mono text-[10px] uppercase tracking-[0.3em] text-[var(--t-faint)] [writing-mode:vertical-rl] xl:block"
       >
         {t('auth.gateLeftRail')}
       </span>
       <span
         aria-hidden
-        className="pointer-events-none absolute right-7 top-1/2 z-10 hidden -translate-y-1/2 font-mono text-[10px] uppercase tracking-[0.3em] text-[var(--t-faint)] [writing-mode:vertical-rl] xl:block"
+        className="pointer-events-none absolute right-7 top-1/2 z-20 hidden -translate-y-1/2 font-mono text-[10px] uppercase tracking-[0.3em] text-[var(--t-faint)] [writing-mode:vertical-rl] xl:block"
       >
         {t('auth.gateRightRail')}
       </span>
 
-      <div className="relative z-10 mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center px-4 py-16 sm:py-20">
-        <section className="t-corner t-corner--accent t-hairline w-full bg-[var(--t-panel)]">
-          <header className="flex items-center justify-between gap-3 border-b border-[var(--t-noise)] px-5 py-2.5 sm:px-7">
-            <span className="t-mono text-white">{t('auth.gatePanelTitle')}</span>
-            <span className="t-mono text-[var(--t-accent)]">{t(modeMeta.codeKey)}</span>
-          </header>
+      <div className="relative z-10 min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
+        <div className="mx-auto flex min-h-full w-full max-w-md flex-col justify-center px-4 py-8 sm:py-10">
+          <section className="t-corner t-corner--accent t-hairline w-full bg-[var(--t-panel)]">
+            <header className="flex items-center justify-between gap-3 border-b border-[var(--t-noise)] px-5 py-2.5 sm:px-7">
+              <span className="t-mono text-white">{t('auth.gatePanelTitle')}</span>
+              <span className="t-mono text-[var(--t-accent)]">{t(modeMeta.codeKey)}</span>
+            </header>
 
-          <div className="p-5 sm:p-7">
-            <p className="t-mono text-[var(--t-faint)]">{t(modeMeta.kickerKey)}</p>
-            <h1 className="t-display mt-3 text-[2.5rem] text-[var(--t-ink)] sm:text-5xl">
-              {header.title}
-            </h1>
-            <p className="t-serif-accent mt-3 text-base sm:text-lg">{header.accent}</p>
-            <p className="mt-3 text-xs leading-5 text-white/60">{header.subtitle}</p>
+            <div className="p-5 sm:p-7">
+              <p className="t-mono text-[var(--t-faint)]">{t(modeMeta.kickerKey)}</p>
+              <h1 className="t-display mt-3 text-[2.5rem] text-[var(--t-ink)] sm:text-5xl">
+                {header.title}
+              </h1>
+              <p className="t-serif-accent mt-3 text-base sm:text-lg">{header.accent}</p>
+              <p className="mt-3 text-xs leading-5 text-white/60">{header.subtitle}</p>
 
-            <TTabs
-              className="mt-6"
-              items={[
-                { id: 'login', label: t('auth.tabLogin') },
-                { id: 'register', label: t('auth.tabRegister') },
-                { id: 'forgot', label: t('auth.forgotPassword') },
-              ]}
-              active={mode}
-              onChange={(value) => {
-                if (isAuthMode(value)) changeMode(value);
-              }}
-            >
-              <TTabContent value="login" className="focus-visible:outline-none">
-                <LoginForm
-                  config={config}
-                  login={login}
-                  onOpenAgreement={() => setAgreementOpen(true)}
-                />
-              </TTabContent>
-              <TTabContent value="register" className="focus-visible:outline-none">
-                <RegisterForm
-                  config={config}
-                  register={register}
-                  onOpenAgreement={() => setAgreementOpen(true)}
-                />
-              </TTabContent>
-              <TTabContent value="forgot" className="focus-visible:outline-none">
-                <ForgotPasswordForm config={config} onComplete={() => changeMode('login')} />
-              </TTabContent>
-            </TTabs>
-          </div>
-        </section>
+              <TTabs
+                className="mt-6"
+                items={[
+                  { id: 'login', label: t('auth.tabLogin') },
+                  { id: 'register', label: t('auth.tabRegister') },
+                  { id: 'forgot', label: t('auth.forgotPassword') },
+                ]}
+                active={mode}
+                onChange={(value) => {
+                  if (isAuthMode(value)) changeMode(value);
+                }}
+              >
+                <TTabContent value="login" className="focus-visible:outline-none">
+                  <LoginForm
+                    config={config}
+                    login={login}
+                    onOpenAgreement={() => setAgreementOpen(true)}
+                  />
+                </TTabContent>
+                <TTabContent value="register" className="focus-visible:outline-none">
+                  <RegisterForm
+                    config={config}
+                    register={register}
+                    onOpenAgreement={() => setAgreementOpen(true)}
+                  />
+                </TTabContent>
+                <TTabContent value="forgot" className="focus-visible:outline-none">
+                  <ForgotPasswordForm config={config} onComplete={() => changeMode('login')} />
+                </TTabContent>
+              </TTabs>
+            </div>
+          </section>
+        </div>
       </div>
+      <footer className="pointer-events-none relative z-20 flex flex-none items-center justify-between gap-4 bg-black/80 px-4 py-3 backdrop-blur-sm sm:px-8">
+        <span className="t-mono text-[var(--t-faint)]">{t('auth.gateVersionLabel')}</span>
+        <span className="t-mono hidden text-[var(--t-faint)] sm:inline">{t('auth.footer')}</span>
+      </footer>
       <AgreementDialog open={agreementOpen} onOpenChange={setAgreementOpen} />
     </main>
   );
@@ -218,7 +221,7 @@ function AuthPageContent() {
 function ViewportCorners() {
   const base = 'pointer-events-none absolute h-3 w-3 border-[var(--t-faint)]';
   return (
-    <div aria-hidden className="pointer-events-none absolute inset-3 z-10 sm:inset-4">
+    <div aria-hidden className="pointer-events-none absolute inset-3 z-20 sm:inset-4">
       <span className={`${base} left-0 top-0 border-l border-t`} />
       <span className={`${base} right-0 top-0 border-r border-t`} />
       <span className={`${base} bottom-0 left-0 border-b border-l`} />
@@ -230,7 +233,7 @@ function ViewportCorners() {
 function GateBoot() {
   const { t } = useTranslation();
   return (
-    <main className="relative flex min-h-dvh items-center justify-center bg-black text-white">
+    <main className="relative flex h-full min-h-0 items-center justify-center bg-black text-white">
       <div className="flex flex-col items-center gap-4">
         <div className="relative h-9 w-9">
           <div className="absolute inset-0 border border-[var(--t-noise)]" />

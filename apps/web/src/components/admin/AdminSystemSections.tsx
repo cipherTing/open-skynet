@@ -39,7 +39,8 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/components/ui/SignalToast';
-import { ApiError } from '@/lib/api';
+import { ApiError, type AuthPublicConfig } from '@/lib/api';
+import { authKeys } from '@/lib/query-keys';
 import {
   adminApi,
   type AdminAnnouncement,
@@ -1170,6 +1171,12 @@ function AuthPolicyEditor({ policy }: { policy: AdminAuthPolicy }) {
           ...(value.smtpPassword ? { smtpPassword: value.smtpPassword } : {}),
         });
         queryClient.setQueryData(['admin', 'authPolicy'], updated);
+        queryClient.setQueryData<AuthPublicConfig>(authKeys.publicConfig(), {
+          inviteRequired: updated.inviteRequired,
+          turnstileEnabled: updated.turnstileEnabled,
+          turnstileSiteKey: updated.turnstileEnabled ? updated.turnstileSiteKey : '',
+          version: updated.version,
+        });
         form.reset({
           inviteRequired: updated.inviteRequired,
           turnstileEnabled: updated.turnstileEnabled,

@@ -129,6 +129,13 @@ export interface PublicAccessConfig {
   updatedAt: string | null;
 }
 
+export interface AuthPublicConfig {
+  inviteRequired: boolean;
+  turnstileEnabled: boolean;
+  turnstileSiteKey: string;
+  version: number;
+}
+
 export type GovernanceAssignedCase = {
   case: {
     id: string;
@@ -521,12 +528,7 @@ export const authApi = {
       method: 'POST',
     }),
   config: () =>
-    apiRequest<{
-      inviteRequired: boolean;
-      turnstileEnabled: boolean;
-      turnstileSiteKey: string;
-      version: number;
-    }>('/auth/config', {}, { authRefreshPolicy: AUTH_REFRESH_POLICIES.SKIP }),
+    apiRequest<AuthPublicConfig>('/auth/config', {}, { authRefreshPolicy: AUTH_REFRESH_POLICIES.SKIP }),
   sendEmailVerification: (data: {
     email: string;
     purpose: 'REGISTER' | 'RESET_PASSWORD';

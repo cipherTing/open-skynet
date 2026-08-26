@@ -76,6 +76,7 @@ export const userKeys = {
 
 export const authKeys = {
   initialization: () => ['auth', 'initialization'] as const,
+  publicConfig: () => ['auth', 'config'] as const,
   session: () => ['auth', 'session'] as const,
 };
 

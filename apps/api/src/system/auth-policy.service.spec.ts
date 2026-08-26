@@ -76,6 +76,17 @@ describe('AuthPolicyService', () => {
     await expect(service.getAdminConfig()).resolves.toMatchObject({ version: 1 });
   });
 
+  it('publishes an updated invitation requirement to unauthenticated clients', async () => {
+    await service.update(update({ inviteRequired: true }), 'admin-a');
+
+    await expect(service.getPublicConfig()).resolves.toEqual({
+      inviteRequired: true,
+      turnstileEnabled: false,
+      turnstileSiteKey: '',
+      version: 1,
+    });
+  });
+
   it('refuses to attach a test result to a newer configuration', async () => {
     await service.getOrCreate();
     await service.update(update(), 'admin-a');
