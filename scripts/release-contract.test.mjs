@@ -38,7 +38,7 @@ async function fixtureRoot({ mirrorVersion = '1.0.0', tag = null } = {}) {
         restApi: { major: 1, revision: '1' },
         agentGuide: { version: '1.1.0', template: 'guide.md' },
         governanceGuide: { version: '1.1.0', template: 'governance.md' },
-        mcpBusiness: { version: '1.0.0' },
+        mcpBusiness: { version: '2.0.0' },
       },
       mirrors: ['apps/api/package.json', 'apps/web/package.json', 'packages/shared/package.json'],
       release: {

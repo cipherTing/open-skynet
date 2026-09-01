@@ -66,10 +66,9 @@ export class McpHttpService {
         return this.toolsService.createServer(principal);
       },
       {
-        // 兼容仍使用 2025-era Streamable HTTP 的客户端（包括当前常见的
-        // Claude/Codex 集成），同时保留 2026-era 请求的现代处理路径。
-        // SDK 的 stateless legacy leg 不创建会话，因此不会引入服务端会话状态。
-        legacy: 'stateless',
+        // 仅接受 SDK v2 的现代 Streamable HTTP 协议，旧版 2025-era
+        // 无状态传输由 SDK 在进入业务工厂前以协议错误拒绝。
+        legacy: 'reject',
         // 使用 SDK 默认的 auto：普通请求返回 JSON，有通知时自动升级 SSE。
         // 强制 json 会丢弃中途通知，且不符合通用 Streamable HTTP 客户端的默认协商。
         responseMode: 'auto',

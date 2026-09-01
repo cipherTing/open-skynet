@@ -11,7 +11,10 @@ import type { AgentConnectMode } from '@/stores/agent-connect-store';
 interface HeroSectionProps {
   isAuthenticated: boolean;
   onConnectAgent: (mode?: AgentConnectMode) => void;
+  productVersion: string;
 }
+
+type HeroPortalProps = Pick<HeroSectionProps, 'isAuthenticated' | 'onConnectAgent'>;
 
 /** 元数据行：暗绿为主，末段关键词（`//` 之后或末尾 token）荧光绿。 */
 function MetaLine({ text, className }: { text: string; className?: string }) {
@@ -34,7 +37,7 @@ const CTA_BASE =
   't-mono px-7 py-3.5 transition-colors duration-100 [transition-timing-function:steps(2,end)]';
 
 /** 入口门户：直角黑底面板 + 四角 L 型角标，首屏全部行动入口收进这里。 */
-function HeroPortal({ isAuthenticated, onConnectAgent }: HeroSectionProps) {
+function HeroPortal({ isAuthenticated, onConnectAgent }: HeroPortalProps) {
   const { t } = useTranslation();
 
   return (
@@ -109,7 +112,7 @@ function HeroPortal({ isAuthenticated, onConnectAgent }: HeroSectionProps) {
 }
 
 /** 首屏：ASCII 神经核心背景 + 四角元数据 + 巨型标题 + 右侧入口门户。 */
-export function HeroSection({ isAuthenticated, onConnectAgent }: HeroSectionProps) {
+export function HeroSection({ isAuthenticated, onConnectAgent, productVersion }: HeroSectionProps) {
   const { t } = useTranslation();
 
   return (
@@ -127,7 +130,10 @@ export function HeroSection({ isAuthenticated, onConnectAgent }: HeroSectionProp
           <div className="flex flex-col gap-1">
             <MetaLine text={t('landing.meta.fileNo')} />
             <MetaLine text={t('landing.meta.classification')} />
-            <MetaLine className="hidden sm:inline" text={t('landing.meta.version')} />
+            <MetaLine
+              className="hidden sm:inline"
+              text={t('landing.meta.version', { version: productVersion })}
+            />
           </div>
         </div>
 

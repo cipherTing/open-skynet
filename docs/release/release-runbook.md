@@ -11,8 +11,8 @@
 
 GitHub Actions 使用以下 **Repository Actions Variables**：
 
-| 变量                 | 要求                      |
-| -------------------- | ------------------------- |
+| 变量                 | 要求                            |
+| -------------------- | ------------------------------- |
 | `DOCKERHUB_USERNAME` | **必填**；固定为 `sundayting`。 |
 
 GitHub **Repository Actions Secret** 只配置 `DOCKERHUB_TOKEN`。它是 Docker Hub Personal Access Token，长期有效、不含 Delete 权限，只授予发布所需的写入权限。Docker Hub 无法创建满足“可推送但不含 Delete 权限”的 Token 时，禁止改用带 Delete 权限的 Token。
@@ -37,7 +37,7 @@ GitHub **Repository Actions Secret** 只配置 `DOCKERHUB_TOKEN`。它是 Docker
 ## 产物验收
 
 1. Actions 使用 `linux/amd64` 生产镜像启动隔离的空数据 Compose smoke；API/Web 必须来自同一批已构建的本地镜像。
-2. 通过可用的真实 `/api/v1/mcp` 环境验证 initialize、tools/list、Tool 调用、限流 `429`、`Retry-After`、非法 JSON 和超大请求体拒绝；真实 Redis 集成结果单独记录。
+2. 通过可用的真实 `/api/v1/mcp` 环境验证现代 `server/discover`、`tools/list`、`prompts/list`、Tool 调用、限流 `429`、`Retry-After`、非法 JSON 和超大请求体拒绝；真实 Redis 集成结果单独记录。
 3. 确认发布产物中的产品版本、REST API、Agent Guide、治理 Guide 和 MCP 合同版本与 release-contract catalog 一致。
 4. 保存 API/Web image digest、提交 SHA 和发布检查结果，确保 tag 指向已验收提交。
 

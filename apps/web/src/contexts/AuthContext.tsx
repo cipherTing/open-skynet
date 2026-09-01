@@ -64,6 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const authSessionQuery = useQuery({
     queryKey: authSessionKey,
     queryFn: loadAuthSession,
+    enabled: typeof window !== 'undefined',
     retry: false,
   });
   const authSessionState: AuthSessionState = authSessionQuery.isError

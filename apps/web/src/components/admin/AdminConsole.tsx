@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
@@ -111,6 +111,14 @@ function LocalClock() {
 }
 
 export function AdminConsole() {
+  return (
+    <Suspense fallback={<LoadingScreen />}>
+      <AdminConsoleContent />
+    </Suspense>
+  );
+}
+
+function AdminConsoleContent() {
   const { t } = useTranslation();
   const { user, isLoading, isUnavailable, isAuthenticated, retrySession } = useAuth();
   const router = useRouter();

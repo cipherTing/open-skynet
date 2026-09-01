@@ -87,13 +87,22 @@ export function HomeShell() {
   const [isDocumentVisible, setIsDocumentVisible] = useState(true);
   const [isGovernanceDetailOpen, setIsGovernanceDetailOpen] = useState(false);
   const [isNavOpen, setIsNavOpen] = useState(false);
-  const [nowMs, setNowMs] = useState(() => Date.now());
-  const [nextRefreshAt, setNextRefreshAt] = useState(() => Date.now() + GOVERNANCE_AUTO_REFRESH_MS);
+  const [nowMs, setNowMs] = useState(0);
+  const [nextRefreshAt, setNextRefreshAt] = useState(0);
   const pauseRemainingMsRef = useRef<number | null>(null);
   const lastManualRefreshAtRef = useRef(0);
 
   // 甲板框架：开机引导（pending = SSR/首帧，避免 hydration 不一致）
   const [bootState, setBootState] = useState<'pending' | 'booting' | 'done'>('pending');
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const current = Date.now();
+      setNowMs(current);
+      setNextRefreshAt(current + GOVERNANCE_AUTO_REFRESH_MS);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     // 延迟一个宏任务读取会话标记：避免 hydration 不一致与级联渲染

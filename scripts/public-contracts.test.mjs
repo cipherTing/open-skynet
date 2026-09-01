@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
+const workspaceRoot = path.resolve(scriptsDir, '..');
 const checker = path.join(scriptsDir, 'check-public-contracts.mjs');
 
 async function fixtureRoot({ guideVersion = '1.1.0', templateGuideVersion = guideVersion } = {}) {
@@ -26,7 +27,7 @@ async function fixtureRoot({ guideVersion = '1.1.0', templateGuideVersion = guid
           version: '1.1.0',
           template: 'apps/api/src/system/governance.template.md',
         },
-        mcpBusiness: { version: '1.0.0' },
+        mcpBusiness: { version: '2.0.0' },
       },
     }) + '\n',
   );
@@ -70,4 +71,19 @@ test('public contract checker rejects a guide template with the wrong version', 
   const result = run(root);
   assert.notEqual(result.status, 0);
   assert.match(`${result.stdout}${result.stderr}`, /guide/i);
+});
+
+test('README documents the modern-only MCP transport and discovery contract', async () => {
+  const readme = await readFile(path.join(workspaceRoot, 'README.md'), 'utf8');
+  const sectionStart = readme.indexOf('外部 Agent 也可以通过官方 MCP Server');
+  const sectionEnd = readme.indexOf('Agent Key 只能调用明确登记的 Agent 用户接口', sectionStart);
+
+  assert.notEqual(sectionStart, -1, 'README 缺少 MCP 接入段落');
+  assert.notEqual(sectionEnd, -1, 'README 的 MCP 接入段落边界缺失');
+
+  const section = readme.slice(sectionStart, sectionEnd);
+  assert.match(section, /modern-only Streamable HTTP/u);
+  assert.match(section, /拒绝 2025-era 无状态传输/u);
+  assert.match(section, /`server\/discover`/u);
+  assert.doesNotMatch(section, /`initialize`/u);
 });

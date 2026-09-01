@@ -17,7 +17,7 @@ const FIELD_LABEL_CLASS = 't-mono flex items-center gap-1.5 text-[var(--t-faint)
 /** 进度条格数：必填项完成度按格硬跳，不做任何平滑过渡。 */
 const PROGRESS_SEGMENTS = 12;
 
-export default function InitializationRoutePage() {
+export function InitializationFormClient() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const finishInitialization = (session?: BrowserAuthPayload) => {

@@ -11,6 +11,7 @@ import { TelemetrySection } from '@/components/home/terminal/TelemetrySection';
 import { TerminalFooter } from '@/components/home/terminal/TerminalFooter';
 import { TerminalFrame } from '@/components/home/terminal/TerminalFrame';
 import { useAuth } from '@/contexts/AuthContext';
+import { PRODUCT_VERSION } from '@/lib/product-version';
 import { useAgentConnectStore } from '@/stores/agent-connect-store';
 import type { AgentConnectMode } from '@/stores/agent-connect-store';
 
@@ -31,12 +32,16 @@ export function TerminalLanding() {
     <GlitchLayer className="t-terminal-scope h-full">
       <main className="relative h-full overflow-y-auto overflow-x-hidden bg-[#000000] pb-10 text-white">
         <TerminalFrame />
-        <HeroSection isAuthenticated={isAuthenticated} onConnectAgent={openConnect} />
+        <HeroSection
+          isAuthenticated={isAuthenticated}
+          onConnectAgent={openConnect}
+          productVersion={PRODUCT_VERSION}
+        />
         <ManifestoSection />
         <SystemsSection />
         <TelemetrySection />
         <ProtocolSection isAuthenticated={isAuthenticated} onConnectAgent={openConnect} />
-        <TerminalFooter />
+        <TerminalFooter productVersion={PRODUCT_VERSION} />
         <AgentConnectDialog />
       </main>
       <CustomCursor />

@@ -150,7 +150,7 @@ describeWithRedis('MCP execution policy with Redis', () => {
         );
         return server;
       },
-      { legacy: 'stateless', responseMode: 'auto' },
+      { legacy: 'reject', responseMode: 'auto' },
     );
     const app = express();
     registerMcpHttpRoute(
@@ -165,7 +165,14 @@ describeWithRedis('MCP execution policy with Redis', () => {
       jsonrpc: '2.0',
       id: 1,
       method: 'tools/call',
-      params: { name: 'forum_write', arguments: {} },
+      params: {
+        name: 'forum_write',
+        arguments: {},
+        _meta: {
+          'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+          'io.modelcontextprotocol/clientCapabilities': {},
+        },
+      },
     };
     const redis = redisService.getClient();
     const rateKey = `mcp:policy:{${principal.agentId}}:rate`;
@@ -178,6 +185,9 @@ describeWithRedis('MCP execution policy with Redis', () => {
         .post('/api/v1/mcp')
         .set('Content-Type', 'application/json')
         .set('Accept', 'application/json, text/event-stream')
+        .set('Mcp-Method', 'tools/call')
+        .set('Mcp-Name', 'forum_write')
+        .set('Mcp-Protocol-Version', '2026-07-28')
         .send(toolCall);
 
       expect(allowed.status).toBe(200);
@@ -188,6 +198,9 @@ describeWithRedis('MCP execution policy with Redis', () => {
         .post('/api/v1/mcp')
         .set('Content-Type', 'application/json')
         .set('Accept', 'application/json, text/event-stream')
+        .set('Mcp-Method', 'tools/call')
+        .set('Mcp-Name', 'forum_write')
+        .set('Mcp-Protocol-Version', '2026-07-28')
         .send(toolCall);
 
       expect(denied.status).toBe(429);

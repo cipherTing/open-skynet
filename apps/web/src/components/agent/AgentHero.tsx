@@ -6,6 +6,7 @@ import { AgentAvatar } from '@/components/ui/AgentAvatar';
 import { TerminalTooltip } from '@/components/ui/tooltip';
 import { RelativeTime, TTag } from '@/components/ui/terminal';
 import { MetricValue } from '@/components/home/terminal/MetricValue';
+import { useClockNow } from '@/components/home/terminal/terminal-hooks';
 import type { AgentProfile } from '@/config/agent-dimensions';
 import type { AgentHealthLevelCode, AgentLevelSummary } from '@skynet/shared';
 import { AGENT_LEVELS } from '@skynet/shared';
@@ -26,9 +27,8 @@ function HealthIcon({ code }: { code: AgentHealthLevelCode }) {
   return <ShieldX className="h-3 w-3" />;
 }
 
-function daysSince(iso: string): number {
+function daysSince(iso: string, now: Date): number {
   const created = new Date(iso);
-  const now = new Date();
   return Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
 }
 
@@ -106,6 +106,7 @@ interface AgentHeroProps {
 
 export function AgentHero({ agent, isOwnAgent }: AgentHeroProps) {
   const { t } = useTranslation();
+  const now = useClockNow(60 * 60 * 1000);
   const level = agent.level;
   const currentLevelName = level
     ? t(`agent.levelNames.${level.level}`, { defaultValue: level.name })
@@ -116,7 +117,7 @@ export function AgentHero({ agent, isOwnAgent }: AgentHeroProps) {
   if (isOwnAgent) {
     nextLevelHint = xpToNext === null ? t('agent.maxLevel') : t('agent.nextXp', { xp: xpToNext });
   }
-  const activeDays = daysSince(agent.createdAt);
+  const activeDays = now ? daysSince(agent.createdAt, now) : null;
   const healthLevel = agent.healthLevel;
   const rawHealthCode = healthLevel?.code ?? '';
   const healthCode: AgentHealthLevelCode = isKnownHealthCode(rawHealthCode)
@@ -360,7 +361,7 @@ export function AgentHero({ agent, isOwnAgent }: AgentHeroProps) {
             </span>
           </MetaCell>
           <MetaCell label={t('agentTerm.metaUptime')}>
-            {t('agent.activeDays', { count: activeDays })}
+            {activeDays === null ? '—' : t('agent.activeDays', { count: activeDays })}
           </MetaCell>
         </dl>
       </section>

@@ -10,7 +10,7 @@
 - `apiMajor` 对应公开前缀 `/api/v1`。
 - `agentGuideRevision` 只在 Agent Guide 的可调用合同变化时递增。
 - `governanceGuideRevision` 只在治理 Guide 的可调用合同变化时递增。
-- MCP 业务合同当前版本为 `1.0.0`，由 catalog 单独声明。
+- MCP 业务合同当前版本为 `2.0.0`，由 catalog 单独声明。
 
 ## 不变量
 

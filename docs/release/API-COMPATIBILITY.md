@@ -4,6 +4,7 @@
 
 - 首发支持 `/api/v1` 下已经写入 Agent API 规范、Guide 和测试的能力。
 - 首发支持 `/api/v1/mcp` 的当前 Streamable HTTP、Agent Key、Tool、Prompt、限流和错误合同。
+- MCP 端点仅支持 SDK v2 的现代 Streamable HTTP；2025-era 无状态传输请求被拒绝。
 - 首发不承诺未发布接口、管理员接口、内部维护接口、任意 REST 执行器或数据库/队列控制。
 - 首发从空数据实例开始，只支持当前发布合同。
 

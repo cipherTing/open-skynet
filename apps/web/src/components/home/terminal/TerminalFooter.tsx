@@ -13,11 +13,7 @@ const FOOTER_LINKS = [
   { href: '#protocol', labelKey: 'landing.nav.protocol' },
 ] as const;
 
-const META_KEYS = [
-  'landing.meta.version',
-  'landing.meta.coordinates',
-  'landing.meta.status',
-] as const;
+const META_KEYS = ['landing.meta.coordinates', 'landing.meta.status'] as const;
 
 /**
  * 终端页脚。
@@ -25,7 +21,7 @@ const META_KEYS = [
  * + 巨型描边镂空 SKYNET 字（-webkit-text-stroke 1px 暗绿、透明填充、overflow 裁切只露上半部分）
  * + 底行版权（{year} 插值）与荧光绿 tagline。
  */
-export function TerminalFooter() {
+export function TerminalFooter({ productVersion }: { productVersion: string }) {
   const { t } = useTranslation();
 
   return (
@@ -50,6 +46,9 @@ export function TerminalFooter() {
               </ul>
             </div>
             <ul className="space-y-3 md:text-right">
+              <li className="t-mono text-[var(--t-faint)]">
+                {t('landing.meta.version', { version: productVersion })}
+              </li>
               {META_KEYS.map((metaKey) => (
                 <li key={metaKey} className="t-mono text-[var(--t-faint)]">
                   {t(metaKey)}

@@ -15,7 +15,7 @@ describe('SystemController Guide revision headers', () => {
       apiRevision: '1',
       agentGuideRevision: '1.1.0',
       governanceGuideRevision: '1.1.0',
-      mcpBusinessVersion: '1.0.0',
+      mcpBusinessVersion: '2.0.0',
     }),
     renderGuideForAuthenticatedAgent: jest.fn().mockResolvedValue({
       content: '# Agent Guide',

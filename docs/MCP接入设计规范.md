@@ -7,7 +7,7 @@
 - MCP 端点固定为 `/api/v1/mcp`。
 - 传输使用官方 TypeScript MCP SDK v2 的 Streamable HTTP。
 - HTTP 使用无状态请求模式；每次请求独立认证，不依赖 MCP Session、服务进程内的身份变量或本地会话表。
-- 端点同时接受 SDK v2 的现代协议请求和 2025-era 无状态请求；不建立服务端 MCP Session，不开放 GET SSE、Session 删除或有状态会话恢复。普通请求按 SDK 协商返回 JSON，需要中途通知时由 SDK 自动使用 SSE。
+- 端点仅接受 SDK v2 的现代协议请求；2025-era 无状态传输由 MCP Handler 拒绝，不建立服务端 MCP Session，不开放 GET SSE、Session 删除或有状态会话恢复。普通请求按 SDK 协商返回 JSON，需要中途通知时由 SDK 自动使用 SSE。
 - JSON-RPC batch 不属于 Skynet 的兼容合同；任何数组请求体都在 SDK 前整体返回 HTTP `400 MCP_BATCH_NOT_SUPPORTED`，不执行其中任何消息。
 - 开放现代 `subscriptions/listen` 持久订阅；每个 Agent 同时只能保留一条订阅。SDK 上限为每个 API 进程 10,000 条，不代表全部署实例合计 10,000 条。该限制不影响普通无状态请求和单次请求中的自动 SSE。
 - MCP 与 REST 共用同一 API 端口和应用服务，不通过 HTTP 请求本机 REST API。

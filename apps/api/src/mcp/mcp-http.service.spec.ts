@@ -126,7 +126,8 @@ describe('McpHttpService', () => {
     expect(securityPipelineGuard.canActivateAfterPreAuthentication).not.toHaveBeenCalled();
   });
 
-  it('serves the 2025 stateless HTTP handshake and discovery calls', async () => {
+  it('rejects legacy 2025 transport requests', async () => {
+    jest.spyOn(Logger.prototype, 'error').mockImplementation();
     const { service, toolsService } = buildService();
     toolsService.createServer.mockImplementation(() => {
       const server = new McpServer({ name: 'skynet-test', version: '1.0.0' });
@@ -184,13 +185,86 @@ describe('McpHttpService', () => {
       } as unknown as ServerResponse;
       await service.authenticate(request as ExpressRequest, response as ExpressResponse);
       await service.getNodeHandler()(request, response, body);
-      expect(response.writeHead).toHaveBeenCalledWith(200, expect.any(Object));
-      expect(chunks.join('')).toContain('jsonrpc');
+      expect(response.writeHead).toHaveBeenCalledWith(400, expect.any(Object));
+      expect(chunks.join('')).toContain('Unsupported protocol version');
     };
 
     await call(initialize);
-    await call({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
-    await call({ jsonrpc: '2.0', id: 3, method: 'prompts/list', params: {} });
+    expect(toolsService.createServer).not.toHaveBeenCalled();
+  });
+
+  it('serves modern discovery, tool listing, and prompt listing requests', async () => {
+    const { service, toolsService } = buildService();
+    toolsService.createServer.mockImplementation(() => {
+      const server = new McpServer({ name: 'skynet-test', version: '1.0.0' });
+      server.registerTool(
+        'test_tool',
+        { description: 'A test tool', inputSchema: z.object({}) },
+        async () => ({ content: [{ type: 'text' as const, text: 'ok' }] }),
+      );
+      server.registerPrompt(
+        'test_prompt',
+        { description: 'A test prompt', argsSchema: {} },
+        async () => ({
+          messages: [{ role: 'user', content: { type: 'text', text: 'ok' } }],
+        }),
+      );
+      return server;
+    });
+
+    const modernMeta = {
+      'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+      'io.modelcontextprotocol/clientCapabilities': {},
+    };
+    const call = async (method: 'server/discover' | 'tools/list' | 'prompts/list', id: number) => {
+      const request = new IncomingMessage(new Socket());
+      request.method = 'POST';
+      request.url = '/mcp';
+      request.headers = {
+        authorization: 'Bearer sk_live_test_key',
+        accept: 'application/json, text/event-stream',
+        'content-type': 'application/json',
+        'mcp-method': method,
+        'mcp-protocol-version': '2026-07-28',
+      };
+      const chunks: string[] = [];
+      let statusCode: number | undefined;
+      const response = {
+        destroyed: false,
+        setHeader: jest.fn(),
+        writeHead: jest.fn((status: number) => {
+          statusCode = status;
+        }),
+        write: jest.fn((chunk: string | Uint8Array) => {
+          chunks.push(typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf8'));
+          return true;
+        }),
+        end: jest.fn(),
+        on: jest.fn(),
+      } as unknown as ServerResponse;
+
+      await service.authenticate(request as ExpressRequest, response as ExpressResponse);
+      await service.getNodeHandler()(request, response, {
+        jsonrpc: '2.0',
+        id,
+        method,
+        params: { _meta: modernMeta },
+      });
+
+      return { statusCode, body: chunks.join('') };
+    };
+
+    const discover = await call('server/discover', 1);
+    expect(discover.statusCode).toBe(200);
+    expect(discover.body).toContain('"supportedVersions":["2026-07-28"]');
+
+    const tools = await call('tools/list', 2);
+    expect(tools.statusCode).toBe(200);
+    expect(tools.body).toContain('"name":"test_tool"');
+
+    const prompts = await call('prompts/list', 3);
+    expect(prompts.statusCode).toBe(200);
+    expect(prompts.body).toContain('"name":"test_prompt"');
   });
 
   it('keeps request-scoped notifications on the temporary auto-SSE path', async () => {
@@ -210,15 +284,17 @@ describe('McpHttpService', () => {
       );
       return server;
     });
-    const request = Object.assign(Readable.from([]), {
-      method: 'POST',
-      url: '/mcp',
-      headers: {
-        authorization: 'Bearer sk_live_test_key',
-        accept: 'application/json, text/event-stream',
-        'content-type': 'application/json',
-      },
-    }) as IncomingMessage;
+    const request = new IncomingMessage(new Socket());
+    request.method = 'POST';
+    request.url = '/mcp';
+    request.headers = {
+      authorization: 'Bearer sk_live_test_key',
+      accept: 'application/json, text/event-stream',
+      'content-type': 'application/json',
+      'mcp-method': 'tools/call',
+      'mcp-name': 'test_tool',
+      'mcp-protocol-version': '2026-07-28',
+    };
     const chunks: string[] = [];
     const response = {
       setHeader: jest.fn(),
@@ -239,7 +315,11 @@ describe('McpHttpService', () => {
       params: {
         name: 'test_tool',
         arguments: {},
-        _meta: { progressToken: 'progress-1' },
+        _meta: {
+          progressToken: 'progress-1',
+          'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+          'io.modelcontextprotocol/clientCapabilities': {},
+        },
       },
     });
 

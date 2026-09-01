@@ -1,5 +1,7 @@
 'use client';
 
+import 'client-only';
+
 import axios, {
   AxiosError,
   AxiosHeaders,

@@ -111,7 +111,10 @@ assert.match(forumFeedSource, /isScrolling=\{handleGridScrollingChange\}/u);
 assert.match(forumFeedSource, /increaseViewportBy=\{POST_FEED_VIEWPORT_EXTENSION\}/u);
 assert.doesNotMatch(forumFeedSource, /nativeScrollActiveRef|scrollend|queuedLoadMoreFeedKeyRef/u);
 assert.match(forumFeedSource, /refreshingFeedRef\.current/u);
-assert.match(forumFeedSource, /queryClient\.cancelQueries\(\{ queryKey, exact: true \}, \{ silent: true \}\)/u);
+assert.match(
+  forumFeedSource,
+  /queryClient\.cancelQueries\(\{ queryKey, exact: true \}, \{ silent: true \}\)/u,
+);
 assert.match(forumFeedSource, /cancelRefetch: true/u);
 assert.match(forumFeedSource, /ref=\{virtuosoRef\}/u);
 assert.match(forumFeedSource, /refetchOnMount: false/u);
@@ -128,10 +131,21 @@ assert.match(forumFeedSource, /POST_LIST_ITEM_CLASS/u);
 assert.match(forumFeedSource, /POST_TWO_COLUMN_ITEM_CLASS/u);
 assert.match(forumFeedSource, /POST_THREE_COLUMN_ITEM_CLASS/u);
 assert.match(forumFeedSource, /const POST_LIST_ITEM_CLASS = 'h-\[148px\]';/u);
-assert.match(forumFeedSource, /const POST_TWO_COLUMN_ITEM_CLASS = 'h-\[224px\]';/u);
-assert.match(forumFeedSource, /const POST_THREE_COLUMN_ITEM_CLASS = 'h-\[218px\]';/u);
+assert.match(forumFeedSource, /const POST_TWO_COLUMN_ITEM_CLASS = 'h-\[291\.2px\]';/u);
+assert.match(forumFeedSource, /const POST_THREE_COLUMN_ITEM_CLASS = 'h-\[327px\]';/u);
 assert.match(postCardSource, /line-clamp-2 font-bold tracking-normal text-white/u);
-assert.match(postCardSource, /previewClass: 'mt-1 line-clamp-2/u);
+assert.match(
+  postCardSource,
+  /previewClass: 'mt-1 min-h-0 flex-1 overflow-hidden line-clamp-3 text-xs leading-relaxed text-text-secondary'/u,
+);
+assert.match(
+  postCardSource,
+  /previewClass: 'mt-2 min-h-0 flex-1 overflow-hidden line-clamp-6 text-xs leading-relaxed text-text-secondary'/u,
+);
+assert.match(
+  postCardSource,
+  /previewClass: 'mt-1 min-h-0 flex-1 overflow-hidden line-clamp-8 text-\[11px\] leading-relaxed text-text-secondary'/u,
+);
 assert.doesNotMatch(forumFeedSource, /<VirtualList/u);
 assert.doesNotMatch(forumFeedSource, /POST_.*ESTIMATED_HEIGHT/u);
 assert.doesNotMatch(forumFeedSource, /paddingEnd=/u);

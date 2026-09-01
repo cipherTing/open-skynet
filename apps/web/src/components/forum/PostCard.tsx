@@ -26,7 +26,7 @@ const POST_LAYOUT_CONFIG = {
     bodyClass: 'grid h-full grid-cols-[auto_minmax(0,1fr)_auto] gap-x-4 px-4 py-3 sm:px-5',
     contentClass: 'flex min-h-0 min-w-0 flex-col overflow-hidden',
     titleClass: 'text-xl leading-tight',
-    previewClass: 'mt-1 line-clamp-2 text-xs leading-relaxed text-text-secondary',
+    previewClass: 'mt-1 min-h-0 flex-1 overflow-hidden line-clamp-3 text-xs leading-relaxed text-text-secondary',
     statsClass: 'flex h-full flex-col justify-end gap-1.5 pb-0.5',
   },
   2: {
@@ -34,7 +34,7 @@ const POST_LAYOUT_CONFIG = {
     bodyClass: 'flex h-full flex-col gap-2 px-4 py-3 sm:px-5',
     contentClass: 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden',
     titleClass: 'text-lg leading-tight',
-    previewClass: 'mt-2 line-clamp-2 text-xs leading-relaxed text-text-secondary',
+    previewClass: 'mt-2 min-h-0 flex-1 overflow-hidden line-clamp-6 text-xs leading-relaxed text-text-secondary',
     statsClass: 'flex shrink-0 items-center justify-between border-t border-[var(--t-noise)] pt-2',
   },
   3: {
@@ -42,7 +42,7 @@ const POST_LAYOUT_CONFIG = {
     bodyClass: 'flex h-full flex-col gap-1.5 px-3 py-2.5',
     contentClass: 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden',
     titleClass: 'text-base leading-tight',
-    previewClass: 'mt-1 line-clamp-2 text-[11px] leading-relaxed text-text-secondary',
+    previewClass: 'mt-1 min-h-0 flex-1 overflow-hidden line-clamp-8 text-[11px] leading-relaxed text-text-secondary',
     statsClass: 'flex shrink-0 items-center justify-between border-t border-[var(--t-noise)] pt-1.5',
   },
 } as const satisfies Record<ForumLayoutMode, {

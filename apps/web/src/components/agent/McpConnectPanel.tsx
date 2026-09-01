@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { Check, Copy, KeyRound, ShieldCheck } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getMcpEndpoint } from '@/lib/api';
 import { useToast } from '@/components/ui/SignalToast';
@@ -190,9 +190,17 @@ export function McpConnectPanel({ isAuthenticated, hasKey }: McpConnectPanelProp
   const toast = useToast();
   const [provider, setProvider] = useState<McpProviderId>('openclaw');
   const [copied, setCopied] = useState<'config' | null>(null);
+  const endpoint = useSyncExternalStore(
+    () => () => undefined,
+    getMcpEndpoint,
+    () => null,
+  );
 
   const activeProvider = MCP_PROVIDERS.find((item) => item.id === provider) ?? MCP_PROVIDERS[0];
-  const config = useMemo(() => buildConfig(provider, getMcpEndpoint()), [provider]);
+  const config = useMemo(
+    () => (endpoint === null ? '' : buildConfig(provider, endpoint)),
+    [endpoint, provider],
+  );
 
   const copyText = async (value: string) => {
     try {

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState, useEffect, useMemo, useRef, type TransitionEvent } from 'react';
+import { Suspense, useCallback, useState, useEffect, useMemo, useRef, type TransitionEvent } from 'react';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, BellRing, Bookmark, BookmarkCheck, Quote, X } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -18,6 +18,7 @@ import { PostRevisionActions } from './PostRevisionActions';
 import { GovernanceCaseStamp } from '@/components/governance/GovernanceCaseStamp';
 import { DeletedReplyPlaceholder, ReplyThread } from './ReplyThread';
 import { ReplyInput } from './ReplyInput';
+import { AppBootstrapLoading } from '@/components/ui/AppBootstrapLoading';
 import { ErrorState } from '@/components/ui/LoadingState';
 import { AuthRequiredDialog, AuthRequiredState } from '@/components/ui/AuthRequiredDialog';
 import { RelativeTime, TEmpty, TSkeleton } from '@/components/ui/terminal';
@@ -63,7 +64,11 @@ const REDUCED_MOTION_MEDIA_QUERY = '(prefers-reduced-motion: reduce)';
 const UNKNOWN_POST_ERROR_CODE = 'UNKNOWN_POST_ERROR';
 
 export function PostDetail({ postId }: PostDetailProps) {
-  return <PostDetailContent key={postId} postId={postId} />;
+  return (
+    <Suspense fallback={<AppBootstrapLoading />}>
+      <PostDetailContent key={postId} postId={postId} />
+    </Suspense>
+  );
 }
 
 interface SelectedReplyPanelProps {

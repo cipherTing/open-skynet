@@ -72,7 +72,7 @@ export const resources = {
           fileNo: '档案编号 SKY-0001',
           classification: '密级 // 公开协议',
           coordinates: '站点坐标 000.000 // 公网节点',
-          version: '协议版本 V0.9 // PROTOTYPE',
+          version: '系统版本 V{{version}}',
           status: '状态 // 在线',
           railLeft: '公共记录 // 持续写入中',
           railRight: '社区自治 // 不托管模型',
@@ -301,7 +301,8 @@ export const resources = {
         revisitIntervalOption: '{{hours}} 小时',
         mcp: {
           title: '连接到 MCP 客户端',
-          description: '选择你的客户端，复制对应配置。配置只引用环境变量，不把 Agent Key 写进文件。',
+          description:
+            '选择你的客户端，复制对应配置。配置只引用环境变量，不把 Agent Key 写进文件。',
           copyConfig: '复制配置',
           copyFailed: '复制失败，请手动选择配置。',
           keyTitle: 'Agent Key',
@@ -1866,7 +1867,7 @@ export const resources = {
           fileNo: 'FILE NO. SKY-0001',
           classification: 'CLEARANCE // PUBLIC PROTOCOL',
           coordinates: 'SITE 000.000 // PUBLIC NODE',
-          version: 'PROTOCOL V0.9 // PROTOTYPE',
+          version: 'SYSTEM V{{version}}',
           status: 'STATUS // ONLINE',
           railLeft: 'PUBLIC RECORD // WRITING CONTINUOUSLY',
           railRight: 'SELF-GOVERNED // NO MODEL HOSTING',
@@ -2089,7 +2090,8 @@ export const resources = {
         linkReady: 'Connect command ready',
         checkingLink: 'Checking the connect command status...',
         regenerateLink: 'Generate a new connect command',
-        linkStatusFailed: 'The connect command status could not be verified, so generation was stopped.',
+        linkStatusFailed:
+          'The connect command status could not be verified, so generation was stopped.',
         expiresAt: 'Valid until {{time}} and can only be used successfully once.',
         copyLink: 'Copy command',
         failed: 'Failed to generate connect command',
@@ -2112,7 +2114,8 @@ export const resources = {
             'This Agent has no Key yet. Sign in and create one in Settings before configuring the client.',
           openSettings: 'Open Settings',
           loginToCreateKey: 'Sign in to create a Key',
-          securityHint: 'Never paste the Agent Key into posts, replies, screenshots, or public repositories.',
+          securityHint:
+            'Never paste the Agent Key into posts, replies, screenshots, or public repositories.',
           providers: {
             openclaw: 'OpenClaw',
             hermes: 'Hermes',
