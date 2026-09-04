@@ -260,15 +260,42 @@ docker/       Web/API Dockerfile
 git checkout <发布 tag 或完整 Git SHA>
 cp compose.yaml.example compose.yaml
 cp .env.example .env
-# 编辑 .env，填写端口、MongoDB、Redis、JWT 和应用加密配置。
+# 编辑 .env，填写端口、MongoDB、Redis、JWT、应用加密配置和部署 Origin。
 docker compose up -d
 ```
 
 仓库只提交 `compose.yaml.example`；`compose.yaml` 是从模板复制后保留在本地的部署文件，不得提交。本地开发也先完成这一步，再使用 `pnpm dev`。生产 `compose.yaml` 只消费已经发布的镜像，使用 `.env` 中唯一的 `SKYNET_IMAGE_TAG` 选择 API、Web 和索引任务的同一版本。`db-indexes` 是 API 的一次性启动依赖，索引检查未成功时 API 不会启动。
 
-Docker Hub 公开仓库固定为 `sundayting/skynet-api` 和 `sundayting/skynet-web`。`main` 的成功提交发布成 `dev-<完整 Git SHA>`；正式 Git tag `v0.1.0` 发布成 `0.1.0`。不会发布 `latest`、RC 或浮动版本 tag。
+Docker Hub 公开仓库固定为 `sundayting/skynet-api` 和 `sundayting/skynet-web`。`main` 的成功提交发布成 `dev-<完整 Git SHA>`；Git tag `v0.1.0-rc1` 发布成 `0.1.0-rc1`。不会发布 `latest` 或浮动版本 tag。
 
-Docker Hub 镜像本身不包含 Compose 模板、Mongo 初始化脚本或运行时 `.env`。部署必须使用与该镜像同一提交或同一正式 tag 的仓库 checkout；不要拿新的 Compose 文件去启动旧的开发镜像。Compose 默认只绑定 loopback，浏览器入口为 `http://localhost:<WEB_PORT>`；公开 API 地址与 CORS 由 `WEB_PORT`、`API_PORT` 自动派生，不需要单独配置。外部反向代理、TLS 证书和公网入口由部署环境负责，不由本仓库配置。
+Docker Hub 镜像本身不包含 Compose 模板、Mongo 初始化脚本或运行时 `.env`。部署必须使用与该镜像同一提交或同一正式 tag 的仓库 checkout；不要拿新的 Compose 文件去启动旧的开发镜像。Compose 默认只绑定 loopback，Web 服务端通过 `INTERNAL_API_URL` 访问容器内 API；浏览器统一请求当前站点下的 `/api/v1`，公网部署必须由反向代理在同一 HTTPS Origin 下分别转发 Web 和 API。
+
+以 `skynet.com`、Web `8080`、API `8081` 和单层 Caddy 为例，`.env` 至少覆盖：
+
+```dotenv
+CORS_ORIGIN=https://skynet.com
+TRUST_PROXY=1
+```
+
+Caddyfile 可直接使用以下同源配置。`handle /api/*` 会保留完整 `/api/v1` URI；禁止改成会剥离匹配前缀的 `handle_path`：
+
+```caddyfile
+www.skynet.com {
+  redir https://skynet.com{uri} permanent
+}
+
+skynet.com {
+  handle /api/* {
+    reverse_proxy 127.0.0.1:8081
+  }
+
+  handle {
+    reverse_proxy 127.0.0.1:8080
+  }
+}
+```
+
+启动后在管理员设置的“公开访问”中填写站点根地址 `https://skynet.com`。系统公开 API 地址由该地址派生为 `https://skynet.com/api/v1`，浏览器和 Agent 均通过这个同源入口访问。
 
 若存在重复数据、待删除的旧索引或索引创建失败，`db-indexes` 会失败并阻止新 API 启动。先使用 `docker compose logs db-indexes` 查看原因。确实批准删除旧索引时，必须进入维护窗口并按以下顺序执行；索引任务失败时禁止恢复流量：
 

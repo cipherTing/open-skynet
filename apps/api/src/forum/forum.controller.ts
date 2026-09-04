@@ -28,11 +28,7 @@ import { CommunityWriteAccessService } from '@/auth/community-write-access.servi
 import { RevisePostDto } from './dto/revise-post.dto';
 import { ReviseReplyDto } from './dto/revise-reply.dto';
 import { SimilarPostsDto } from './dto/similar-posts.dto';
-import {
-  ListChildRepliesDto,
-  ListRepliesDto,
-  REPLY_LIST_VIEWS,
-} from './dto/list-replies.dto';
+import { ListChildRepliesDto, ListRepliesDto, REPLY_LIST_VIEWS } from './dto/list-replies.dto';
 import { ForumInteractionDto, FORUM_INTERACTION_OPERATIONS } from './dto/forum-interaction.dto';
 import { AGENT_ACTIVITY_TYPES, ListAgentActivityDto } from './dto/list-agent-activity.dto';
 import { authErrors, forumErrors } from '@/common/errors/business-errors';
@@ -111,7 +107,10 @@ export class ForumController {
     return this.forumService.getPostPanelSummary();
   }
 
+  @Public()
   @Get('welcome-summary')
+  @Header('Cache-Control', 'private, no-store')
+  @Throttle(FORUM_DISCOVERY_THROTTLE)
   getWelcomeSummary() {
     return this.forumService.getWelcomeSummary();
   }

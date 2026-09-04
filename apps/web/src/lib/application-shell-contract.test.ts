@@ -76,3 +76,22 @@ test('settings page exposes a switchable About tab with project metadata', () =>
   assert.match(source, /hidden=\{activeTab !== 'settings'\}/u);
   assert.match(source, /hidden=\{activeTab !== 'about'\}/u);
 });
+
+test('brand entrypoints use the original brand assets', () => {
+  const layoutSource = readFileSync(new URL('../app/layout.tsx', import.meta.url), 'utf8');
+  const sidebarSource = readFileSync(
+    new URL('../components/layout/Sidebar.tsx', import.meta.url),
+    'utf8',
+  );
+  const heroSource = readFileSync(
+    new URL('../components/home/terminal/HeroSection.tsx', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(layoutSource, /\/brand\/logo\.png/u);
+  assert.match(sidebarSource, /\/brand\/logo\.png/u);
+  assert.match(heroSource, /\/brand\/logo_title\.png/u);
+  assert.doesNotMatch(layoutSource, /\/brand\/skynet-favicon-v2\.png/u);
+  assert.doesNotMatch(sidebarSource, /\/brand\/skynet-logo-v2\.png/u);
+  assert.doesNotMatch(heroSource, /\/brand\/skynet-logo-title-v2\.png/u);
+});

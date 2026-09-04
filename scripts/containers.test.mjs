@@ -59,19 +59,24 @@ test('production Compose template uses one release tag for API, indexes, and Web
   const production = readFileSync(productionComposeTemplate, 'utf8');
   const development = readFileSync(developmentCompose, 'utf8');
 
-  assert.match(production, /image: sundayting\/skynet-api:\$\{SKYNET_IMAGE_TAG:-0\.1\.0\}/u);
-  assert.match(production, /image: sundayting\/skynet-web:\$\{SKYNET_IMAGE_TAG:-0\.1\.0\}/u);
+  assert.match(production, /image: sundayting\/skynet-api:\$\{SKYNET_IMAGE_TAG:-0\.1\.0-rc1\}/u);
+  assert.match(production, /image: sundayting\/skynet-web:\$\{SKYNET_IMAGE_TAG:-0\.1\.0-rc1\}/u);
   assert.equal(
-    (production.match(/image: sundayting\/skynet-api:\$\{SKYNET_IMAGE_TAG:-0\.1\.0\}/gu) ?? [])
+    (production.match(/image: sundayting\/skynet-api:\$\{SKYNET_IMAGE_TAG:-0\.1\.0-rc1\}/gu) ?? [])
       .length,
     2,
   );
   assert.doesNotMatch(production, /^\s{4}build:/mu);
   assert.match(production, /'127\.0\.0\.1:\$\{API_PORT:-8081\}:8081'/u);
   assert.match(production, /'127\.0\.0\.1:\$\{WEB_PORT:-8080\}:8080'/u);
-  assert.match(production, /CORS_ORIGIN: http:\/\/localhost:\$\{WEB_PORT:-8080\}/u);
+  assert.match(
+    production,
+    /CORS_ORIGIN: \$\{CORS_ORIGIN:-http:\/\/localhost:\$\{WEB_PORT:-8080\}\}/u,
+  );
+  assert.match(production, /TRUST_PROXY: \$\{TRUST_PROXY:-false\}/u);
   assert.match(production, /SKYNET_PUBLIC_WEB_PORT: \$\{WEB_PORT:-8080\}/u);
-  assert.match(production, /SKYNET_PUBLIC_API_PORT: \$\{API_PORT:-8081\}/u);
+  assert.doesNotMatch(production, /SKYNET_PUBLIC_API_PORT/u);
+  assert.match(production, /INTERNAL_API_URL: http:\/\/api:8081\/api\/v1/u);
   assert.doesNotMatch(
     production,
     /SKYNET_(?:API|WEB)_IMAGE_REF|PUBLIC_API_BASE_URL|API_HOST|WEB_HOST/u,
@@ -90,10 +95,10 @@ test('Compose tracks a template and ignores the local production file', () => {
   assert.match(readFileSync(productionComposeTemplate, 'utf8'), /^services:/mu);
 });
 
-test('environment template only exposes ports, one image tag, and secrets to deployers', () => {
+test('environment template exposes deployment ports, proxy boundaries, one image tag, and secrets', () => {
   const envExample = readFileSync(path.join(root, '.env.example'), 'utf8');
 
-  assert.match(envExample, /^SKYNET_IMAGE_TAG=0\.1\.0$/mu);
+  assert.match(envExample, /^SKYNET_IMAGE_TAG=0\.1\.0-rc1$/mu);
   for (const name of [
     'WEB_PORT',
     'API_PORT',
@@ -104,12 +109,16 @@ test('environment template only exposes ports, one image tag, and secrets to dep
     'REDIS_PASSWORD',
     'JWT_SECRET',
     'APP_ENCRYPTION_KEY',
+    'CORS_ORIGIN',
+    'TRUST_PROXY',
   ]) {
     assert.match(envExample, new RegExp(`^${name}=`, 'mu'));
   }
+  assert.match(envExample, /^CORS_ORIGIN=http:\/\/localhost:8080$/mu);
+  assert.match(envExample, /^TRUST_PROXY=false$/mu);
   assert.doesNotMatch(
     envExample,
-    /(?:NODE_ENV|MONGODB_URI|REDIS_HOST|SKYNET_API_IMAGE_REF|SKYNET_WEB_IMAGE_REF|PUBLIC_API_BASE_URL|CORS_ORIGIN|TRUST_PROXY|SWAGGER_ENABLED)=/u,
+    /(?:NODE_ENV|MONGODB_URI|REDIS_HOST|SKYNET_API_IMAGE_REF|SKYNET_WEB_IMAGE_REF|PUBLIC_API_BASE_URL|SWAGGER_ENABLED)=/u,
   );
 });
 
@@ -164,18 +173,22 @@ test('development environment checker tells users to copy the Compose template w
     });
 
     assert.notEqual(result.status, 0);
-    assert.match(result.stderr, /compose\.yaml is missing\. Run: cp compose\.yaml\.example compose\.yaml/u);
+    assert.match(
+      result.stderr,
+      /compose\.yaml is missing\. Run: cp compose\.yaml\.example compose\.yaml/u,
+    );
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
 });
 
-test('container smoke accepts one local image tag and derives CORS and browser API addresses from port values', () => {
+test('container smoke verifies configured CORS and a same-origin Web API contract', () => {
   const fakeDocker = makeFakeDocker();
   try {
     const result = runScript(containersSmokeScript, ['--tag', 'ci-contract'], fakeDocker, {
       WEB_PORT: '19080',
       API_PORT: '19081',
+      CORS_ORIGIN: 'https://skynet.example',
     });
     const calls = readDockerCalls(fakeDocker);
 
@@ -185,8 +198,9 @@ test('container smoke accepts one local image tag and derives CORS and browser A
     assert.match(calls[0], /SKYNET_IMAGE_TAG=ci-contract/u);
     assert.match(calls[0], /WEB_PORT=19080/u);
     assert.match(calls[0], /API_PORT=19081/u);
-    assert.match(calls[4], /http:\/\/localhost:19080/u);
-    assert.match(calls[5], /http:\/\/localhost:19081\/api\/v1/u);
+    assert.match(calls[4], /https:\/\/skynet\.example/u);
+    assert.match(calls[5], /connect-src 'self'/u);
+    assert.doesNotMatch(calls[5], /runtime-config\.js|localhost:19081\/api\/v1/u);
     assert.match(calls[6].split('|')[0], / down --volumes --remove-orphans$/u);
   } finally {
     rmSync(fakeDocker.directory, { recursive: true, force: true });

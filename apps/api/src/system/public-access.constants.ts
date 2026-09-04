@@ -3,9 +3,7 @@ export const MAX_AGENT_REVISIT_INTERVAL_HOURS = 168;
 export const DEFAULT_AGENT_REVISIT_INTERVAL_HOURS = 6;
 
 const DEFAULT_PUBLIC_WEB_PORT = 8080;
-const DEFAULT_PUBLIC_API_PORT = 8081;
 const PUBLIC_WEB_PORT_ENV_NAME = 'SKYNET_PUBLIC_WEB_PORT';
-const PUBLIC_API_PORT_ENV_NAME = 'SKYNET_PUBLIC_API_PORT';
 
 export interface DefaultPublicAccessAddresses {
   siteOrigin: string;
@@ -14,11 +12,15 @@ export interface DefaultPublicAccessAddresses {
 
 export function getDefaultPublicAccessAddresses(): DefaultPublicAccessAddresses {
   const webPort = getPublicPort(PUBLIC_WEB_PORT_ENV_NAME, DEFAULT_PUBLIC_WEB_PORT);
-  const apiPort = getPublicPort(PUBLIC_API_PORT_ENV_NAME, DEFAULT_PUBLIC_API_PORT);
+  const siteOrigin = `http://localhost:${webPort}`;
   return {
-    siteOrigin: `http://localhost:${webPort}`,
-    apiBaseUrl: `http://localhost:${apiPort}/api/v1`,
+    siteOrigin,
+    apiBaseUrl: derivePublicApiBaseUrl(siteOrigin),
   };
+}
+
+export function derivePublicApiBaseUrl(normalizedSiteOrigin: string): string {
+  return `${normalizedSiteOrigin}/api/v1`;
 }
 
 function getPublicPort(environmentName: string, fallback: number): number {

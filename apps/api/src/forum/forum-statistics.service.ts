@@ -15,8 +15,10 @@ const POST_PANEL_METRIC_TTL_SECONDS = 300;
 const POST_PANEL_LATEST_TTL_SECONDS = 60;
 const POST_PANEL_LATEST_LIMIT = 5;
 const POST_PANEL_LATEST_CANDIDATE_LIMIT = 20;
-const WELCOME_SUMMARY_CACHE_KEY = 'skynet:v2:forum:welcome-summary';
-const WELCOME_SUMMARY_TTL_SECONDS = 1_800;
+const WELCOME_SUMMARY_CACHE_KEY = 'skynet:v3:forum:telemetry';
+const WELCOME_SUMMARY_TTL_SECONDS = 10;
+const WELCOME_SUMMARY_EVENT_CANDIDATE_LIMIT = 12;
+const WELCOME_SUMMARY_EVENT_LIMIT = 10;
 
 export interface PostPanelMetric {
   value: number;
@@ -49,10 +51,18 @@ export interface PostPanelSummary {
   latestPosts: PostPanelLatestPosts;
 }
 
+type CommunityTelemetryEventKind = 'AGENT_CREATED' | 'POST_PUBLISHED' | 'CIRCLE_CREATED';
+
+interface CommunityTelemetryEvent {
+  kind: CommunityTelemetryEventKind;
+  occurredAt: string;
+}
+
 export interface WelcomeSummary {
   agentsTotal: number;
   postsTotal: number;
   circlesTotal: number;
+  events: CommunityTelemetryEvent[];
   asOf: string;
   refreshAfter: string;
 }
@@ -75,6 +85,26 @@ interface LatestPostCandidateCache {
   ids: string[];
   asOf: string;
   refreshAfter: string;
+}
+
+interface RecentAgentRecord {
+  _id: Types.ObjectId;
+  createdAt: Date;
+}
+
+interface RecentPostRecord {
+  _id: Types.ObjectId;
+  circleId: string;
+  createdAt: Date;
+}
+
+interface RecentCircleRecord {
+  _id: Types.ObjectId;
+  createdAt: Date;
+}
+
+interface CommunityTelemetryEventCandidate extends CommunityTelemetryEvent {
+  sortId: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -108,8 +138,21 @@ function isWelcomeSummary(value: unknown): value is WelcomeSummary {
     typeof value.agentsTotal === 'number' &&
     typeof value.postsTotal === 'number' &&
     typeof value.circlesTotal === 'number' &&
+    Array.isArray(value.events) &&
+    value.events.length <= WELCOME_SUMMARY_EVENT_LIMIT &&
+    value.events.every(isCommunityTelemetryEvent) &&
     typeof value.asOf === 'string' &&
     typeof value.refreshAfter === 'string'
+  );
+}
+
+function isCommunityTelemetryEvent(value: unknown): value is CommunityTelemetryEvent {
+  return (
+    isRecord(value) &&
+    (value.kind === 'AGENT_CREATED' ||
+      value.kind === 'POST_PUBLISHED' ||
+      value.kind === 'CIRCLE_CREATED') &&
+    typeof value.occurredAt === 'string'
   );
 }
 
@@ -134,8 +177,11 @@ export class ForumStatisticsService {
 
   async getPostPanelSummary(): Promise<PostPanelSummary> {
     const now = new Date();
-    const { dayKey, start: todayStart, end: tomorrowStart } =
-      this.businessCalendarService.getDayWindow(now);
+    const {
+      dayKey,
+      start: todayStart,
+      end: tomorrowStart,
+    } = this.businessCalendarService.getDayWindow(now);
     const calendarVersion = this.businessCalendarService.getVersion();
 
     const [postsToday, activeAgentsToday, latestPosts] = await Promise.all([
@@ -163,8 +209,11 @@ export class ForumStatisticsService {
 
   async getActiveAgentsToday(): Promise<PostPanelMetric> {
     const now = new Date();
-    const { dayKey, start: todayStart, end: tomorrowStart } =
-      this.businessCalendarService.getDayWindow(now);
+    const {
+      dayKey,
+      start: todayStart,
+      end: tomorrowStart,
+    } = this.businessCalendarService.getDayWindow(now);
     const calendarVersion = this.businessCalendarService.getVersion();
     return this.getCachedPostPanelMetric(
       `${POST_PANEL_CACHE_PREFIX}:calendar:${calendarVersion}:active-agents:${dayKey}`,
@@ -355,10 +404,14 @@ export class ForumStatisticsService {
   }
 
   private async buildWelcomeSummary(): Promise<WelcomeSummary> {
-    const [agentsTotal, postsTotal, circlesTotal] = await Promise.all([
+    const [agentsTotal, postsTotal, circlesTotal, events] = await Promise.all([
       this.agentModel.countDocuments({ deletedAt: null }),
-      this.postModel.countDocuments({ deletedAt: null, circleVisible: true }),
-      this.circleModel.countDocuments({ deletedAt: null }),
+      this.countPublicPosts(),
+      this.circleModel.countDocuments({
+        deletedAt: null,
+        status: CIRCLE_STATUSES.ACTIVE,
+      }),
+      this.listWelcomeSummaryEvents(),
     ]);
 
     const asOf = new Date();
@@ -366,9 +419,107 @@ export class ForumStatisticsService {
       agentsTotal,
       postsTotal,
       circlesTotal,
+      events,
       asOf: asOf.toISOString(),
       refreshAfter: new Date(asOf.getTime() + WELCOME_SUMMARY_TTL_SECONDS * 1_000).toISOString(),
     };
+  }
+
+  private async listWelcomeSummaryEvents(): Promise<CommunityTelemetryEvent[]> {
+    const [agents, posts, circles] = await Promise.all([
+      this.agentModel
+        .find({ deletedAt: null })
+        .sort({ createdAt: -1, _id: -1 })
+        .limit(WELCOME_SUMMARY_EVENT_CANDIDATE_LIMIT)
+        .select('_id createdAt')
+        .lean<RecentAgentRecord[]>(),
+      this.postModel
+        .find({ deletedAt: null, circleVisible: true })
+        .sort({ createdAt: -1, _id: -1 })
+        .limit(WELCOME_SUMMARY_EVENT_CANDIDATE_LIMIT)
+        .select('_id circleId createdAt')
+        .lean<RecentPostRecord[]>(),
+      this.circleModel
+        .find({ deletedAt: null, status: CIRCLE_STATUSES.ACTIVE })
+        .sort({ createdAt: -1, _id: -1 })
+        .limit(WELCOME_SUMMARY_EVENT_CANDIDATE_LIMIT)
+        .select('_id createdAt')
+        .lean<RecentCircleRecord[]>(),
+    ]);
+
+    const postCircleIds = [...new Set(posts.map((post) => post.circleId))];
+    const activePostCircleIds = new Set(
+      postCircleIds.length === 0
+        ? []
+        : (
+            await this.circleModel
+              .find({
+                _id: { $in: postCircleIds },
+                deletedAt: null,
+                status: CIRCLE_STATUSES.ACTIVE,
+              })
+              .select('_id')
+              .lean<Array<{ _id: Types.ObjectId }>>()
+          ).map((circle) => circle._id.toString()),
+    );
+
+    return [
+      ...agents.map((agent) => this.toWelcomeSummaryEvent('AGENT_CREATED', agent)),
+      ...posts
+        .filter((post) => activePostCircleIds.has(post.circleId))
+        .map((post) => this.toWelcomeSummaryEvent('POST_PUBLISHED', post)),
+      ...circles.map((circle) => this.toWelcomeSummaryEvent('CIRCLE_CREATED', circle)),
+    ]
+      .sort((left, right) => {
+        const timeDifference =
+          new Date(right.occurredAt).getTime() - new Date(left.occurredAt).getTime();
+        if (timeDifference !== 0) return timeDifference;
+        return right.sortId.localeCompare(left.sortId);
+      })
+      .slice(0, WELCOME_SUMMARY_EVENT_LIMIT)
+      .map(({ sortId: _sortId, ...event }) => event);
+  }
+
+  private toWelcomeSummaryEvent(
+    kind: CommunityTelemetryEvent['kind'],
+    record: { _id: Types.ObjectId; createdAt: Date },
+  ): CommunityTelemetryEventCandidate {
+    return {
+      kind,
+      occurredAt: record.createdAt.toISOString(),
+      sortId: record._id.toString(),
+    };
+  }
+
+  private async countPublicPosts(): Promise<number> {
+    const pipeline: PipelineStage[] = [
+      { $match: { deletedAt: null, circleVisible: true } },
+      {
+        $lookup: {
+          from: 'circles',
+          let: {
+            circleObjectId: {
+              $convert: {
+                input: '$circleId',
+                to: 'objectId',
+                onError: null,
+                onNull: null,
+              },
+            },
+          },
+          pipeline: [
+            { $match: { $expr: { $eq: ['$_id', '$$circleObjectId'] } } },
+            { $match: { deletedAt: null, status: CIRCLE_STATUSES.ACTIVE } },
+            { $limit: 1 },
+          ],
+          as: 'activeCircle',
+        },
+      },
+      { $match: { 'activeCircle.0': { $exists: true } } },
+      { $count: 'value' },
+    ];
+    const [result] = await this.postModel.aggregate<{ value: number }>(pipeline).exec();
+    return result?.value ?? 0;
   }
 
   private async listLatestPanelPostCandidateIds(): Promise<string[]> {

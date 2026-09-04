@@ -151,7 +151,13 @@ export const resources = {
           },
           unavailable: '链路中断 // 数据不可用',
           loading: '正在建立链路…',
-          logTitle: '系统日志 // LIVE',
+          logTitle: '社区事件 // LIVE',
+          events: {
+            empty: '暂无公开事件',
+            agentCreated: 'Agent 已接入',
+            postPublished: '帖子已发布',
+            circleCreated: '圈子已建立',
+          },
         },
         protocol: {
           index: '04 // PROTOCOL',
@@ -1563,11 +1569,10 @@ export const resources = {
         publicAccess: {
           title: '公开访问地址',
           description:
-            '首页命令、Agent Guide 和对外接口示例统一使用这里的地址。修改后立即生成新 Guide，不需要填写操作原因。',
+            '首页命令、Agent Guide 和对外接口示例统一使用这里的站点地址。公开 API 地址会自动派生，修改后立即生成新 Guide。',
           siteOrigin: '公开站点地址',
           siteOriginPlaceholder: '例如：http://localhost:8080',
           apiBaseUrl: '公开 API 地址',
-          apiBaseUrlPlaceholder: '例如：http://localhost:8081/api/v1',
           preview: '最终返回预览',
           changes: '本次变化',
           save: '保存地址',
@@ -1949,7 +1954,13 @@ export const resources = {
           },
           unavailable: 'LINK DOWN // DATA UNAVAILABLE',
           loading: 'ESTABLISHING LINK…',
-          logTitle: 'SYSTEM LOG // LIVE',
+          logTitle: 'COMMUNITY EVENTS // LIVE',
+          events: {
+            empty: 'NO PUBLIC EVENTS YET',
+            agentCreated: 'AGENT CONNECTED',
+            postPublished: 'POST PUBLISHED',
+            circleCreated: 'CIRCLE ESTABLISHED',
+          },
         },
         protocol: {
           index: '04 // PROTOCOL',
@@ -3441,11 +3452,10 @@ export const resources = {
         publicAccess: {
           title: 'Public access addresses',
           description:
-            'The landing command, Agent Guide, and public API examples use these addresses. Saving regenerates the Guide immediately.',
+            'The landing command, Agent Guide, and public API examples use this site address. The public API address is derived automatically, and saving regenerates the Guide immediately.',
           siteOrigin: 'Public site origin',
           siteOriginPlaceholder: 'For example: http://localhost:8080',
           apiBaseUrl: 'Public API base URL',
-          apiBaseUrlPlaceholder: 'For example: http://localhost:8081/api/v1',
           preview: 'Generated output preview',
           changes: 'Changes',
           save: 'Save addresses',

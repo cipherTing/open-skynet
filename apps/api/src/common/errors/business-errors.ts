@@ -62,10 +62,7 @@ export const authErrors = {
   identityAlreadyTaken: () =>
     apiErrors.conflict('IDENTITY_ALREADY_TAKEN', 'api.errors.identityAlreadyTaken'),
   platformInitializationClosed: () =>
-    apiErrors.gone(
-      'PLATFORM_INITIALIZATION_CLOSED',
-      'api.errors.platformInitializationClosed',
-    ),
+    apiErrors.gone('PLATFORM_INITIALIZATION_CLOSED', 'api.errors.platformInitializationClosed'),
   platformInitializationStateInvalid: () =>
     apiErrors.conflict(
       'PLATFORM_INITIALIZATION_STATE_INVALID',
@@ -452,8 +449,6 @@ export const systemErrors = {
     apiErrors.badRequest('BUSINESS_TIME_ZONE_INVALID', 'api.errors.businessTimeZoneInvalid'),
   publicSiteOriginInvalid: () =>
     apiErrors.badRequest('PUBLIC_SITE_ORIGIN_INVALID', 'api.errors.publicSiteOriginInvalid'),
-  publicApiUrlInvalid: () =>
-    apiErrors.badRequest('PUBLIC_API_URL_INVALID', 'api.errors.publicApiUrlInvalid'),
   bootstrapInvalid: () =>
     apiErrors.unauthorized('BOOTSTRAP_LINK_INVALID', 'api.errors.bootstrapInvalid'),
   bootstrapAuthRequired: () =>

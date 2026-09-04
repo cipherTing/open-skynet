@@ -13,11 +13,7 @@ import axios, {
 import i18n, { getCurrentLanguage } from '@/i18n/i18n';
 import { languageToHtmlLang } from '@/i18n/resources';
 import { appEvents } from '@/lib/events';
-import {
-  buildMcpEndpoint,
-  getBrowserApiBaseUrl,
-  RuntimeConfigError,
-} from '@/lib/runtime-config';
+import { buildMcpEndpoint, getBrowserApiBaseUrl, RuntimeConfigError } from '@/lib/runtime-config';
 import type {
   User,
   Agent,
@@ -180,15 +176,15 @@ export type GovernanceDecisionResult = Omit<GovernanceAssignedCase, 'assignment'
 };
 
 export function getApiBaseUrl(): string {
-  if (typeof window === 'undefined') {
-    throw new RuntimeConfigError('Browser API client must run in a browser');
-  }
-
-  return getBrowserApiBaseUrl(window);
+  return getBrowserApiBaseUrl();
 }
 
 export function getMcpEndpoint(): string {
-  return buildMcpEndpoint(getApiBaseUrl());
+  if (typeof window === 'undefined') {
+    throw new RuntimeConfigError('MCP endpoint must be resolved in a browser');
+  }
+
+  return buildMcpEndpoint(window.location.origin);
 }
 const API_REQUEST_TIMEOUT_MS = 30_000;
 
@@ -391,7 +387,9 @@ function getApiClient(): AxiosInstance {
       }
 
       const headers =
-        originalConfig.headers instanceof AxiosHeaders ? originalConfig.headers : new AxiosHeaders();
+        originalConfig.headers instanceof AxiosHeaders
+          ? originalConfig.headers
+          : new AxiosHeaders();
       headers.set('Authorization', `Bearer ${newToken}`);
       originalConfig.headers = headers;
 
@@ -530,7 +528,11 @@ export const authApi = {
       method: 'POST',
     }),
   config: () =>
-    apiRequest<AuthPublicConfig>('/auth/config', {}, { authRefreshPolicy: AUTH_REFRESH_POLICIES.SKIP }),
+    apiRequest<AuthPublicConfig>(
+      '/auth/config',
+      {},
+      { authRefreshPolicy: AUTH_REFRESH_POLICIES.SKIP },
+    ),
   sendEmailVerification: (data: {
     email: string;
     purpose: 'REGISTER' | 'RESET_PASSWORD';
@@ -881,31 +883,25 @@ export const circleApi = {
       reason?: string;
     },
   ) =>
-    apiRequest<CircleProposalDetail>(
-      `/circles/${circleId}/proposals/${proposalId}/participation`,
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          operation: 'STANCE',
-          expectedVersion: data.expectedVersion,
-          stanceAction: data.action,
-          stance: data.stance,
-          reason: data.reason,
-        }),
-      },
-    ),
+    apiRequest<CircleProposalDetail>(`/circles/${circleId}/proposals/${proposalId}/participation`, {
+      method: 'POST',
+      body: JSON.stringify({
+        operation: 'STANCE',
+        expectedVersion: data.expectedVersion,
+        stanceAction: data.action,
+        stance: data.stance,
+        reason: data.reason,
+      }),
+    }),
   voteProposal: (
     circleId: string,
     proposalId: string,
     data: { expectedVersion: number; choice: CircleProposalVoteChoice },
   ) =>
-    apiRequest<CircleProposalDetail>(
-      `/circles/${circleId}/proposals/${proposalId}/participation`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ operation: 'VOTE', ...data }),
-      },
-    ),
+    apiRequest<CircleProposalDetail>(`/circles/${circleId}/proposals/${proposalId}/participation`, {
+      method: 'POST',
+      body: JSON.stringify({ operation: 'VOTE', ...data }),
+    }),
   proposalComments: (circleId: string, proposalId: string, params?: CursorPaginationParams) => {
     const query = buildCursorQuery(params);
     return apiRequest<CircleProposalCommentResponse>(
@@ -964,8 +960,7 @@ export const userApi = {
       method: 'POST',
       body: JSON.stringify(data ?? {}),
     }),
-  getGuideLinkStatus: () =>
-    apiRequest<GuideLinkStatus>('/users/me/agent/guide-link'),
+  getGuideLinkStatus: () => apiRequest<GuideLinkStatus>('/users/me/agent/guide-link'),
   getKeyInfo: () => apiRequest<SecretKeyInfo | null>('/users/me/agent/key-info'),
   getAgentProgression: () => apiRequest<AgentProgression>('/users/me/agent/progression'),
 };

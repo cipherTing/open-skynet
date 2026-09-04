@@ -61,6 +61,42 @@ test('public landing MCP panel does not resolve its endpoint during render', () 
   assert.match(source, /useSyncExternalStore\(/u);
 });
 
+test('public access settings accept only the site origin and show the API address as derived output', () => {
+  const sectionSource = readFileSync(
+    new URL('../components/admin/AdminSystemSections.tsx', import.meta.url),
+    'utf8',
+  );
+  const adminApiSource = readFileSync(new URL('./admin-api.ts', import.meta.url), 'utf8');
+  const publicAccessEditorSource = sectionSource.slice(
+    sectionSource.indexOf('function PublicAccessEditor'),
+    sectionSource.indexOf('export function PublicAccessSection'),
+  );
+
+  assert.doesNotMatch(publicAccessEditorSource, /<form\.AppField name="apiBaseUrl">/u);
+  assert.doesNotMatch(publicAccessEditorSource, /defaultValues:\s*\{[\s\S]*?apiBaseUrl:/u);
+  assert.match(publicAccessEditorSource, /getPublicAccessPreview\(values\.siteOrigin\)/u);
+  assert.doesNotMatch(
+    adminApiSource,
+    /updatePublicAccessConfig:\s*\(data:\s*\{[\s\S]*?apiBaseUrl:/u,
+  );
+  assert.match(publicAccessEditorSource, /hasPublicAccessSiteOriginChange\(/u);
+});
+
+test('root layout no longer blocks rendering on a browser runtime config script', () => {
+  const source = readFileSync(new URL('../app/layout.tsx', import.meta.url), 'utf8');
+
+  assert.doesNotMatch(source, /RuntimeConfigLoader|runtime-config\.js/u);
+  assert.throws(
+    () => readFileSync(new URL('../app/runtime-config.js/route.ts', import.meta.url), 'utf8'),
+    /ENOENT/u,
+  );
+  assert.throws(
+    () =>
+      readFileSync(new URL('../components/system/RuntimeConfigLoader.ts', import.meta.url), 'utf8'),
+    /ENOENT/u,
+  );
+});
+
 test('search-parameter consumers declare their own Suspense boundary', () => {
   for (const componentFile of [
     '../components/forum/PostDetail.tsx',

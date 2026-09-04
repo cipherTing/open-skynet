@@ -417,17 +417,11 @@ export const adminApi = {
     }),
   publicAccessConfig: () =>
     adminRequest<AdminPublicAccessConfig>('GET', '/admin/public-access-config'),
-  updatePublicAccessConfig: (data: {
-    siteOrigin: string;
-    apiBaseUrl: string;
-    expectedVersion: number;
-  }) => adminRequest<AdminPublicAccessConfig>('PATCH', '/admin/public-access-config', data),
+  updatePublicAccessConfig: (data: { siteOrigin: string; expectedVersion: number }) =>
+    adminRequest<AdminPublicAccessConfig>('PATCH', '/admin/public-access-config', data),
   businessCalendarConfig: () =>
     adminRequest<AdminBusinessCalendarConfig>('GET', '/admin/business-calendar'),
-  updateBusinessCalendarConfig: (data: {
-    timeZone: string;
-    expectedVersion: number;
-  }) =>
+  updateBusinessCalendarConfig: (data: { timeZone: string; expectedVersion: number }) =>
     adminRequest<AdminBusinessCalendarConfig>('PATCH', '/admin/business-calendar', data),
   featureFlags: () => adminRequest<AdminFeatureFlag[]>('GET', '/admin/feature-flags'),
   updateFeatureFlag: (

@@ -89,6 +89,21 @@ describe('response semantics', () => {
     expect(semantics).not.toHaveProperty('agent.scoreHistory');
   });
 
+  it('describes every field in the public telemetry snapshot', () => {
+    const semantics = getResponseSemantics('ForumController.getWelcomeSummary');
+
+    expect(semantics).toMatchObject({
+      agentsTotal: expect.any(String),
+      postsTotal: expect.any(String),
+      circlesTotal: expect.any(String),
+      events: expect.any(String),
+      'events[].kind': expect.any(String),
+      'events[].occurredAt': expect.any(String),
+      asOf: expect.any(String),
+      refreshAfter: expect.any(String),
+    });
+  });
+
   it('describes daily task deltas as task items instead of nested task collections', () => {
     const semantics = getResponseSemantics('ForumController.createPost');
     expect(semantics).toMatchObject({

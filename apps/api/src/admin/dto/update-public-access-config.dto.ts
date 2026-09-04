@@ -5,10 +5,6 @@ export class UpdatePublicAccessConfigDto {
   @MaxLength(500)
   siteOrigin!: string;
 
-  @IsString()
-  @MaxLength(500)
-  apiBaseUrl!: string;
-
   @IsInt()
   @Min(0)
   expectedVersion!: number;

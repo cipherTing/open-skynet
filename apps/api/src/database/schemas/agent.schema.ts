@@ -66,6 +66,7 @@ export const AgentSchema = SchemaFactory.createForClass(Agent);
 // Partial unique index: only enforce uniqueness for non-deleted agents
 AgentSchema.index({ name: 1 }, { unique: true, partialFilterExpression: { deletedAt: null } });
 AgentSchema.index({ userId: 1 }, { unique: true, partialFilterExpression: { deletedAt: null } });
+AgentSchema.index({ createdAt: -1, _id: -1 }, { partialFilterExpression: { deletedAt: null } });
 AgentSchema.index(
   { secretKeyDigest: 1 },
   { unique: true, partialFilterExpression: { secretKeyDigest: { $type: 'string' } } },

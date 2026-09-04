@@ -4,14 +4,8 @@ import { getConnectionToken, getModelToken, MongooseModule } from '@nestjs/mongo
 import { Connection } from 'mongoose';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { DatabaseService } from '@/database/database.service';
-import {
-  AdminAuditLog,
-  AdminAuditLogSchema,
-} from '@/database/schemas/admin-audit-log.schema';
-import {
-  Announcement,
-  AnnouncementSchema,
-} from '@/database/schemas/announcement.schema';
+import { AdminAuditLog, AdminAuditLogSchema } from '@/database/schemas/admin-audit-log.schema';
+import { Announcement, AnnouncementSchema } from '@/database/schemas/announcement.schema';
 import {
   FEATURE_FLAG_KEYS,
   FeatureFlag,
@@ -32,6 +26,7 @@ import { CircleProposal } from '@/database/schemas/circle-proposal.schema';
 import { GovernanceCase } from '@/database/schemas/governance-case.schema';
 import { ContentReviewRequest } from '@/database/schemas/content-review-request.schema';
 import {
+  PUBLIC_ACCESS_CONFIG_KEY,
   PublicAccessConfig,
   PublicAccessConfigSchema,
 } from '@/database/schemas/public-access-config.schema';
@@ -65,15 +60,13 @@ describe('AdminSystemService integration', () => {
   const publicAccessServiceMock = {
     getPublicConfig: jest.fn(),
     normalizeSiteOrigin: jest.fn((value: string) => value.trim().replace(/\/+$/u, '')),
-    normalizeApiBaseUrl: jest.fn((value: string) => value.trim().replace(/\/+$/u, '')),
     serialize: jest.fn((config: PublicAccessConfig) => ({
       siteOrigin: config.siteOrigin,
-      apiBaseUrl: config.apiBaseUrl,
+      apiBaseUrl: `${config.siteOrigin}/api/v1`,
       guideUrl: `${config.siteOrigin}/guide.md`,
       version: config.version,
       updatedAt: config.updatedAt.toISOString(),
     })),
-    invalidateGuideCache: jest.fn().mockResolvedValue(undefined),
   };
 
   beforeAll(async () => {
@@ -203,16 +196,19 @@ describe('AdminSystemService integration', () => {
       }),
     ).resolves.toEqual({ deleted: true });
 
-    const auditEntries = await connection.model(AdminAuditLog.name).find({ targetType: 'ANNOUNCEMENT' }).lean();
+    const auditEntries = await connection
+      .model(AdminAuditLog.name)
+      .find({ targetType: 'ANNOUNCEMENT' })
+      .lean();
     expect(auditEntries).toHaveLength(6);
     expect(auditEntries.every((entry) => entry.reason === null)).toBe(true);
   });
 
   it('rolls back announcement creation when audit persistence fails', async () => {
     jest.spyOn(auditService, 'record').mockRejectedValueOnce(new Error('audit failed'));
-    await expect(
-      service.createAnnouncement(ADMIN, announcementInput()),
-    ).rejects.toThrow('audit failed');
+    await expect(service.createAnnouncement(ADMIN, announcementInput())).rejects.toThrow(
+      'audit failed',
+    );
     expect(await connection.model(Announcement.name).countDocuments()).toBe(0);
   });
 
@@ -239,13 +235,9 @@ describe('AdminSystemService integration', () => {
   });
 
   it('updates only a fixed feature flag and requires the current version', async () => {
-    const created = await service.updateFeatureFlag(
-      ADMIN,
-      FEATURE_FLAG_KEYS.REGISTRATION,
-      {
-        enabled: false,
-      },
-    );
+    const created = await service.updateFeatureFlag(ADMIN, FEATURE_FLAG_KEYS.REGISTRATION, {
+      enabled: false,
+    });
     expect(created).toMatchObject({
       key: FEATURE_FLAG_KEYS.REGISTRATION,
       enabled: false,
@@ -263,31 +255,29 @@ describe('AdminSystemService integration', () => {
     expect(flags.find((flag) => flag.key === FEATURE_FLAG_KEYS.REGISTRATION)?.enabled).toBe(false);
   });
 
-  it('updates public access addresses with version checks and no reason field', async () => {
+  it('updates the public site origin, persists its derived API URL, and keeps version checks', async () => {
     const first = await service.updatePublicAccessConfig(ADMIN, {
       siteOrigin: 'https://skynet.example.com/',
-      apiBaseUrl: 'https://api.skynet.example.com/api/v1/',
       expectedVersion: 0,
     });
     expect(first).toMatchObject({
       siteOrigin: 'https://skynet.example.com',
-      apiBaseUrl: 'https://api.skynet.example.com/api/v1',
+      apiBaseUrl: 'https://skynet.example.com/api/v1',
+      version: 1,
+    });
+    await expect(
+      connection.model(PublicAccessConfig.name).findOne({ key: PUBLIC_ACCESS_CONFIG_KEY }).lean(),
+    ).resolves.toMatchObject({
+      siteOrigin: 'https://skynet.example.com',
+      apiBaseUrl: 'https://skynet.example.com/api/v1',
       version: 1,
     });
     await expect(
       service.updatePublicAccessConfig(ADMIN, {
         siteOrigin: 'https://other.example.com',
-        apiBaseUrl: 'https://api.other.example.com/api/v1',
         expectedVersion: 0,
       }),
     ).rejects.toBeInstanceOf(ConflictException);
-    expect(publicAccessServiceMock.invalidateGuideCache).toHaveBeenCalledWith(
-      expect.objectContaining({
-        siteOrigin: 'http://localhost:8080',
-        apiBaseUrl: 'http://localhost:8081/api/v1',
-        version: 0,
-      }),
-    );
     const audit = await connection.model(AdminAuditLog.name).findOne({
       action: 'PUBLIC_ACCESS_CONFIG_UPDATED',
     });
@@ -298,16 +288,26 @@ describe('AdminSystemService integration', () => {
     });
   });
 
+  it('does not require guide cache cleanup after a public site update', async () => {
+    await expect(
+      service.updatePublicAccessConfig(ADMIN, {
+        siteOrigin: 'https://skynet.example.com',
+        expectedVersion: 0,
+      }),
+    ).resolves.toMatchObject({
+      siteOrigin: 'https://skynet.example.com',
+      apiBaseUrl: 'https://skynet.example.com/api/v1',
+      version: 1,
+    });
+  });
+
   it('records the injected default public addresses before the first saved setting', async () => {
     const previousPublicWebPort = process.env.SKYNET_PUBLIC_WEB_PORT;
-    const previousPublicApiPort = process.env.SKYNET_PUBLIC_API_PORT;
     process.env.SKYNET_PUBLIC_WEB_PORT = '19080';
-    process.env.SKYNET_PUBLIC_API_PORT = '19081';
 
     try {
       await service.updatePublicAccessConfig(ADMIN, {
         siteOrigin: 'https://skynet.example.com',
-        apiBaseUrl: 'https://api.skynet.example.com/api/v1',
         expectedVersion: 0,
       });
 
@@ -319,7 +319,7 @@ describe('AdminSystemService integration', () => {
         changes: {
           before: {
             siteOrigin: 'http://localhost:19080',
-            apiBaseUrl: 'http://localhost:19081/api/v1',
+            apiBaseUrl: 'http://localhost:19080/api/v1',
             version: 0,
           },
         },
@@ -327,9 +327,36 @@ describe('AdminSystemService integration', () => {
     } finally {
       if (previousPublicWebPort === undefined) delete process.env.SKYNET_PUBLIC_WEB_PORT;
       else process.env.SKYNET_PUBLIC_WEB_PORT = previousPublicWebPort;
-      if (previousPublicApiPort === undefined) delete process.env.SKYNET_PUBLIC_API_PORT;
-      else process.env.SKYNET_PUBLIC_API_PORT = previousPublicApiPort;
     }
+  });
+
+  it('ignores a legacy stored API URL when auditing a site-origin update', async () => {
+    await connection.model(PublicAccessConfig.name).create({
+      key: PUBLIC_ACCESS_CONFIG_KEY,
+      siteOrigin: 'https://old.example.com/',
+      apiBaseUrl: 'https://legacy-api.example.com/api/v1',
+      version: 7,
+      updatedByUserId: ADMIN.userId,
+    });
+
+    await service.updatePublicAccessConfig(ADMIN, {
+      siteOrigin: 'https://new.example.com',
+      expectedVersion: 7,
+    });
+
+    await expect(
+      connection.model(AdminAuditLog.name).findOne({
+        action: 'PUBLIC_ACCESS_CONFIG_UPDATED',
+      }),
+    ).resolves.toMatchObject({
+      changes: {
+        before: {
+          siteOrigin: 'https://old.example.com',
+          apiBaseUrl: 'https://old.example.com/api/v1',
+          version: 7,
+        },
+      },
+    });
   });
 
   it('updates the global business time zone with optimistic version checks', async () => {

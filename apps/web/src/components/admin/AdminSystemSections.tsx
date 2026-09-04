@@ -40,6 +40,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/components/ui/SignalToast';
 import { ApiError, type AuthPublicConfig } from '@/lib/api';
+import { getPublicAccessPreview, hasPublicAccessSiteOriginChange } from '@/lib/public-access-url';
 import { authKeys } from '@/lib/query-keys';
 import {
   adminApi,
@@ -253,9 +254,7 @@ export function AnnouncementsSection() {
                   <div>
                     <ExactTime date={item.startsAt} />
                   </div>
-                  <div className="mt-1">
-                    {item.endsAt ? <ExactTime date={item.endsAt} /> : '—'}
-                  </div>
+                  <div className="mt-1">{item.endsAt ? <ExactTime date={item.endsAt} /> : '—'}</div>
                 </td>
                 <td className="px-3 py-3">
                   <div className="flex flex-wrap gap-1.5">
@@ -615,26 +614,22 @@ function PublicAccessEditor({ config }: { config: AdminPublicAccessConfig }) {
   const form = useAppForm({
     defaultValues: {
       siteOrigin: config.siteOrigin,
-      apiBaseUrl: config.apiBaseUrl,
     },
     validators: {
       onSubmit: z.object({
         siteOrigin: z.url(),
-        apiBaseUrl: z.url(),
       }),
     },
     onSubmit: async ({ value }) => {
       try {
         const updated = await adminApi.updatePublicAccessConfig({
           siteOrigin: value.siteOrigin.trim(),
-          apiBaseUrl: value.apiBaseUrl.trim(),
           expectedVersion: config.version,
         });
         queryClient.setQueryData(['admin', 'publicAccess'], updated);
         await queryClient.invalidateQueries({ queryKey: ['system', 'public-access-config'] });
         form.reset({
           siteOrigin: updated.siteOrigin,
-          apiBaseUrl: updated.apiBaseUrl,
         });
         toast.success(t('admin.publicAccess.saved'));
       } catch (error) {
@@ -666,21 +661,16 @@ function PublicAccessEditor({ config }: { config: AdminPublicAccessConfig }) {
               />
             )}
           </form.AppField>
-          <form.AppField name="apiBaseUrl">
-            {(field) => (
-              <field.InputField
-                label={t('admin.publicAccess.apiBaseUrl')}
-                placeholder={t('admin.publicAccess.apiBaseUrlPlaceholder')}
-              />
-            )}
-          </form.AppField>
           <form.Subscribe selector={(state) => state.values}>
             {(values) => {
-              const siteOrigin = values.siteOrigin.trim();
-              const apiBaseUrl = values.apiBaseUrl.trim();
-              const previewGuideUrl = `${siteOrigin.replace(/\/+$/u, '')}/guide.md`;
-              const siteChanged = siteOrigin !== config.siteOrigin;
-              const apiChanged = apiBaseUrl !== config.apiBaseUrl;
+              const preview = getPublicAccessPreview(values.siteOrigin);
+              const siteOrigin = preview?.siteOrigin ?? values.siteOrigin.trim();
+              const apiBaseUrl = preview?.apiBaseUrl ?? '—';
+              const previewGuideUrl = preview?.guideUrl ?? '—';
+              const siteChanged = hasPublicAccessSiteOriginChange(
+                values.siteOrigin,
+                config.siteOrigin,
+              );
               return (
                 <>
                   <div>
@@ -693,7 +683,7 @@ function PublicAccessEditor({ config }: { config: AdminPublicAccessConfig }) {
                       <p>export SKYNET_API_BASE=&quot;{apiBaseUrl}&quot;</p>
                     </div>
                   </div>
-                  {siteChanged || apiChanged ? (
+                  {siteChanged ? (
                     <div className="rounded-none border border-[var(--t-accent-dim)] bg-[var(--t-accent-wash)] px-3 py-2 text-xs text-white/60">
                       <p className="font-bold text-[var(--t-accent)]">
                         {t('admin.publicAccess.changes')}
@@ -701,11 +691,6 @@ function PublicAccessEditor({ config }: { config: AdminPublicAccessConfig }) {
                       {siteChanged ? (
                         <p className="mt-1 break-all">
                           {config.siteOrigin} → {siteOrigin}
-                        </p>
-                      ) : null}
-                      {apiChanged ? (
-                        <p className="mt-1 break-all">
-                          {config.apiBaseUrl} → {apiBaseUrl}
                         </p>
                       ) : null}
                     </div>
@@ -720,7 +705,11 @@ function PublicAccessEditor({ config }: { config: AdminPublicAccessConfig }) {
                 ? t('admin.publicAccess.updatedAt', { time: formatAdminTime(config.updatedAt) })
                 : t('admin.publicAccess.defaultValue')}
             </span>
-            <form.Subscribe selector={(state) => !state.isDefaultValue}>
+            <form.Subscribe
+              selector={(state) =>
+                hasPublicAccessSiteOriginChange(state.values.siteOrigin, config.siteOrigin)
+              }
+            >
               {(hasUnsavedChanges) => (
                 <form.SubmitButton
                   variant="primary"
@@ -791,7 +780,9 @@ function BusinessTimeZoneSelect({
                   }}
                   className="gap-3"
                 >
-                  <Check className={`h-4 w-4 ${timeZone === value ? 'opacity-100' : 'opacity-0'}`} />
+                  <Check
+                    className={`h-4 w-4 ${timeZone === value ? 'opacity-100' : 'opacity-0'}`}
+                  />
                   <span className="font-mono text-[12px]">{timeZone}</span>
                 </CommandItem>
               ))}

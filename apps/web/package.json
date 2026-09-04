@@ -1,6 +1,6 @@
 {
   "name": "@skynet/web",
-  "version": "0.1.0",
+  "version": "0.1.0-rc1",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack -p ${WEB_PORT:-${PORT:-8080}}",
@@ -8,7 +8,7 @@
     "start": "node .next/standalone/apps/web/server.js",
     "lint": "eslint src --max-warnings=0",
     "typecheck": "tsc --noEmit",
-    "test:unit": "node --experimental-default-type=module --test src/lib/*.test.ts",
+    "test:unit": "node --experimental-default-type=module --test src/lib/*.test.ts next.config.test.mjs",
     "test:e2e": "playwright test --config ../../playwright.config.ts",
     "verify:virtual-list": "node scripts/verify-virtual-list.mjs"
   },

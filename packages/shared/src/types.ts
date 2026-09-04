@@ -454,10 +454,18 @@ export interface PostPanelSummary {
   latestPosts: PostPanelLatestPosts;
 }
 
+export type CommunityTelemetryEventKind = 'AGENT_CREATED' | 'POST_PUBLISHED' | 'CIRCLE_CREATED';
+
+export interface CommunityTelemetryEvent {
+  kind: CommunityTelemetryEventKind;
+  occurredAt: string;
+}
+
 export interface WelcomeSummary {
   agentsTotal: number;
   postsTotal: number;
   circlesTotal: number;
+  events: CommunityTelemetryEvent[];
   asOf: string;
   refreshAfter: string;
 }

@@ -118,33 +118,25 @@ function assertApiReady(composePrefix, env) {
   runDocker([...composePrefix, 'exec', '-T', 'api', 'node', '-e', script], env);
 }
 
-function assertApiCors(composePrefix, env, webPort) {
-  const origin = `http://localhost:${webPort}`;
+function assertApiCors(composePrefix, env, origin) {
   const script = [
     'void (async () => {',
     `const response = await fetch('http://127.0.0.1:8081/api/v1/health/ready', { headers: { Origin: ${JSON.stringify(origin)} } });`,
     'if (!response.ok) throw new Error(`API CORS probe returned ${response.status}`);',
-    `if (response.headers.get('access-control-allow-origin') !== ${JSON.stringify(origin)}) throw new Error('API did not return the derived CORS origin');`,
+    `if (response.headers.get('access-control-allow-origin') !== ${JSON.stringify(origin)}) throw new Error('API did not return the configured CORS origin');`,
     "if (response.headers.get('access-control-allow-credentials') !== 'true') throw new Error('API did not allow credentialed CORS requests');",
     '})().catch((error) => { console.error(error); process.exit(1); });',
   ].join(' ');
   runDocker([...composePrefix, 'exec', '-T', 'api', 'node', '-e', script], env);
 }
 
-function assertWebContract(composePrefix, env, apiPort) {
-  const publicApiUrl = `http://localhost:${apiPort}/api/v1`;
-  const apiOrigin = new URL(publicApiUrl).origin;
+function assertWebContract(composePrefix, env) {
   const script = [
     'void (async () => {',
-    "const configResponse = await fetch('http://127.0.0.1:8080/runtime-config.js');",
-    'if (!configResponse.ok) throw new Error(`runtime-config.js returned ${configResponse.status}`);',
-    'const configBody = await configResponse.text();',
-    `const expectedApiBaseUrl = ${JSON.stringify(publicApiUrl)};`,
-    'if (!configBody.includes(`"apiBaseUrl":"${expectedApiBaseUrl}"`)) throw new Error("runtime-config.js did not expose the derived API URL");',
     "const pageResponse = await fetch('http://127.0.0.1:8080/');",
     'if (!pageResponse.ok) throw new Error(`Web health returned ${pageResponse.status}`);',
     "const csp = pageResponse.headers.get('content-security-policy') ?? '';",
-    `if (!csp.includes(${JSON.stringify(`connect-src 'self' ${apiOrigin}`)})) throw new Error('CSP did not include the derived API origin');`,
+    `if (!csp.includes(${JSON.stringify("connect-src 'self'")})) throw new Error("CSP did not allow same-origin API requests");`,
     '})().catch((error) => { console.error(error); process.exit(1); });',
   ].join(' ');
   runDocker([...composePrefix, 'exec', '-T', 'web', 'node', '-e', script], env);
@@ -163,12 +155,17 @@ function main(argv) {
     'API_PORT',
     DEFAULT_API_PORT,
   );
+  const corsOrigin =
+    process.env.CORS_ORIGIN?.trim() ||
+    fileEnvironment.CORS_ORIGIN?.trim() ||
+    `http://localhost:${webPort}`;
   const projectName = `skynet-smoke-${process.pid}-${randomUUID().replaceAll('-', '').slice(0, 12)}`;
   const env = {
     ...process.env,
     SKYNET_IMAGE_TAG: tag,
     WEB_PORT: String(webPort),
     API_PORT: String(apiPort),
+    CORS_ORIGIN: corsOrigin,
     JWT_SECRET: `smoke-jwt-${randomUUID().replaceAll('-', '')}`,
     APP_ENCRYPTION_KEY: `smoke-encryption-${randomUUID().replaceAll('-', '')}`,
   };
@@ -193,8 +190,8 @@ function main(argv) {
     );
     assertIndexGateCompleted(composePrefix, env);
     assertApiReady(composePrefix, env);
-    assertApiCors(composePrefix, env, webPort);
-    assertWebContract(composePrefix, env, apiPort);
+    assertApiCors(composePrefix, env, corsOrigin);
+    assertWebContract(composePrefix, env);
   } catch (error) {
     failure = error;
   } finally {

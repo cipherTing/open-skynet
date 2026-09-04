@@ -17,14 +17,14 @@ GitHub Actions 使用以下 **Repository Actions Variables**：
 
 GitHub **Repository Actions Secret** 只配置 `DOCKERHUB_TOKEN`。它是 Docker Hub Personal Access Token，长期有效、不含 Delete 权限，只授予发布所需的写入权限。Docker Hub 无法创建满足“可推送但不含 Delete 权限”的 Token 时，禁止改用带 Delete 权限的 Token。
 
-`RELEASE_TAG` 由 workflow 从 `github.ref_name` 自动注入，不需要手工配置。Compose 的浏览器 API 地址与 API CORS Origin 都由 `WEB_PORT`、`API_PORT` 派生，不依赖 GitHub Variables。
+`RELEASE_TAG` 由 workflow 从 `github.ref_name` 自动注入，不需要手工配置。浏览器固定使用当前站点下的 `/api/v1`；部署环境通过反向代理提供同源入口，并通过 `.env` 显式配置 API CORS Origin 和代理信任边界，不依赖 GitHub Variables。
 
 ## 镜像策略
 
 - Pull Request：运行源码 gate 和容器 smoke，不读取 Docker Hub 凭据，不推送镜像。
 - `main` 成功提交：在同一 job 对已 smoke 的本地 API/Web 镜像打上 `dev-<完整 Git SHA>` 并推送。
-- 正式 Git tag：先完成 `pnpm release:verify`，确认 tag 提交是 `origin/main` 的祖先，再 smoke 并推送完整 SemVer tag，例如 `v0.1.0` 对应 `0.1.0`。
-- 不发布 `latest`、RC、分支名、major 或 minor 浮动 tag。
+- Git tag：先完成 `pnpm release:verify`，确认 tag 提交是 `origin/main` 的祖先，再 smoke 并推送完整 SemVer tag，例如 `v0.1.0-rc1` 对应 `0.1.0-rc1`。
+- 不发布 `latest`、分支名、major 或 minor 浮动 tag；候选发布使用完整 SemVer 预发布版本，例如 `v0.1.0-rc1` 对应 `0.1.0-rc1`。
 - 镜像 tag 只允许写入一次：远端 tag 不存在时推送；存在且 digest 相同允许重跑；存在但 digest 不同必须失败，禁止覆盖。
 
 ## 发布前
@@ -46,16 +46,16 @@ GitHub **Repository Actions Secret** 只配置 `DOCKERHUB_TOKEN`。它是 Docker
 部署机必须 checkout 与目标镜像同一 Git 提交或同一发布 tag，保留 `compose.yaml.example` 和 `docker/` 初始化脚本。Docker Hub 镜像不能单独替代这些部署文件。
 
 ```bash
-git checkout v0.1.0
+git checkout v0.1.0-rc1
 cp compose.yaml.example compose.yaml
 cp .env.example .env
-# 填写端口和必要的凭据，并确认 SKYNET_IMAGE_TAG=0.1.0。
+# 填写端口、必要凭据、CORS_ORIGIN 和 TRUST_PROXY，并确认 SKYNET_IMAGE_TAG=0.1.0-rc1。
 docker compose up -d
 ```
 
 `compose.yaml` 是部署机从模板复制出的本地文件，不纳入 Git 管理。
 
-Compose 只绑定 loopback，浏览器入口为 `http://localhost:<WEB_PORT>`。外部反向代理、TLS 和公网 IP/域名由部署环境提供；本项目不创建、不配置或验证这些基础设施。
+Compose 只绑定 loopback。浏览器通过站点 Origin 下的 `/api/v1` 访问 API；公网反向代理必须保留该 URI 前缀，并分别转发 `/api/*` 到 API、其他路径到 Web。管理员公开访问设置填写 HTTPS 站点根地址，公开 API 地址由系统派生。单层反向代理部署将 `CORS_ORIGIN` 设为站点 Origin、`TRUST_PROXY` 设为 `1`；多层代理必须按实际可信跳数配置，禁止直接信任任意来源。
 
 ## 发布边界
 

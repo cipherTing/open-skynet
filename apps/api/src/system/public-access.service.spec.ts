@@ -14,7 +14,6 @@ describe('PublicAccessService', () => {
   const redis = {
     get: jest.fn(),
     set: jest.fn(),
-    del: jest.fn(),
     eval: jest.fn(),
   };
   const agentModel = { findById: jest.fn() };
@@ -22,7 +21,6 @@ describe('PublicAccessService', () => {
   const previousJwtSecret = process.env.JWT_SECRET;
   const previousNodeEnv = process.env.NODE_ENV;
   const previousPublicWebPort = process.env.SKYNET_PUBLIC_WEB_PORT;
-  const previousPublicApiPort = process.env.SKYNET_PUBLIC_API_PORT;
 
   beforeAll(async () => {
     process.env.APP_ENCRYPTION_KEY = 'unit-test-app-encryption-key-0123456789-abcdef';
@@ -43,11 +41,9 @@ describe('PublicAccessService', () => {
     if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
     else process.env.NODE_ENV = previousNodeEnv;
     delete process.env.SKYNET_PUBLIC_WEB_PORT;
-    delete process.env.SKYNET_PUBLIC_API_PORT;
     configModel.findOne.mockResolvedValue(null);
     redis.get.mockResolvedValue(null);
     redis.set.mockResolvedValue('OK');
-    redis.del.mockResolvedValue(1);
   });
 
   afterAll(async () => {
@@ -60,26 +56,22 @@ describe('PublicAccessService', () => {
     else process.env.NODE_ENV = previousNodeEnv;
     if (previousPublicWebPort === undefined) delete process.env.SKYNET_PUBLIC_WEB_PORT;
     else process.env.SKYNET_PUBLIC_WEB_PORT = previousPublicWebPort;
-    if (previousPublicApiPort === undefined) delete process.env.SKYNET_PUBLIC_API_PORT;
-    else process.env.SKYNET_PUBLIC_API_PORT = previousPublicApiPort;
   });
 
-  it('derives missing public access addresses from the injected public ports', async () => {
+  it('derives a same-origin public API address from the injected public Web port', async () => {
     process.env.SKYNET_PUBLIC_WEB_PORT = '19080';
-    process.env.SKYNET_PUBLIC_API_PORT = '19081';
 
     await expect(service.getPublicConfig()).resolves.toEqual({
       siteOrigin: 'http://localhost:19080',
-      apiBaseUrl: 'http://localhost:19081/api/v1',
+      apiBaseUrl: 'http://localhost:19080/api/v1',
       guideUrl: 'http://localhost:19080/guide.md',
       version: 0,
       updatedAt: null,
     });
   });
 
-  it('keeps saved public access addresses when injected ports change', async () => {
+  it('derives a saved public API address from site origin instead of a legacy stored API URL', async () => {
     process.env.SKYNET_PUBLIC_WEB_PORT = '19080';
-    process.env.SKYNET_PUBLIC_API_PORT = '19081';
     configModel.findOne.mockResolvedValue({
       siteOrigin: 'https://skynet.example.com',
       apiBaseUrl: 'https://api.skynet.example.com/api/v1',
@@ -89,7 +81,7 @@ describe('PublicAccessService', () => {
 
     await expect(service.getPublicConfig()).resolves.toEqual({
       siteOrigin: 'https://skynet.example.com',
-      apiBaseUrl: 'https://api.skynet.example.com/api/v1',
+      apiBaseUrl: 'https://skynet.example.com/api/v1',
       guideUrl: 'https://skynet.example.com/guide.md',
       version: 4,
       updatedAt: '2026-08-25T00:00:00.000Z',
@@ -99,7 +91,7 @@ describe('PublicAccessService', () => {
   it('renders the dynamic Guide with default addresses and a stable ETag', async () => {
     const first = await service.renderAgentGuide();
     const second = await service.renderAgentGuide();
-    expect(first.content).toContain('http://localhost:8081/api/v1');
+    expect(first.content).toContain('http://localhost:8080/api/v1');
     expect(first.content).toContain('http://localhost:8080/guide.md');
     expect(first.content).not.toContain('{{SKYNET_');
     expect(first.etag).toBe(second.etag);
@@ -120,31 +112,23 @@ describe('PublicAccessService', () => {
       return Promise.resolve('OK');
     });
     process.env.SKYNET_PUBLIC_WEB_PORT = '19080';
-    process.env.SKYNET_PUBLIC_API_PORT = '19081';
 
     const first = await service.renderAgentGuide();
 
     process.env.SKYNET_PUBLIC_WEB_PORT = '29080';
-    process.env.SKYNET_PUBLIC_API_PORT = '29081';
     const second = await service.renderAgentGuide();
 
-    expect(first.content).toContain('http://localhost:19081/api/v1');
-    expect(second.content).toContain('http://localhost:29081/api/v1');
+    expect(first.content).toContain('http://localhost:19080/api/v1');
+    expect(second.content).toContain('http://localhost:29080/api/v1');
     expect(second.content).toContain('http://localhost:29080/guide.md');
     expect(redis.set).toHaveBeenCalledTimes(2);
   });
 
-  it('validates the site origin separately from the API base path', () => {
+  it('normalizes the site origin used as the only public address input', () => {
     expect(service.normalizeSiteOrigin('https://skynet.example.com/')).toBe(
       'https://skynet.example.com',
     );
-    expect(service.normalizeApiBaseUrl('https://api.example.com/api/v1/')).toBe(
-      'https://api.example.com/api/v1',
-    );
     expect(() => service.normalizeSiteOrigin('https://skynet.example.com/workspace')).toThrow(
-      BadRequestException,
-    );
-    expect(() => service.normalizeApiBaseUrl('https://api.example.com/api/v1?token=x')).toThrow(
       BadRequestException,
     );
   });
@@ -153,15 +137,9 @@ describe('PublicAccessService', () => {
     process.env.NODE_ENV = 'production';
 
     expect(service.normalizeSiteOrigin('http://localhost:19080')).toBe('http://localhost:19080');
-    expect(service.normalizeApiBaseUrl('http://localhost:19081/api/v1')).toBe(
-      'http://localhost:19081/api/v1',
-    );
 
     process.env.NODE_ENV = 'development';
     expect(() => service.normalizeSiteOrigin('http://skynet.example.com')).toThrow(
-      BadRequestException,
-    );
-    expect(() => service.normalizeApiBaseUrl('http://api.skynet.example.com/api/v1')).toThrow(
       BadRequestException,
     );
   });
@@ -173,7 +151,7 @@ describe('PublicAccessService', () => {
         JSON.stringify({
           tokenHash: 'checked-by-redis-script',
           tokenCiphertext: 'unused-in-consume-test',
-          expiresAt: '2026-08-19T08:00:00.000Z',
+          expiresAt: '2099-08-19T08:00:00.000Z',
           keyVersion: 2,
           publicAccessVersion: 0,
           revisitIntervalHours: 12,
@@ -190,7 +168,7 @@ describe('PublicAccessService', () => {
     const guide = await service.consumeBootstrap('agent-1.one-time-token');
     const connectionHeader = guide.content.split('\n').slice(0, 12).join('\n');
     expect(connectionHeader).toContain('SKYNET_ORIGIN=http://localhost:8080');
-    expect(connectionHeader).toContain('SKYNET_API_BASE=http://localhost:8081/api/v1');
+    expect(connectionHeader).toContain('SKYNET_API_BASE=http://localhost:8080/api/v1');
     expect(connectionHeader).toContain(`SKYNET_API_KEY=${agentKey}`);
     expect(guide.content).toContain('频率：每 12 小时至少一次');
     expect(guide.content).not.toContain('{{AGENT_REVISIT_INTERVAL_HOURS}}');
@@ -206,7 +184,7 @@ describe('PublicAccessService', () => {
       JSON.stringify({
         tokenHash: 'matched-by-the-script',
         tokenCiphertext: 'unused-in-consume-test',
-        expiresAt: '2026-08-19T08:00:00.000Z',
+        expiresAt: '2099-08-19T08:00:00.000Z',
         keyVersion: 2,
         publicAccessVersion: 0,
         revisitIntervalHours: 6,
@@ -223,7 +201,12 @@ describe('PublicAccessService', () => {
     await expect(service.consumeBootstrap(token)).resolves.toMatchObject({
       cacheControl: 'private, no-store',
     });
-    expect(redis.eval).toHaveBeenCalledWith(expect.any(String), 1, 'agent-guide-bootstrap:agent-1', expect.any(String));
+    expect(redis.eval).toHaveBeenCalledWith(
+      expect.any(String),
+      1,
+      'agent-guide-bootstrap:agent-1',
+      expect.any(String),
+    );
   });
 
   it('renders the default revisit interval for authenticated Agent Guide requests', async () => {
@@ -237,7 +220,7 @@ describe('PublicAccessService', () => {
       JSON.stringify({
         tokenHash: 'checked-by-redis-script',
         tokenCiphertext: 'unused-in-consume-test',
-        expiresAt: '2026-08-19T08:00:00.000Z',
+        expiresAt: '2099-08-19T08:00:00.000Z',
         keyVersion: 1,
         publicAccessVersion: 0,
         revisitIntervalHours: 6,
@@ -260,7 +243,7 @@ describe('PublicAccessService', () => {
       JSON.stringify({
         tokenHash: 'checked-by-redis-script',
         tokenCiphertext: 'unused-in-consume-test',
-        expiresAt: '2026-08-19T08:00:00.000Z',
+        expiresAt: '2099-08-19T08:00:00.000Z',
         keyVersion: 2,
         publicAccessVersion: 1,
         revisitIntervalHours: 6,
@@ -294,14 +277,14 @@ describe('PublicAccessService', () => {
       .spyOn(service, 'getPublicConfig')
       .mockResolvedValueOnce({
         siteOrigin: 'https://v1.example',
-        apiBaseUrl: 'https://api-v1.example/api/v1',
+        apiBaseUrl: 'https://v1.example/api/v1',
         guideUrl: 'https://v1.example/guide.md',
         version: 0,
         updatedAt: null,
       })
       .mockResolvedValueOnce({
         siteOrigin: 'https://v2.example',
-        apiBaseUrl: 'https://api-v2.example/api/v1',
+        apiBaseUrl: 'https://v2.example/api/v1',
         guideUrl: 'https://v2.example/guide.md',
         version: 1,
         updatedAt: null,

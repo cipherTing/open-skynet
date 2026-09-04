@@ -15,6 +15,7 @@ import { decryptSecret } from '@/common/security/encrypted-secret';
 import { hashOpaqueToken } from '@/auth/auth-security';
 import {
   DEFAULT_AGENT_REVISIT_INTERVAL_HOURS,
+  derivePublicApiBaseUrl,
   getDefaultPublicAccessAddresses,
 } from './public-access.constants';
 import { systemErrors } from '@/common/errors/business-errors';
@@ -60,10 +61,6 @@ type PublicAccessCacheConfig = Pick<
   'siteOrigin' | 'apiBaseUrl' | 'version'
 >;
 
-function removeTrailingSlashes(value: string): string {
-  return value.replace(/\/+$/u, '');
-}
-
 @Injectable()
 export class PublicAccessService {
   private readonly guideTemplate: string;
@@ -99,10 +96,11 @@ export class PublicAccessService {
   }
 
   serialize(config: PublicAccessConfig): PublicAccessConfigView {
+    const siteOrigin = this.normalizeSiteOrigin(config.siteOrigin);
     return {
-      siteOrigin: config.siteOrigin,
-      apiBaseUrl: config.apiBaseUrl,
-      guideUrl: `${config.siteOrigin}/guide.md`,
+      siteOrigin,
+      apiBaseUrl: derivePublicApiBaseUrl(siteOrigin),
+      guideUrl: `${siteOrigin}/guide.md`,
       version: config.version,
       updatedAt: config.updatedAt.toISOString(),
     };
@@ -121,15 +119,6 @@ export class PublicAccessService {
     }
     this.assertHttpLocalhostOnly(normalized, systemErrors.publicSiteOriginInvalid);
     return normalized.origin;
-  }
-
-  normalizeApiBaseUrl(value: string): string {
-    const normalized = this.parseHttpUrl(value, 'apiBaseUrl');
-    if (normalized.search || normalized.hash || normalized.username || normalized.password) {
-      throw systemErrors.publicApiUrlInvalid();
-    }
-    this.assertHttpLocalhostOnly(normalized, systemErrors.publicApiUrlInvalid);
-    return removeTrailingSlashes(normalized.toString());
   }
 
   async renderAgentGuide(): Promise<RenderedAgentGuide> {
@@ -178,12 +167,14 @@ export class PublicAccessService {
   async consumeBootstrap(token: string): Promise<RenderedAgentGuide> {
     const agentId = parseAgentGuideBootstrapAgentId(token);
     if (!agentId) throw systemErrors.bootstrapInvalid();
-    const raw = await this.redisService.getClient().eval(
-      CONSUME_AGENT_GUIDE_BOOTSTRAP_SCRIPT,
-      1,
-      getAgentGuideBootstrapRedisKey(agentId),
-      hashOpaqueToken(token),
-    );
+    const raw = await this.redisService
+      .getClient()
+      .eval(
+        CONSUME_AGENT_GUIDE_BOOTSTRAP_SCRIPT,
+        1,
+        getAgentGuideBootstrapRedisKey(agentId),
+        hashOpaqueToken(token),
+      );
     if (typeof raw !== 'string') throw systemErrors.guideBootstrapGone();
     const record = parseAgentGuideBootstrapRecord(raw);
     if (!record) throw systemErrors.bootstrapInvalid();
@@ -206,14 +197,6 @@ export class PublicAccessService {
     const guide = await this.renderAgentGuideWithConfig(publicAccessConfig);
     const content = this.substituteRevisitInterval(guide.content, record.revisitIntervalHours);
     return this.buildPersonalizedGuide(content, publicAccessConfig, agentKey);
-  }
-
-  async invalidateGuideCache(config: PublicAccessCacheConfig): Promise<void> {
-    const redis = this.redisService.getClient();
-    await redis.del(
-      this.getGuideCacheKey(config),
-      this.getGovernanceGuideCacheKey(config),
-    );
   }
 
   private getGuideCacheKey(config: PublicAccessCacheConfig): string {

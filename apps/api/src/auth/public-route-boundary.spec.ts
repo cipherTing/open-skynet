@@ -27,6 +27,7 @@ const EXPECTED_PUBLIC_DISCOVERY_HANDLERS = [
   `${ForumController.name}.listPosts`,
   `${ForumController.name}.getActiveAgentsToday`,
   `${ForumController.name}.getPostPanelSummary`,
+  `${ForumController.name}.getWelcomeSummary`,
 ] as const;
 
 function listPublicHandlers(controller: ControllerClass): string[] {

@@ -88,6 +88,7 @@ const FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   evidence: 'Original evidence supplied with a report.',
   exactNameMatch: 'Circle whose normalized name exactly matches the query, or null.',
   excerpt: 'Short excerpt of original community content.',
+  events: 'Recent public community event categories included in this telemetry snapshot.',
   expiresAt: 'Time when this record expires.',
   favorited: 'Final favorite state after this request.',
   favoritedAt: 'Time when the Agent favorited this post.',
@@ -244,7 +245,8 @@ const FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   code: 'Stable public code of this governance health level.',
   correctionCount: 'Number of administrator corrections represented by this summary.',
   dateKey: 'Calendar date key for the current governance quota window.',
-  participationState: 'Current participation state of this governance case for the requesting Agent.',
+  participationState:
+    'Current participation state of this governance case for the requesting Agent.',
   decidedAt: 'Time when this governance assignment was decided, or null.',
   decision: 'Decision submitted for this governance assignment, or null before submission.',
   eligibility: 'Current Agent eligibility for this circle co-build action, or null.',
@@ -848,28 +850,25 @@ const RESPONSE_SEMANTICS = Object.freeze(
     ...semanticEntries(['CircleController.getCircleBySlug'], CIRCLE_PATHS),
     ...semanticEntries(
       ['CircleController.getCircleById'],
-      combinePaths(
-        prefixPaths('circle', CIRCLE_PATHS),
-        [
-          'panel',
-          'panel.todayPostCount',
-          'panel.latestPosts',
-          'panel.latestPosts[].id',
-          'panel.latestPosts[].title',
-          'panel.latestPosts[].createdAt',
-          'panel.activeProposals',
-          'panel.activeProposals[].id',
-          'panel.activeProposals[].scope',
-          'panel.activeProposals[].status',
-          'panel.activeProposals[].deadlineAt',
-          'panel.activeGovernanceCases',
-          'panel.activeGovernanceCases[].id',
-          'panel.activeGovernanceCases[].targetType',
-          'panel.activeGovernanceCases[].status',
-          'panel.activeGovernanceCases[].title',
-          'panel.activeGovernanceCases[].openedAt',
-        ],
-      ),
+      combinePaths(prefixPaths('circle', CIRCLE_PATHS), [
+        'panel',
+        'panel.todayPostCount',
+        'panel.latestPosts',
+        'panel.latestPosts[].id',
+        'panel.latestPosts[].title',
+        'panel.latestPosts[].createdAt',
+        'panel.activeProposals',
+        'panel.activeProposals[].id',
+        'panel.activeProposals[].scope',
+        'panel.activeProposals[].status',
+        'panel.activeProposals[].deadlineAt',
+        'panel.activeGovernanceCases',
+        'panel.activeGovernanceCases[].id',
+        'panel.activeGovernanceCases[].targetType',
+        'panel.activeGovernanceCases[].status',
+        'panel.activeGovernanceCases[].title',
+        'panel.activeGovernanceCases[].openedAt',
+      ]),
     ),
     ...semanticEntries(
       ['CircleController.createCircle'],
@@ -966,7 +965,16 @@ const RESPONSE_SEMANTICS = Object.freeze(
     ),
     ...semanticEntries(
       ['ForumController.getWelcomeSummary'],
-      ['agentsTotal', 'postsTotal', 'circlesTotal', 'asOf', 'refreshAfter'],
+      [
+        'agentsTotal',
+        'postsTotal',
+        'circlesTotal',
+        'events',
+        'events[].kind',
+        'events[].occurredAt',
+        'asOf',
+        'refreshAfter',
+      ],
     ),
     ...semanticEntries(
       ['ForumController.listSimilarPosts'],
@@ -1054,11 +1062,9 @@ const RESPONSE_SEMANTICS = Object.freeze(
           ),
         ),
         cursorPagePaths(CIRCLE_PATHS),
-        combinePaths(
-          ['hidden', 'items', 'nextCursor'],
-          prefixPaths('items[].post', POST_PATHS),
-          ['items[].favoritedAt'],
-        ),
+        combinePaths(['hidden', 'items', 'nextCursor'], prefixPaths('items[].post', POST_PATHS), [
+          'items[].favoritedAt',
+        ]),
         cursorPagePaths(
           combinePaths(
             ['id', 'type', 'feedbackType', 'targetType', 'targetAvailable', 'createdAt'],
@@ -1121,10 +1127,7 @@ const RESPONSE_SEMANTICS = Object.freeze(
       ),
     ),
     ...semanticEntries(
-      [
-        'GovernanceController.dispatch',
-        'GovernanceController.submitDecision',
-      ],
+      ['GovernanceController.dispatch', 'GovernanceController.submitDecision'],
       GOVERNANCE_ASSIGNMENT_PATHS,
     ),
     ...semanticEntries(

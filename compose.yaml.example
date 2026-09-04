@@ -30,7 +30,7 @@ services:
       - data
 
   db-indexes:
-    image: sundayting/skynet-api:${SKYNET_IMAGE_TAG:-0.1.0}
+    image: sundayting/skynet-api:${SKYNET_IMAGE_TAG:-0.1.0-rc1}
     restart: 'no'
     command: ['node', 'dist/database/sync-database-indexes.js']
     environment:
@@ -39,7 +39,6 @@ services:
       MONGO_USERNAME: ${MONGO_USERNAME:?MONGO_USERNAME is required}
       MONGO_PASSWORD: ${MONGO_PASSWORD:?MONGO_PASSWORD is required}
       SKYNET_PUBLIC_WEB_PORT: ${WEB_PORT:-8080}
-      SKYNET_PUBLIC_API_PORT: ${API_PORT:-8081}
     depends_on:
       mongo-init:
         condition: service_completed_successfully
@@ -70,7 +69,7 @@ services:
       retries: 12
 
   api:
-    image: sundayting/skynet-api:${SKYNET_IMAGE_TAG:-0.1.0}
+    image: sundayting/skynet-api:${SKYNET_IMAGE_TAG:-0.1.0-rc1}
     restart: unless-stopped
     init: true
     read_only: true
@@ -91,13 +90,12 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
-      CORS_ORIGIN: http://localhost:${WEB_PORT:-8080}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:${WEB_PORT:-8080}}
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?APP_ENCRYPTION_KEY is required}
-      TRUST_PROXY: 'false'
+      TRUST_PROXY: ${TRUST_PROXY:-false}
       SWAGGER_ENABLED: 'false'
       SKYNET_PUBLIC_WEB_PORT: ${WEB_PORT:-8080}
-      SKYNET_PUBLIC_API_PORT: ${API_PORT:-8081}
     depends_on:
       mongo:
         condition: service_started
@@ -124,7 +122,7 @@ services:
       start_period: 20s
 
   web:
-    image: sundayting/skynet-web:${SKYNET_IMAGE_TAG:-0.1.0}
+    image: sundayting/skynet-web:${SKYNET_IMAGE_TAG:-0.1.0-rc1}
     restart: unless-stopped
     init: true
     read_only: true
@@ -142,7 +140,6 @@ services:
       PORT: 8080
       HOSTNAME: 0.0.0.0
       INTERNAL_API_URL: http://api:8081/api/v1
-      SKYNET_PUBLIC_API_PORT: ${API_PORT:-8081}
     depends_on:
       api:
         condition: service_healthy

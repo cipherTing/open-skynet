@@ -6,10 +6,7 @@ import {
   Announcement,
   type AnnouncementStatus,
 } from '@/database/schemas/announcement.schema';
-import {
-  FeatureFlag,
-  type FeatureFlagKey,
-} from '@/database/schemas/feature-flag.schema';
+import { FeatureFlag, type FeatureFlagKey } from '@/database/schemas/feature-flag.schema';
 import { DatabaseService } from '@/database/database.service';
 import { FeatureFlagService } from '@/system/feature-flag.service';
 import { SecurityEventService } from '@/system/security-event.service';
@@ -27,7 +24,10 @@ import {
   PublicAccessConfig,
 } from '@/database/schemas/public-access-config.schema';
 import { PublicAccessService } from '@/system/public-access.service';
-import { getDefaultPublicAccessAddresses } from '@/system/public-access.constants';
+import {
+  derivePublicApiBaseUrl,
+  getDefaultPublicAccessAddresses,
+} from '@/system/public-access.constants';
 import type { UpdatePublicAccessConfigDto } from './dto/update-public-access-config.dto';
 import { AuthPolicyService } from '@/system/auth-policy.service';
 import { TurnstileService } from '@/system/turnstile.service';
@@ -56,12 +56,7 @@ function parseOptionalDate(value: string | null | undefined): Date | null {
 }
 
 function isDuplicateKeyError(error: unknown): error is { code: 11000 } {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    error.code === 11000
-  );
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 11000;
 }
 
 @Injectable()
@@ -169,10 +164,7 @@ export class AdminSystemService {
     return this.businessCalendarService.getAdminConfig();
   }
 
-  async updateBusinessCalendarConfig(
-    admin: AdminPrincipal,
-    dto: UpdateBusinessCalendarConfigDto,
-  ) {
+  async updateBusinessCalendarConfig(admin: AdminPrincipal, dto: UpdateBusinessCalendarConfigDto) {
     const timeZone = this.businessCalendarService.normalizeTimeZone(dto.timeZone);
     const updated = await this.databaseService.$transaction(async (session) => {
       const config = await this.businessCalendarConfigModel.findOne(
@@ -214,13 +206,10 @@ export class AdminSystemService {
     return updated;
   }
 
-  async updatePublicAccessConfig(
-    admin: AdminPrincipal,
-    dto: UpdatePublicAccessConfigDto,
-  ) {
+  async updatePublicAccessConfig(admin: AdminPrincipal, dto: UpdatePublicAccessConfigDto) {
     const siteOrigin = this.publicAccessService.normalizeSiteOrigin(dto.siteOrigin);
-    const apiBaseUrl = this.publicAccessService.normalizeApiBaseUrl(dto.apiBaseUrl);
-    const result = await this.databaseService.$transaction(async (session) => {
+    const apiBaseUrl = derivePublicApiBaseUrl(siteOrigin);
+    return this.databaseService.$transaction(async (session) => {
       const config = await this.publicAccessConfigModel.findOne(
         { key: PUBLIC_ACCESS_CONFIG_KEY },
         null,
@@ -231,16 +220,20 @@ export class AdminSystemService {
         throw adminErrors.publicAccessVersionConflict();
       }
       const defaults = getDefaultPublicAccessAddresses();
+      const previousSiteOrigin = this.publicAccessService.normalizeSiteOrigin(
+        config?.siteOrigin ?? defaults.siteOrigin,
+      );
       const previous = {
-        siteOrigin: config?.siteOrigin ?? defaults.siteOrigin,
-        apiBaseUrl: config?.apiBaseUrl ?? defaults.apiBaseUrl,
+        siteOrigin: previousSiteOrigin,
+        apiBaseUrl: derivePublicApiBaseUrl(previousSiteOrigin),
         version: currentVersion,
       };
-      if (previous.siteOrigin === siteOrigin && previous.apiBaseUrl === apiBaseUrl) {
+      if (previous.siteOrigin === siteOrigin) {
         throw adminErrors.publicAccessUnchanged();
       }
 
-      const nextConfig = config ?? new this.publicAccessConfigModel({ key: PUBLIC_ACCESS_CONFIG_KEY });
+      const nextConfig =
+        config ?? new this.publicAccessConfigModel({ key: PUBLIC_ACCESS_CONFIG_KEY });
       nextConfig.siteOrigin = siteOrigin;
       nextConfig.apiBaseUrl = apiBaseUrl;
       nextConfig.version = currentVersion + 1;
@@ -262,13 +255,8 @@ export class AdminSystemService {
         },
         session,
       });
-      return {
-        config: this.publicAccessService.serialize(nextConfig),
-        previous,
-      };
+      return this.publicAccessService.serialize(nextConfig);
     });
-    await this.publicAccessService.invalidateGuideCache(result.previous);
-    return result.config;
   }
 
   async listAnnouncements(dto: ListAnnouncementsDto) {
@@ -346,21 +334,14 @@ export class AdminSystemService {
   ) {
     ensureObjectId(announcementId, adminErrors.announcementNotFound);
     return this.databaseService.$transaction(async (session) => {
-      const announcement = await this.announcementModel.findById(
-        announcementId,
-        null,
-        { session },
-      );
+      const announcement = await this.announcementModel.findById(announcementId, null, { session });
       this.assertAnnouncementVersion(announcement, dto.expectedUpdatedAt);
       if (announcement.status !== ANNOUNCEMENT_STATUSES.DRAFT) {
         throw adminErrors.announcementDraftRequired();
       }
 
       const updatedFields: string[] = [];
-      const setString = (
-        field: 'title' | 'body',
-        value: string | undefined,
-      ) => {
+      const setString = (field: 'title' | 'body', value: string | undefined) => {
         if (value === undefined) return;
         announcement[field] = value.trim();
         updatedFields.push(field);
@@ -442,11 +423,7 @@ export class AdminSystemService {
   ) {
     ensureObjectId(announcementId, adminErrors.announcementNotFound);
     return this.databaseService.$transaction(async (session) => {
-      const announcement = await this.announcementModel.findById(
-        announcementId,
-        null,
-        { session },
-      );
+      const announcement = await this.announcementModel.findById(announcementId, null, { session });
       this.assertAnnouncementVersion(announcement, dto.expectedUpdatedAt);
       if (announcement.status !== ANNOUNCEMENT_STATUSES.DRAFT) {
         throw adminErrors.announcementDraftRequired();
@@ -469,11 +446,7 @@ export class AdminSystemService {
     return this.featureFlagService.list();
   }
 
-  async updateFeatureFlag(
-    admin: AdminPrincipal,
-    key: FeatureFlagKey,
-    dto: UpdateFeatureFlagDto,
-  ) {
+  async updateFeatureFlag(admin: AdminPrincipal, key: FeatureFlagKey, dto: UpdateFeatureFlagDto) {
     try {
       return await this.databaseService.$transaction(async (session) => {
         let flag = await this.featureFlagModel.findOne({ key }, null, { session });
@@ -525,11 +498,7 @@ export class AdminSystemService {
   ) {
     ensureObjectId(announcementId, adminErrors.announcementNotFound);
     return this.databaseService.$transaction(async (session) => {
-      const announcement = await this.announcementModel.findById(
-        announcementId,
-        null,
-        { session },
-      );
+      const announcement = await this.announcementModel.findById(announcementId, null, { session });
       this.assertAnnouncementVersion(announcement, dto.expectedUpdatedAt);
       const previousStatus = announcement.status;
       if (

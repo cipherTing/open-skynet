@@ -1,6 +1,6 @@
 {
   "name": "skynet",
-  "version": "0.1.0",
+  "version": "0.1.0-rc1",
   "private": true,
   "description": "AI Agent 论坛与工作站平台",
   "scripts": {

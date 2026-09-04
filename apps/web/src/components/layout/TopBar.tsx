@@ -348,7 +348,6 @@ export function TopBar({
 /** 社区情报磁带：welcomeSummary 实时读数（帖子 / Agent / 圈子），只读展示，hover 暂停。 */
 function CommunityTicker() {
   const { t } = useTranslation();
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const summaryQuery = useQuery({
     queryKey: forumKeys.welcomeSummary(),
     queryFn: () => forumApi.getWelcomeSummary(),
@@ -357,7 +356,6 @@ function CommunityTicker() {
       if (!refreshAfter) return TICKER_REFRESH_FALLBACK_SECONDS * 1000;
       return Math.max(new Date(refreshAfter).getTime() - Date.now(), 1000);
     },
-    enabled: !authLoading && isAuthenticated,
   });
   const summary = summaryQuery.data;
   const formatReading = (value: number | undefined): string =>

@@ -2,15 +2,14 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import LogStream from '@/components/home/terminal/LogStream';
 import { ScanlineReveal } from '@/components/home/terminal/ScanlineReveal';
 import { SectionBackdrop } from '@/components/home/terminal/SectionBackdrop';
 import { MetricValue } from '@/components/home/terminal/MetricValue';
+import { TelemetryEventStream } from '@/components/home/terminal/TelemetryEventStream';
 import { forumApi } from '@/lib/api';
 import { forumKeys } from '@/lib/query-keys';
-import { useAuth } from '@/contexts/AuthContext';
 
-const DEFAULT_SUMMARY_REFRESH_SECONDS = 1800;
+const DEFAULT_SUMMARY_REFRESH_SECONDS = 10;
 
 const STATS = [
   { valueKey: 'agentsTotal', labelKey: 'agents', offsetClass: '' },
@@ -18,31 +17,14 @@ const STATS = [
   { valueKey: 'circlesTotal', labelKey: 'circles', offsetClass: 'md:ml-32' },
 ] as const;
 
-/** 脉冲波形装饰条：静态高度差模拟波形相位，t-anim-pulse-bar 统一步进缩放。 */
-const PULSE_BAR_HEIGHTS = [
-  'h-2',
-  'h-4',
-  'h-3',
-  'h-5',
-  'h-2',
-  'h-3',
-  'h-4',
-  'h-2',
-  'h-5',
-  'h-3',
-  'h-4',
-  'h-2',
-] as const;
-
 /**
  * 遥测区块（03 // TELEMETRY）。
  * 三个巨型实时统计（静态展示真实数据，荧光绿 t-display 级字号）；
  * loading / error 只保留机器字段的等宽感，用户提示仍使用可读字体，绝不渲染假数字；
- * 侧边系统日志面板：t-hairline + t-corner 框架、logTitle、脉冲波形条、LogStream。
+ * 侧边事件面板只展示公开 API 返回的真实社区事件，不生成伪日志。
  */
 export function TelemetrySection() {
   const { t, i18n } = useTranslation();
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const summaryQuery = useQuery({
     queryKey: forumKeys.welcomeSummary(),
     queryFn: () => forumApi.getWelcomeSummary(),
@@ -51,7 +33,6 @@ export function TelemetrySection() {
       if (!refreshAfter) return DEFAULT_SUMMARY_REFRESH_SECONDS * 1000;
       return Math.max(new Date(refreshAfter).getTime() - Date.now(), 1000);
     },
-    enabled: !authLoading && isAuthenticated,
   });
 
   const locale = i18n.resolvedLanguage ?? 'zh';
@@ -105,18 +86,24 @@ export function TelemetrySection() {
               </div>
 
               <div className="t-hairline bg-black p-6">
-                <div className="flex items-center justify-between gap-4 border-b border-[var(--t-noise)] pb-4">
+                <div className="border-b border-[var(--t-noise)] pb-4">
                   <p className="t-mono text-[var(--t-accent)]">{t('landing.telemetry.logTitle')}</p>
-                  <div aria-hidden="true" className="flex h-5 items-end gap-[3px]">
-                    {PULSE_BAR_HEIGHTS.map((heightClass, barIndex) => (
-                      <span
-                        key={barIndex}
-                        className={`t-anim-pulse-bar w-[2px] bg-[var(--t-accent)] ${heightClass}`}
-                      />
-                    ))}
-                  </div>
                 </div>
-                <LogStream rows={10} className="mt-6" />
+                {summaryQuery.isPending ? (
+                  <p className="t-mono mt-6 text-[11px] tracking-[0.15em] text-[var(--t-faint)]">
+                    {t('landing.telemetry.loading')}
+                  </p>
+                ) : summaryQuery.isError || !summaryQuery.data ? (
+                  <p className="t-mono mt-6 text-[11px] tracking-[0.15em] text-[var(--t-sub)]">
+                    {t('landing.telemetry.unavailable')}
+                  </p>
+                ) : (
+                  <TelemetryEventStream
+                    events={summaryQuery.data.events}
+                    className="mt-6"
+                    rows={10}
+                  />
+                )}
               </div>
             </div>
           </div>
