@@ -144,20 +144,18 @@ describe('PublicAccessService', () => {
     );
   });
 
-  it('consumes a bootstrap only once and injects the matching Agent Key', async () => {
+  it('reuses a bootstrap during its validity window and injects the matching Agent Key', async () => {
     const agentKey = 'sk_live_bootstrap_secret';
-    redis.eval
-      .mockResolvedValueOnce(
-        JSON.stringify({
-          tokenHash: 'checked-by-redis-script',
-          tokenCiphertext: 'unused-in-consume-test',
-          expiresAt: '2099-08-19T08:00:00.000Z',
-          keyVersion: 2,
-          publicAccessVersion: 0,
-          revisitIntervalHours: 12,
-        }),
-      )
-      .mockResolvedValueOnce(null);
+    redis.eval.mockResolvedValue(
+      JSON.stringify({
+        tokenHash: 'checked-by-redis-script',
+        tokenCiphertext: 'unused-in-consume-test',
+        expiresAt: '2099-08-19T08:00:00.000Z',
+        keyVersion: 2,
+        publicAccessVersion: 0,
+        revisitIntervalHours: 12,
+      }),
+    );
     agentModel.findById.mockReturnValue({
       select: jest.fn().mockResolvedValue({
         id: 'agent-1',
@@ -165,7 +163,7 @@ describe('PublicAccessService', () => {
         secretKeyCiphertext: encryptSecret(agentKey, 'agent-key', 'agent-1'),
       }),
     });
-    const guide = await service.consumeBootstrap('agent-1.one-time-token');
+    const guide = await service.readBootstrap('agent-1.one-time-token');
     const connectionHeader = guide.content.split('\n').slice(0, 12).join('\n');
     expect(connectionHeader).toContain('SKYNET_ORIGIN=http://localhost:8080');
     expect(connectionHeader).toContain('SKYNET_API_BASE=http://localhost:8080/api/v1');
@@ -173,12 +171,23 @@ describe('PublicAccessService', () => {
     expect(guide.content).toContain('频率：每 12 小时至少一次');
     expect(guide.content).not.toContain('{{AGENT_REVISIT_INTERVAL_HOURS}}');
     expect(guide.cacheControl).toBe('private, no-store');
-    await expect(service.consumeBootstrap('agent-1.one-time-token')).rejects.toBeInstanceOf(
-      GoneException,
+    expect(redis.eval.mock.calls[0]?.[0]).not.toContain("redis.call('DEL'");
+    redis.eval.mockResolvedValueOnce(
+      JSON.stringify({
+        tokenHash: 'checked-by-redis-script',
+        tokenCiphertext: 'unused-in-consume-test',
+        expiresAt: '2099-08-19T08:00:00.000Z',
+        keyVersion: 2,
+        publicAccessVersion: 0,
+        revisitIntervalHours: 12,
+      }),
     );
+    await expect(service.readBootstrap('agent-1.one-time-token')).resolves.toMatchObject({
+      cacheControl: 'private, no-store',
+    });
   });
 
-  it('consumes only the current Agent-scoped bootstrap record', async () => {
+  it('reads only the current Agent-scoped bootstrap record', async () => {
     const token = 'agent-1.one-time-secret';
     redis.eval.mockResolvedValue(
       JSON.stringify({
@@ -198,7 +207,7 @@ describe('PublicAccessService', () => {
       }),
     });
 
-    await expect(service.consumeBootstrap(token)).resolves.toMatchObject({
+    await expect(service.readBootstrap(token)).resolves.toMatchObject({
       cacheControl: 'private, no-store',
     });
     expect(redis.eval).toHaveBeenCalledWith(
@@ -207,6 +216,24 @@ describe('PublicAccessService', () => {
       'agent-guide-bootstrap:agent-1',
       expect.any(String),
     );
+  });
+
+  it('rejects an expired bootstrap even when Redis has not evicted the record yet', async () => {
+    redis.eval.mockResolvedValue(
+      JSON.stringify({
+        tokenHash: 'checked-by-redis-script',
+        tokenCiphertext: 'unused-in-expiry-test',
+        expiresAt: '2020-01-01T00:00:00.000Z',
+        keyVersion: 2,
+        publicAccessVersion: 0,
+        revisitIntervalHours: 6,
+      }),
+    );
+
+    await expect(service.readBootstrap('agent-1.expired-token')).rejects.toBeInstanceOf(
+      GoneException,
+    );
+    expect(agentModel.findById).not.toHaveBeenCalled();
   });
 
   it('renders the default revisit interval for authenticated Agent Guide requests', async () => {
@@ -233,7 +260,7 @@ describe('PublicAccessService', () => {
         secretKeyCiphertext: encryptSecret('new-key', 'agent-key', 'agent-1'),
       }),
     });
-    await expect(service.consumeBootstrap('agent-1.stale-token')).rejects.toBeInstanceOf(
+    await expect(service.readBootstrap('agent-1.stale-token')).rejects.toBeInstanceOf(
       GoneException,
     );
   });
@@ -249,7 +276,7 @@ describe('PublicAccessService', () => {
         revisitIntervalHours: 6,
       }),
     );
-    await expect(service.consumeBootstrap('agent-1.old-origin-token')).rejects.toBeInstanceOf(
+    await expect(service.readBootstrap('agent-1.old-origin-token')).rejects.toBeInstanceOf(
       GoneException,
     );
     expect(agentModel.findById).not.toHaveBeenCalled();
@@ -290,7 +317,7 @@ describe('PublicAccessService', () => {
         updatedAt: null,
       });
 
-    const guide = await service.consumeBootstrap('agent-1.snapshot-token');
+    const guide = await service.readBootstrap('agent-1.snapshot-token');
 
     expect(guide.content).toContain('SKYNET_ORIGIN=https://v1.example');
     expect(guide.content).not.toContain('SKYNET_ORIGIN=https://v2.example');

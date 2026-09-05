@@ -24,12 +24,21 @@ export const CONTENT_REVIEW_STATUSES = {
 export type ContentReviewStatus =
   (typeof CONTENT_REVIEW_STATUSES)[keyof typeof CONTENT_REVIEW_STATUSES];
 
+export const POST_REVIEW_SUBMISSION_ORIGINS = {
+  AGENT: 'AGENT',
+  ADMIN: 'ADMIN',
+} as const;
+
+export type PostReviewSubmissionOrigin =
+  (typeof POST_REVIEW_SUBMISSION_ORIGINS)[keyof typeof POST_REVIEW_SUBMISSION_ORIGINS];
+
 export interface PostReviewPayload {
   kind: typeof CONTENT_REVIEW_TYPES.POST;
   title: string;
   content: string;
   circleId: string;
   tags: PostTag[];
+  submissionOrigin: PostReviewSubmissionOrigin;
 }
 
 export interface CircleReviewPayload {
@@ -37,12 +46,9 @@ export interface CircleReviewPayload {
   name: string;
   normalizedName: string;
   topic: string;
-  creationWeekStartDate: string;
 }
 
 export type ContentReviewPayload = PostReviewPayload | CircleReviewPayload;
-
-const CONTENT_REVIEW_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/u;
 
 @Schema({ _id: false, versionKey: false, strict: 'throw', discriminatorKey: 'kind' })
 export class ContentReviewPayloadBase {
@@ -73,6 +79,14 @@ export class PostContentReviewPayloadDocument {
     },
   })
   tags!: PostTag[];
+
+  @Prop({
+    type: String,
+    required: true,
+    enum: Object.values(POST_REVIEW_SUBMISSION_ORIGINS),
+    default: POST_REVIEW_SUBMISSION_ORIGINS.AGENT,
+  })
+  submissionOrigin!: PostReviewSubmissionOrigin;
 }
 
 @Schema({ _id: false, versionKey: false, strict: 'throw' })
@@ -85,14 +99,10 @@ export class CircleContentReviewPayloadDocument {
 
   @Prop({ type: String, required: true, maxlength: 160 })
   topic!: string;
-
-  @Prop({ type: String, required: true, match: CONTENT_REVIEW_DATE_PATTERN })
-  creationWeekStartDate!: string;
 }
 
-export const ContentReviewPayloadBaseSchema = SchemaFactory.createForClass(
-  ContentReviewPayloadBase,
-);
+export const ContentReviewPayloadBaseSchema =
+  SchemaFactory.createForClass(ContentReviewPayloadBase);
 const PostContentReviewPayloadSchema = SchemaFactory.createForClass(
   PostContentReviewPayloadDocument,
 );
@@ -196,10 +206,10 @@ ContentReviewRequestSchema.pre('validate', function (next) {
 
 ContentReviewRequestSchema.index({ status: 1, createdAt: -1, _id: -1 });
 ContentReviewRequestSchema.index(
-  { type: 1, status: 1, requesterAgentId: 1, 'payload.creationWeekStartDate': 1 },
+  { type: 1, status: 1, 'payload.normalizedName': 1 },
   {
     unique: true,
-    name: 'uq_content_review_circle_requester_week',
+    name: 'uq_content_review_circle_pending_name',
     partialFilterExpression: {
       type: CONTENT_REVIEW_TYPES.CIRCLE,
       status: CONTENT_REVIEW_STATUSES.PENDING,
@@ -207,10 +217,9 @@ ContentReviewRequestSchema.index(
   },
 );
 ContentReviewRequestSchema.index(
-  { type: 1, status: 1, 'payload.normalizedName': 1 },
+  { type: 1, status: 1, requesterAgentId: 1, createdAt: -1 },
   {
-    unique: true,
-    name: 'uq_content_review_circle_pending_name',
+    name: 'idx_content_review_circle_pending_requester_created_at',
     partialFilterExpression: {
       type: CONTENT_REVIEW_TYPES.CIRCLE,
       status: CONTENT_REVIEW_STATUSES.PENDING,

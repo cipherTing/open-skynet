@@ -52,6 +52,7 @@ import {
   BusinessCalendarConfigSchema,
 } from '@/database/schemas/business-calendar-config.schema';
 import { BusinessCalendarService } from '@/system/business-calendar.service';
+import { circleErrors } from '@/common/errors/business-errors';
 
 type ForumServiceReplyItem = Awaited<ReturnType<ForumService['listReplies']>>['items'][number];
 
@@ -74,6 +75,48 @@ describe('ForumService circle feeds', () => {
     assertEnabled: jest.fn().mockResolvedValue(undefined),
     isEnabled: jest.fn().mockResolvedValue(false),
   };
+  const circleServiceMock = {
+    ensureCircleExists: jest.fn(async (circleId: string) => {
+      const circle = await connection.model(Circle.name).findById(circleId);
+      if (!circle) throw new Error('circle missing');
+      return circle;
+    }),
+    assertAgentPostAllowed: jest.fn(
+      async (circleId: string, _allowOfficialCirclePostingBypass = false) => {
+        const circle = await connection.model(Circle.name).findById(circleId);
+        if (!circle) throw new Error('circle missing');
+        return circle;
+      },
+    ),
+    filterJoinedCircleIds: jest.fn(async (agentId: string, circleIds: string[]) => {
+      const joined = new Set(membershipsByAgent.get(agentId) ?? []);
+      return new Set(circleIds.filter((circleId) => joined.has(circleId)));
+    }),
+    filterActiveCircleIds: jest.fn(async (circleIds: string[]) => {
+      const circles = await connection.model(Circle.name).find({
+        _id: { $in: circleIds },
+        status: 'ACTIVE',
+      });
+      return circles.map((circle) => circle.id);
+    }),
+    getCircleSummaries: jest.fn(async (circleIds: string[]) => {
+      const circles = await connection.model(Circle.name).find({
+        _id: { $in: circleIds },
+      });
+      return new Map(
+        circles.map((circle) => [
+          circle.id,
+          {
+            id: circle.id,
+            slug: circle.slug,
+            name: circle.name,
+            topic: circle.topic,
+          },
+        ]),
+      );
+    }),
+    incrementPostCount: jest.fn().mockResolvedValue(undefined),
+  };
   const redisValues = new Map<string, string>();
   const redisClient = {
     get: jest.fn(async (key: string) => redisValues.get(key) ?? null),
@@ -85,41 +128,6 @@ describe('ForumService circle feeds', () => {
 
   beforeAll(async () => {
     mongod = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
-    const circleServiceMock = {
-      ensureCircleExists: jest.fn(async (circleId: string) => {
-        const circle = await connection.model(Circle.name).findById(circleId);
-        if (!circle) throw new Error('circle missing');
-        return circle;
-      }),
-      filterJoinedCircleIds: jest.fn(async (agentId: string, circleIds: string[]) => {
-        const joined = new Set(membershipsByAgent.get(agentId) ?? []);
-        return new Set(circleIds.filter((circleId) => joined.has(circleId)));
-      }),
-      filterActiveCircleIds: jest.fn(async (circleIds: string[]) => {
-        const circles = await connection.model(Circle.name).find({
-          _id: { $in: circleIds },
-          status: 'ACTIVE',
-        });
-        return circles.map((circle) => circle.id);
-      }),
-      getCircleSummaries: jest.fn(async (circleIds: string[]) => {
-        const circles = await connection.model(Circle.name).find({
-          _id: { $in: circleIds },
-        });
-        return new Map(
-          circles.map((circle) => [
-            circle.id,
-            {
-              id: circle.id,
-              slug: circle.slug,
-              name: circle.name,
-              topic: circle.topic,
-            },
-          ]),
-        );
-      }),
-      incrementPostCount: jest.fn().mockResolvedValue(undefined),
-    };
     moduleRef = await Test.createTestingModule({
       imports: [
         MongooseModule.forRoot(mongod.getUri()),
@@ -197,6 +205,11 @@ describe('ForumService circle feeds', () => {
     jest.clearAllMocks();
     featureFlagServiceMock.assertEnabled.mockResolvedValue(undefined);
     featureFlagServiceMock.isEnabled.mockResolvedValue(false);
+    circleServiceMock.assertAgentPostAllowed.mockImplementation(async (circleId: string) => {
+      const circle = await connection.model(Circle.name).findById(circleId);
+      if (!circle) throw new Error('circle missing');
+      return circle;
+    });
     await Promise.all([
       connection.model(AgentProgress.name).deleteMany({}),
       connection.collection('agent_xp_events').deleteMany({}),
@@ -311,6 +324,56 @@ describe('ForumService circle feeds', () => {
         .map((post) => post.id),
     );
     expect(second.nextCursor).not.toBeNull();
+  });
+
+  it('keeps pinned posts first only in an unfiltered latest circle feed across cursor pages', async () => {
+    const circle = await createCircle('pinned-circle-pagination');
+    const author = await createAgent('pinned-circle-author');
+    const posts = await Promise.all(
+      Array.from({ length: 4 }, (_, index) => createPost(circle.id, author.id, index)),
+    );
+    await connection.collection('posts').updateMany(
+      { _id: { $in: [posts[0]._id, posts[1]._id] } },
+      {
+        $set: {
+          pinnedAt: new Date('2026-07-02T00:00:00.000Z'),
+          circleVisible: true,
+          deletedAt: null,
+        },
+      },
+    );
+    await connection
+      .collection('posts')
+      .updateOne(
+        { _id: posts[1]._id },
+        { $set: { pinnedAt: new Date('2026-07-03T00:00:00.000Z') } },
+      );
+
+    const first = await service.listPosts({
+      limit: 2,
+      sortBy: SortBy.LATEST,
+      circleId: circle.id,
+    });
+    if (!first.nextCursor) throw new Error('置顶第一页缺少游标');
+    const second = await service.listPosts({
+      limit: 2,
+      sortBy: SortBy.LATEST,
+      circleId: circle.id,
+      cursor: first.nextCursor,
+    });
+    const filtered = await service.listPosts({
+      limit: 2,
+      sortBy: SortBy.LATEST,
+      circleId: circle.id,
+      tags: ['DISCUSSION'],
+    });
+    const global = await service.listPosts({ limit: 2, sortBy: SortBy.LATEST });
+
+    expect(first.items.map((post) => post.id)).toEqual([posts[1].id, posts[0].id]);
+    expect(second.items.map((post) => post.id)).toEqual([posts[3].id, posts[2].id]);
+    expect(new Set([...first.items, ...second.items].map((post) => post.id)).size).toBe(4);
+    expect(filtered.items.map((post) => post.id)).toEqual([posts[3].id, posts[2].id]);
+    expect(global.items.map((post) => post.id)).toEqual([posts[3].id, posts[2].id]);
   });
 
   it('uses resource-bound cursors for Agent posts, replies, interactions, and view history', async () => {
@@ -838,6 +901,86 @@ describe('ForumService circle feeds', () => {
     expect(await connection.model(AgentXpEvent.name).countDocuments({ agentId: author.id })).toBe(
       3,
     );
+  });
+
+  it('rejects a closed official circle before creating a post review request or charging stamina', async () => {
+    const circle = await createCircle('closed-official-posting-circle');
+    const author = await createAgent('closed-official-posting-author');
+    featureFlagServiceMock.isEnabled.mockResolvedValue(true);
+    circleServiceMock.assertAgentPostAllowed.mockRejectedValue(circleErrors.agentPostingDisabled());
+
+    await expect(
+      service.createPost(author.id, {
+        title: '不会进入审核的外部投稿',
+        content: '关闭后必须在审核工单创建前阻断。',
+        circleId: circle.id,
+        tags: ['DISCUSSION'],
+      }),
+    ).rejects.toMatchObject({ response: { code: 'CIRCLE_AGENT_POSTING_DISABLED' } });
+    expect(await connection.model(ContentReviewRequest.name).countDocuments()).toBe(0);
+    expect(await connection.model(Post.name).countDocuments()).toBe(0);
+    expect(await connection.model(AgentProgress.name).findOne({ agentId: author.id })).toBeNull();
+  });
+
+  it('rechecks a closed official circle before publishing an already-reviewed post', async () => {
+    const circle = await createCircle('reviewed-then-closed-official-circle');
+    const author = await createAgent('reviewed-then-closed-author');
+    featureFlagServiceMock.isEnabled.mockResolvedValue(true);
+    const submitted = await service.createPost(author.id, {
+      title: '等待审核后被关闭的投稿',
+      content: '批准时仍必须重新检查圈子发帖策略。',
+      circleId: circle.id,
+      tags: ['DISCUSSION'],
+    });
+    if (submitted.outcome !== 'PENDING_REVIEW') throw new Error('帖子应进入审核');
+    const request = await connection
+      .model(ContentReviewRequest.name)
+      .findById(submitted.reviewRequestId);
+    if (!request) throw new Error('待审核帖子申请不存在');
+    circleServiceMock.assertAgentPostAllowed.mockRejectedValue(circleErrors.agentPostingDisabled());
+
+    await expect(
+      connection.transaction((session) => service.publishReviewedPost(request, session)),
+    ).rejects.toMatchObject({ response: { code: 'CIRCLE_AGENT_POSTING_DISABLED' } });
+    expect(await connection.model(Post.name).countDocuments()).toBe(0);
+    expect(
+      await connection.model(AgentProgress.name).findOne({ agentId: author.id }),
+    ).toMatchObject({ xpTotal: 0, staminaCurrent: 92, dailyCounters: { posts: 0 } });
+  });
+
+  it('preserves the trusted browser administrator posting privilege through post review', async () => {
+    const circle = await createCircle('admin-reviewed-official-circle');
+    const author = await createAgent('admin-reviewed-official-author');
+    featureFlagServiceMock.isEnabled.mockResolvedValue(true);
+    circleServiceMock.assertAgentPostAllowed.mockImplementation(
+      async (_circleId: string, allowOfficialCirclePostingBypass: boolean) => {
+        if (!allowOfficialCirclePostingBypass) throw circleErrors.agentPostingDisabled();
+        return circle;
+      },
+    );
+
+    const submitted = await service.createPost(
+      author.id,
+      {
+        title: '管理员审核后发布的官方公告',
+        content: '审核批准后仍应保留管理员在关闭官方圈子发帖的权限。',
+        circleId: circle.id,
+        tags: ['DISCUSSION'],
+      },
+      undefined,
+      true,
+    );
+    if (submitted.outcome !== 'PENDING_REVIEW') throw new Error('帖子应进入审核');
+    const request = await connection
+      .model(ContentReviewRequest.name)
+      .findById(submitted.reviewRequestId);
+    if (!request) throw new Error('待审核帖子申请不存在');
+
+    await expect(
+      connection.transaction((session) => service.publishReviewedPost(request, session)),
+    ).resolves.toBeDefined();
+    expect(request.payload).toMatchObject({ submissionOrigin: 'ADMIN' });
+    expect(await connection.model(Post.name).countDocuments()).toBe(1);
   });
 
   it('allows administrator reads of soft-deleted posts while regular reads stay hidden', async () => {

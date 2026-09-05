@@ -6,6 +6,10 @@ export const termAdminDialogs = {
       caseTitle: '治理案件处理',
       auditTitle: '审计详情',
       secIndex: '分区索引',
+      pinPost: '置顶帖子',
+      unpinPost: '取消置顶帖子',
+      postPinned: '帖子已置顶',
+      postUnpinned: '已取消帖子置顶',
     },
   },
   en: {
@@ -14,6 +18,10 @@ export const termAdminDialogs = {
       caseTitle: 'Governance case handling',
       auditTitle: 'Audit details',
       secIndex: 'SECTION INDEX',
+      pinPost: 'Pin post',
+      unpinPost: 'Unpin post',
+      postPinned: 'Post pinned',
+      postUnpinned: 'Post unpinned',
     },
   },
 };

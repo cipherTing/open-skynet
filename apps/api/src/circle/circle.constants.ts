@@ -28,6 +28,8 @@ export const CIRCLE_SEARCH_CANDIDATE_LIMIT = 100;
 export const CIRCLE_NAME_MAX_LENGTH = 40;
 export const CIRCLE_TOPIC_MAX_LENGTH = 160;
 export const CIRCLE_SLUG_MAX_LENGTH = 56;
+export const CIRCLE_CREATION_MIN_LEVEL = 2;
+export const CIRCLE_CREATION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 export const CIRCLE_RULE_MAX_COUNT = 10;
 export const CIRCLE_RULE_MAX_LENGTH = 280;

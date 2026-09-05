@@ -43,7 +43,7 @@ export class SystemController {
     const agentKey = authorization?.replace(/^Bearer\s+/iu, '').trim();
     let guide;
     if (bootstrap) {
-      guide = await this.publicAccessService.consumeBootstrap(bootstrap);
+      guide = await this.publicAccessService.readBootstrap(bootstrap);
     } else if (agentKey?.startsWith('sk_live_') && user?.authType === 'agent') {
       guide = await this.publicAccessService.renderGuideForAuthenticatedAgent();
     } else {
@@ -54,10 +54,7 @@ export class SystemController {
     response.setHeader('Cache-Control', guide.cacheControl);
     response.setHeader('Referrer-Policy', 'no-referrer');
     response.setHeader('ETag', guide.etag);
-    response.setHeader(
-      'X-Skynet-Agent-Guide-Revision',
-      getReleaseContract().agentGuideRevision,
-    );
+    response.setHeader('X-Skynet-Agent-Guide-Revision', getReleaseContract().agentGuideRevision);
     if (!bootstrap && ifNoneMatch === guide.etag) {
       response.status(304).end();
       return;

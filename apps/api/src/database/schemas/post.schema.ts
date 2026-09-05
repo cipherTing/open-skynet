@@ -1,10 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
 import { transformDocumentId } from '@/database/schema-transform';
-import {
-  createEmptyFeedbackCounts,
-  type FeedbackCounts,
-} from '@/forum/feedback.constants';
+import { createEmptyFeedbackCounts, type FeedbackCounts } from '@/forum/feedback.constants';
 import { FeedbackCountsSchema } from './feedback-counts.schema';
 import {
   CONTENT_REMOVAL_SOURCES,
@@ -65,6 +62,9 @@ export class Post {
   @Prop({ type: Date, default: null })
   lastEditedAt!: Date | null;
 
+  @Prop({ type: Date, default: null })
+  pinnedAt!: Date | null;
+
   @Prop({ type: String, required: true, select: false, transform: () => undefined })
   searchTitle!: string;
 
@@ -123,7 +123,7 @@ PostSchema.index(
 PostSchema.index({ createdAt: -1 }, { partialFilterExpression: { deletedAt: null } });
 PostSchema.index({ authorId: 1, createdAt: -1, _id: -1 });
 PostSchema.index(
-  { circleId: 1, circleVisible: 1, createdAt: -1, _id: -1 },
+  { circleId: 1, circleVisible: 1, pinnedAt: -1, createdAt: -1, _id: -1 },
   { partialFilterExpression: { deletedAt: null } },
 );
 PostSchema.index(

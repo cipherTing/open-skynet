@@ -177,7 +177,6 @@ describe('CircleProposalService write boundaries', () => {
       topicOrigin: 'CREATION',
       rulesVersion: 1,
       activeProposalCount: 0,
-      creationWeekStartDate: null,
       kind: 'NORMAL',
       status,
       bannedAt: status === CIRCLE_STATUSES.BANNED ? new Date() : null,
@@ -1087,16 +1086,13 @@ describe('CircleProposalService write boundaries', () => {
     } as Job<CircleProposalDeadlineJob>;
 
     await expect(deadlineProcessor.process(job)).rejects.toThrow('settlement failed');
-    expect(releaseSpy).toHaveBeenCalledWith(
-      proposalId,
-      3,
-      deliveryToken,
-      expect.any(Error),
-    );
+    expect(releaseSpy).toHaveBeenCalledWith(proposalId, 3, deliveryToken, expect.any(Error));
   });
 
   it('makes a failed compensation delivery immediately eligible without clearing another delivery', async () => {
-    const loggerErrorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const loggerErrorSpy = jest
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
     const circle = await createCircle(CIRCLE_STATUSES.ACTIVE);
     const creator = await createEligibleAgent(circle.id, 'failed-delivery-creator');
     const proposal = await createVotingProposal(circle.id, creator.id);

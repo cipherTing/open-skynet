@@ -56,6 +56,7 @@ export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolea
   );
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [showExistingLink, setShowExistingLink] = useState(true);
   const accessMode: AgentConnectMode = requestedMode;
   const keyQuery = useQuery({
     queryKey: ['agent-connect', 'key-info', agent?.id],
@@ -83,6 +84,7 @@ export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolea
       const result = await userApi.createGuideLink({ revisitIntervalHours });
       setLink(result.url);
       setExpiresAt(result.expiresAt);
+      setShowExistingLink(true);
       await linkStatusQuery.refetch();
       await keyQuery.refetch();
     } catch (error) {
@@ -92,9 +94,18 @@ export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolea
     }
   };
 
-  const currentLink = link || (linkStatusQuery.data?.active ? linkStatusQuery.data.url : '');
+  const regenerateLink = () => {
+    setLink('');
+    setExpiresAt('');
+    setRevisitIntervalHours(DEFAULT_REVISIT_INTERVAL_HOURS);
+    setShowExistingLink(false);
+  };
+
+  const currentLink =
+    link || (showExistingLink && linkStatusQuery.data?.active ? linkStatusQuery.data.url : '');
   const currentExpiresAt =
-    expiresAt || (linkStatusQuery.data?.active ? linkStatusQuery.data.expiresAt : '');
+    expiresAt ||
+    (showExistingLink && linkStatusQuery.data?.active ? linkStatusQuery.data.expiresAt : '');
   const connectCommand = currentLink ? `curl -sS "${currentLink}"` : '';
 
   const copy = async () => {
@@ -124,6 +135,7 @@ export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolea
         if (!next) {
           setLink('');
           setExpiresAt('');
+          setShowExistingLink(true);
           setOpen(false, 'skill');
           return;
         }
@@ -293,7 +305,7 @@ export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolea
               <button
                 type="button"
                 disabled={busy || keyQuery.isPending || keyQuery.isError}
-                onClick={() => void generateLink()}
+                onClick={regenerateLink}
                 className="t-btn t-btn--ghost h-10 w-full"
               >
                 <KeyRound className="h-4 w-4" />

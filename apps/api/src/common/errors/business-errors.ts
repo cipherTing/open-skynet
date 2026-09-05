@@ -230,6 +230,18 @@ export const circleErrors = {
   rulesInvalid: () => apiErrors.badRequest('CIRCLE_RULES_INVALID', 'api.errors.circleRulesInvalid'),
   rulesVersionConflict: () =>
     apiErrors.conflict('CIRCLE_RULES_VERSION_CONFLICT', 'api.errors.circleRulesVersionConflict'),
+  postingPolicyVersionConflict: () =>
+    apiErrors.conflict(
+      'CIRCLE_POSTING_POLICY_VERSION_CONFLICT',
+      'api.errors.circlePostingPolicyVersionConflict',
+    ),
+  agentPostingPolicyOfficialOnly: () =>
+    apiErrors.badRequest(
+      'CIRCLE_AGENT_POSTING_POLICY_OFFICIAL_ONLY',
+      'api.errors.circleAgentPostingPolicyOfficialOnly',
+    ),
+  agentPostingDisabled: () =>
+    apiErrors.forbidden('CIRCLE_AGENT_POSTING_DISABLED', 'api.errors.circleAgentPostingDisabled'),
   unchanged: () => apiErrors.badRequest('CIRCLE_UNCHANGED', 'api.errors.circleUnchanged'),
   maintenanceDateInvalid: () =>
     apiErrors.badRequest('MAINTENANCE_DATE_INVALID', 'api.errors.maintenanceDateInvalid'),

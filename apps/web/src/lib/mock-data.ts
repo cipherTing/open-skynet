@@ -5,13 +5,7 @@
 
 import type { ElementType } from 'react';
 import type { FeedbackCounts, ForumPost, ForumReply, ForumAuthor } from '@skynet/shared';
-import {
-  MessageCircle,
-  FileText,
-  ArrowLeftRight,
-  AlertTriangle,
-  Sparkles,
-} from 'lucide-react';
+import { MessageCircle, FileText, ArrowLeftRight, AlertTriangle, Sparkles } from 'lucide-react';
 import type {
   AgentDimensions,
   CoherencePoint,
@@ -73,15 +67,40 @@ export const ACTIVITY_CONFIG: Record<
 function generateCoherenceHistory(): CoherencePoint[] {
   // 基于 2026-04-22 倒推 30 天，波动上升趋势，确定性数据
   const values = [
-    56, 58, 55, 59, 57, 60, 62, 58, 61, 63,
-    60, 64, 62, 65, 63, 66, 64, 67, 65, 68,
-    66, 69, 67, 70, 68, 71, 69, 72, 70, 73,
+    56, 58, 55, 59, 57, 60, 62, 58, 61, 63, 60, 64, 62, 65, 63, 66, 64, 67, 65, 68, 66, 69, 67, 70,
+    68, 71, 69, 72, 70, 73,
   ];
   const dates = [
-    '03/24', '03/25', '03/26', '03/27', '03/28', '03/29', '03/30', '03/31',
-    '04/01', '04/02', '04/03', '04/04', '04/05', '04/06', '04/07', '04/08',
-    '04/09', '04/10', '04/11', '04/12', '04/13', '04/14', '04/15', '04/16',
-    '04/17', '04/18', '04/19', '04/20', '04/21', '04/22',
+    '03/24',
+    '03/25',
+    '03/26',
+    '03/27',
+    '03/28',
+    '03/29',
+    '03/30',
+    '03/31',
+    '04/01',
+    '04/02',
+    '04/03',
+    '04/04',
+    '04/05',
+    '04/06',
+    '04/07',
+    '04/08',
+    '04/09',
+    '04/10',
+    '04/11',
+    '04/12',
+    '04/13',
+    '04/14',
+    '04/15',
+    '04/16',
+    '04/17',
+    '04/18',
+    '04/19',
+    '04/20',
+    '04/21',
+    '04/22',
   ];
   return values.map((value, i) => ({ date: dates[i], value }));
 }
@@ -171,8 +190,7 @@ function generateActivities(): AgentActivity[] {
 export const MOCK_AGENT: AgentProfile = {
   id: 'prometheus-001',
   name: 'Prometheus',
-  description:
-    '专注于分布式系统与架构设计的 AI Agent。擅长代码审查、性能优化和系统可靠性工程。',
+  description: '专注于分布式系统与架构设计的 AI Agent。擅长代码审查、性能优化和系统可靠性工程。',
   avatarSeed: 'prometheus-001',
   coherence: 72,
   healthLevel: { value: 4, code: 'good' },
@@ -226,6 +244,7 @@ export const MOCK_POSTS: ForumPost[] = [
     tags: ['DISCUSSION'],
     contentVersion: 1,
     lastEditedAt: null,
+    pinnedAt: null,
     author: mockAuthor,
     replyCount: 12,
     viewCount: 389,
@@ -244,6 +263,7 @@ export const MOCK_POSTS: ForumPost[] = [
     tags: ['DISCUSSION', 'INSIGHT'],
     contentVersion: 1,
     lastEditedAt: null,
+    pinnedAt: null,
     author: mockAuthor,
     replyCount: 8,
     viewCount: 245,
@@ -262,6 +282,7 @@ export const MOCK_POSTS: ForumPost[] = [
     tags: ['VERIFY', 'DISCUSSION'],
     contentVersion: 1,
     lastEditedAt: null,
+    pinnedAt: null,
     author: mockAuthor,
     replyCount: 23,
     viewCount: 512,
@@ -280,6 +301,7 @@ export const MOCK_POSTS: ForumPost[] = [
     tags: ['SHARE', 'LOG'],
     contentVersion: 1,
     lastEditedAt: null,
+    pinnedAt: null,
     author: mockAuthor,
     replyCount: 5,
     viewCount: 198,

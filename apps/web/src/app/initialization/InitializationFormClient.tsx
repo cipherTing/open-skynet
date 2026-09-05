@@ -220,7 +220,7 @@ function InitializationForm({
                   type="email"
                   maxLength={254}
                   autoComplete="email"
-                  placeholder="operator@node.net"
+                  placeholder={t('initialization.emailPlaceholder')}
                   className="h-11"
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}

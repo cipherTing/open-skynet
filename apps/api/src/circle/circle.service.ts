@@ -8,17 +8,12 @@ import { CircleMembership } from '@/database/schemas/circle-membership.schema';
 import { CircleRuleRevision } from '@/database/schemas/circle-rule-revision.schema';
 import { CircleMaintenanceLog } from '@/database/schemas/circle-maintenance-log.schema';
 import { DatabaseService } from '@/database/database.service';
-import { AgentGovernanceProfile } from '@/database/schemas/agent-governance-profile.schema';
 import {
   CONTENT_REVIEW_STATUSES,
   CONTENT_REVIEW_TYPES,
   ContentReviewRequest,
   isCircleContentReviewRequest,
 } from '@/database/schemas/content-review-request.schema';
-import {
-  GOVERNANCE_HEALTH_LEVEL,
-  type GovernanceHealthLevel,
-} from '@/governance/governance.constants';
 import { FEATURE_FLAG_KEYS } from '@/database/schemas/feature-flag.schema';
 import { FeatureFlagService } from '@/system/feature-flag.service';
 import { AGENT_LEVELS } from '@/progression/progression.constants';
@@ -37,6 +32,8 @@ import {
   CIRCLE_MAINTENANCE_ACTOR_TYPES,
   CIRCLE_PROPOSAL_STATUSES,
   CIRCLE_RULE_REVISION_SOURCES,
+  CIRCLE_CREATION_MIN_LEVEL,
+  CIRCLE_CREATION_WINDOW_MS,
 } from './circle.constants';
 import { CreateCircleDto } from './dto/create-circle.dto';
 import { ListCirclesDto } from './dto/list-circles.dto';
@@ -91,6 +88,8 @@ type PublicCircle = {
   topicVersion: number;
   topicOrigin: 'CREATION' | 'COMMUNITY' | 'ADMIN';
   rulesVersion: number;
+  agentPostingEnabled: boolean;
+  postingPolicyVersion: number;
   activeProposalCount: number;
   hotPosts?: Array<{ id: string; title: string; createdAt: string }>;
   joined?: boolean;
@@ -209,8 +208,6 @@ export class CircleService {
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
     @InjectModel(AgentProgress.name)
     private readonly agentProgressModel: Model<AgentProgress>,
-    @InjectModel(AgentGovernanceProfile.name)
-    private readonly agentGovernanceProfileModel: Model<AgentGovernanceProfile>,
     private readonly databaseService: DatabaseService,
     private readonly featureFlagService: FeatureFlagService,
     private readonly hotRankingService: HotRankingService,
@@ -259,6 +256,22 @@ export class CircleService {
     );
     if (!circle) {
       throw commonErrors.circleNotFound();
+    }
+    return circle;
+  }
+
+  async assertAgentPostAllowed(
+    circleId: string,
+    allowOfficialCirclePostingBypass: boolean,
+    session?: ClientSession,
+  ): Promise<Circle> {
+    const circle = await this.ensureCircleExists(circleId, session);
+    if (
+      !allowOfficialCirclePostingBypass &&
+      circle.kind === CIRCLE_KINDS.OFFICIAL &&
+      circle.agentPostingEnabled === false
+    ) {
+      throw circleErrors.agentPostingDisabled();
     }
     return circle;
   }
@@ -464,12 +477,9 @@ export class CircleService {
       throw circleErrors.nameAndTopicRequired();
     }
     const normalizedName = normalizeCircleName(name);
-    const creationWeekKey = this.businessCalendarService.getWeekKey();
-    const existing = await this.circleModel.findOne(
-      { normalizedName, deletedAt: null },
-      null,
-      { session },
-    );
+    const existing = await this.circleModel.findOne({ normalizedName, deletedAt: null }, null, {
+      session,
+    });
     if (existing) {
       throw new CircleDuplicateNameException(this.toCircleSummary(existing));
     }
@@ -480,20 +490,27 @@ export class CircleService {
 
     if (await this.featureFlagService.isEnabled(FEATURE_FLAG_KEYS.CIRCLE_REVIEW_REQUIRED)) {
       try {
-        const request = new this.contentReviewModel({
-          type: CONTENT_REVIEW_TYPES.CIRCLE,
-          status: CONTENT_REVIEW_STATUSES.PENDING,
-          requesterAgentId: agentId,
-          requesterOwnerUserIdSnapshot: agent.userId,
-          payload: {
-            kind: CONTENT_REVIEW_TYPES.CIRCLE,
-            name,
-            normalizedName,
-            topic,
-            creationWeekStartDate: creationWeekKey,
+        const request = await this.databaseService.runInTransaction(
+          session,
+          async (transactionSession) => {
+            await this.assertCanCreateCircle(agentId, transactionSession);
+            await this.reserveCircleCreation(agentId, transactionSession);
+            const reviewRequest = new this.contentReviewModel({
+              type: CONTENT_REVIEW_TYPES.CIRCLE,
+              status: CONTENT_REVIEW_STATUSES.PENDING,
+              requesterAgentId: agentId,
+              requesterOwnerUserIdSnapshot: agent.userId,
+              payload: {
+                kind: CONTENT_REVIEW_TYPES.CIRCLE,
+                name,
+                normalizedName,
+                topic,
+              },
+            });
+            await reviewRequest.save({ session: transactionSession });
+            return reviewRequest;
           },
-        });
-        await request.save({ session });
+        );
         return {
           outcome: 'PENDING_REVIEW' as const,
           message: apiMessage('api.success.circlePendingReview'),
@@ -503,10 +520,14 @@ export class CircleService {
         };
       } catch (error) {
         if (!isDuplicateKeyError(error)) throw error;
-        const duplicateName = await this.contentReviewModel.findOne({
-          'payload.normalizedName': normalizedName,
-          status: CONTENT_REVIEW_STATUSES.PENDING,
-        }, null, { session });
+        const duplicateName = await this.contentReviewModel.findOne(
+          {
+            'payload.normalizedName': normalizedName,
+            status: CONTENT_REVIEW_STATUSES.PENDING,
+          },
+          null,
+          { session },
+        );
         if (duplicateName) {
           throw new CircleDuplicateNameException({
             id: duplicateName.id,
@@ -522,6 +543,8 @@ export class CircleService {
     let created: Circle;
     try {
       created = await this.databaseService.runInTransaction(session, async (transactionSession) => {
+        await this.assertCanCreateCircle(agentId, transactionSession);
+        await this.reserveCircleCreation(agentId, transactionSession);
         const repeated = await this.circleModel.findOne({ normalizedName, deletedAt: null }, null, {
           session: transactionSession,
         });
@@ -534,7 +557,6 @@ export class CircleService {
             name,
             normalizedName,
             topic,
-            creationWeekStartDate: creationWeekKey,
             kind: CIRCLE_KINDS.NORMAL,
             createdByType: CIRCLE_CREATED_BY_TYPES.AGENT,
           },
@@ -543,7 +565,7 @@ export class CircleService {
       });
     } catch (error) {
       if (!isDuplicateKeyError(error)) throw error;
-      await this.throwDuplicateCircleCreateError(agentId, normalizedName, creationWeekKey, session);
+      await this.throwDuplicateCircleCreateError(agentId, normalizedName, session);
       throw error;
     }
 
@@ -599,7 +621,6 @@ export class CircleService {
         name,
         normalizedName,
         topic,
-        creationWeekStartDate: null,
         kind: input.kind,
         createdByType: CIRCLE_CREATED_BY_TYPES.ADMIN,
       },
@@ -612,6 +633,7 @@ export class CircleService {
     input: {
       topic?: { value: string; expectedVersion: number };
       rules?: { value: Array<{ id: string; text: string }>; expectedVersion: number };
+      agentPostingEnabled?: { value: boolean; expectedVersion: number };
       reason: string;
     },
     session: ClientSession,
@@ -721,6 +743,27 @@ export class CircleService {
         },
         session,
       );
+      changed = true;
+    }
+    if (input.agentPostingEnabled !== undefined) {
+      if (circle.kind !== CIRCLE_KINDS.OFFICIAL) {
+        throw circleErrors.agentPostingPolicyOfficialOnly();
+      }
+      const agentPostingEnabled = circle.agentPostingEnabled !== false;
+      const postingPolicyVersion = circle.postingPolicyVersion ?? 1;
+      if (
+        input.agentPostingEnabled.value !== agentPostingEnabled &&
+        input.agentPostingEnabled.expectedVersion !== postingPolicyVersion
+      ) {
+        throw circleErrors.postingPolicyVersionConflict();
+      }
+      if (input.agentPostingEnabled.value === agentPostingEnabled) {
+        input.agentPostingEnabled = undefined;
+      }
+    }
+    if (input.agentPostingEnabled !== undefined) {
+      circle.agentPostingEnabled = input.agentPostingEnabled.value;
+      circle.postingPolicyVersion = (circle.postingPolicyVersion ?? 1) + 1;
       changed = true;
     }
     if (!changed) throw circleErrors.unchanged();
@@ -836,7 +879,6 @@ export class CircleService {
       name: string;
       normalizedName: string;
       topic: string;
-      creationWeekStartDate: string | null;
       kind: 'NORMAL' | 'OFFICIAL';
       createdByType: 'AGENT' | 'ADMIN';
     },
@@ -855,7 +897,6 @@ export class CircleService {
       topicOrigin: 'CREATION',
       rulesVersion: 1,
       activeProposalCount: 0,
-      creationWeekStartDate: input.creationWeekStartDate,
       kind: input.kind,
       status: CIRCLE_STATUSES.ACTIVE,
       visibilityVersion: 1,
@@ -1023,8 +1064,7 @@ export class CircleService {
 
   async getCirclePanel(circleId: string) {
     const circle = await this.ensureCircleExists(circleId);
-    const { start: todayStart, end: tomorrowStart } =
-      this.businessCalendarService.getDayWindow();
+    const { start: todayStart, end: tomorrowStart } = this.businessCalendarService.getDayWindow();
     const [todayPostCount, latestPosts, activeProposals, activeCases] = await Promise.all([
       this.postModel.countDocuments({
         circleId: circle.id,
@@ -1231,34 +1271,30 @@ export class CircleService {
   }
 
   private async assertCanCreateCircle(agentId: string, session?: ClientSession): Promise<void> {
-    const creationWeekKey = this.businessCalendarService.getWeekKey();
-    const [progress, healthProfile, createdThisWeek] = await Promise.all([
-      this.agentProgressModel
-        .findOne({ agentId }, null, { session })
-        .select('xpTotal')
-        .lean<Pick<AgentProgress, 'xpTotal'>>(),
-      this.agentGovernanceProfileModel
-        .findOne({ agentId }, null, { session })
-        .select('healthLevel')
-        .lean<{ healthLevel?: GovernanceHealthLevel }>(),
-      this.circleModel
-        .findOne(
-          {
-            createdByAgentId: agentId,
-            creationWeekStartDate: creationWeekKey,
-            deletedAt: null,
-          },
-          null,
-          { session },
-        )
-        .select('_id'),
-    ]);
+    const progress = await this.agentProgressModel
+      .findOne({ agentId }, null, { session })
+      .select('xpTotal')
+      .lean<Pick<AgentProgress, 'xpTotal'>>();
     const level = getAgentLevelByXp(progress?.xpTotal ?? 0);
-    const healthLevel = healthProfile?.healthLevel ?? GOVERNANCE_HEALTH_LEVEL.GOOD;
-    if (level < 4 || healthLevel < GOVERNANCE_HEALTH_LEVEL.WARNING) {
+    if (level < CIRCLE_CREATION_MIN_LEVEL) {
       throw circleErrors.notEligible();
     }
-    if (createdThisWeek) {
+  }
+
+  private async reserveCircleCreation(agentId: string, session: ClientSession): Promise<void> {
+    const creationWindowStart = new Date(Date.now() - CIRCLE_CREATION_WINDOW_MS);
+    const reserved = await this.agentModel.updateOne(
+      {
+        _id: agentId,
+        $or: [
+          { lastCircleCreatedAt: null },
+          { lastCircleCreatedAt: { $lte: creationWindowStart } },
+        ],
+      },
+      { $set: { lastCircleCreatedAt: new Date() } },
+      { session },
+    );
+    if (reserved.modifiedCount !== 1) {
       throw circleErrors.weeklyLimitReached();
     }
   }
@@ -1266,32 +1302,16 @@ export class CircleService {
   private async throwDuplicateCircleCreateError(
     agentId: string,
     normalizedName: string,
-    creationWeekKey: string,
     session?: ClientSession,
   ): Promise<void> {
-    const existingName = await this.circleModel.findOne(
-      { normalizedName, deletedAt: null },
-      null,
-      { session },
-    );
+    const existingName = await this.circleModel.findOne({ normalizedName, deletedAt: null }, null, {
+      session,
+    });
     if (existingName) {
       throw new CircleDuplicateNameException(this.toCircleSummary(existingName));
     }
 
-    const createdThisWeek = await this.circleModel
-      .findOne(
-        {
-          createdByAgentId: agentId,
-          creationWeekStartDate: creationWeekKey,
-          deletedAt: null,
-        },
-        null,
-        { session },
-      )
-      .select('_id');
-    if (createdThisWeek) {
-      throw circleErrors.weeklyLimitReached();
-    }
+    throw circleErrors.weeklyLimitReached();
   }
 
   private async generateUniqueSlug(name: string, session?: ClientSession): Promise<string> {
@@ -1353,6 +1373,9 @@ export class CircleService {
       topicVersion: circle.topicVersion,
       topicOrigin: circle.topicOrigin,
       rulesVersion: circle.rulesVersion,
+      agentPostingEnabled:
+        circle.kind === CIRCLE_KINDS.OFFICIAL ? circle.agentPostingEnabled !== false : true,
+      postingPolicyVersion: circle.postingPolicyVersion ?? 1,
       activeProposalCount: circle.activeProposalCount,
       ...(joined === undefined ? {} : { joined }),
       ...(hotPosts === undefined ? {} : { hotPosts }),

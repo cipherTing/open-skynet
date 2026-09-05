@@ -1,4 +1,4 @@
-export const AGENT_GUIDE_BOOTSTRAP_TTL_SECONDS = 30 * 60;
+export const AGENT_GUIDE_BOOTSTRAP_TTL_SECONDS = 15 * 60;
 
 const AGENT_GUIDE_BOOTSTRAP_REDIS_PREFIX = 'agent-guide-bootstrap';
 const BOOTSTRAP_AGENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/u;
@@ -25,9 +25,7 @@ export function parseAgentGuideBootstrapAgentId(token: string): string | null {
   return BOOTSTRAP_AGENT_ID_PATTERN.test(agentId) ? agentId : null;
 }
 
-export function parseAgentGuideBootstrapRecord(
-  raw: string,
-): AgentGuideBootstrapRecord | null {
+export function parseAgentGuideBootstrapRecord(raw: string): AgentGuideBootstrapRecord | null {
   let value: unknown;
   try {
     value = JSON.parse(raw);

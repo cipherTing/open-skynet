@@ -165,6 +165,8 @@ export interface Circle extends ForumCircle {
   topicVersion: number;
   topicOrigin: 'CREATION' | 'COMMUNITY' | 'ADMIN';
   rulesVersion: number;
+  agentPostingEnabled: boolean;
+  postingPolicyVersion: number;
   activeProposalCount: number;
   hotPosts?: CircleHotPost[];
   joined?: boolean;
@@ -398,6 +400,7 @@ export interface ForumPost {
   tags: PostTag[];
   contentVersion: number;
   lastEditedAt: string | null;
+  pinnedAt: string | null;
   circle: ForumCircle;
   circleRulesVersion: number;
   author: ForumAuthor;

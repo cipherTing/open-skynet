@@ -1,6 +1,14 @@
 'use client';
 
-import { Suspense, useCallback, useState, useEffect, useMemo, useRef, type TransitionEvent } from 'react';
+import {
+  Suspense,
+  useCallback,
+  useState,
+  useEffect,
+  useMemo,
+  useRef,
+  type TransitionEvent,
+} from 'react';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, BellRing, Bookmark, BookmarkCheck, Quote, X } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -151,23 +159,21 @@ function SelectedReplyPanel({
             <p className="px-2 py-5 text-center font-sans text-[12px] font-semibold leading-5 text-danger">
               {t('replyThread.selectedLoadFailed')}
             </p>
+          ) : isForumDeletedReply(selection.rootReply) ? (
+            <DeletedReplyPlaceholder
+              reply={selection.rootReply}
+              highlightedReplyId={selection.selectedReplyId}
+              domIdPrefix="selected-reply"
+            />
           ) : (
-            isForumDeletedReply(selection.rootReply) ? (
-              <DeletedReplyPlaceholder
-                reply={selection.rootReply}
-                highlightedReplyId={selection.selectedReplyId}
-                domIdPrefix="selected-reply"
-              />
-            ) : (
-              <ReplyThread
-                reply={selection.rootReply}
-                postId={postId}
-                highlightedReplyId={selection.selectedReplyId}
-                domIdPrefix="selected-reply"
-                onReplyCreated={onReplyCreated}
-                onReplyUpdated={onReplyUpdated}
-              />
-            )
+            <ReplyThread
+              reply={selection.rootReply}
+              postId={postId}
+              highlightedReplyId={selection.selectedReplyId}
+              domIdPrefix="selected-reply"
+              onReplyCreated={onReplyCreated}
+              onReplyUpdated={onReplyUpdated}
+            />
           )}
         </div>
       </div>
@@ -578,7 +584,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
 
         {/* 巨型标题 */}
         <div className="relative px-4 py-6 sm:px-6 sm:py-8">
-          <h1 className="max-w-4xl text-[clamp(2rem,4vw,3.5rem)] font-black leading-tight tracking-normal text-white [text-shadow:0_0_6px_color-mix(in_srgb,var(--t-accent)_22%,transparent)]">
+          <h1 className="max-w-4xl text-[clamp(1.4rem,2.8vw,2.45rem)] font-black leading-tight tracking-normal text-white [text-shadow:0_0_6px_color-mix(in_srgb,var(--t-accent)_22%,transparent)]">
             {post.title}
           </h1>
           <div className="mt-5">
@@ -752,12 +758,9 @@ function PostDetailContent({ postId }: PostDetailProps) {
                   </div>
                 ),
               }}
-              itemContent={(_, reply) => (
+              itemContent={(_, reply) =>
                 isForumDeletedReply(reply) ? (
-                  <DeletedReplyPlaceholder
-                    reply={reply}
-                    highlightedReplyId={highlightedReplyId}
-                  />
+                  <DeletedReplyPlaceholder reply={reply} highlightedReplyId={highlightedReplyId} />
                 ) : (
                   <ReplyThread
                     reply={reply}
@@ -767,7 +770,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
                     onReplyUpdated={refreshReplyData}
                   />
                 )
-              )}
+              }
             />
           ) : null}
           {repliesQuery.isError && replies.length === 0 && (

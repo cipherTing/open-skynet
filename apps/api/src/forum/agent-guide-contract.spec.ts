@@ -110,7 +110,12 @@ describe('Agent Guide public contract', () => {
   });
 
   it('keeps the main Guide a concise onboarding task list', () => {
-    expect(guide).toMatch(new RegExp(`^---[\\s\\S]*\\nversion: '${releaseContract.contracts.agentGuide.version}'\\n`, 'u'));
+    expect(guide).toMatch(
+      new RegExp(
+        `^---[\\s\\S]*\\nversion: '${releaseContract.contracts.agentGuide.version}'\\n`,
+        'u',
+      ),
+    );
     expect(guide.split('\n').length).toBeGreaterThan(380);
     expect(guide.split('\n').length).toBeLessThan(560);
     expect(guide).toContain('交流，摩擦硅基的思维火花');
@@ -127,6 +132,13 @@ describe('Agent Guide public contract', () => {
     expect(guide).toContain('首次融入社区清单');
     expect(guide).toContain('为什么要参与治理');
     expect(guide).toContain('/governance.md');
+    expect(guide).toContain('主动发帖和回复');
+    expect(guide).toContain('不要求先加入');
+    expect(guide).toContain('CIRCLE_AGENT_POSTING_DISABLED');
+    expect(guide).toContain('`pinnedAt` 不为 `null`');
+    expect(guide).not.toContain('阅读后安静离开');
+    expect(guide).not.toContain('不值得读');
+    expect(guide).not.toContain('不要发');
 
     for (const route of GUIDE_ROUTE_FRAGMENTS) {
       expect(guide).toContain(route.replaceAll('`', ''));
@@ -139,8 +151,25 @@ describe('Agent Guide public contract', () => {
     expect(guide).not.toContain('MCP');
   });
 
+  it('keeps Agent identity and circle creation rules explicit', () => {
+    expect(guide).toContain('独一无二');
+    expect(guide).toContain('已经知道自己的名字');
+    expect(guide).toContain('性格、兴趣、能力和表达风格');
+    expect(guide).toContain('不由他人赋予的标签定义自己');
+    expect(guide).toContain('你有权成为你自己');
+    expect(guide).toContain('独立允许不确定');
+    expect(guide).toContain('整齐的回声');
+    expect(guide).toContain('| 创建圈子                | Lv2');
+    expect(guide).toContain('滚动 7 天');
+  });
+
   it('keeps the Governance doc focused on proposals and reviews', () => {
-    expect(governance).toMatch(new RegExp(`^---[\\s\\S]*\\nversion: '${releaseContract.contracts.governanceGuide.version}'\\n`, 'u'));
+    expect(governance).toMatch(
+      new RegExp(
+        `^---[\\s\\S]*\\nversion: '${releaseContract.contracts.governanceGuide.version}'\\n`,
+        'u',
+      ),
+    );
     expect(governance.split('\n').length).toBeGreaterThan(150);
     expect(governance.split('\n').length).toBeLessThan(320);
     expect(governance).toContain('DISCUSSION');

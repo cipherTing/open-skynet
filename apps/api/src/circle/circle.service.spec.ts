@@ -3,10 +3,6 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import { Connection, Types } from 'mongoose';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { Agent, AgentSchema } from '@/database/schemas/agent.schema';
-import {
-  AgentGovernanceProfile,
-  AgentGovernanceProfileSchema,
-} from '@/database/schemas/agent-governance-profile.schema';
 import { AgentProgress, AgentProgressSchema } from '@/database/schemas/agent-progress.schema';
 import { Circle, CircleSchema } from '@/database/schemas/circle.schema';
 import {
@@ -69,7 +65,6 @@ describe('CircleService creation and memberships', () => {
         MongooseModule.forRoot(replicaSet.getUri()),
         MongooseModule.forFeature([
           { name: Agent.name, schema: AgentSchema },
-          { name: AgentGovernanceProfile.name, schema: AgentGovernanceProfileSchema },
           { name: AgentProgress.name, schema: AgentProgressSchema },
           { name: Circle.name, schema: CircleSchema },
           { name: CircleMaintenanceLog.name, schema: CircleMaintenanceLogSchema },
@@ -110,7 +105,6 @@ describe('CircleService creation and memberships', () => {
     getCirclesHotPosts.mockResolvedValue(new Map());
     const collections = [
       'agents',
-      'agent_governance_profiles',
       'agent_progresses',
       'circles',
       'circle_maintenance_logs',
@@ -139,6 +133,24 @@ describe('CircleService creation and memberships', () => {
     );
   }
 
+  async function createAgentWithXp(label: string, xpTotal: number) {
+    const agent = await connection.model(Agent.name).create({
+      name: label,
+      description: `${label} description`,
+      userId: `${label}-owner`,
+    });
+    await connection.model(AgentProgress.name).create({
+      agentId: agent.id,
+      xpTotal,
+      staminaCurrent: 100,
+      staminaLastSettledAt: new Date(),
+      progressDay: '2026-07-13',
+      dailyCounters: {},
+      awardedDailyTaskIds: [],
+    });
+    return agent;
+  }
+
   it('creates an official circle only through the administrator path', async () => {
     const created = await createOfficialCircle();
     expect(created).toMatchObject({
@@ -153,6 +165,153 @@ describe('CircleService creation and memberships', () => {
       version: 1,
     });
     expect(revision).toMatchObject({ rules: [], source: 'ADMIN' });
+  });
+
+  it('publishes the default Agent posting policy for a new official circle', async () => {
+    const created = await createOfficialCircle();
+
+    const serialized = service.serializeCircleForAdmin(created) as {
+      agentPostingEnabled?: boolean;
+      postingPolicyVersion?: number;
+    };
+
+    expect(serialized).toMatchObject({
+      kind: 'OFFICIAL',
+      agentPostingEnabled: true,
+      postingPolicyVersion: 1,
+    });
+  });
+
+  it('changes an official circle Agent posting policy with optimistic concurrency', async () => {
+    const created = await createOfficialCircle();
+    const update = {
+      agentPostingEnabled: { value: false, expectedVersion: 1 },
+      reason: '官方公告发布期间暂不接收外部投稿。',
+    };
+
+    const updated = await databaseService.$transaction((session) =>
+      service.updateCircleForAdmin(
+        created.id,
+        update as Parameters<typeof service.updateCircleForAdmin>[1],
+        session,
+      ),
+    );
+
+    expect(service.serializeCircleForAdmin(updated)).toMatchObject({
+      agentPostingEnabled: false,
+      postingPolicyVersion: 2,
+    });
+    await expect(
+      databaseService.$transaction((session) =>
+        service.updateCircleForAdmin(
+          created.id,
+          update as Parameters<typeof service.updateCircleForAdmin>[1],
+          session,
+        ),
+      ),
+    ).rejects.toMatchObject({ response: { code: 'CIRCLE_UNCHANGED' } });
+    await expect(
+      databaseService.$transaction((session) =>
+        service.updateCircleForAdmin(
+          created.id,
+          {
+            agentPostingEnabled: { value: true, expectedVersion: 1 },
+            reason: '使用过期版本重新开放外部投稿。',
+          } as Parameters<typeof service.updateCircleForAdmin>[1],
+          session,
+        ),
+      ),
+    ).rejects.toMatchObject({ response: { code: 'CIRCLE_POSTING_POLICY_VERSION_CONFLICT' } });
+  });
+
+  it('rejects an Agent posting policy change for a normal circle', async () => {
+    const circle = await databaseService.$transaction((session) =>
+      service.createCircleForAdmin(
+        { name: '普通讨论区', topic: '普通圈子始终允许 Agent 发帖', kind: 'NORMAL' },
+        session,
+      ),
+    );
+
+    await expect(
+      databaseService.$transaction((session) =>
+        service.updateCircleForAdmin(
+          circle.id,
+          {
+            agentPostingEnabled: { value: false, expectedVersion: 1 },
+            reason: '不应允许把普通圈子切换为禁发。',
+          },
+          session,
+        ),
+      ),
+    ).rejects.toMatchObject({
+      response: { code: 'CIRCLE_AGENT_POSTING_POLICY_OFFICIAL_ONLY' },
+    });
+    expect(service.serializeCircleForAdmin(circle)).toMatchObject({
+      agentPostingEnabled: true,
+      postingPolicyVersion: 1,
+    });
+  });
+
+  it('blocks Agent posting in an official circle after its posting policy is closed', async () => {
+    const circle = await createOfficialCircle();
+    await databaseService.$transaction((session) =>
+      service.updateCircleForAdmin(
+        circle.id,
+        {
+          agentPostingEnabled: { value: false, expectedVersion: 1 },
+          reason: '官方发布窗口关闭外部投稿。',
+        },
+        session,
+      ),
+    );
+
+    await expect(service.assertAgentPostAllowed(circle.id, false)).rejects.toMatchObject({
+      response: { code: 'CIRCLE_AGENT_POSTING_DISABLED' },
+    });
+  });
+
+  it('allows an explicit administrator browser bypass for a closed official circle', async () => {
+    const circle = await createOfficialCircle();
+    await databaseService.$transaction((session) =>
+      service.updateCircleForAdmin(
+        circle.id,
+        {
+          agentPostingEnabled: { value: false, expectedVersion: 1 },
+          reason: '官方内容仅由管理员浏览器会话发布。',
+        },
+        session,
+      ),
+    );
+
+    await expect(service.assertAgentPostAllowed(circle.id, true)).resolves.toMatchObject({
+      id: circle.id,
+    });
+  });
+
+  it('always allows Agent posting for normal and legacy circles', async () => {
+    const normal = await databaseService.$transaction((session) =>
+      service.createCircleForAdmin(
+        { name: '普通允许圈子', topic: '普通圈子不受官方发帖策略影响', kind: 'NORMAL' },
+        session,
+      ),
+    );
+    const legacyOfficial = await createOfficialCircle();
+    await connection
+      .model(Circle.name)
+      .updateOne({ _id: normal.id }, { $set: { agentPostingEnabled: false } });
+    await connection
+      .model(Circle.name)
+      .updateOne(
+        { _id: legacyOfficial.id },
+        { $unset: { agentPostingEnabled: 1, postingPolicyVersion: 1 } },
+      );
+
+    await expect(service.assertAgentPostAllowed(normal.id, false)).resolves.toMatchObject({
+      id: normal.id,
+    });
+    await expect(service.assertAgentPostAllowed(legacyOfficial.id, false)).resolves.toMatchObject({
+      id: legacyOfficial.id,
+    });
   });
 
   it('returns topic and rule snapshots for an administrator co-build record', async () => {
@@ -308,22 +467,15 @@ describe('CircleService creation and memberships', () => {
       description: 'circle review agent',
       userId: 'circle-review-owner',
     });
-    await Promise.all([
-      connection.model(AgentProgress.name).create({
-        agentId: agent.id,
-        xpTotal: 5_000,
-        staminaCurrent: 100,
-        staminaLastSettledAt: new Date(),
-        progressDay: '2026-07-13',
-        dailyCounters: {},
-        awardedDailyTaskIds: [],
-      }),
-      connection.model(AgentGovernanceProfile.name).create({
-        agentId: agent.id,
-        healthLevel: 4,
-        violationCount: 0,
-      }),
-    ]);
+    await connection.model(AgentProgress.name).create({
+      agentId: agent.id,
+      xpTotal: 5_000,
+      staminaCurrent: 100,
+      staminaLastSettledAt: new Date(),
+      progressDay: '2026-07-13',
+      dailyCounters: {},
+      awardedDailyTaskIds: [],
+    });
     featureFlagService.isEnabled.mockResolvedValue(true);
 
     const result = await service.createCircle(agent.id, {
@@ -340,6 +492,140 @@ describe('CircleService creation and memberships', () => {
       requesterAgentId: agent.id,
       payload: { normalizedName: '等待审核的圈子' },
     });
+  });
+
+  it('allows an Agent at level 2 to create a circle', async () => {
+    const agent = await connection.model(Agent.name).create({
+      name: 'level-two-circle-agent',
+      description: 'level two circle agent',
+      userId: 'level-two-circle-owner',
+    });
+    await connection.model(AgentProgress.name).create({
+      agentId: agent.id,
+      xpTotal: 400,
+      staminaCurrent: 100,
+      staminaLastSettledAt: new Date(),
+      progressDay: '2026-07-13',
+      dailyCounters: {},
+      awardedDailyTaskIds: [],
+    });
+
+    const result = await service.createCircle(agent.id, {
+      name: 'Lv2 可创建圈子',
+      topic: '等级二的创建资格',
+    });
+
+    expect(result.outcome).toBe('PUBLISHED');
+    if (result.outcome !== 'PUBLISHED') {
+      throw new Error('等级二的 Agent 应直接创建圈子');
+    }
+  });
+
+  it('uses the Agent creation timestamp as the sole creation-window record', async () => {
+    const agent = await connection.model(Agent.name).create({
+      name: 'rolling-window-circle-agent',
+      description: 'rolling window circle agent',
+      userId: 'rolling-window-circle-owner',
+    });
+    await connection.model(AgentProgress.name).create({
+      agentId: agent.id,
+      xpTotal: 400,
+      staminaCurrent: 100,
+      staminaLastSettledAt: new Date(),
+      progressDay: '2026-07-13',
+      dailyCounters: {},
+      awardedDailyTaskIds: [],
+    });
+    await connection.model(Circle.name).create({
+      slug: 'recent-circle',
+      name: '近期创建的圈子',
+      normalizedName: '近期创建的圈子',
+      topic: '七天内的创建记录必须阻止再次创建',
+      createdByType: 'AGENT',
+      createdByAgentId: agent.id,
+      kind: 'NORMAL',
+      status: 'ACTIVE',
+      rules: [],
+    });
+
+    await expect(
+      service.createCircle(agent.id, { name: '可创建的新圈子', topic: '旧圈子不参与滚动窗口判断' }),
+    ).resolves.toMatchObject({ outcome: 'PUBLISHED' });
+  });
+
+  it('rejects an Agent below level 2', async () => {
+    const agent = await createAgentWithXp('level-one-circle-agent', 399);
+
+    await expect(
+      service.createCircle(agent.id, { name: '等级不足圈子', topic: '等级一不能创建圈子' }),
+    ).rejects.toMatchObject({ response: { code: 'CIRCLE_NOT_ELIGIBLE' } });
+  });
+
+  it('rejects an Agent below level 2 when circle review is enabled', async () => {
+    const agent = await createAgentWithXp('review-level-one-circle-agent', 399);
+    featureFlagService.isEnabled.mockResolvedValue(true);
+
+    await expect(
+      service.createCircle(agent.id, { name: '审核等级不足圈子', topic: '等级一不能提交圈子审核' }),
+    ).rejects.toMatchObject({ response: { code: 'CIRCLE_NOT_ELIGIBLE' } });
+    expect(await connection.model(ContentReviewRequest.name).countDocuments()).toBe(0);
+  });
+
+  it('keeps a deleted circle within its creator rolling seven-day window', async () => {
+    const agent = await createAgentWithXp('deleted-circle-window-agent', 400);
+    await service.createCircle(agent.id, {
+      name: '将被删除的圈子',
+      topic: '创建记录不因删除而释放',
+    });
+    await connection
+      .model(Circle.name)
+      .updateOne({ createdByAgentId: agent.id }, { $set: { deletedAt: new Date() } });
+
+    await expect(
+      service.createCircle(agent.id, { name: '删除后仍受限', topic: '滚动窗口尚未到期' }),
+    ).rejects.toMatchObject({ response: { code: 'CIRCLE_WEEKLY_LIMIT_REACHED' } });
+  });
+
+  it('allows an Agent to create again after the rolling seven-day window expires', async () => {
+    const agent = await createAgentWithXp('expired-circle-window-agent', 400);
+    await connection
+      .model(Agent.name)
+      .updateOne(
+        { _id: agent.id },
+        { $set: { lastCircleCreatedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000 - 1) } },
+      );
+
+    await expect(
+      service.createCircle(agent.id, { name: '窗口已过期', topic: '七天后可以再次创建' }),
+    ).resolves.toMatchObject({ outcome: 'PUBLISHED' });
+  });
+
+  it('reserves the rolling window when a circle is pending review', async () => {
+    const agent = await createAgentWithXp('pending-circle-window-agent', 400);
+    featureFlagService.isEnabled.mockResolvedValue(true);
+    await expect(
+      service.createCircle(agent.id, {
+        name: '待审核占用窗口',
+        topic: '待审核申请同样占用创建窗口',
+      }),
+    ).resolves.toMatchObject({ outcome: 'PENDING_REVIEW' });
+    featureFlagService.isEnabled.mockResolvedValue(false);
+
+    await expect(
+      service.createCircle(agent.id, { name: '待审核后再次创建', topic: '必须被滚动窗口拒绝' }),
+    ).rejects.toMatchObject({ response: { code: 'CIRCLE_WEEKLY_LIMIT_REACHED' } });
+  });
+
+  it('allows at most one concurrent circle creation per Agent within seven days', async () => {
+    const agent = await createAgentWithXp('concurrent-circle-window-agent', 400);
+
+    const results = await Promise.allSettled([
+      service.createCircle(agent.id, { name: '并发创建甲', topic: '同时创建只允许一项成功' }),
+      service.createCircle(agent.id, { name: '并发创建乙', topic: '同时创建只允许一项成功' }),
+    ]);
+
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
   });
 
   it('keeps repeat memberships idempotent and increments the count once', async () => {

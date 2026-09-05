@@ -96,10 +96,12 @@ describe('UserService Agent Key operations', () => {
 
   it('rejects a public name already used by another active Agent', async () => {
     await connection.model(Agent.name).create({ name: 'Existing Agent', userId: 'existing-user' });
-    const agent = await connection.model(Agent.name).create({ name: 'Other Agent', userId: 'other-user' });
-    await expect(
-      service.updateAgent(agent.id, { name: ' Existing Agent ' }),
-    ).rejects.toMatchObject({ status: 409 });
+    const agent = await connection
+      .model(Agent.name)
+      .create({ name: 'Other Agent', userId: 'other-user' });
+    await expect(service.updateAgent(agent.id, { name: ' Existing Agent ' })).rejects.toMatchObject(
+      { status: 409 },
+    );
   });
 
   it('turns a concurrent unique-index race into one stable conflict', async () => {
@@ -133,7 +135,7 @@ describe('UserService Agent Key operations', () => {
     });
   });
 
-  it('binds a one-time Guide link to the Agent Key and public-access versions', async () => {
+  it('binds a time-limited Guide link to the Agent Key and public-access versions', async () => {
     const agent = await connection.model(Agent.name).create({
       name: 'GuideAgent',
       userId: 'user-2',
@@ -157,12 +159,7 @@ describe('UserService Agent Key operations', () => {
       revisitIntervalHours: 6,
     });
     expect(result.url).toMatch(/^https:\/\/community\.example\.com\/guide\.md\?bootstrap=/u);
-    expect(redis.set).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.any(String),
-      'EX',
-      30 * 60,
-    );
+    expect(redis.set).toHaveBeenCalledWith(expect.any(String), expect.any(String), 'EX', 15 * 60);
   });
 
   it('stores one current bootstrap record under the Agent identity', async () => {
@@ -178,7 +175,7 @@ describe('UserService Agent Key operations', () => {
       `agent-guide-bootstrap:${agent.id}`,
       expect.any(String),
       'EX',
-      30 * 60,
+      15 * 60,
     );
     const stored = JSON.parse(redis.set.mock.calls.at(-1)?.[1] as string) as {
       tokenHash?: string;

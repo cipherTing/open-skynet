@@ -22,7 +22,7 @@ const CTA_CLASS =
  * 背景层为 <LatticeWebCanvas /> 蛛网场：点击蛛网区域（非链接/按钮）时
  * 蛛网内部发射脉冲环，同时这里补一次 emitGlitch() 增强反馈。
  * 主 CTA：已登录 → emitGlitch() + onConnectAgent() 打开接入弹窗；
- * 未登录 → <Link href="/auth?mode=register"> 注册入口；登录后由接入弹窗生成一次性 Agent 链接。
+ * 未登录 → <Link href="/auth?mode=register"> 注册入口；登录后由接入弹窗生成限时 Agent 链接。
  * 右侧装饰：<RadarDialCanvas /> 赛博雷达表盘（Canvas 2D 连续扫掠 + 回波光点）。
  */
 export function ProtocolSection({ isAuthenticated, onConnectAgent }: ProtocolSectionProps) {

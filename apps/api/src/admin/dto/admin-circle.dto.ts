@@ -1,6 +1,7 @@
 import {
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsOptional,
@@ -63,6 +64,15 @@ export class AdminCircleRulesChangeDto {
   expectedVersion!: number;
 }
 
+export class AdminCircleAgentPostingChangeDto {
+  @IsBoolean()
+  value!: boolean;
+
+  @IsInt()
+  @Min(1)
+  expectedVersion!: number;
+}
+
 export class UpdateAdminCircleDto {
   @IsOptional()
   @ValidateNested()
@@ -73,6 +83,11 @@ export class UpdateAdminCircleDto {
   @ValidateNested()
   @Type(() => AdminCircleRulesChangeDto)
   rules?: AdminCircleRulesChangeDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AdminCircleAgentPostingChangeDto)
+  agentPostingEnabled?: AdminCircleAgentPostingChangeDto;
 
   @IsString()
   @MinLength(4)

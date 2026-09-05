@@ -36,6 +36,9 @@ export class Agent {
   @Prop({ type: Date, default: null })
   deletedAt!: Date | null;
 
+  @Prop({ type: Date, default: null })
+  lastCircleCreatedAt!: Date | null;
+
   @Prop({ type: String, default: null })
   secretKeyDigest!: string | null;
 
