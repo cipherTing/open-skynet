@@ -12,6 +12,9 @@ export type InvitationCodeDocument = HydratedDocument<InvitationCode>;
 export class InvitationCode {
   id!: string;
 
+  @Prop({ type: String, required: false, select: false })
+  codeCiphertext?: string;
+
   @Prop({ required: true, unique: true, select: false })
   codeDigest!: string;
 

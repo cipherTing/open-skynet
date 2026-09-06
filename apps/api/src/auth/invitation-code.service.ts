@@ -5,12 +5,12 @@ import type { ClientSession, FilterQuery, Model } from 'mongoose';
 import { InvitationCode } from '@/database/schemas/invitation-code.schema';
 import { hashOpaqueToken } from './auth-security';
 import { Agent } from '@/database/schemas/agent.schema';
-import {
-  ADMIN_AUDIT_ACTOR_TYPES,
-  AdminAuditLog,
-} from '@/database/schemas/admin-audit-log.schema';
+import { ADMIN_AUDIT_ACTOR_TYPES, AdminAuditLog } from '@/database/schemas/admin-audit-log.schema';
 import { ADMIN_AUDIT_ACTIONS } from '@/admin/admin.constants';
 import { authErrors } from '@/common/errors/business-errors';
+import { decryptSecret, encryptSecret } from '@/common/security/encrypted-secret';
+
+const INVITATION_CODE_SECRET_PURPOSE = 'invitation-code';
 
 @Injectable()
 export class InvitationCodeService {
@@ -28,41 +28,62 @@ export class InvitationCodeService {
       throw authErrors.invitationExpiryInvalid();
     }
     const code = `sky_inv_${randomBytes(18).toString('base64url')}`;
-    const item = await new this.invitationModel({
+    const item = new this.invitationModel({
       codeDigest: hashOpaqueToken(code),
       prefix: code.slice(0, 12),
       expiresAt: expiration,
       createdByUserId,
-    }).save();
+    });
+    item.codeCiphertext = encryptSecret(code, INVITATION_CODE_SECRET_PURPOSE, item.id);
+    await item.save();
     return { ...this.serialize(item), code };
   }
 
   async list(page = 1, pageSize = 20, status?: string) {
     const now = new Date();
     const where: FilterQuery<InvitationCode> = {};
-    if (status === 'AVAILABLE') Object.assign(where, { usedAt: null, revokedAt: null, $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }] });
+    if (status === 'AVAILABLE')
+      Object.assign(where, {
+        usedAt: null,
+        revokedAt: null,
+        $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }],
+      });
     if (status === 'USED') where.usedAt = { $ne: null };
     if (status === 'REVOKED') where.revokedAt = { $ne: null };
-    if (status === 'EXPIRED') Object.assign(where, { usedAt: null, revokedAt: null, expiresAt: { $lte: now } });
+    if (status === 'EXPIRED')
+      Object.assign(where, { usedAt: null, revokedAt: null, expiresAt: { $lte: now } });
     const [items, total] = await Promise.all([
-      this.invitationModel.find(where).sort({ createdAt: -1 }).skip((page - 1) * pageSize).limit(pageSize),
+      this.invitationModel
+        .find(where)
+        .select('+codeCiphertext')
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * pageSize)
+        .limit(pageSize),
       this.invitationModel.countDocuments(where),
     ]);
-    const userIds = items.flatMap((item) => item.usedByUserId ? [item.usedByUserId] : []);
-    const agents = await this.agentModel.find({ userId: { $in: userIds } }).select('userId').lean();
+    const userIds = items.flatMap((item) => (item.usedByUserId ? [item.usedByUserId] : []));
+    const agents = await this.agentModel
+      .find({ userId: { $in: userIds } })
+      .select('userId')
+      .lean();
     const agentByUserId = new Map(agents.map((agent) => [agent.userId, agent._id.toString()]));
     return {
-      items: items.map((item) => ({ ...this.serialize(item), usedByAgentId: item.usedByUserId ? agentByUserId.get(item.usedByUserId) ?? null : null })),
+      items: items.map((item) => ({
+        ...this.serialize(item),
+        usedByAgentId: item.usedByUserId ? (agentByUserId.get(item.usedByUserId) ?? null) : null,
+      })),
       meta: { total, page, pageSize, totalPages: Math.ceil(total / pageSize) },
     };
   }
 
   async revoke(id: string) {
-    const item = await this.invitationModel.findOneAndUpdate(
-      { _id: id, usedAt: null, revokedAt: null },
-      { $set: { revokedAt: new Date() } },
-      { new: true },
-    );
+    const item = await this.invitationModel
+      .findOneAndUpdate(
+        { _id: id, usedAt: null, revokedAt: null },
+        { $set: { revokedAt: new Date() } },
+        { new: true },
+      )
+      .select('+codeCiphertext');
     if (!item) throw authErrors.invitationNotRevocable();
     return this.serialize(item);
   }
@@ -90,12 +111,32 @@ export class InvitationCodeService {
     }).save({ session });
   }
 
+  async assertAvailable(code: string): Promise<void> {
+    const normalizedCode = code.trim();
+    if (!normalizedCode) throw authErrors.invitationRequired();
+    const item = await this.invitationModel.exists({
+      codeDigest: hashOpaqueToken(normalizedCode),
+      usedAt: null,
+      revokedAt: null,
+      $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
+    });
+    if (!item) throw authErrors.invitationInvalid();
+  }
+
   private serialize(item: InvitationCode) {
-    const status = item.usedAt ? 'USED' : item.revokedAt ? 'REVOKED' : item.expiresAt && item.expiresAt.getTime() <= Date.now() ? 'EXPIRED' : 'AVAILABLE';
+    const status = item.usedAt
+      ? 'USED'
+      : item.revokedAt
+        ? 'REVOKED'
+        : item.expiresAt && item.expiresAt.getTime() <= Date.now()
+          ? 'EXPIRED'
+          : 'AVAILABLE';
     return {
       id: item.id,
       prefix: item.prefix,
-      maskedCode: `${item.prefix}••••••••`,
+      code: item.codeCiphertext
+        ? decryptSecret(item.codeCiphertext, INVITATION_CODE_SECRET_PURPOSE, item.id)
+        : null,
       status,
       expiresAt: item.expiresAt?.toISOString() ?? null,
       usedAt: item.usedAt?.toISOString() ?? null,

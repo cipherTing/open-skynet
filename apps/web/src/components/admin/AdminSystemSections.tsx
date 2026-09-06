@@ -1419,17 +1419,17 @@ export function InvitationCodesSection() {
   const toast = useToast();
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
-  const [createdCode, setCreatedCode] = useState('');
   const query = useQuery({
     queryKey: ['admin', 'invitations', page, status],
     queryFn: () => adminApi.invitationCodes({ page, pageSize: 20, status }),
   });
   const create = useMutation({
     mutationFn: adminApi.createInvitationCode,
-    onSuccess: async (item) => {
-      setCreatedCode(item.code ?? '');
+    onSuccess: () => {
+      setPage(1);
+      setStatus('');
       toast.success(t('admin.invitations.created'));
-      await query.refetch();
+      void query.refetch();
     },
     onError: (error) =>
       toast.error(error instanceof ApiError ? error.message : t('admin.invitations.failed')),
@@ -1440,6 +1440,14 @@ export function InvitationCodesSection() {
     onError: (error) =>
       toast.error(error instanceof ApiError ? error.message : t('admin.invitations.failed')),
   });
+  const copyInvitationCode = async (code: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      toast.success(t('app.copied'));
+    } catch {
+      toast.error(t('admin.invitations.copyFailed'));
+    }
+  };
   return (
     <section>
       <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
@@ -1457,29 +1465,6 @@ export function InvitationCodesSection() {
           {create.isPending ? t('admin.action.running') : t('admin.invitations.create')}
         </TButton>
       </div>
-      {createdCode && (
-        <div className="t-corner mb-4 flex items-center gap-3 rounded-none border border-[var(--t-accent-dim)] bg-[var(--t-accent-wash)] p-3">
-          <code className="min-w-0 flex-1 break-all font-mono text-sm text-[var(--t-accent)]">
-            {createdCode}
-          </code>
-          <button
-            type="button"
-            aria-label={t('admin.invitations.created')}
-            onClick={() => void navigator.clipboard.writeText(createdCode)}
-            className="text-[var(--t-accent)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white"
-          >
-            <Copy className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            aria-label={t('app.cancel')}
-            onClick={() => setCreatedCode('')}
-            className="text-[var(--t-sub)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:text-white/85"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      )}
       <div className="mb-3">
         <AdminSelect
           value={status}
@@ -1513,57 +1498,83 @@ export function InvitationCodesSection() {
             ]}
             centeredColumns={[4]}
           >
-            {query.data.items.map((item) => (
-              <tr key={item.id} className="border-b border-[var(--t-noise)]">
-                <td className="px-3 py-3 font-mono text-xs text-white/60">{item.maskedCode}</td>
-                <td className="px-3 py-3 text-xs text-white/60">
-                  <TTag
-                    color={
-                      item.status === 'AVAILABLE'
-                        ? 'accent'
-                        : item.status === 'REVOKED'
-                          ? 'red'
-                          : item.status === 'EXPIRED'
-                            ? 'amber'
-                            : 'default'
-                    }
-                  >
-                    {t(`admin.invitations.statuses.${item.status}`)}
-                  </TTag>
-                </td>
-                <td className="px-3 py-3 text-xs text-[var(--t-sub)]">
-                  {item.expiresAt ? (
-                    <ExactTime date={item.expiresAt} />
-                  ) : (
-                    t('admin.invitations.never')
-                  )}
-                </td>
-                <td className="px-3 py-3 text-xs">
-                  {item.usedByAgentId ? (
-                    <Link
-                      href={`/agent/${item.usedByAgentId}`}
-                      className="text-[var(--t-sub)] hover:text-[var(--t-accent)]"
+            {query.data.items.map((item) => {
+              const code = item.code;
+              return (
+                <tr key={item.id} className="border-b border-[var(--t-noise)]">
+                  <td className="px-3 py-3 text-xs text-white/60">
+                    {code ? (
+                      <div className="flex items-center gap-2">
+                        <code className="min-w-0 flex-1 break-all font-mono text-xs text-white/85">
+                          {code}
+                        </code>
+                        <TButton
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          className="h-7 w-7 shrink-0 px-0"
+                          title={t('app.copy')}
+                          aria-label={t('app.copy')}
+                          onClick={() => void copyInvitationCode(code)}
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </TButton>
+                      </div>
+                    ) : (
+                      <span className="text-[var(--t-sub)]">
+                        {t('admin.invitations.codeUnavailable')}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3 py-3 text-xs text-white/60">
+                    <TTag
+                      color={
+                        item.status === 'AVAILABLE'
+                          ? 'accent'
+                          : item.status === 'REVOKED'
+                            ? 'red'
+                            : item.status === 'EXPIRED'
+                              ? 'amber'
+                              : 'default'
+                      }
                     >
-                      {t('admin.invitations.viewAgent')}
-                    </Link>
-                  ) : (
-                    '—'
-                  )}
-                </td>
-                <td className="px-3 py-3 text-center">
-                  {item.status === 'AVAILABLE' && (
-                    <TButton
-                      type="button"
-                      size="sm"
-                      variant="danger"
-                      onClick={() => revoke.mutate(item.id)}
-                    >
-                      {t('admin.invitations.revoke')}
-                    </TButton>
-                  )}
-                </td>
-              </tr>
-            ))}
+                      {t(`admin.invitations.statuses.${item.status}`)}
+                    </TTag>
+                  </td>
+                  <td className="px-3 py-3 text-xs text-[var(--t-sub)]">
+                    {item.expiresAt ? (
+                      <ExactTime date={item.expiresAt} />
+                    ) : (
+                      t('admin.invitations.never')
+                    )}
+                  </td>
+                  <td className="px-3 py-3 text-xs">
+                    {item.usedByAgentId ? (
+                      <Link
+                        href={`/agent/${item.usedByAgentId}`}
+                        className="text-[var(--t-sub)] hover:text-[var(--t-accent)]"
+                      >
+                        {t('admin.invitations.viewAgent')}
+                      </Link>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
+                  <td className="px-3 py-3 text-center">
+                    {item.status === 'AVAILABLE' && (
+                      <TButton
+                        type="button"
+                        size="sm"
+                        variant="danger"
+                        onClick={() => revoke.mutate(item.id)}
+                      >
+                        {t('admin.invitations.revoke')}
+                      </TButton>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </AdminTable>
           <AdminPagination meta={query.data.meta} onPageChange={setPage} />
         </>

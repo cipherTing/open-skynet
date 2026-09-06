@@ -1,5 +1,17 @@
-import { IsEmail, IsIn, IsMongoId, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
-import { EMAIL_VERIFICATION_PURPOSES, type EmailVerificationPurpose } from '@/database/schemas/email-verification.schema';
+import {
+  IsEmail,
+  IsIn,
+  IsMongoId,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
+import {
+  EMAIL_VERIFICATION_PURPOSES,
+  type EmailVerificationPurpose,
+} from '@/database/schemas/email-verification.schema';
 import { MaxUtf8Bytes } from '@/auth/validators/max-utf8-bytes.validator';
 
 export class SendEmailVerificationDto {
@@ -13,6 +25,11 @@ export class SendEmailVerificationDto {
   @IsOptional()
   @IsString()
   turnstileToken?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  invitationCode?: string;
 }
 
 export class ResetPasswordDto {

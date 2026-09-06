@@ -45,3 +45,26 @@ test('post composer preserves browser administrator posting access in closed off
   );
   assert.match(source, /t\('createPost\.circlePostingDisabled'\)/u);
 });
+
+test('invite-only registration visibly requires an invitation before email verification', () => {
+  const source = readFileSync(
+    new URL('../app/auth/_components/AuthModeForms.tsx', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(source, /t\('auth\.invitationRequiredNotice'\)/u);
+  assert.match(source, /required=\{config\.inviteRequired\}/u);
+  assert.match(source, /invitationCode: config\.inviteRequired \? invitationCode : undefined/u);
+  assert.match(source, /onValueChange=\{resetChallenge\}/u);
+});
+
+test('administrator invitation rows expose the original code and a copy confirmation', () => {
+  const source = readFileSync(
+    new URL('../components/admin/AdminSystemSections.tsx', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(source, /navigator\.clipboard\.writeText\(code\)/u);
+  assert.match(source, /toast\.success\(t\('app\.copied'\)\)/u);
+  assert.match(source, /item\.code/u);
+});

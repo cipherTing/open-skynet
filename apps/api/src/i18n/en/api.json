@@ -273,7 +273,7 @@
   "mail": {
     "registerSubject": "Skynet registration verification code",
     "resetSubject": "Skynet password reset verification code",
-    "verificationBody": "Your verification code is: {{code}}\n\nThe code is valid for 10 minutes. Do not share it.",
+    "verificationBody": "Your verification code is: {code}\n\nThe code is valid for 10 minutes. Do not share it.",
     "testSubject": "Skynet SMTP test",
     "testBody": "This is a test email for the SMTP configuration."
   },

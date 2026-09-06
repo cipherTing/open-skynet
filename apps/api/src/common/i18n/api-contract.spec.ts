@@ -4,7 +4,7 @@ import { IsString, MinLength } from 'class-validator';
 import type { INestApplication } from '@nestjs/common';
 import { resolve } from 'node:path';
 import request from 'supertest';
-import { AcceptLanguageResolver, I18nModule } from 'nestjs-i18n';
+import { AcceptLanguageResolver, I18nModule, I18nService } from 'nestjs-i18n';
 import { apiErrors, apiMessage } from '@/common/i18n/api-message';
 import { HttpExceptionFilter } from '@/common/filters/http-exception.filter';
 import {
@@ -102,11 +102,13 @@ class ContractTestModule {}
 describe('API language contract', () => {
   let moduleRef: TestingModule;
   let app: INestApplication;
+  let i18n: I18nService;
   let loggerError: jest.SpiedFunction<Logger['error']>;
 
   beforeAll(async () => {
     loggerError = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     moduleRef = await Test.createTestingModule({ imports: [ContractTestModule] }).compile();
+    i18n = moduleRef.get(I18nService);
     app = moduleRef.createNestApplication();
     app.useGlobalPipes(
       new ApiValidationPipe({
@@ -171,6 +173,18 @@ describe('API language contract', () => {
       message: '帖子已经发生变化，请读取最新版本后再修改。',
       statusCode: 409,
     });
+  });
+
+  it.each([
+    ['zh', '你的验证码是：123456'],
+    ['en', 'Your verification code is: 123456'],
+  ])('renders a verification code into the %s email template', async (language, expected) => {
+    expect(
+      i18n.t('api.mail.verificationBody', {
+        lang: language,
+        args: { code: '123456' },
+      }),
+    ).toContain(expected);
   });
 
   it('returns a Chinese message and English field semantics together', async () => {

@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { randomInt } from 'node:crypto';
 import type { ClientSession, Model } from 'mongoose';
 import {
+  EMAIL_VERIFICATION_PURPOSES,
   EmailVerification,
   type EmailVerificationPurpose,
 } from '@/database/schemas/email-verification.schema';
@@ -14,6 +15,7 @@ import { TurnstileService } from '@/system/turnstile.service';
 import { AuthPolicyService } from '@/system/auth-policy.service';
 import { authErrors } from '@/common/errors/business-errors';
 import { getApiLanguage } from '@/common/i18n/api-language';
+import { InvitationCodeService } from './invitation-code.service';
 
 const CODE_TTL_MS = 10 * 60 * 1000;
 
@@ -27,6 +29,7 @@ export class EmailVerificationService {
     private readonly mailQueue: MailQueueService,
     private readonly turnstileService: TurnstileService,
     private readonly authPolicyService: AuthPolicyService,
+    private readonly invitationCodeService: InvitationCodeService,
   ) {}
 
   normalizeEmail(value: string): string {
@@ -38,8 +41,15 @@ export class EmailVerificationService {
     purpose: EmailVerificationPurpose,
     turnstileToken: string | undefined,
     remoteIp?: string,
+    invitationCode?: string,
   ) {
     const email = this.normalizeEmail(emailValue);
+    const policy = await this.authPolicyService.getOrCreate();
+    if (purpose === EMAIL_VERIFICATION_PURPOSES.REGISTER && policy.inviteRequired) {
+      const normalizedInvitationCode = invitationCode?.trim();
+      if (!normalizedInvitationCode) throw authErrors.invitationRequired();
+      await this.invitationCodeService.assertAvailable(normalizedInvitationCode);
+    }
     await this.authPolicyService.assertSmtpReady();
     const policyVersion = await this.turnstileService.verifyIfEnabled(
       turnstileToken,

@@ -87,9 +87,7 @@ export interface AdminAuthPolicy {
 
 export interface AdminInvitationCode {
   id: string;
-  prefix: string;
-  maskedCode: string;
-  code?: string;
+  code: string | null;
   status: 'AVAILABLE' | 'USED' | 'EXPIRED' | 'REVOKED';
   expiresAt: string | null;
   usedAt: string | null;

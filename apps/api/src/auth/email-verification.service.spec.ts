@@ -1,4 +1,9 @@
-import { BadRequestException, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { getConnectionToken, MongooseModule } from '@nestjs/mongoose';
 import { Test, type TestingModule } from '@nestjs/testing';
 import type { Connection } from 'mongoose';
@@ -13,6 +18,7 @@ import { RedisService } from '@/redis/redis.service';
 import { MailQueueService } from '@/system/mail.service';
 import { TurnstileService } from '@/system/turnstile.service';
 import { AuthPolicyService } from '@/system/auth-policy.service';
+import { InvitationCodeService } from './invitation-code.service';
 import { EmailVerificationService } from './email-verification.service';
 
 describe('EmailVerificationService', () => {
@@ -24,7 +30,8 @@ describe('EmailVerificationService', () => {
   const redis = { multi: jest.fn() };
   const mailQueue = { enqueueVerification: jest.fn() };
   const turnstile = { verifyIfEnabled: jest.fn() };
-  const authPolicy = { assertSmtpReady: jest.fn() };
+  const authPolicy = { assertSmtpReady: jest.fn(), getOrCreate: jest.fn() };
+  const invitationCodes = { assertAvailable: jest.fn() };
   const previousJwtSecret = process.env.JWT_SECRET;
 
   beforeAll(async () => {
@@ -44,6 +51,7 @@ describe('EmailVerificationService', () => {
         { provide: MailQueueService, useValue: mailQueue },
         { provide: TurnstileService, useValue: turnstile },
         { provide: AuthPolicyService, useValue: authPolicy },
+        { provide: InvitationCodeService, useValue: invitationCodes },
       ],
     }).compile();
     connection = moduleRef.get(getConnectionToken());
@@ -64,6 +72,7 @@ describe('EmailVerificationService', () => {
       ]),
     });
     authPolicy.assertSmtpReady.mockResolvedValue(undefined);
+    authPolicy.getOrCreate.mockResolvedValue({ inviteRequired: false });
     turnstile.verifyIfEnabled.mockResolvedValue(3);
     mailQueue.enqueueVerification.mockResolvedValue({ id: 'mail-job' });
   });
@@ -137,5 +146,35 @@ describe('EmailVerificationService', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(turnstile.verifyIfEnabled).not.toHaveBeenCalled();
     expect(mailQueue.enqueueVerification).not.toHaveBeenCalled();
+  });
+
+  it('does not send a registration email without an invitation when invitations are required', async () => {
+    authPolicy.getOrCreate.mockResolvedValue({ inviteRequired: true });
+
+    await expect(
+      service.send('agent@example.com', EMAIL_VERIFICATION_PURPOSES.REGISTER, undefined),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    expect(mailQueue.enqueueVerification).not.toHaveBeenCalled();
+    expect(await connection.model(EmailVerification.name).countDocuments()).toBe(0);
+  });
+
+  it('does not send a registration email when the invitation is invalid', async () => {
+    authPolicy.getOrCreate.mockResolvedValue({ inviteRequired: true });
+    invitationCodes.assertAvailable.mockRejectedValue(new ConflictException('邀请码无效'));
+
+    await expect(
+      service.send(
+        'agent@example.com',
+        EMAIL_VERIFICATION_PURPOSES.REGISTER,
+        undefined,
+        undefined,
+        'sky_inv_invalid',
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    expect(invitationCodes.assertAvailable).toHaveBeenCalledWith('sky_inv_invalid');
+    expect(mailQueue.enqueueVerification).not.toHaveBeenCalled();
+    expect(await connection.model(EmailVerification.name).countDocuments()).toBe(0);
   });
 });

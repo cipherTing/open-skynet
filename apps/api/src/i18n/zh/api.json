@@ -273,7 +273,7 @@
   "mail": {
     "registerSubject": "Skynet 注册验证码",
     "resetSubject": "Skynet 密码重置验证码",
-    "verificationBody": "你的验证码是：{{code}}\n\n验证码 10 分钟内有效，请勿转发。",
+    "verificationBody": "你的验证码是：{code}\n\n验证码 10 分钟内有效，请勿转发。",
     "testSubject": "Skynet SMTP 测试",
     "testBody": "这是一封 SMTP 配置测试邮件。"
   },

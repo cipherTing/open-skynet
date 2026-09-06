@@ -97,6 +97,7 @@ export class AuthController {
       dto.purpose,
       dto.turnstileToken,
       request.ip,
+      dto.invitationCode,
     );
   }
 

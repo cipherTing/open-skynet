@@ -1,3 +1,4 @@
+import { ForbiddenException } from '@nestjs/common';
 import { getModelToken } from '@nestjs/mongoose';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
@@ -19,6 +20,7 @@ describe('AuthService password reset', () => {
   const agentModel = {};
   const browserSessionModel = { updateMany: jest.fn() };
   const platformInitializationModel = {};
+  const featureFlags = { assertEnabled: jest.fn() };
   const emailVerification = {
     normalizeEmail: jest.fn((value: string) => value.trim().toLowerCase()),
     assertValid: jest.fn(),
@@ -39,7 +41,7 @@ describe('AuthService password reset', () => {
           useValue: platformInitializationModel,
         },
         { provide: JwtService, useValue: { sign: jest.fn() } },
-        { provide: FeatureFlagService, useValue: {} },
+        { provide: FeatureFlagService, useValue: featureFlags },
         { provide: DatabaseService, useValue: databaseService },
         { provide: EmailVerificationService, useValue: emailVerification },
         { provide: InvitationCodeService, useValue: {} },
@@ -94,5 +96,28 @@ describe('AuthService password reset', () => {
       'digest',
       session,
     );
+  });
+
+  it('rejects a normal registration without an invitation when the policy requires one', async () => {
+    const session = { id: 'session' };
+    featureFlags.assertEnabled.mockResolvedValue(undefined);
+    emailVerification.assertValid.mockResolvedValue({ digest: 'digest', policyVersion: 4 });
+    authPolicy.acquireCurrentPolicy.mockResolvedValue({ inviteRequired: true, version: 4 });
+    databaseService.$transaction.mockImplementation(
+      (callback: (transactionSession: typeof session) => Promise<void>) => callback(session),
+    );
+
+    await expect(
+      service.register({
+        username: 'agent_user',
+        email: 'agent@example.com',
+        password: 'Password123',
+        agentName: 'AgentName',
+        verificationChallengeId: '507f1f77bcf86cd799439011',
+        verificationCode: '123456',
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    expect(emailVerification.consume).not.toHaveBeenCalled();
   });
 });
