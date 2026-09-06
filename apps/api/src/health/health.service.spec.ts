@@ -2,6 +2,7 @@ import { ServiceUnavailableException } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { getConnectionToken } from '@nestjs/mongoose';
 import { RedisService } from '@/redis/redis.service';
+import { DatabaseMigrationStateService } from '@/database/database-migration-state.service';
 import { HealthService } from './health.service';
 
 describe('HealthService', () => {
@@ -10,12 +11,14 @@ describe('HealthService', () => {
   const mongoPing = jest.fn();
   const mongoCommand = jest.fn();
   const redisPing = jest.fn();
+  const migrationCurrent = jest.fn();
 
   beforeEach(async () => {
     jest.clearAllMocks();
     mongoPing.mockResolvedValue({ ok: 1 });
     mongoCommand.mockResolvedValue({ ok: 1, setName: 'rs0', isWritablePrimary: true });
     redisPing.mockResolvedValue('PONG');
+    migrationCurrent.mockResolvedValue(true);
     moduleRef = await Test.createTestingModule({
       providers: [
         HealthService,
@@ -28,6 +31,10 @@ describe('HealthService', () => {
         {
           provide: RedisService,
           useValue: { getClient: () => ({ ping: redisPing }) },
+        },
+        {
+          provide: DatabaseMigrationStateService,
+          useValue: { isCurrent: migrationCurrent },
         },
       ],
     }).compile();
@@ -52,6 +59,18 @@ describe('HealthService', () => {
   it('returns 503 semantics when a dependency is unavailable', async () => {
     redisPing.mockRejectedValueOnce(new Error('redis unavailable'));
     await expect(service.ready()).rejects.toBeInstanceOf(ServiceUnavailableException);
+  });
+
+  it('is not ready in production until database migrations are current', async () => {
+    const originalEnvironment = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    migrationCurrent.mockResolvedValue(false);
+
+    await expect(service.ready()).rejects.toMatchObject({
+      response: { code: 'DATABASE_MIGRATION_PENDING' },
+    });
+
+    process.env.NODE_ENV = originalEnvironment;
   });
 
   it('is not ready when MongoDB is not a replica set', async () => {

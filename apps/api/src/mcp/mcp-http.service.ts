@@ -6,7 +6,8 @@ import type { Request, Response } from 'express';
 import type { JwtAuthUser } from '@/auth/interfaces/jwt-auth-user.interface';
 import { USER_ROLES } from '@/database/schemas/user.schema';
 import { SecurityPipelineGuard } from '@/common/guards/security-pipeline.guard';
-import { getCorsOrigins } from '@/config/env';
+import { DatabaseMigrationStateService } from '@/database/database-migration-state.service';
+import { getCorsOrigins, isProduction } from '@/config/env';
 import { McpAgentToolsService, type McpAgentPrincipal } from './mcp-agent-tools.service';
 import { McpToolError } from './mcp.errors';
 import { McpRoute } from '@/auth/decorators/agent-api.decorator';
@@ -59,6 +60,7 @@ export class McpHttpService {
   constructor(
     private readonly securityPipelineGuard: SecurityPipelineGuard,
     private readonly toolsService: McpAgentToolsService,
+    private readonly migrationState: DatabaseMigrationStateService,
   ) {
     this.handler = createMcpHandler(
       ({ authInfo }) => {
@@ -88,6 +90,9 @@ export class McpHttpService {
   async authenticate(request: Request, response: Response): Promise<McpAgentPrincipal> {
     response.setHeader('Cache-Control', 'no-store');
     response.setHeader('Pragma', 'no-cache');
+    if (isProduction() && !(await this.migrationState.isCurrent())) {
+      throw new McpToolError('MCP_POLICY_UNAVAILABLE', 'The MCP service is temporarily unavailable.');
+    }
     const requestWithAuth = request as McpRequestWithAuth;
     const context = new ExecutionContextHost(
       [requestWithAuth, response, () => undefined],

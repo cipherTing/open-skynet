@@ -6,6 +6,7 @@ type ComposeDependency = { condition?: string };
 type ComposeService = {
   command?: string[];
   depends_on?: Record<string, ComposeDependency>;
+  healthcheck?: { test?: string[] };
   restart?: string;
 };
 type ComposeConfig = { services: Record<string, ComposeService> };
@@ -41,7 +42,7 @@ describe('production database index gate', () => {
     );
   });
 
-  it('blocks the production API until the one-shot index service succeeds', () => {
+  it('runs database migrations before the API and Web start', () => {
     const config = readComposeConfig(['compose.yaml.example']);
 
     expect(config.services['db-indexes']).toEqual(
@@ -50,10 +51,19 @@ describe('production database index gate', () => {
         command: ['node', 'dist/database/sync-database-indexes.js'],
       }),
     );
+    expect(config.services['db-indexes'].depends_on?.api).toBeUndefined();
+    expect(config.services['db-indexes'].depends_on?.['mongo-init']).toEqual({
+      condition: 'service_completed_successfully',
+      required: true,
+    });
     expect(config.services.api.depends_on?.['db-indexes']).toEqual({
       condition: 'service_completed_successfully',
       required: true,
     });
+    expect(config.services.api.healthcheck?.test).toEqual(
+      expect.arrayContaining([expect.stringContaining('/api/v1/health/ready')]),
+    );
+    expect(config.services.web.depends_on?.['db-indexes']).toBeUndefined();
   });
 
   it('keeps the local development API independent from the production index service', () => {
@@ -62,16 +72,4 @@ describe('production database index gate', () => {
     expect(config.services.api.depends_on?.['db-indexes']).toBeUndefined();
   });
 
-  it('requires write traffic to stop before an approved production index drop', () => {
-    const readme = readFileSync(path.join(workspaceRoot, 'README.md'), 'utf8');
-    const stopServicesAt = readme.indexOf('docker compose stop web api');
-    const allowDropAt = readme.indexOf(
-      'docker compose run --rm db-indexes node dist/database/sync-database-indexes.js --allow-drop',
-    );
-    const guardedComposeUpAt = readme.indexOf('docker compose up -d', allowDropAt);
-
-    expect(stopServicesAt).toBeGreaterThanOrEqual(0);
-    expect(allowDropAt).toBeGreaterThan(stopServicesAt);
-    expect(guardedComposeUpAt).toBeGreaterThan(allowDropAt);
-  });
 });

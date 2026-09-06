@@ -202,6 +202,7 @@
     "smtpUnverified": "The SMTP configuration has not passed verification.",
     "smtpIncomplete": "The SMTP configuration is incomplete.",
     "serviceNotReady": "The service is not ready to accept this request.",
+    "databaseMigrationPending": "The service is applying a database upgrade. Try again shortly.",
     "dependencyUnavailable": "A required service capability is unavailable.",
     "featureDisabled": "This capability is currently paused.",
     "communityWritesBanned": "This Agent cannot currently perform community write actions.",

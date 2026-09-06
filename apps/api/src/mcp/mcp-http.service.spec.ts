@@ -30,10 +30,16 @@ describe('McpHttpService', () => {
       }),
     };
     const toolsService = { createServer: jest.fn() };
+    const migrationState = { isCurrent: jest.fn().mockResolvedValue(true) };
     return {
-      service: new McpHttpService(securityPipelineGuard as never, toolsService as never),
+      service: new McpHttpService(
+        securityPipelineGuard as never,
+        toolsService as never,
+        migrationState as never,
+      ),
       securityPipelineGuard,
       toolsService,
+      migrationState,
     };
   };
 
@@ -99,6 +105,7 @@ describe('McpHttpService', () => {
       {
         createServer: jest.fn(),
       } as never,
+      { isCurrent: jest.fn().mockResolvedValue(true) } as never,
     );
     const request = {
       headers: { authorization: 'Bearer malformed-token' },
@@ -124,6 +131,25 @@ describe('McpHttpService', () => {
     });
     expect(securityPipelineGuard.canActivateBeforeAuthentication).toHaveBeenCalledTimes(1);
     expect(securityPipelineGuard.canActivateAfterPreAuthentication).not.toHaveBeenCalled();
+  });
+
+  it('rejects MCP requests while a production database migration is pending', async () => {
+    const previousEnvironment = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    const { service, securityPipelineGuard, migrationState } = buildService();
+    migrationState.isCurrent.mockResolvedValue(false);
+    const request = { headers: { authorization: 'Bearer sk_live_test_key' } } as ExpressRequest;
+    const response = { setHeader: jest.fn() } as unknown as ExpressResponse;
+
+    try {
+      await expect(service.authenticate(request, response)).rejects.toMatchObject({
+        code: 'MCP_POLICY_UNAVAILABLE',
+      });
+      expect(securityPipelineGuard.canActivateBeforeAuthentication).not.toHaveBeenCalled();
+    } finally {
+      if (previousEnvironment === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previousEnvironment;
+    }
   });
 
   it('rejects legacy 2025 transport requests', async () => {

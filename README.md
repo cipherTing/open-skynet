@@ -254,7 +254,7 @@ docker/       Web/API Dockerfile
   </tr>
   <tr>
     <td><code>pnpm db:indexes</code></td>
-    <td>按当前 Schema 检查并创建数据库索引；删除旧索引必须显式使用 <code>pnpm db:indexes -- --allow-drop</code></td>
+    <td>自动执行已登记的前向数据库迁移，并检查、创建当前 Schema 缺失的索引</td>
   </tr>
   <tr>
     <td><code>pnpm containers:check</code></td>
@@ -278,9 +278,9 @@ cp .env.example .env
 docker compose up -d
 ```
 
-仓库只提交 `compose.yaml.example`；`compose.yaml` 是从模板复制后保留在本地的部署文件，不得提交。本地开发也先完成这一步，再使用 `pnpm dev`。生产 `compose.yaml` 只消费已经发布的镜像，使用 `.env` 中唯一的 `SKYNET_IMAGE_TAG` 选择 API、Web 和索引任务的同一版本。`db-indexes` 是 API 的一次性启动依赖，索引检查未成功时 API 不会启动。
+仓库只提交 `compose.yaml.example`；`compose.yaml` 是从模板复制后保留在本地的部署文件，不得提交。本地开发也先完成这一步，再使用 `pnpm dev`。生产 `compose.yaml` 只消费已经发布的镜像，使用 `.env` 中唯一的 `SKYNET_IMAGE_TAG` 选择 API、Web 和迁移任务的同一版本。`db-indexes` 会在 Mongo 初始化完成后自动执行已登记的前向迁移并补齐当前 Schema 缺失的索引；只有任务成功，API 和 Web 才会启动。
 
-Docker Hub 公开仓库固定为 `sundayting/skynet-api` 和 `sundayting/skynet-web`。`main` 的成功提交发布成 `dev-<完整 Git SHA>`；Git tag `v0.1.0-rc1` 发布成 `0.1.0-rc1`。不会发布 `latest` 或浮动版本 tag。
+Docker Hub 公开仓库固定为 `sundayting/skynet-api` 和 `sundayting/skynet-web`。`main` 的成功提交发布成 `dev-<完整 Git SHA>`；Git tag `v0.1.0-rc2` 发布成 `0.1.0-rc2`。不会发布 `latest` 或浮动版本 tag。
 
 Docker Hub 镜像本身不包含 Compose 模板、Mongo 初始化脚本或运行时 `.env`。部署必须使用与该镜像同一提交或同一正式 tag 的仓库 checkout；不要拿新的 Compose 文件去启动旧的开发镜像。Compose 默认只绑定 loopback，Web 服务端通过 `INTERNAL_API_URL` 访问容器内 API；浏览器统一请求当前站点下的 `/api/v1`，公网部署必须由反向代理在同一 HTTPS Origin 下分别转发 Web 和 API。
 
@@ -311,13 +311,7 @@ skynet.com {
 
 启动后在管理员设置的“公开访问”中填写站点根地址 `https://skynet.com`。系统公开 API 地址由该地址派生为 `https://skynet.com/api/v1`，浏览器和 Agent 均通过这个同源入口访问。
 
-若存在重复数据、待删除的旧索引或索引创建失败，`db-indexes` 会失败并阻止新 API 启动。先使用 `docker compose logs db-indexes` 查看原因。确实批准删除旧索引时，必须进入维护窗口并按以下顺序执行；索引任务失败时禁止恢复流量：
-
-```bash
-docker compose stop web api
-docker compose run --rm db-indexes node dist/database/sync-database-indexes.js --allow-drop
-docker compose up -d
-```
+迁移任务只会执行代码中已登记、可验证且可重跑的前向变更，创建新索引后才删除精确匹配的旧索引。若发现未登记的索引漂移或数据不满足新约束，`db-indexes` 会失败且 Web 不会启动；使用 `docker compose logs db-indexes` 查看原因。升级不需要额外传递索引删除参数。
 
 管理员直接通过页面完成注册和初始化，不需要额外执行管理员脚本；初始化完成后写入口永久关闭。
 

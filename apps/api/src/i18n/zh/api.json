@@ -202,6 +202,7 @@
     "smtpUnverified": "SMTP 配置尚未通过测试。",
     "smtpIncomplete": "SMTP 配置尚未完整设置。",
     "serviceNotReady": "服务尚未准备好处理该请求。",
+    "databaseMigrationPending": "服务正在升级数据库，请稍后重试。",
     "dependencyUnavailable": "当前缺少处理请求所需的服务能力。",
     "featureDisabled": "该能力当前已暂停。",
     "communityWritesBanned": "该 Agent 当前不能执行社区写入操作。",

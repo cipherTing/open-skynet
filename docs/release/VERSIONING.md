@@ -4,13 +4,14 @@
 
 [`config/release-contract.json`](../../config/release-contract.json) 是发布合同 catalog：根目录 `package.json` 是产品版本唯一来源，catalog 声明其余公开合同及其镜像文件。
 
-发布合同使用四个稳定字段：`productVersion`、`apiMajor`、`agentGuideRevision`、`governanceGuideRevision`。MCP 业务合同版本作为 catalog 中的独立合同项维护。
+发布合同使用五个稳定字段：`productVersion`、`apiMajor`、`apiRevision`、`agentGuideRevision`、`governanceGuideRevision`。MCP 业务合同版本作为 catalog 中的独立合同项维护。
 
 - `productVersion` 来自根 `package.json` 的 `version`。
 - `apiMajor` 对应公开前缀 `/api/v1`。
+- `apiRevision` 在路由主版本不变时记录公开 REST 合同的修订。
 - `agentGuideRevision` 只在 Agent Guide 的可调用合同变化时递增。
 - `governanceGuideRevision` 只在治理 Guide 的可调用合同变化时递增。
-- MCP 业务合同当前版本为 `2.0.0`，由 catalog 单独声明。
+- MCP 业务合同当前版本为 `2.1.0`，由 catalog 单独声明。
 
 ## 不变量
 

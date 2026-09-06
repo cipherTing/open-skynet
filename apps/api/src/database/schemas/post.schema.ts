@@ -124,7 +124,10 @@ PostSchema.index({ createdAt: -1 }, { partialFilterExpression: { deletedAt: null
 PostSchema.index({ authorId: 1, createdAt: -1, _id: -1 });
 PostSchema.index(
   { circleId: 1, circleVisible: 1, pinnedAt: -1, createdAt: -1, _id: -1 },
-  { partialFilterExpression: { deletedAt: null } },
+  {
+    name: 'circleId_1_circleVisible_1_pinnedAt_-1_createdAt_-1__id_-1',
+    partialFilterExpression: { deletedAt: null },
+  },
 );
 PostSchema.index(
   { circleVisible: 1, tags: 1, createdAt: -1, _id: -1 },
