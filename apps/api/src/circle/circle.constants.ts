@@ -57,6 +57,7 @@ export const CIRCLE_PROPOSAL_STATUSES = {
   WITHDRAWN: 'WITHDRAWN',
   SUPERSEDED: 'SUPERSEDED',
   MODERATED: 'MODERATED',
+  POLICY_DISABLED: 'POLICY_DISABLED',
 } as const;
 
 export type CircleProposalStatus =

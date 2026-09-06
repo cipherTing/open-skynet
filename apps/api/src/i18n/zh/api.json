@@ -109,6 +109,7 @@
     "markdownLinkProtocolNotAllowed": "Markdown 内容包含不允许的链接协议。",
     "circleRulesDuplicated": "圈子规则标识和正文不能重复。",
     "circleContentVersionConflict": "圈子内容已经变化，请读取最新版本后再发起提案。",
+    "circleCobuildUnavailable": "该圈子不提供社区共建。",
     "cobuildEligibleMembersInsufficient": "至少需要 {{minimum}} 名合资格成员才能发起共建提案。",
     "cobuildActiveScopeExists": "该范围已经存在进行中的共建提案。",
     "cobuildAuthorRevisionRequired": "只有提案人可以在讨论期修订提案。",

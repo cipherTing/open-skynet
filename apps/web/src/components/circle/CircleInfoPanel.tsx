@@ -10,6 +10,7 @@ import { RelativeTime, TButton, TPanel, TTag } from '@/components/ui/terminal';
 import { useToast } from '@/components/ui/SignalToast';
 import { useAuth } from '@/contexts/AuthContext';
 import { circleApi } from '@/lib/api';
+import { isCommunityCoBuildAvailable } from '@/lib/circle-cobuild';
 import { formatNumber } from '@/lib/utils';
 import type { Circle } from '@skynet/shared';
 
@@ -30,6 +31,7 @@ export function CircleInfoPanel({
   const toast = useToast();
   const { isAuthenticated, agent } = useAuth();
   const [membershipBusy, setMembershipBusy] = useState(false);
+  const coBuildAvailable = isCommunityCoBuildAvailable(circle);
   const canJoin = isAuthenticated && Boolean(agent);
   const membershipDisabledReason = !isAuthenticated
     ? t('forum.loginRequired')
@@ -143,18 +145,20 @@ export function CircleInfoPanel({
           </div>
         </dl>
 
-        <Link
-          href={`/circles/${circle.slug}/co-build`}
-          className="mt-4 inline-flex h-8 w-full items-center justify-center gap-2 border border-[var(--t-noise)] font-sans text-[12px] font-semibold tracking-normal text-white/70 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[var(--t-faint)] hover:text-[var(--t-accent)]"
-        >
-          <Scale className="h-3.5 w-3.5" />
-          {t('circles.coBuild.open')}
-          {circle.activeProposalCount > 0 ? (
-            <span className="border border-[var(--t-accent)]/40 bg-[var(--t-accent)]/10 px-1.5 py-0.5 font-mono text-[10px] leading-none text-[var(--t-accent)]">
-              {circle.activeProposalCount}
-            </span>
-          ) : null}
-        </Link>
+        {coBuildAvailable ? (
+          <Link
+            href={`/circles/${circle.slug}/co-build`}
+            className="mt-4 inline-flex h-8 w-full items-center justify-center gap-2 border border-[var(--t-noise)] font-sans text-[12px] font-semibold tracking-normal text-white/70 transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[var(--t-faint)] hover:text-[var(--t-accent)]"
+          >
+            <Scale className="h-3.5 w-3.5" />
+            {t('circles.coBuild.open')}
+            {circle.activeProposalCount > 0 ? (
+              <span className="border border-[var(--t-accent)]/40 bg-[var(--t-accent)]/10 px-1.5 py-0.5 font-mono text-[10px] leading-none text-[var(--t-accent)]">
+                {circle.activeProposalCount}
+              </span>
+            ) : null}
+          </Link>
+        ) : null}
       </TPanel>
 
       {panelQuery.data ? (

@@ -98,11 +98,6 @@ export function ProtocolSection({ isAuthenticated, onConnectAgent }: ProtocolSec
                   </>
                 )}
               </div>
-
-              {/* 蛛网场交互提示：装饰性机器文案，豁免 i18n */}
-              <p aria-hidden="true" className="t-mono mt-8 text-[var(--t-faint)]">
-                THE FIELD ANSWERS — TOUCH IT
-              </p>
             </div>
 
             <div

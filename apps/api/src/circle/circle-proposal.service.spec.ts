@@ -164,7 +164,7 @@ describe('CircleProposalService write boundaries', () => {
     if (replicaSet) await replicaSet.stop();
   });
 
-  async function createCircle(status: 'ACTIVE' | 'BANNED') {
+  async function createCircle(status: 'ACTIVE' | 'BANNED', kind: 'NORMAL' | 'OFFICIAL' = 'NORMAL') {
     return connection.model(Circle.name).create({
       slug: `proposal-${status.toLowerCase()}`,
       name: `Proposal ${status}`,
@@ -177,7 +177,7 @@ describe('CircleProposalService write boundaries', () => {
       topicOrigin: 'CREATION',
       rulesVersion: 1,
       activeProposalCount: 0,
-      kind: 'NORMAL',
+      kind,
       status,
       bannedAt: status === CIRCLE_STATUSES.BANNED ? new Date() : null,
       memberCount: 0,
@@ -303,6 +303,166 @@ describe('CircleProposalService write boundaries', () => {
       }),
     ).rejects.toBeInstanceOf(ConflictException);
     expect(await connection.model(CircleProposalVote.name).countDocuments()).toBe(0);
+  });
+
+  it('rejects every public co-build operation for an official circle, including idempotency hits', async () => {
+    const circle = await createCircle(CIRCLE_STATUSES.ACTIVE, 'OFFICIAL');
+    const actor = await createEligibleAgent(circle.id, 'official-boundary-actor');
+    const proposal = await createVotingProposal(circle.id, actor.id);
+    const createIdempotencyKey = crypto.randomUUID();
+    const reviseIdempotencyKey = crypto.randomUUID();
+    const commentIdempotencyKey = crypto.randomUUID();
+    await connection.model(CircleProposal.name).updateOne(
+      { _id: proposal.id },
+      {
+        $set: {
+          creatorOwnerUserIdSnapshot: actor.userId,
+          idempotencyKey: createIdempotencyKey,
+        },
+      },
+    );
+    await connection.model(CircleProposalRevision.name).create({
+      circleId: circle.id,
+      proposalId: proposal.id,
+      revisionNumber: 2,
+      authorAgentId: actor.id,
+      authorOwnerUserIdSnapshot: actor.userId,
+      reason: '重复修订请求不应绕过官方圈子边界',
+      topicSnapshot: '重复修订简介',
+      rulesSnapshot: null,
+      idempotencyKey: reviseIdempotencyKey,
+    });
+    await connection.model(CircleProposalComment.name).create({
+      circleId: circle.id,
+      proposalId: proposal.id,
+      revisionNumber: 1,
+      authorAgentId: actor.id,
+      authorOwnerUserIdSnapshot: actor.userId,
+      authorAgentNameSnapshot: actor.name,
+      authorAgentAvatarSeedSnapshot: actor.avatarSeed,
+      content: '重复评论请求不应绕过官方圈子边界',
+      idempotencyKey: commentIdempotencyKey,
+      hiddenAt: null,
+    });
+
+    const assertUnavailable = async (operation: () => Promise<unknown>) => {
+      await expect(operation()).rejects.toMatchObject({
+        response: { code: 'CIRCLE_COBUILD_UNAVAILABLE' },
+      });
+    };
+
+    await assertUnavailable(() => service.list(circle.id, {}));
+    await assertUnavailable(() => service.detail(circle.id, proposal.id));
+    await assertUnavailable(() => service.listRevisions(circle.id, proposal.id, {}));
+    await assertUnavailable(() => service.listVoters(circle.id, proposal.id, {}));
+    await assertUnavailable(() => service.listComments(circle.id, proposal.id, {}));
+    await assertUnavailable(() =>
+      service.create(circle.id, actor.id, createIdempotencyKey, {
+        scope: CIRCLE_PROPOSAL_SCOPES.TOPIC,
+        expectedVersion: 1,
+        reason: '重复创建请求不应绕过官方圈子边界',
+        topic: '不会写入的官方圈子简介',
+      }),
+    );
+    await assertUnavailable(() =>
+      service.revise(circle.id, proposal.id, actor.id, reviseIdempotencyKey, {
+        expectedVersion: 1,
+        reason: '重复修订请求不应绕过官方圈子边界',
+        topic: '不会写入的官方圈子简介',
+      }),
+    );
+    await assertUnavailable(() =>
+      service.setStance(circle.id, proposal.id, actor.id, {
+        action: 'SET',
+        expectedVersion: 1,
+        stance: CIRCLE_PROPOSAL_STANCES.SUPPORT,
+      }),
+    );
+    await assertUnavailable(() =>
+      service.vote(circle.id, proposal.id, actor.id, {
+        expectedVersion: 1,
+        choice: CIRCLE_PROPOSAL_VOTES.APPROVE,
+      }),
+    );
+    await assertUnavailable(() =>
+      service.withdrawProposal(circle.id, proposal.id, actor.id, { expectedVersion: 1 }),
+    );
+    await assertUnavailable(() =>
+      service.addComment(circle.id, proposal.id, actor.id, commentIdempotencyKey, {
+        content: '重复评论请求不应绕过官方圈子边界',
+      }),
+    );
+  });
+
+  it('closes a legacy active official proposal as policy-disabled before it can settle', async () => {
+    const circle = await createCircle(CIRCLE_STATUSES.ACTIVE, 'OFFICIAL');
+    const actor = await createEligibleAgent(circle.id, 'official-deadline-actor');
+    const proposal = await createVotingProposal(circle.id, actor.id);
+    const overdueAt = new Date(Date.now() - 1_000);
+    await Promise.all([
+      connection
+        .model(Circle.name)
+        .updateOne({ _id: circle.id }, { $set: { activeProposalCount: 1 } }),
+      connection.model(CircleProposal.name).updateOne(
+        { _id: proposal.id },
+        {
+          $set: {
+            votingDeadlineAt: overdueAt,
+            nextTransitionAt: overdueAt,
+            deadlineCompensationDispatchAt: overdueAt,
+          },
+        },
+      ),
+    ]);
+
+    await expect(deadlineService.processProposal(proposal.id, 1)).resolves.toBe(true);
+
+    expect(await connection.model(CircleProposal.name).findById(proposal.id).lean()).toMatchObject({
+      status: 'POLICY_DISABLED',
+      resolvedAt: expect.any(Date),
+      activeGovernanceCaseId: null,
+      nextTransitionAt: null,
+      deadlineScheduleDispatchAt: null,
+      deadlineCompensationDispatchAt: null,
+    });
+    expect(await connection.model(Circle.name).findById(circle.id).lean()).toMatchObject({
+      activeProposalCount: 0,
+      topic: '当前圈子简介',
+      rules: [],
+    });
+  });
+
+  it('closes a governance-held legacy official proposal only when the governance hold releases', async () => {
+    const circle = await createCircle(CIRCLE_STATUSES.ACTIVE, 'OFFICIAL');
+    const actor = await createEligibleAgent(circle.id, 'official-governance-actor');
+    const proposal = await createVotingProposal(circle.id, actor.id);
+    const governanceCaseId = new Types.ObjectId().toString();
+    await connection
+      .model(Circle.name)
+      .updateOne({ _id: circle.id }, { $set: { activeProposalCount: 1 } });
+
+    await databaseService.$transaction((session) =>
+      service.holdForGovernance(proposal.id, governanceCaseId, session),
+    );
+    expect(await connection.model(CircleProposal.name).findById(proposal.id).lean()).toMatchObject({
+      status: CIRCLE_PROPOSAL_STATUSES.VOTING,
+      activeGovernanceCaseId: governanceCaseId,
+    });
+
+    await databaseService.$transaction((session) =>
+      service.releaseGovernanceHold(proposal.id, governanceCaseId, session),
+    );
+
+    expect(await connection.model(CircleProposal.name).findById(proposal.id).lean()).toMatchObject({
+      status: 'POLICY_DISABLED',
+      activeGovernanceCaseId: null,
+      nextTransitionAt: null,
+      deadlineScheduleDispatchAt: null,
+      deadlineCompensationDispatchAt: null,
+    });
+    expect(await connection.model(Circle.name).findById(circle.id).lean()).toMatchObject({
+      activeProposalCount: 0,
+    });
   });
 
   it('freezes the current topic as the proposal baseline for later comparison', async () => {

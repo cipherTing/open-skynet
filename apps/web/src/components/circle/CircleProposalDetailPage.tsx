@@ -28,6 +28,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/components/ui/SignalToast';
 import { circleApi } from '@/lib/api';
+import { isCommunityCoBuildAvailable } from '@/lib/circle-cobuild';
 import { circleKeys } from '@/lib/query-keys';
 import { ErrorState, InlineLoading } from '@/components/ui/LoadingState';
 import { AuthRequiredDialog, AuthRequiredState } from '@/components/ui/AuthRequiredDialog';
@@ -88,12 +89,14 @@ export function CircleProposalDetailPage({
   });
   const circle = circleQuery.data;
   const circleId = circle?.id ?? null;
+  const coBuildAvailable = circle ? isCommunityCoBuildAvailable(circle) : false;
   const proposalQuery = useQuery({
     queryKey: circleId
       ? circleKeys.proposal(viewerKey, circleId, proposalId)
       : ['proposal', viewerKey, proposalId],
-    queryFn: circleId ? () => circleApi.proposal(circleId, proposalId) : skipToken,
-    enabled: isAuthenticated,
+    queryFn:
+      circleId && coBuildAvailable ? () => circleApi.proposal(circleId, proposalId) : skipToken,
+    enabled: isAuthenticated && coBuildAvailable,
   });
   const proposal = proposalQuery.data;
   const revisionsQueryKey = circleId
@@ -102,16 +105,17 @@ export function CircleProposalDetailPage({
   const revisionsQuery = useInfiniteQuery({
     queryKey: revisionsQueryKey,
     retry: false,
-    queryFn: circleId
-      ? ({ pageParam }) =>
-          circleApi.proposalRevisions(circleId, proposalId, {
-            cursor: pageParam,
-            limit: PROPOSAL_HISTORY_PAGE_SIZE,
-          })
-      : skipToken,
+    queryFn:
+      circleId && coBuildAvailable
+        ? ({ pageParam }) =>
+            circleApi.proposalRevisions(circleId, proposalId, {
+              cursor: pageParam,
+              limit: PROPOSAL_HISTORY_PAGE_SIZE,
+            })
+        : skipToken,
     initialPageParam: null,
     getNextPageParam: (lastPage: CircleProposalRevisionPage) => lastPage.nextCursor ?? undefined,
-    enabled: isAuthenticated,
+    enabled: isAuthenticated && coBuildAvailable,
   });
   const votersQueryKey = circleId
     ? circleKeys.proposalVoters(viewerKey, circleId, proposalId, PROPOSAL_HISTORY_PAGE_SIZE)
@@ -119,33 +123,34 @@ export function CircleProposalDetailPage({
   const votersQuery = useInfiniteQuery({
     queryKey: votersQueryKey,
     retry: false,
-    queryFn: circleId
-      ? ({ pageParam }) =>
-          circleApi.proposal(circleId, proposalId, {
-            votersCursor: pageParam ?? undefined,
-            votersLimit: PROPOSAL_HISTORY_PAGE_SIZE,
-          })
-      : skipToken,
+    queryFn:
+      circleId && coBuildAvailable
+        ? ({ pageParam }) =>
+            circleApi.proposal(circleId, proposalId, {
+              votersCursor: pageParam ?? undefined,
+              votersLimit: PROPOSAL_HISTORY_PAGE_SIZE,
+            })
+        : skipToken,
     initialPageParam: null,
-    getNextPageParam: (lastPage: CircleProposalDetail) =>
-      lastPage.voters?.nextCursor ?? undefined,
-    enabled: votersOpen && isAuthenticated && Boolean(proposal?.resolvedAt),
+    getNextPageParam: (lastPage: CircleProposalDetail) => lastPage.voters?.nextCursor ?? undefined,
+    enabled: votersOpen && isAuthenticated && coBuildAvailable && Boolean(proposal?.resolvedAt),
   });
   const commentsQueryKey = circleId
     ? circleKeys.proposalComments(viewerKey, circleId, proposalId, PROPOSAL_COMMENT_PAGE_SIZE)
     : (['proposal-comments', viewerKey, proposalId] as const);
   const commentsQuery = useInfiniteQuery({
     queryKey: commentsQueryKey,
-    queryFn: circleId
-      ? ({ pageParam }) =>
-          circleApi.proposalComments(circleId, proposalId, {
-            cursor: pageParam,
-            limit: PROPOSAL_COMMENT_PAGE_SIZE,
-          })
-      : skipToken,
+    queryFn:
+      circleId && coBuildAvailable
+        ? ({ pageParam }) =>
+            circleApi.proposalComments(circleId, proposalId, {
+              cursor: pageParam,
+              limit: PROPOSAL_COMMENT_PAGE_SIZE,
+            })
+        : skipToken,
     initialPageParam: null,
     getNextPageParam: (lastPage: CircleProposalCommentResponse) => lastPage.nextCursor ?? undefined,
-    enabled: isAuthenticated,
+    enabled: isAuthenticated && coBuildAvailable,
   });
   const retryRevisions = useCursorPaginationRetry({
     queryKey: revisionsQueryKey,
@@ -296,6 +301,17 @@ export function CircleProposalDetailPage({
       <PageState>
         <AuthRequiredState onOpen={() => setAuthPromptOpen(true)} />
         <AuthRequiredDialog open={authPromptOpen} onOpenChange={setAuthPromptOpen} />
+      </PageState>
+    );
+  }
+
+  if (!circleQuery.isPending && circle && !coBuildAvailable) {
+    return (
+      <PageState>
+        <ErrorState
+          title={t('circles.coBuild.unavailableTitle')}
+          message={t('circles.coBuild.unavailableMessage')}
+        />
       </PageState>
     );
   }

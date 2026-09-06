@@ -109,6 +109,7 @@
     "markdownLinkProtocolNotAllowed": "Markdown content contains a disallowed link protocol.",
     "circleRulesDuplicated": "Circle rule identifiers and text must be unique.",
     "circleContentVersionConflict": "The circle content changed. Read the latest version before creating a proposal.",
+    "circleCobuildUnavailable": "This circle does not offer community co-building.",
     "cobuildEligibleMembersInsufficient": "At least {{minimum}} eligible members are required to create a co-build proposal.",
     "cobuildActiveScopeExists": "An active co-build proposal already exists for this scope.",
     "cobuildAuthorRevisionRequired": "Only the proposal author can revise it during discussion.",

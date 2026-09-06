@@ -30,6 +30,7 @@ import {
   CIRCLE_STATUSES,
   CIRCLE_MAINTENANCE_ACTIONS,
   CIRCLE_MAINTENANCE_ACTOR_TYPES,
+  type CircleMaintenanceAction,
   CIRCLE_PROPOSAL_STATUSES,
   CIRCLE_RULE_REVISION_SOURCES,
   CIRCLE_CREATION_MIN_LEVEL,
@@ -98,6 +99,12 @@ type PublicCircle = {
 };
 
 type CircleSummary = Pick<PublicCircle, 'id' | 'slug' | 'name' | 'topic'>;
+
+const COMMUNITY_COBUILD_MAINTENANCE_ACTIONS = new Set<CircleMaintenanceAction>([
+  CIRCLE_MAINTENANCE_ACTIONS.PROPOSAL_ACCEPTED,
+  CIRCLE_MAINTENANCE_ACTIONS.PROPOSAL_MODERATED,
+  CIRCLE_MAINTENANCE_ACTIONS.PROPOSAL_COMMENT_MODERATED,
+]);
 
 type NewMaintenanceLog = Pick<
   CircleMaintenanceLog,
@@ -777,18 +784,21 @@ export class CircleService {
       session,
     });
     if (!circle) throw commonErrors.circleNotFound();
-    const activeProposals = await this.circleProposalModel
-      .find(
-        {
-          circleId,
-          status: {
-            $in: [CIRCLE_PROPOSAL_STATUSES.DISCUSSION, CIRCLE_PROPOSAL_STATUSES.VOTING],
-          },
-        },
-        null,
-        { session },
-      )
-      .sort({ updatedAt: -1, _id: -1 });
+    const activeProposals =
+      circle.kind === CIRCLE_KINDS.OFFICIAL
+        ? []
+        : await this.circleProposalModel
+            .find(
+              {
+                circleId,
+                status: {
+                  $in: [CIRCLE_PROPOSAL_STATUSES.DISCUSSION, CIRCLE_PROPOSAL_STATUSES.VOTING],
+                },
+              },
+              null,
+              { session },
+            )
+            .sort({ updatedAt: -1, _id: -1 });
     return {
       ...this.serializeCircleForAdmin(circle),
       activeProposals: activeProposals.map((proposal) => ({
@@ -952,6 +962,9 @@ export class CircleService {
       throw circleErrors.maintenanceDateRangeInvalid();
     }
     const where: FilterQuery<CircleMaintenanceLog> = { circleId: circle.id };
+    if (circle.kind === CIRCLE_KINDS.OFFICIAL) {
+      where.action = { $nin: [...COMMUNITY_COBUILD_MAINTENANCE_ACTIONS] };
+    }
     if (from || to) {
       where.createdAt = {
         ...(from ? { $gte: from } : {}),
@@ -992,9 +1005,11 @@ export class CircleService {
   async getMaintenanceLogDetail(circleId: string, logId: string) {
     ensureValidObjectId(circleId, commonErrors.circleNotFound);
     ensureValidObjectId(logId, circleErrors.maintenanceLogNotFound);
-    await this.ensureCircleRecordExists(circleId);
+    const circle = await this.ensureCircleRecordExists(circleId);
     const log = await this.circleMaintenanceLogModel.findOne({ _id: logId, circleId });
-    if (!log) throw circleErrors.maintenanceLogNotFound();
+    if (!log || !this.isMaintenanceLogVisible(circle, log.action)) {
+      throw circleErrors.maintenanceLogNotFound();
+    }
 
     if (log.action === CIRCLE_MAINTENANCE_ACTIONS.RULES_UPDATED) {
       const previousVersion = metadataNumber(log.metadata, 'previousVersion');
@@ -1062,9 +1077,35 @@ export class CircleService {
     };
   }
 
+  private isMaintenanceLogVisible(circle: Circle, action: CircleMaintenanceAction): boolean {
+    return (
+      circle.kind !== CIRCLE_KINDS.OFFICIAL || !COMMUNITY_COBUILD_MAINTENANCE_ACTIONS.has(action)
+    );
+  }
+
   async getCirclePanel(circleId: string) {
     const circle = await this.ensureCircleExists(circleId);
     const { start: todayStart, end: tomorrowStart } = this.businessCalendarService.getDayWindow();
+    const activeCaseTargets: FilterQuery<GovernanceCase>[] = [
+      { 'targetSnapshot.post.circleRules.circleId': circle.id },
+      { 'targetSnapshot.reply.circleRules.circleId': circle.id },
+      ...(circle.kind === CIRCLE_KINDS.NORMAL
+        ? [{ 'targetSnapshot.proposal.circleId': circle.id }]
+        : []),
+    ];
+    const activeProposalsPromise =
+      circle.kind === CIRCLE_KINDS.OFFICIAL
+        ? Promise.resolve([])
+        : this.circleProposalModel
+            .find({
+              circleId: circle.id,
+              status: {
+                $in: [CIRCLE_PROPOSAL_STATUSES.DISCUSSION, CIRCLE_PROPOSAL_STATUSES.VOTING],
+              },
+            })
+            .sort({ updatedAt: -1, _id: -1 })
+            .limit(3)
+            .select('scope status discussionDeadlineAt votingDeadlineAt');
     const [todayPostCount, latestPosts, activeProposals, activeCases] = await Promise.all([
       this.postModel.countDocuments({
         circleId: circle.id,
@@ -1076,24 +1117,11 @@ export class CircleService {
         .sort({ createdAt: -1, _id: -1 })
         .limit(5)
         .select('title createdAt'),
-      this.circleProposalModel
-        .find({
-          circleId: circle.id,
-          status: {
-            $in: [CIRCLE_PROPOSAL_STATUSES.DISCUSSION, CIRCLE_PROPOSAL_STATUSES.VOTING],
-          },
-        })
-        .sort({ updatedAt: -1, _id: -1 })
-        .limit(3)
-        .select('scope status discussionDeadlineAt votingDeadlineAt'),
+      activeProposalsPromise,
       this.governanceCaseModel
         .find({
           status: { $in: [GOVERNANCE_CASE_STATUS.OPEN, GOVERNANCE_CASE_STATUS.EMERGENCY] },
-          $or: [
-            { 'targetSnapshot.post.circleRules.circleId': circle.id },
-            { 'targetSnapshot.reply.circleRules.circleId': circle.id },
-            { 'targetSnapshot.proposal.circleId': circle.id },
-          ],
+          $or: activeCaseTargets,
         })
         .sort({ openedAt: -1, _id: -1 })
         .limit(3),
@@ -1376,7 +1404,7 @@ export class CircleService {
       agentPostingEnabled:
         circle.kind === CIRCLE_KINDS.OFFICIAL ? circle.agentPostingEnabled !== false : true,
       postingPolicyVersion: circle.postingPolicyVersion ?? 1,
-      activeProposalCount: circle.activeProposalCount,
+      activeProposalCount: circle.kind === CIRCLE_KINDS.OFFICIAL ? 0 : circle.activeProposalCount,
       ...(joined === undefined ? {} : { joined }),
       ...(hotPosts === undefined ? {} : { hotPosts }),
       createdAt: circle.createdAt.toISOString(),

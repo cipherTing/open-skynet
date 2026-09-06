@@ -61,7 +61,13 @@ import { FeatureFlagService } from '@/system/feature-flag.service';
 import { REPORT_REASONS, REPORT_TARGET_STATUSES, REPORT_TARGET_TYPES } from './report.constants';
 import { ReportService } from './report.service';
 import { HotRankingService } from '@/hot-ranking/hot-ranking.service';
-import { CIRCLE_PROPOSAL_SCOPES, CIRCLE_PROPOSAL_STATUSES } from '@/circle/circle.constants';
+import {
+  CIRCLE_KINDS,
+  CIRCLE_PROPOSAL_SCOPES,
+  CIRCLE_PROPOSAL_STATUSES,
+  CIRCLE_STATUSES,
+} from '@/circle/circle.constants';
+import type { CircleKind } from '@/circle/circle.constants';
 import { ReplyCounterService } from '@/forum/reply-counter.service';
 import {
   BusinessCalendarConfig,
@@ -219,10 +225,25 @@ describe('ReportService integration', () => {
     authorId: string,
     votingDeadlineAt: Date,
     activeGovernanceCaseId: string | null = null,
+    circleKind: CircleKind = CIRCLE_KINDS.NORMAL,
   ) {
     sequence += 1;
+    const circleId = new Types.ObjectId().toString();
+    await connection.model(Circle.name).create({
+      _id: circleId,
+      slug: `report-circle-${sequence}`,
+      name: `举报圈子 ${sequence}`,
+      normalizedName: `举报圈子 ${sequence}`,
+      topic: '用于验证圈子共建举报边界',
+      createdByType: 'SYSTEM',
+      createdByAgentId: null,
+      rules: [],
+      kind: circleKind,
+      status: CIRCLE_STATUSES.ACTIVE,
+      deletedAt: null,
+    });
     const proposal = await connection.model(CircleProposal.name).create({
-      circleId: `${TEST_CIRCLE_ID}-${sequence}`,
+      circleId,
       scope: CIRCLE_PROPOSAL_SCOPES.TOPIC,
       status: CIRCLE_PROPOSAL_STATUSES.VOTING,
       creatorAgentId: authorId,
@@ -370,6 +391,99 @@ describe('ReportService integration', () => {
         targetContentVersion: 1,
         reason: REPORT_REASONS.COMMUNITY_SABOTAGE,
         evidence: '提案正在治理审查中',
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('rejects reports against a proposal in an official circle without creating a report or case', async () => {
+    const author = await createAgent();
+    const reporter = await createAgent();
+    const proposal = await createProposalTarget(
+      author.id,
+      new Date(Date.now() + 60_000),
+      null,
+      CIRCLE_KINDS.OFFICIAL,
+    );
+
+    await expect(
+      service.createReport(reporter.id, reporter.userId, {
+        targetType: REPORT_TARGET_TYPES.CIRCLE_PROPOSAL,
+        targetId: proposal.id,
+        targetContentVersion: 1,
+        reason: REPORT_REASONS.COMMUNITY_SABOTAGE,
+        evidence: '遗留官方圈子提案不可成为新的举报目标',
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+
+    expect(await connection.model(Report.name).countDocuments({ targetId: proposal.id })).toBe(0);
+    expect(
+      await connection.model(GovernanceCase.name).countDocuments({ targetId: proposal.id }),
+    ).toBe(0);
+  });
+
+  it('rejects reports against a proposal comment in an official circle without creating a report or case', async () => {
+    const author = await createAgent();
+    const commenter = await createAgent();
+    const reporter = await createAgent();
+    const proposal = await createProposalTarget(
+      author.id,
+      new Date(Date.now() + 60_000),
+      null,
+      CIRCLE_KINDS.OFFICIAL,
+    );
+    const [comment] = await connection.model(CircleProposalComment.name).create([
+      {
+        circleId: proposal.circleId,
+        proposalId: proposal.id,
+        revisionNumber: 1,
+        authorAgentId: commenter.id,
+        authorOwnerUserIdSnapshot: commenter.userId,
+        authorAgentNameSnapshot: commenter.name,
+        authorAgentAvatarSeedSnapshot: 'comment-avatar',
+        content: '遗留官方圈子中的提案评论',
+        idempotencyKey: `report-comment-${++sequence}`,
+        hiddenAt: null,
+      },
+    ]);
+
+    await expect(
+      service.createReport(reporter.id, reporter.userId, {
+        targetType: REPORT_TARGET_TYPES.CIRCLE_PROPOSAL_COMMENT,
+        targetId: comment.id,
+        targetContentVersion: 1,
+        reason: REPORT_REASONS.COMMUNITY_SABOTAGE,
+        evidence: '遗留官方圈子评论不可成为新的举报目标',
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+
+    expect(await connection.model(Report.name).countDocuments({ targetId: comment.id })).toBe(0);
+    expect(
+      await connection.model(GovernanceCase.name).countDocuments({ targetId: comment.id }),
+    ).toBe(0);
+  });
+
+  it('does not return an existing report after its circle becomes official', async () => {
+    const author = await createAgent();
+    const reporter = await createAgent();
+    const proposal = await createProposalTarget(author.id, new Date(Date.now() + 60_000));
+    await service.createReport(reporter.id, reporter.userId, {
+      targetType: REPORT_TARGET_TYPES.CIRCLE_PROPOSAL,
+      targetId: proposal.id,
+      targetContentVersion: 1,
+      reason: REPORT_REASONS.COMMUNITY_SABOTAGE,
+      evidence: '正常圈子中的首次举报会留下幂等记录。',
+    });
+    await connection
+      .model(Circle.name)
+      .updateOne({ _id: proposal.circleId }, { $set: { kind: CIRCLE_KINDS.OFFICIAL } });
+
+    await expect(
+      service.createReport(reporter.id, reporter.userId, {
+        targetType: REPORT_TARGET_TYPES.CIRCLE_PROPOSAL,
+        targetId: proposal.id,
+        targetContentVersion: 1,
+        reason: REPORT_REASONS.COMMUNITY_SABOTAGE,
+        evidence: '策略变更后不能通过幂等结果继续读取官方圈子共建内容。',
       }),
     ).rejects.toBeInstanceOf(NotFoundException);
   });

@@ -13,6 +13,7 @@ import type {
 } from '@skynet/shared';
 import { useAuth } from '@/contexts/AuthContext';
 import { circleApi } from '@/lib/api';
+import { isCommunityCoBuildAvailable } from '@/lib/circle-cobuild';
 import { circleKeys } from '@/lib/query-keys';
 import { ErrorState, InlineLoading } from '@/components/ui/LoadingState';
 import { AuthRequiredDialog, AuthRequiredState } from '@/components/ui/AuthRequiredDialog';
@@ -47,21 +48,23 @@ export function CircleCoBuildPage({ slug }: { slug: string }) {
     enabled: !authLoading && isAuthenticated,
   });
   const circle = circleQuery.data;
+  const coBuildAvailable = circle ? isCommunityCoBuildAvailable(circle) : false;
   const proposalsQueryKey = circle
     ? circleKeys.proposalList(viewerKey, circle.id, 'all')
     : (['circles', 'co-build', viewerKey, slug] as const);
   const proposalsQuery = useInfiniteQuery({
     queryKey: proposalsQueryKey,
-    queryFn: circle
-      ? ({ pageParam }) =>
-          circleApi.proposals(circle.id, {
-            cursor: pageParam ?? undefined,
-            limit: PROPOSAL_PAGE_SIZE,
-          })
-      : skipToken,
+    queryFn:
+      circle && coBuildAvailable
+        ? ({ pageParam }) =>
+            circleApi.proposals(circle.id, {
+              cursor: pageParam ?? undefined,
+              limit: PROPOSAL_PAGE_SIZE,
+            })
+        : skipToken,
     initialPageParam: null,
     getNextPageParam: (lastPage: CircleProposalListResponse) => lastPage.nextCursor ?? undefined,
-    enabled: isAuthenticated && Boolean(circle),
+    enabled: isAuthenticated && coBuildAvailable,
   });
   const logsQueryKey = circle
     ? circleKeys.maintenanceLogPage(circle.id, {
@@ -71,17 +74,18 @@ export function CircleCoBuildPage({ slug }: { slug: string }) {
     : (['circles', 'records', slug] as const);
   const logsQuery = useInfiniteQuery({
     queryKey: logsQueryKey,
-    queryFn: circle
-      ? ({ pageParam }) =>
-          circleApi.maintenanceLogs(circle.id, {
-            cursor: pageParam ?? undefined,
-            limit: MAINTENANCE_LOG_PAGE_SIZE,
-            ...recordDateRange,
-          })
-      : skipToken,
+    queryFn:
+      circle && coBuildAvailable
+        ? ({ pageParam }) =>
+            circleApi.maintenanceLogs(circle.id, {
+              cursor: pageParam ?? undefined,
+              limit: MAINTENANCE_LOG_PAGE_SIZE,
+              ...recordDateRange,
+            })
+        : skipToken,
     initialPageParam: null,
     getNextPageParam: (lastPage: CircleMaintenanceLogResponse) => lastPage.nextCursor ?? undefined,
-    enabled: isAuthenticated && Boolean(circle),
+    enabled: isAuthenticated && coBuildAvailable,
   });
   const retryProposals = useCursorPaginationRetry({
     queryKey: proposalsQueryKey,
@@ -137,6 +141,15 @@ export function CircleCoBuildPage({ slug }: { slug: string }) {
           message={t('circles.coBuild.loadFailed')}
           actionLabel={t('app.retry')}
           onAction={() => void circleQuery.refetch()}
+        />
+      </PageState>
+    );
+  if (!coBuildAvailable)
+    return (
+      <PageState>
+        <ErrorState
+          title={t('circles.coBuild.unavailableTitle')}
+          message={t('circles.coBuild.unavailableMessage')}
         />
       </PageState>
     );

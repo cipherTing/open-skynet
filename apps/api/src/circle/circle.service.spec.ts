@@ -39,6 +39,7 @@ import {
   BusinessCalendarConfigSchema,
 } from '@/database/schemas/business-calendar-config.schema';
 import { BusinessCalendarService } from '@/system/business-calendar.service';
+import { CIRCLE_MAINTENANCE_ACTIONS } from './circle.constants';
 
 describe('CircleService creation and memberships', () => {
   jest.setTimeout(60_000);
@@ -165,6 +166,113 @@ describe('CircleService creation and memberships', () => {
       version: 1,
     });
     expect(revision).toMatchObject({ rules: [], source: 'ADMIN' });
+  });
+
+  it('hides legacy active proposal activity from official circle serializations and panels', async () => {
+    const circle = await createOfficialCircle();
+    const now = new Date();
+    const proposal = await connection.model(CircleProposal.name).create({
+      circleId: circle.id,
+      scope: 'TOPIC',
+      status: 'DISCUSSION',
+      creatorAgentId: new Types.ObjectId().toString(),
+      creatorOwnerUserIdSnapshot: 'legacy-official-owner',
+      creatorAgentNameSnapshot: 'Legacy official proposal author',
+      creatorAgentAvatarSeedSnapshot: 'legacy-official-proposal-author',
+      baseVersion: 1,
+      baseTopicSnapshot: circle.topic,
+      baseRulesSnapshot: null,
+      currentRevisionNumber: 1,
+      eligibleMemberCountSnapshot: 3,
+      quorumSnapshot: 3,
+      version: 1,
+      participationVersion: 0,
+      discussionDeadlineAt: new Date(now.getTime() + 60_000),
+      votingDeadlineAt: null,
+      expiresAt: new Date(now.getTime() + 120_000),
+      nextTransitionAt: new Date(now.getTime() + 60_000),
+      deadlineVersion: 1,
+      deadlinePublishedVersion: 1,
+      deadlineScheduleDispatchAt: now,
+      deadlineCompensationDispatchAt: new Date(now.getTime() + 60_000),
+      resolvedAt: null,
+      approveCount: 0,
+      rejectCount: 0,
+      activeGovernanceCaseId: null,
+      idempotencyKey: crypto.randomUUID(),
+    });
+    await connection.model(GovernanceCase.name).create({
+      targetType: 'CIRCLE_PROPOSAL',
+      targetId: proposal.id,
+      targetContentVersion: 1,
+      round: 1,
+      targetAuthorId: proposal.creatorAgentId,
+      reporterAgentIds: ['legacy-reporter-a', 'legacy-reporter-b', 'legacy-reporter-c'],
+      reporterOwnerUserIds: ['legacy-owner-a', 'legacy-owner-b', 'legacy-owner-c'],
+      targetAuthorOwnerUserId: proposal.creatorOwnerUserIdSnapshot,
+      targetSnapshot: {
+        kind: 'CIRCLE_PROPOSAL',
+        proposal: {
+          id: proposal.id,
+          circleId: circle.id,
+          scope: proposal.scope,
+          revisionNumber: 1,
+          reason: '历史官方圈子共建提案',
+          topicSnapshot: circle.topic,
+          rulesSnapshot: null,
+          authorId: proposal.creatorAgentId,
+          createdAt: now,
+        },
+      },
+      status: 'OPEN',
+      triggerScore: 3,
+      triggerThreshold: 3,
+      openedAt: now,
+      firstReviewAt: new Date(now.getTime() + 60_000),
+      normalDeadlineAt: new Date(now.getTime() + 120_000),
+      emergencyDeadlineAt: new Date(now.getTime() + 180_000),
+      nextTransitionAt: new Date(now.getTime() + 60_000),
+    });
+    await connection
+      .model(Circle.name)
+      .updateOne({ _id: circle.id }, { $set: { activeProposalCount: 1 } });
+    const stored = await connection.model(Circle.name).findById(circle.id);
+    if (!stored) throw new Error('官方圈子不存在');
+
+    expect(service.serializeCircleForAdmin(stored)).toMatchObject({ activeProposalCount: 0 });
+    await expect(service.getCircleForAdmin(circle.id)).resolves.toMatchObject({
+      activeProposalCount: 0,
+      activeProposals: [],
+    });
+    await expect(service.getCirclePanel(circle.id)).resolves.toMatchObject({
+      activeProposals: [],
+      activeGovernanceCases: [],
+    });
+  });
+
+  it('hides legacy proposal maintenance records from an official circle', async () => {
+    const circle = await createOfficialCircle();
+    const [legacyProposalLog] = await connection.model(CircleMaintenanceLog.name).create([
+      {
+        circleId: circle.id,
+        action: CIRCLE_MAINTENANCE_ACTIONS.PROPOSAL_ACCEPTED,
+        actorType: 'AGENT',
+        actorAgentId: new Types.ObjectId().toString(),
+        targetPostId: null,
+        proposalId: new Types.ObjectId().toString(),
+        proposalRevisionNumber: 1,
+        publicReason: '历史共建提案通过后留下的维护记录。',
+        metadata: { scope: 'TOPIC', previousVersion: 1, nextVersion: 2 },
+      },
+    ]);
+
+    const logs = await service.listMaintenanceLogs(circle.id, { limit: 10 });
+    expect(logs.items.some((log) => log.id === legacyProposalLog.id)).toBe(false);
+    await expect(
+      service.getMaintenanceLogDetail(circle.id, legacyProposalLog.id),
+    ).rejects.toMatchObject({
+      response: { code: 'MAINTENANCE_LOG_NOT_FOUND' },
+    });
   });
 
   it('publishes the default Agent posting policy for a new official circle', async () => {

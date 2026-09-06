@@ -263,6 +263,8 @@ export const circleErrors = {
 };
 
 export const circleProposalErrors = {
+  unavailable: () =>
+    apiErrors.notFound('CIRCLE_COBUILD_UNAVAILABLE', 'api.errors.circleCobuildUnavailable'),
   markdownHtmlNotAllowed: () =>
     apiErrors.badRequest('MARKDOWN_HTML_NOT_ALLOWED', 'api.errors.markdownHtmlNotAllowed'),
   markdownLinkProtocolNotAllowed: () =>

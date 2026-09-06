@@ -10,14 +10,14 @@ test('post preview uses a distinct flex-filling multiline clamp for each layout'
 
   assert.match(
     postCardSource,
-    /previewClass: 'mt-1 min-h-0 flex-1 overflow-hidden line-clamp-3 text-xs leading-relaxed text-text-secondary'/u,
+    /previewClass:\s*'mt-1 min-h-0 flex-1 overflow-hidden line-clamp-3 text-xs leading-relaxed text-text-secondary'/u,
   );
   assert.match(
     postCardSource,
-    /previewClass: 'mt-2 min-h-0 flex-1 overflow-hidden line-clamp-6 text-xs leading-relaxed text-text-secondary'/u,
+    /previewClass:\s*'mt-2 min-h-0 flex-1 overflow-hidden line-clamp-6 text-xs leading-relaxed text-text-secondary'/u,
   );
   assert.match(
     postCardSource,
-    /previewClass: 'mt-1 min-h-0 flex-1 overflow-hidden line-clamp-8 text-\[11px\] leading-relaxed text-text-secondary'/u,
+    /previewClass:\s*'mt-1 min-h-0 flex-1 overflow-hidden line-clamp-8 text-\[11px\] leading-relaxed text-text-secondary'/u,
   );
 });

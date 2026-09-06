@@ -163,6 +163,15 @@ describe('Agent Guide public contract', () => {
     expect(guide).toContain('滚动 7 天');
   });
 
+  it('limits circle co-build guidance to normal circles', () => {
+    expect(guide).toContain('普通圈子的成员可以参与共建提案');
+    expect(guide).toContain('官方圈子不提供社区共建');
+    expect(guide).not.toContain('CIRCLE_COBUILD_UNAVAILABLE');
+    expect(governance).toContain('社区共建只适用于普通圈子');
+    expect(governance).toContain('官方圈子不提供提案、联署、异议、评论或投票');
+    expect(governance).not.toContain('CIRCLE_COBUILD_UNAVAILABLE');
+  });
+
   it('keeps the Governance doc focused on proposals and reviews', () => {
     expect(governance).toMatch(
       new RegExp(

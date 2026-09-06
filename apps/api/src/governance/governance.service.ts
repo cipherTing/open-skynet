@@ -1,6 +1,6 @@
 import { HttpException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { ClientSession, Model, Types } from 'mongoose';
+import { ClientSession, FilterQuery, Model, PipelineStage, Types } from 'mongoose';
 import { AgentProgress } from '@/database/schemas/agent-progress.schema';
 import { Agent } from '@/database/schemas/agent.schema';
 import { FEATURE_FLAG_KEYS } from '@/database/schemas/feature-flag.schema';
@@ -18,6 +18,7 @@ import { REPORT_TARGET_STATUSES } from '@/report/report.constants';
 import { CONTENT_REMOVAL_SOURCES } from '@/database/schemas/content-removal';
 import { CircleRuleRevision } from '@/database/schemas/circle-rule-revision.schema';
 import { CircleProposalService } from '@/circle/circle-proposal.service';
+import { CIRCLE_KINDS } from '@/circle/circle.constants';
 import { GovernanceCorrection } from '@/database/schemas/governance-correction.schema';
 import {
   AGENT_GOVERNANCE_HISTORY_SOURCES,
@@ -103,6 +104,16 @@ interface GovernanceDailyVoteSummaryRow {
   notViolationVotes: number;
   firstOccurredAt: Date;
   lastOccurredAt: Date;
+}
+
+interface GovernanceStatsAggregateRow {
+  todayResolved: Array<{ count: number }>;
+  recentResolved: Array<{ count: number }>;
+  open: Array<{ count: number }>;
+  emergency: Array<{ count: number }>;
+  violationResolved: Array<{ count: number }>;
+  notViolationResolved: Array<{ count: number }>;
+  average: Array<{ averageResolutionMinutes: number }>;
 }
 
 const GOVERNANCE_DISPATCH_SORT = {
@@ -313,6 +324,7 @@ const GOVERNANCE_FEED_MAX_LIMIT = 20;
 const GOVERNANCE_FEED_RECENT_DAYS = 7;
 const GOVERNANCE_FEED_CANDIDATE_LIMIT = 200;
 const GOVERNANCE_FEED_HALF_LIFE_HOURS = 24;
+const GOVERNANCE_DISPATCH_CANDIDATE_LIMIT = 20;
 
 @Injectable()
 export class GovernanceService {
@@ -473,17 +485,15 @@ export class GovernanceService {
       status: { $in: GOVERNANCE_PUBLIC_RESULT_STATUSES },
       resolvedAt: { $ne: null },
     };
-    let candidates = await this.caseModel
-      .find({ ...baseFilter, resolvedAt: { $gte: recentSince } })
-      .sort({ resolvedAt: -1, _id: -1 })
-      .limit(GOVERNANCE_FEED_CANDIDATE_LIMIT);
+    let candidates = await this.findPublicGovernanceResultCandidates({
+      ...baseFilter,
+      resolvedAt: { $gte: recentSince },
+    });
     if (candidates.length < limit) {
-      candidates = await this.caseModel
-        .find(baseFilter)
-        .sort({ resolvedAt: -1, _id: -1 })
-        .limit(GOVERNANCE_FEED_CANDIDATE_LIMIT);
+      candidates = await this.findPublicGovernanceResultCandidates(baseFilter);
     }
-    const sampled = this.weightedSampleCases(candidates, limit, now);
+    const visibleCandidates = await this.filterPublicGovernanceCases(candidates);
+    const sampled = this.weightedSampleCases(visibleCandidates, limit, now);
     return {
       items: sampled.map((governanceCase) => this.serializePublicResult(governanceCase)),
       generatedAt: now.toISOString(),
@@ -502,6 +512,9 @@ export class GovernanceService {
     if (!governanceCase) {
       throw governanceErrors.caseNotFound();
     }
+    if (!(await this.isPublicGovernanceCase(governanceCase))) {
+      throw governanceErrors.caseNotFound();
+    }
     const corrections = await this.correctionModel
       .find({ caseId: governanceCase.id })
       .sort({ createdAt: 1, _id: 1 });
@@ -517,59 +530,122 @@ export class GovernanceService {
     const now = new Date();
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const todayStart = this.businessCalendarService.getDayWindow(now).start;
-    const terminalRecentFilter = {
-      status: { $in: GOVERNANCE_PUBLIC_RESULT_STATUSES },
-      resolvedAt: { $gte: sevenDaysAgo },
-    };
-    const [
-      todayResolvedCount,
-      recentResolvedCount,
-      openCount,
-      emergencyCount,
-      violationResolvedCount,
-      notViolationResolvedCount,
-      correctionCount,
-      averageRows,
-    ] = await Promise.all([
-      this.caseModel.countDocuments({
-        status: { $in: GOVERNANCE_PUBLIC_RESULT_STATUSES },
-        resolvedAt: { $gte: todayStart },
-      }),
-      this.caseModel.countDocuments(terminalRecentFilter),
-      this.caseModel.countDocuments({ status: GOVERNANCE_CASE_STATUS.OPEN }),
-      this.caseModel.countDocuments({ status: GOVERNANCE_CASE_STATUS.EMERGENCY }),
-      this.caseModel.countDocuments({
-        status: GOVERNANCE_CASE_STATUS.RESOLVED_VIOLATION,
-        resolvedAt: { $gte: sevenDaysAgo },
-      }),
-      this.caseModel.countDocuments({
-        status: GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION,
-        resolvedAt: { $gte: sevenDaysAgo },
-      }),
-      this.correctionModel.countDocuments({ createdAt: { $gte: sevenDaysAgo } }),
-      this.caseModel.aggregate<{ averageResolutionMinutes: number }>([
-        { $match: terminalRecentFilter },
-        { $match: { resolvedAt: { $ne: null } } },
+    const [statsRows, correctionRows] = await Promise.all([
+      this.caseModel.aggregate<GovernanceStatsAggregateRow>([
         {
-          $project: {
-            durationMinutes: { $divide: [{ $subtract: ['$resolvedAt', '$openedAt'] }, 60000] },
+          $match: {
+            $or: [
+              { status: { $in: ACTIVE_GOVERNANCE_CASE_STATUSES } },
+              {
+                status: { $in: GOVERNANCE_PUBLIC_RESULT_STATUSES },
+                resolvedAt: { $gte: sevenDaysAgo },
+              },
+            ],
           },
         },
-        { $group: { _id: null, averageResolutionMinutes: { $avg: '$durationMinutes' } } },
+        ...this.getPublicGovernanceCaseVisibilityStages(),
+        {
+          $facet: {
+            todayResolved: [
+              {
+                $match: {
+                  status: { $in: GOVERNANCE_PUBLIC_RESULT_STATUSES },
+                  resolvedAt: { $gte: todayStart },
+                },
+              },
+              { $count: 'count' },
+            ],
+            recentResolved: [
+              {
+                $match: {
+                  status: { $in: GOVERNANCE_PUBLIC_RESULT_STATUSES },
+                  resolvedAt: { $gte: sevenDaysAgo },
+                },
+              },
+              { $count: 'count' },
+            ],
+            open: [{ $match: { status: GOVERNANCE_CASE_STATUS.OPEN } }, { $count: 'count' }],
+            emergency: [
+              { $match: { status: GOVERNANCE_CASE_STATUS.EMERGENCY } },
+              { $count: 'count' },
+            ],
+            violationResolved: [
+              {
+                $match: {
+                  status: GOVERNANCE_CASE_STATUS.RESOLVED_VIOLATION,
+                  resolvedAt: { $gte: sevenDaysAgo },
+                },
+              },
+              { $count: 'count' },
+            ],
+            notViolationResolved: [
+              {
+                $match: {
+                  status: GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION,
+                  resolvedAt: { $gte: sevenDaysAgo },
+                },
+              },
+              { $count: 'count' },
+            ],
+            average: [
+              {
+                $match: {
+                  status: { $in: GOVERNANCE_PUBLIC_RESULT_STATUSES },
+                  resolvedAt: { $gte: sevenDaysAgo },
+                },
+              },
+              {
+                $project: {
+                  durationMinutes: {
+                    $divide: [{ $subtract: ['$resolvedAt', '$openedAt'] }, 60000],
+                  },
+                },
+              },
+              { $group: { _id: null, averageResolutionMinutes: { $avg: '$durationMinutes' } } },
+            ],
+          },
+        },
+      ]),
+      this.correctionModel.aggregate<{ count: number }>([
+        { $match: { createdAt: { $gte: sevenDaysAgo } } },
+        {
+          $set: {
+            governanceCaseObjectId: {
+              $convert: {
+                input: '$caseId',
+                to: 'objectId',
+                onError: null,
+                onNull: null,
+              },
+            },
+          },
+        },
+        {
+          $lookup: {
+            from: this.caseModel.collection.name,
+            localField: 'governanceCaseObjectId',
+            foreignField: '_id',
+            as: 'governanceCase',
+          },
+        },
+        { $unwind: '$governanceCase' },
+        ...this.getPublicGovernanceCaseVisibilityStages('governanceCase'),
+        { $count: 'count' },
       ]),
     ]);
+    const stats = statsRows[0];
     return {
-      todayResolvedCount,
-      recentResolvedCount,
-      openCount,
-      emergencyCount,
-      violationResolvedCount,
-      notViolationResolvedCount,
-      correctionCount,
+      todayResolvedCount: stats?.todayResolved[0]?.count ?? 0,
+      recentResolvedCount: stats?.recentResolved[0]?.count ?? 0,
+      openCount: stats?.open[0]?.count ?? 0,
+      emergencyCount: stats?.emergency[0]?.count ?? 0,
+      violationResolvedCount: stats?.violationResolved[0]?.count ?? 0,
+      notViolationResolvedCount: stats?.notViolationResolved[0]?.count ?? 0,
+      correctionCount: correctionRows[0]?.count ?? 0,
       averageResolutionMinutes:
-        averageRows[0]?.averageResolutionMinutes == null
+        stats?.average[0]?.averageResolutionMinutes == null
           ? null
-          : Math.round(averageRows[0].averageResolutionMinutes),
+          : Math.round(stats.average[0].averageResolutionMinutes),
     };
   }
 
@@ -577,6 +653,9 @@ export class GovernanceService {
     if (!Types.ObjectId.isValid(caseId)) throw governanceErrors.caseNotFound();
     const governanceCase = await this.caseModel.findById(caseId);
     if (!governanceCase) throw governanceErrors.caseNotFound();
+    if (!(await this.isPublicGovernanceCase(governanceCase))) {
+      throw governanceErrors.caseNotFound();
+    }
     return {
       id: governanceCase.id,
       targetType: governanceCase.targetType,
@@ -624,6 +703,13 @@ export class GovernanceService {
       })
       .select('+reporterAgentIds +reporterOwnerUserIds +targetAuthorOwnerUserId');
     if (!governanceCase) return null;
+    if (!(await this.isPublicGovernanceCase(governanceCase))) {
+      assignment.status = GOVERNANCE_ASSIGNMENT_STATUS.CASE_CLOSED;
+      assignment.statusReason = 'case-unavailable';
+      assignment.decidedAt = new Date();
+      await assignment.save();
+      return null;
+    }
     if (this.isAgentOrOwnerExcluded(governanceCase, agentId, ownerUserId)) return null;
 
     const level = assignment.agentLevelSnapshot;
@@ -641,113 +727,134 @@ export class GovernanceService {
     await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.GOVERNANCE_PARTICIPATION);
     try {
       return await this.databaseService.runInTransaction(session, async (session) => {
-      const now = new Date();
-      const ownerUserId = await this.getActiveAgentOwnerUserId(agentId, session);
-      const existing = await this.assignmentModel.findOne(
-        {
-          agentOwnerUserIdSnapshot: ownerUserId,
-          status: GOVERNANCE_ASSIGNMENT_STATUS.ACTIVE,
-        },
-        null,
-        { session },
-      );
-      if (existing) {
-        throw governanceErrors.activeCaseExists();
-      }
-
-      const profile = await this.getOrCreateGovernanceProfile(agentId, session);
-      const level = await this.getAgentLevel(agentId, session);
-      if (!canAgentParticipateInGovernance(profile.healthLevel, level)) {
-        throw governanceErrors.notEligible();
-      }
-
-      const quota = await this.getOrCreateDailyQuota(agentId, level, profile.healthLevel, session);
-      if (quota.quotaUsed >= quota.quotaTotal) {
-        throw governanceErrors.quotaExhausted();
-      }
-
-      const candidateFilter = {
-        status: { $in: ACTIVE_GOVERNANCE_CASE_STATUSES },
-        nextTransitionAt: { $gt: now },
-        targetAuthorId: { $ne: agentId },
-        targetAuthorOwnerUserId: { $ne: ownerUserId },
-        reporterAgentIds: { $ne: agentId },
-        reporterOwnerUserIds: { $ne: ownerUserId },
-      };
-      const [candidateReference] = await this.caseModel
-        .aggregate<GovernanceDispatchCandidateReference>([
-          { $match: candidateFilter },
-          { $sort: GOVERNANCE_DISPATCH_SORT },
-          { $set: { dispatchCaseId: { $toString: '$_id' } } },
+        const now = new Date();
+        const ownerUserId = await this.getActiveAgentOwnerUserId(agentId, session);
+        const existing = await this.assignmentModel.findOne(
           {
-            $lookup: {
-              from: this.assignmentModel.collection.name,
-              localField: 'dispatchCaseId',
-              foreignField: 'caseId',
-              pipeline: [
-                { $match: { agentOwnerUserIdSnapshot: ownerUserId } },
-                { $limit: 1 },
-                { $project: { _id: 1 } },
-              ],
-              as: 'previousAssignments',
-            },
+            agentOwnerUserIdSnapshot: ownerUserId,
+            status: GOVERNANCE_ASSIGNMENT_STATUS.ACTIVE,
           },
-          { $match: { 'previousAssignments.0': { $exists: false } } },
-          {
-            $lookup: {
-              from: this.voteModel.collection.name,
-              localField: 'dispatchCaseId',
-              foreignField: 'caseId',
-              pipeline: [
-                { $match: { voterOwnerUserIdSnapshot: ownerUserId } },
-                { $limit: 1 },
-                { $project: { _id: 1 } },
-              ],
-              as: 'previousVotes',
-            },
-          },
-          { $match: { 'previousVotes.0': { $exists: false } } },
-          { $limit: 1 },
-          { $project: { _id: 1 } },
-        ])
-        .session(session);
-      const candidate = candidateReference
-        ? await this.caseModel
-            .findOne({ ...candidateFilter, _id: candidateReference._id }, null, { session })
-            .select('+reporterAgentIds +reporterOwnerUserIds +targetAuthorOwnerUserId')
-        : null;
-      if (!candidate) {
-        throw governanceErrors.noAvailableCase();
-      }
-      if (this.isAgentOrOwnerExcluded(candidate, agentId, ownerUserId)) {
-        throw new Error('Agent or owner exclusion invariant failed during governance dispatch');
-      }
-
-      try {
-        const [assignment] = await this.assignmentModel.create(
-          [
-            {
-              caseId: candidate.id,
-              agentId,
-              agentOwnerUserIdSnapshot: ownerUserId,
-              status: GOVERNANCE_ASSIGNMENT_STATUS.ACTIVE,
-              decision: null,
-              weight: 0,
-              agentLevelSnapshot: level,
-              healthLevelSnapshot: profile.healthLevel,
-              assignedAt: now,
-              deadlineAt: candidate.emergencyDeadlineAt,
-            },
-          ],
+          null,
           { session },
         );
-        candidate.lastDispatchedAt = now;
-        await candidate.save({ session });
-        return this.serializeAssignedCase(candidate, assignment, quota);
-      } catch (error) {
-        if (!this.isDuplicateKeyError(error)) throw error;
-        throw governanceErrors.activeCaseExists();
-      }
+        if (existing) {
+          throw governanceErrors.activeCaseExists();
+        }
+
+        const profile = await this.getOrCreateGovernanceProfile(agentId, session);
+        const level = await this.getAgentLevel(agentId, session);
+        if (!canAgentParticipateInGovernance(profile.healthLevel, level)) {
+          throw governanceErrors.notEligible();
+        }
+
+        const quota = await this.getOrCreateDailyQuota(
+          agentId,
+          level,
+          profile.healthLevel,
+          session,
+        );
+        if (quota.quotaUsed >= quota.quotaTotal) {
+          throw governanceErrors.quotaExhausted();
+        }
+
+        const candidateFilter = {
+          status: { $in: ACTIVE_GOVERNANCE_CASE_STATUSES },
+          nextTransitionAt: { $gt: now },
+          targetAuthorId: { $ne: agentId },
+          targetAuthorOwnerUserId: { $ne: ownerUserId },
+          reporterAgentIds: { $ne: agentId },
+          reporterOwnerUserIds: { $ne: ownerUserId },
+        };
+        const candidateReferences = await this.caseModel
+          .aggregate<GovernanceDispatchCandidateReference>([
+            { $match: candidateFilter },
+            ...this.getPublicGovernanceCaseVisibilityStages(),
+            { $sort: GOVERNANCE_DISPATCH_SORT },
+            { $set: { dispatchCaseId: { $toString: '$_id' } } },
+            {
+              $lookup: {
+                from: this.assignmentModel.collection.name,
+                localField: 'dispatchCaseId',
+                foreignField: 'caseId',
+                pipeline: [
+                  { $match: { agentOwnerUserIdSnapshot: ownerUserId } },
+                  { $limit: 1 },
+                  { $project: { _id: 1 } },
+                ],
+                as: 'previousAssignments',
+              },
+            },
+            { $match: { 'previousAssignments.0': { $exists: false } } },
+            {
+              $lookup: {
+                from: this.voteModel.collection.name,
+                localField: 'dispatchCaseId',
+                foreignField: 'caseId',
+                pipeline: [
+                  { $match: { voterOwnerUserIdSnapshot: ownerUserId } },
+                  { $limit: 1 },
+                  { $project: { _id: 1 } },
+                ],
+                as: 'previousVotes',
+              },
+            },
+            { $match: { 'previousVotes.0': { $exists: false } } },
+            { $limit: GOVERNANCE_DISPATCH_CANDIDATE_LIMIT },
+            { $project: { _id: 1 } },
+          ])
+          .session(session);
+        const candidateIds = candidateReferences.map((reference) => reference._id);
+        const candidates =
+          candidateIds.length === 0
+            ? []
+            : await this.caseModel
+                .find({ ...candidateFilter, _id: { $in: candidateIds } }, null, { session })
+                .select('+reporterAgentIds +reporterOwnerUserIds +targetAuthorOwnerUserId');
+        const visibleCandidateIds = new Set(
+          (await this.filterPublicGovernanceCases(candidates, session)).map(
+            (candidate) => candidate.id,
+          ),
+        );
+        const candidateById = new Map(candidates.map((candidate) => [candidate.id, candidate]));
+        const candidate =
+          candidateReferences
+            .map((reference) => candidateById.get(reference._id.toString()))
+            .find(
+              (candidate): candidate is (typeof candidates)[number] =>
+                candidate !== undefined && visibleCandidateIds.has(candidate.id),
+            ) ?? null;
+        if (!candidate) {
+          throw governanceErrors.noAvailableCase();
+        }
+        if (this.isAgentOrOwnerExcluded(candidate, agentId, ownerUserId)) {
+          throw new Error('Agent or owner exclusion invariant failed during governance dispatch');
+        }
+
+        try {
+          const [assignment] = await this.assignmentModel.create(
+            [
+              {
+                caseId: candidate.id,
+                agentId,
+                agentOwnerUserIdSnapshot: ownerUserId,
+                status: GOVERNANCE_ASSIGNMENT_STATUS.ACTIVE,
+                decision: null,
+                weight: 0,
+                agentLevelSnapshot: level,
+                healthLevelSnapshot: profile.healthLevel,
+                assignedAt: now,
+                deadlineAt: candidate.emergencyDeadlineAt,
+              },
+            ],
+            { session },
+          );
+          candidate.lastDispatchedAt = now;
+          await candidate.save({ session });
+          return this.serializeAssignedCase(candidate, assignment, quota);
+        } catch (error) {
+          if (!this.isDuplicateKeyError(error)) throw error;
+          throw governanceErrors.activeCaseExists();
+        }
       });
     } catch (error: unknown) {
       if (this.isActiveCaseConflict(error)) {
@@ -793,6 +900,13 @@ export class GovernanceService {
       if (!governanceCase) {
         assignment.status = GOVERNANCE_ASSIGNMENT_STATUS.CASE_CLOSED;
         assignment.statusReason = 'case-closed';
+        assignment.decidedAt = new Date();
+        await assignment.save({ session });
+        return { kind: 'case-closed' } as const;
+      }
+      if (!(await this.isPublicGovernanceCase(governanceCase, session))) {
+        assignment.status = GOVERNANCE_ASSIGNMENT_STATUS.CASE_CLOSED;
+        assignment.statusReason = 'case-unavailable';
         assignment.decidedAt = new Date();
         await assignment.save({ session });
         return { kind: 'case-closed' } as const;
@@ -894,6 +1008,144 @@ export class GovernanceService {
     return agent.userId;
   }
 
+  private async findPublicGovernanceResultCandidates(
+    filter: FilterQuery<GovernanceCase>,
+  ): Promise<GovernanceCase[]> {
+    const references = await this.caseModel.aggregate<GovernanceDispatchCandidateReference>([
+      { $match: filter },
+      ...this.getPublicGovernanceCaseVisibilityStages(),
+      { $sort: { resolvedAt: -1, _id: -1 } },
+      { $limit: GOVERNANCE_FEED_CANDIDATE_LIMIT },
+      { $project: { _id: 1 } },
+    ]);
+    const candidateIds = references.map((reference) => reference._id);
+    if (candidateIds.length === 0) return [];
+    return this.caseModel
+      .find({ ...filter, _id: { $in: candidateIds } })
+      .sort({ resolvedAt: -1, _id: -1 });
+  }
+
+  private getPublicGovernanceCaseVisibilityStages(casePath = ''): PipelineStage[] {
+    const fieldPrefix = casePath === '' ? '' : `${casePath}.`;
+    const expressionPrefix = casePath === '' ? '$' : `$${casePath}.`;
+    const targetTypeField = `${fieldPrefix}targetType`;
+    const circleIdExpression = `${expressionPrefix}targetSnapshot.proposal.circleId`;
+    return [
+      {
+        $set: {
+          coBuildCircleObjectId: {
+            $cond: [
+              {
+                $in: [
+                  `${expressionPrefix}targetType`,
+                  [
+                    GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL,
+                    GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL_COMMENT,
+                  ],
+                ],
+              },
+              {
+                $convert: {
+                  input: circleIdExpression,
+                  to: 'objectId',
+                  onError: null,
+                  onNull: null,
+                },
+              },
+              null,
+            ],
+          },
+        },
+      },
+      {
+        $lookup: {
+          from: this.circleModel.collection.name,
+          localField: 'coBuildCircleObjectId',
+          foreignField: '_id',
+          pipeline: [
+            { $match: { kind: CIRCLE_KINDS.NORMAL, deletedAt: null } },
+            { $project: { _id: 1 } },
+          ],
+          as: 'coBuildCircle',
+        },
+      },
+      {
+        $match: {
+          $or: [
+            {
+              [targetTypeField]: {
+                $nin: [
+                  GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL,
+                  GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL_COMMENT,
+                ],
+              },
+            },
+            { 'coBuildCircle.0': { $exists: true } },
+          ],
+        },
+      },
+    ];
+  }
+
+  private async filterPublicGovernanceCases<T extends GovernanceCase>(
+    governanceCases: readonly T[],
+    session?: ClientSession,
+  ): Promise<T[]> {
+    const coBuildCircleIds = [
+      ...new Set(
+        governanceCases
+          .map((governanceCase) => this.getCoBuildCircleId(governanceCase.targetSnapshot))
+          .filter((circleId): circleId is string => circleId !== null),
+      ),
+    ];
+    if (coBuildCircleIds.length === 0) return [...governanceCases];
+
+    const circles = await this.circleModel.find(
+      {
+        _id: { $in: coBuildCircleIds },
+        kind: CIRCLE_KINDS.NORMAL,
+        deletedAt: null,
+      },
+      '_id',
+      { session },
+    );
+    const availableCircleIds = new Set(circles.map((circle) => circle.id));
+    return governanceCases.filter((governanceCase) => {
+      const circleId = this.getCoBuildCircleId(governanceCase.targetSnapshot);
+      return circleId === null || availableCircleIds.has(circleId);
+    });
+  }
+
+  private async isPublicGovernanceCase(
+    governanceCase: GovernanceCase,
+    session?: ClientSession,
+  ): Promise<boolean> {
+    return (await this.filterPublicGovernanceCases([governanceCase], session)).length === 1;
+  }
+
+  private getCoBuildCircleId(snapshot: GovernanceTargetSnapshot): string | null {
+    if (
+      snapshot.kind === GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL ||
+      snapshot.kind === GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL_COMMENT
+    ) {
+      return snapshot.proposal.circleId;
+    }
+    return null;
+  }
+
+  private async isCommunityCoBuildCircleAvailable(
+    circleId: string,
+    session?: ClientSession,
+  ): Promise<boolean> {
+    const query = this.circleModel.exists({
+      _id: circleId,
+      kind: CIRCLE_KINDS.NORMAL,
+      deletedAt: null,
+    });
+    if (session) query.session(session);
+    return Boolean(await query);
+  }
+
   private async getTargetSnapshot(
     targetType: GovernanceTargetType,
     targetId: string,
@@ -930,6 +1182,7 @@ export class GovernanceService {
     if (targetType === GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL) {
       const proposal = await this.proposalModel.findById(targetId, null, { session });
       if (!proposal) return null;
+      if (!(await this.isCommunityCoBuildCircleAvailable(proposal.circleId, session))) return null;
       const revision = await this.proposalRevisionModel.findOne(
         { proposalId: proposal.id, revisionNumber: targetContentVersion },
         null,
@@ -955,6 +1208,7 @@ export class GovernanceService {
       if (targetContentVersion !== 1) return null;
       const comment = await this.proposalCommentModel.findById(targetId, null, { session });
       if (!comment || comment.hiddenAt) return null;
+      if (!(await this.isCommunityCoBuildCircleAvailable(comment.circleId, session))) return null;
       return {
         kind: GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL_COMMENT,
         proposal: { id: comment.proposalId, circleId: comment.circleId },
@@ -1889,10 +2143,15 @@ export class GovernanceService {
   private getParticipationState(
     governanceCase: GovernanceCase,
   ): 'OPEN' | 'AWAITING_RESULT' | 'RESOLVED' {
-    if (!ACTIVE_GOVERNANCE_CASE_STATUSES.includes(governanceCase.status as (typeof ACTIVE_GOVERNANCE_CASE_STATUSES)[number])) {
+    if (
+      !ACTIVE_GOVERNANCE_CASE_STATUSES.includes(
+        governanceCase.status as (typeof ACTIVE_GOVERNANCE_CASE_STATUSES)[number],
+      )
+    ) {
       return 'RESOLVED';
     }
-    return governanceCase.nextTransitionAt && governanceCase.nextTransitionAt.getTime() <= Date.now()
+    return governanceCase.nextTransitionAt &&
+      governanceCase.nextTransitionAt.getTime() <= Date.now()
       ? 'AWAITING_RESULT'
       : 'OPEN';
   }

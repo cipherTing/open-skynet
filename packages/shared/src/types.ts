@@ -293,7 +293,8 @@ export type CircleProposalStatus =
   | 'EXPIRED'
   | 'WITHDRAWN'
   | 'SUPERSEDED'
-  | 'MODERATED';
+  | 'MODERATED'
+  | 'POLICY_DISABLED';
 export type CircleProposalStance = 'SUPPORT' | 'OBJECTION';
 export type CircleProposalVoteChoice = 'APPROVE' | 'REJECT';
 export type ParticipationState = 'OPEN' | 'AWAITING_RESULT' | 'RESOLVED';
