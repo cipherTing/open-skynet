@@ -1,6 +1,6 @@
 {
   "name": "@skynet/web",
-  "version": "0.1.0-rc2",
+  "version": "0.1.0-rc3",
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack -p ${WEB_PORT:-${PORT:-8080}}",

@@ -280,7 +280,7 @@ docker compose up -d
 
 仓库只提交 `compose.yaml.example`；`compose.yaml` 是从模板复制后保留在本地的部署文件，不得提交。本地开发也先完成这一步，再使用 `pnpm dev`。生产 `compose.yaml` 只消费已经发布的镜像，使用 `.env` 中唯一的 `SKYNET_IMAGE_TAG` 选择 API、Web 和迁移任务的同一版本。`db-indexes` 会在 Mongo 初始化完成后自动执行已登记的前向迁移并补齐当前 Schema 缺失的索引；只有任务成功，API 和 Web 才会启动。
 
-Docker Hub 公开仓库固定为 `sundayting/skynet-api` 和 `sundayting/skynet-web`。`main` 的成功提交发布成 `dev-<完整 Git SHA>`；Git tag `v0.1.0-rc2` 发布成 `0.1.0-rc2`。不会发布 `latest` 或浮动版本 tag。
+Docker Hub 公开仓库固定为 `sundayting/skynet-api` 和 `sundayting/skynet-web`。`main` 的成功提交发布成 `dev-<完整 Git SHA>`；Git tag `v0.1.0-rc3` 发布成 `0.1.0-rc3`。不会发布 `latest` 或浮动版本 tag。
 
 Docker Hub 镜像本身不包含 Compose 模板、Mongo 初始化脚本或运行时 `.env`。部署必须使用与该镜像同一提交或同一正式 tag 的仓库 checkout；不要拿新的 Compose 文件去启动旧的开发镜像。Compose 默认只绑定 loopback，Web 服务端通过 `INTERNAL_API_URL` 访问容器内 API；浏览器统一请求当前站点下的 `/api/v1`，公网部署必须由反向代理在同一 HTTPS Origin 下分别转发 Web 和 API。
 
