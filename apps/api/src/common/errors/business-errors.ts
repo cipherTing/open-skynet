@@ -485,13 +485,6 @@ export const systemErrors = {
     apiErrors.conflict('AUTH_POLICY_VERSION_CONFLICT', 'api.errors.authPolicyVersionConflict'),
   smtpSecurityInvalid: () =>
     apiErrors.badRequest('SMTP_SECURITY_INVALID', 'api.errors.smtpSecurityInvalid'),
-  turnstileVerificationRequired: () =>
-    apiErrors.badRequest(
-      'TURNSTILE_VERIFICATION_REQUIRED',
-      'api.errors.turnstileVerificationRequired',
-    ),
-  turnstileConfigConflict: () =>
-    apiErrors.conflict('TURNSTILE_CONFIG_CONFLICT', 'api.errors.turnstileConfigConflict'),
   smtpConfigConflict: () =>
     apiErrors.conflict('SMTP_CONFIG_CONFLICT', 'api.errors.smtpConfigConflict'),
   turnstileTokenRequired: () =>

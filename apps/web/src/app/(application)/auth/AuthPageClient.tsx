@@ -1,8 +1,10 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Turnstile } from '@marsidev/react-turnstile';
+import type { TurnstileInstance } from '@marsidev/react-turnstile';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, BadgeCheck } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { authApi } from '@/lib/api';
@@ -14,6 +16,15 @@ import { useClockNow } from '@/components/home/terminal/terminal-hooks';
 import { ForgotPasswordForm, LoginForm, RegisterForm } from '@/app/auth/_components/AuthModeForms';
 import { formatLocalClockTime } from '@/lib/date-time';
 import { authKeys } from '@/lib/query-keys';
+import {
+  acceptTurnstileToken,
+  AUTHENTICATION_TURNSTILE_ACTION,
+  consumeTurnstileVerification,
+  createEmailVerificationCooldown,
+  isTurnstileActionAllowed,
+  resetTurnstileVerification,
+  type TurnstileVerificationState,
+} from '@/lib/turnstile-verification';
 
 type AuthMode = 'login' | 'register' | 'forgot';
 
@@ -25,6 +36,31 @@ const MODE_META: Record<AuthMode, { codeKey: string; kickerKey: string }> = {
 
 function isAuthMode(value: string): value is AuthMode {
   return value === 'login' || value === 'register' || value === 'forgot';
+}
+
+function useEmailVerificationCooldown() {
+  const [until, setUntil] = useState<number | null>(null);
+  const [now, setNow] = useState(0);
+
+  useEffect(() => {
+    if (until === null) return;
+    const tick = () => {
+      const current = Date.now();
+      setNow(current);
+      if (current >= until) setUntil(null);
+    };
+    tick();
+    const timer = window.setInterval(tick, 1_000);
+    return () => window.clearInterval(timer);
+  }, [until]);
+
+  const start = useCallback(() => {
+    const current = Date.now();
+    setNow(current);
+    setUntil(createEmailVerificationCooldown(current));
+  }, []);
+
+  return { until, now, start };
 }
 
 export function AuthPageClient() {
@@ -45,6 +81,12 @@ function AuthPageContent() {
     return requestedMode && isAuthMode(requestedMode) ? requestedMode : 'login';
   });
   const [agreementOpen, setAgreementOpen] = useState(false);
+  const turnstileRef = useRef<TurnstileInstance | null>(null);
+  const [turnstileVerification, setTurnstileVerification] = useState<TurnstileVerificationState>(
+    resetTurnstileVerification,
+  );
+  const registrationVerificationCooldown = useEmailVerificationCooldown();
+  const passwordResetVerificationCooldown = useEmailVerificationCooldown();
   const configQuery = useQuery({
     queryKey: authKeys.publicConfig(),
     queryFn: authApi.config,
@@ -54,6 +96,25 @@ function AuthPageContent() {
   useEffect(() => {
     if (!isLoading && isAuthenticated) router.replace('/workspace');
   }, [isAuthenticated, isLoading, router]);
+
+  const clearTurnstileToken = useCallback(() => {
+    setTurnstileVerification(resetTurnstileVerification());
+  }, []);
+
+  const acceptTurnstileVerification = useCallback((token: string) => {
+    setTurnstileVerification(acceptTurnstileToken(token));
+  }, []);
+
+  const takeTurnstileToken = useCallback(() => {
+    const token = turnstileRef.current?.getResponse() || undefined;
+    setTurnstileVerification(consumeTurnstileVerification());
+    return token;
+  }, []);
+
+  const resetTurnstileAfterRequest = useCallback(() => {
+    clearTurnstileToken();
+    turnstileRef.current?.reset();
+  }, [clearTurnstileToken]);
 
   const changeMode = (nextMode: AuthMode) => {
     setMode(nextMode);
@@ -121,6 +182,12 @@ function AuthPageContent() {
           };
   const modeMeta = MODE_META[mode];
   const config = configQuery.data;
+  const turnstile = {
+    enabled: config.turnstileEnabled,
+    ready: isTurnstileActionAllowed(turnstileVerification),
+    takeToken: takeTurnstileToken,
+    resetAfterRequest: resetTurnstileAfterRequest,
+  };
 
   return (
     <main className="relative flex h-full min-h-0 flex-col overflow-hidden bg-black text-white">
@@ -187,11 +254,21 @@ function AuthPageContent() {
                   if (isAuthMode(value)) changeMode(value);
                 }}
               >
+                {config.turnstileEnabled ? (
+                  <AuthTurnstilePanel
+                    turnstileRef={turnstileRef}
+                    siteKey={config.turnstileSiteKey}
+                    verified={turnstile.ready}
+                    onSuccess={acceptTurnstileVerification}
+                    onReset={clearTurnstileToken}
+                  />
+                ) : null}
                 <TTabContent value="login" className="focus-visible:outline-none">
                   <LoginForm
                     config={config}
                     login={login}
                     onOpenAgreement={() => setAgreementOpen(true)}
+                    turnstile={turnstile}
                   />
                 </TTabContent>
                 <TTabContent value="register" className="focus-visible:outline-none">
@@ -199,10 +276,17 @@ function AuthPageContent() {
                     config={config}
                     register={register}
                     onOpenAgreement={() => setAgreementOpen(true)}
+                    turnstile={turnstile}
+                    verificationCooldown={registrationVerificationCooldown}
                   />
                 </TTabContent>
                 <TTabContent value="forgot" className="focus-visible:outline-none">
-                  <ForgotPasswordForm config={config} onComplete={() => changeMode('login')} />
+                  <ForgotPasswordForm
+                    config={config}
+                    onComplete={() => changeMode('login')}
+                    turnstile={turnstile}
+                    verificationCooldown={passwordResetVerificationCooldown}
+                  />
                 </TTabContent>
               </TTabs>
             </div>
@@ -215,6 +299,45 @@ function AuthPageContent() {
       </footer>
       <AgreementDialog open={agreementOpen} onOpenChange={setAgreementOpen} />
     </main>
+  );
+}
+
+function AuthTurnstilePanel({
+  turnstileRef,
+  siteKey,
+  verified,
+  onSuccess,
+  onReset,
+}: {
+  turnstileRef: React.RefObject<TurnstileInstance | null>;
+  siteKey: string;
+  verified: boolean;
+  onSuccess: (token: string) => void;
+  onReset: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="mt-4 flex flex-col items-center gap-2 border border-[var(--t-noise)] bg-black p-2">
+      <Turnstile
+        ref={turnstileRef}
+        siteKey={siteKey}
+        onSuccess={onSuccess}
+        onExpire={onReset}
+        onError={onReset}
+        options={{ action: AUTHENTICATION_TURNSTILE_ACTION, theme: 'dark' }}
+      />
+      <div
+        role="status"
+        className="flex min-h-5 items-center justify-center gap-1.5 font-sans text-[12px] font-semibold tracking-normal text-[var(--t-accent)]"
+      >
+        {verified ? (
+          <>
+            <BadgeCheck aria-hidden="true" className="h-4 w-4" />
+            <span>{t('auth.turnstilePassed')}</span>
+          </>
+        ) : null}
+      </div>
+    </div>
   );
 }
 

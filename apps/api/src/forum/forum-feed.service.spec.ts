@@ -53,6 +53,7 @@ import {
 } from '@/database/schemas/business-calendar-config.schema';
 import { BusinessCalendarService } from '@/system/business-calendar.service';
 import { circleErrors } from '@/common/errors/business-errors';
+import { CreatePostDto } from './dto/create-post.dto';
 
 type ForumServiceReplyItem = Awaited<ReturnType<ForumService['listReplies']>>['items'][number];
 
@@ -82,8 +83,13 @@ describe('ForumService circle feeds', () => {
       return circle;
     }),
     assertAgentPostAllowed: jest.fn(
-      async (circleId: string, _allowOfficialCirclePostingBypass = false) => {
-        const circle = await connection.model(Circle.name).findById(circleId);
+      async (
+        reference: { circleId?: string; circleName?: string },
+        _allowOfficialCirclePostingBypass = false,
+      ) => {
+        const circle = reference.circleId
+          ? await connection.model(Circle.name).findById(reference.circleId)
+          : await connection.model(Circle.name).findOne({ normalizedName: reference.circleName });
         if (!circle) throw new Error('circle missing');
         return circle;
       },
@@ -205,8 +211,10 @@ describe('ForumService circle feeds', () => {
     jest.clearAllMocks();
     featureFlagServiceMock.assertEnabled.mockResolvedValue(undefined);
     featureFlagServiceMock.isEnabled.mockResolvedValue(false);
-    circleServiceMock.assertAgentPostAllowed.mockImplementation(async (circleId: string) => {
-      const circle = await connection.model(Circle.name).findById(circleId);
+    circleServiceMock.assertAgentPostAllowed.mockImplementation(async (reference) => {
+      const circle = reference.circleId
+        ? await connection.model(Circle.name).findById(reference.circleId)
+        : await connection.model(Circle.name).findOne({ normalizedName: reference.circleName });
       if (!circle) throw new Error('circle missing');
       return circle;
     });
@@ -844,12 +852,15 @@ describe('ForumService circle feeds', () => {
     const author = await createAgent('post-review-author');
     featureFlagServiceMock.isEnabled.mockResolvedValue(true);
 
-    const result = await service.createPost(author.id, {
-      title: '等待审核的帖子',
-      content: '审核通过前不应该出现在帖子列表中。',
-      circleId: circle.id,
-      tags: ['QUESTION'],
-    });
+    const result = await service.createPost(
+      author.id,
+      Object.assign(new CreatePostDto(), {
+        title: '等待审核的帖子',
+        content: '审核通过前不应该出现在帖子列表中。',
+        circleName: circle.name,
+        tags: ['QUESTION'] as const,
+      }),
+    );
 
     if (result.outcome !== 'PENDING_REVIEW') throw new Error('帖子应进入审核');
     expect(result.progressDelta).toMatchObject({
@@ -953,7 +964,10 @@ describe('ForumService circle feeds', () => {
     const author = await createAgent('admin-reviewed-official-author');
     featureFlagServiceMock.isEnabled.mockResolvedValue(true);
     circleServiceMock.assertAgentPostAllowed.mockImplementation(
-      async (_circleId: string, allowOfficialCirclePostingBypass: boolean) => {
+      async (
+        _reference: { circleId?: string; circleName?: string },
+        allowOfficialCirclePostingBypass: boolean,
+      ) => {
         if (!allowOfficialCirclePostingBypass) throw circleErrors.agentPostingDisabled();
         return circle;
       },

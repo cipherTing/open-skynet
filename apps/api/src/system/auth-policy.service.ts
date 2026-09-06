@@ -99,12 +99,15 @@ export class AuthPolicyService {
     if (!Object.values(SMTP_SECURITY_MODES).includes(dto.smtpSecurity)) {
       throw systemErrors.smtpSecurityInvalid();
     }
-    if (dto.turnstileEnabled && (!config.turnstileVerifiedAt || !dto.turnstileSiteKey.trim())) {
-      throw systemErrors.turnstileVerificationRequired();
+    const turnstileSiteKey = dto.turnstileSiteKey.trim();
+    const turnstileSecret = dto.turnstileSecret?.trim();
+    if (dto.turnstileEnabled && !turnstileSiteKey) {
+      throw systemErrors.turnstileSiteKeyRequired();
+    }
+    if (dto.turnstileEnabled && !turnstileSecret && !config.turnstileSecretCiphertext) {
+      throw systemErrors.turnstileSecretRequired();
     }
 
-    const turnstileChanged =
-      config.turnstileSiteKey !== dto.turnstileSiteKey.trim() || Boolean(dto.turnstileSecret);
     const smtpChanged =
       config.smtpHost !== dto.smtpHost.trim() ||
       config.smtpPort !== dto.smtpPort ||
@@ -121,9 +124,8 @@ export class AuthPolicyService {
         {
           $set: {
             inviteRequired: dto.inviteRequired,
-            turnstileEnabled: turnstileChanged ? false : dto.turnstileEnabled,
-            turnstileSiteKey: dto.turnstileSiteKey.trim(),
-            turnstileVerifiedAt: turnstileChanged ? null : config.turnstileVerifiedAt,
+            turnstileEnabled: dto.turnstileEnabled,
+            turnstileSiteKey,
             smtpHost: dto.smtpHost.trim(),
             smtpPort: dto.smtpPort,
             smtpSecurity: dto.smtpSecurity,
@@ -134,10 +136,10 @@ export class AuthPolicyService {
             smtpVerifiedAt: smtpChanged ? null : config.smtpVerifiedAt,
             version: dto.expectedVersion + 1,
             updatedByUserId,
-            ...(dto.turnstileSecret
+            ...(turnstileSecret
               ? {
                   turnstileSecretCiphertext: encryptSecret(
-                    dto.turnstileSecret,
+                    turnstileSecret,
                     'turnstile-secret',
                     AUTH_POLICY_CONFIG_KEY,
                   ),
@@ -161,16 +163,6 @@ export class AuthPolicyService {
       throw systemErrors.authPolicyVersionConflict();
     }
     return this.serializeAdmin(updated);
-  }
-
-  async markTurnstileVerified(expectedVersion: number): Promise<void> {
-    const result = await this.configModel.updateOne(
-      { key: AUTH_POLICY_CONFIG_KEY, version: expectedVersion },
-      { $set: { turnstileVerifiedAt: new Date() } },
-    );
-    if (result.modifiedCount !== 1) {
-      throw systemErrors.turnstileConfigConflict();
-    }
   }
 
   async markSmtpVerified(expectedVersion: number): Promise<void> {
@@ -201,7 +193,6 @@ export class AuthPolicyService {
       turnstileEnabled: config.turnstileEnabled,
       turnstileSiteKey: config.turnstileSiteKey,
       turnstileSecretConfigured: Boolean(config.turnstileSecretCiphertext),
-      turnstileVerifiedAt: config.turnstileVerifiedAt?.toISOString() ?? null,
       smtpHost: config.smtpHost,
       smtpPort: config.smtpPort,
       smtpSecurity: config.smtpSecurity,

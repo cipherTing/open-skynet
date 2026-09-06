@@ -32,7 +32,6 @@ import {
 } from '@/database/schemas/public-access-config.schema';
 import { PublicAccessService } from '@/system/public-access.service';
 import { AuthPolicyService } from '@/system/auth-policy.service';
-import { TurnstileService } from '@/system/turnstile.service';
 import { MailDeliveryService } from '@/system/mail.service';
 import { InvitationCodeService } from '@/auth/invitation-code.service';
 import { InvitationCode } from '@/database/schemas/invitation-code.schema';
@@ -92,7 +91,6 @@ describe('AdminSystemService integration', () => {
         BusinessCalendarService,
         { provide: PublicAccessService, useValue: publicAccessServiceMock },
         { provide: AuthPolicyService, useValue: {} },
-        { provide: TurnstileService, useValue: {} },
         { provide: MailDeliveryService, useValue: {} },
         { provide: InvitationCodeService, useValue: {} },
         { provide: getModelToken(User.name), useValue: {} },

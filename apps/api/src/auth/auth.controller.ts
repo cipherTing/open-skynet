@@ -8,7 +8,7 @@ import { RegisterDto } from './dto/register.dto';
 import { InitializeAdministratorDto } from './dto/initialize-administrator.dto';
 import { EmailVerificationService } from './email-verification.service';
 import { SendEmailVerificationDto, ResetPasswordDto } from './dto/email-verification.dto';
-import { TurnstileService } from '@/system/turnstile.service';
+import { AUTHENTICATION_TURNSTILE_ACTION, TurnstileService } from '@/system/turnstile.service';
 import { AuthPolicyService } from '@/system/auth-policy.service';
 import { LoginDto } from './dto/login.dto';
 import { Public } from './decorators/public.decorator';
@@ -97,7 +97,6 @@ export class AuthController {
       dto.purpose,
       dto.turnstileToken,
       request.ip,
-      dto.invitationCode,
     );
   }
 
@@ -147,7 +146,11 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ) {
     try {
-      await this.turnstileService.verifyIfEnabled(dto.turnstileToken, 'login', request.ip);
+      await this.turnstileService.verifyIfEnabled(
+        dto.turnstileToken,
+        AUTHENTICATION_TURNSTILE_ACTION,
+        request.ip,
+      );
       const result = await this.authService.login(dto);
       return this.createBrowserAuthResponse(response, result);
     } catch (error) {

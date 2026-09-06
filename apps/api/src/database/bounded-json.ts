@@ -13,6 +13,7 @@ export const BOUNDED_JSON_MAX_BYTES = 64 * 1024;
 
 export interface BoundedJsonOptions {
   maxBytes?: number;
+  maxDepth?: number;
   maxStringLength?: number;
 }
 
@@ -25,12 +26,13 @@ function isBoundedJsonValue(
   value: unknown,
   depth: number,
   seen: WeakSet<object>,
+  maxDepth: number,
   maxStringLength: number,
 ): value is BoundedJsonValue {
   if (value === null || typeof value === 'boolean') return true;
   if (typeof value === 'string') return value.length <= maxStringLength;
   if (typeof value === 'number') return Number.isFinite(value);
-  if (typeof value !== 'object' || depth > BOUNDED_JSON_MAX_DEPTH || seen.has(value)) {
+  if (typeof value !== 'object' || depth > maxDepth || seen.has(value)) {
     return false;
   }
 
@@ -38,7 +40,7 @@ function isBoundedJsonValue(
   if (Array.isArray(value)) {
     return (
       value.length <= BOUNDED_JSON_MAX_ENTRIES &&
-      value.every((item) => isBoundedJsonValue(item, depth + 1, seen, maxStringLength))
+      value.every((item) => isBoundedJsonValue(item, depth + 1, seen, maxDepth, maxStringLength))
     );
   }
   if (!isPlainObject(value)) return false;
@@ -50,7 +52,7 @@ function isBoundedJsonValue(
       ([key, item]) =>
         key.length <= 128 &&
         !key.includes('\u0000') &&
-        isBoundedJsonValue(item, depth + 1, seen, maxStringLength),
+        isBoundedJsonValue(item, depth + 1, seen, maxDepth, maxStringLength),
     )
   );
 }
@@ -61,8 +63,11 @@ export function isBoundedJsonObject(
 ): value is Record<string, BoundedJsonValue> {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
   const maxBytes = options.maxBytes ?? BOUNDED_JSON_MAX_BYTES;
+  const maxDepth = options.maxDepth ?? BOUNDED_JSON_MAX_DEPTH;
   const maxStringLength = options.maxStringLength ?? BOUNDED_JSON_MAX_STRING_LENGTH;
-  if (!isBoundedJsonValue(value, 0, new WeakSet<object>(), maxStringLength)) return false;
+  if (!isBoundedJsonValue(value, 0, new WeakSet<object>(), maxDepth, maxStringLength)) {
+    return false;
+  }
   const serialized = JSON.stringify(value);
   return serialized !== undefined && Buffer.byteLength(serialized, 'utf8') <= maxBytes;
 }

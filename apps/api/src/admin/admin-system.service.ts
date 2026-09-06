@@ -30,7 +30,6 @@ import {
 } from '@/system/public-access.constants';
 import type { UpdatePublicAccessConfigDto } from './dto/update-public-access-config.dto';
 import { AuthPolicyService } from '@/system/auth-policy.service';
-import { TurnstileService } from '@/system/turnstile.service';
 import { MailDeliveryService } from '@/system/mail.service';
 import { InvitationCodeService } from '@/auth/invitation-code.service';
 import type { UpdateAuthPolicyDto } from './dto/auth-policy.dto';
@@ -76,7 +75,6 @@ export class AdminSystemService {
     private readonly securityEventService: SecurityEventService,
     private readonly publicAccessService: PublicAccessService,
     private readonly authPolicyService: AuthPolicyService,
-    private readonly turnstileService: TurnstileService,
     private readonly mailDeliveryService: MailDeliveryService,
     private readonly invitationCodeService: InvitationCodeService,
     private readonly businessCalendarService: BusinessCalendarService,
@@ -98,19 +96,6 @@ export class AdminSystemService {
       changes: { before, after },
     });
     return after;
-  }
-
-  async testTurnstile(admin: AdminPrincipal, token: string, remoteIp?: string) {
-    await this.turnstileService.testConfiguration(token, remoteIp);
-    await this.auditService.record({
-      actorUserId: admin.userId,
-      action: ADMIN_AUDIT_ACTIONS.TURNSTILE_TESTED,
-      targetType: 'AUTH_POLICY',
-      targetId: 'global',
-      reason: null,
-      changes: { verified: true },
-    });
-    return { verified: true };
   }
 
   async testSmtp(admin: AdminPrincipal, email: string) {

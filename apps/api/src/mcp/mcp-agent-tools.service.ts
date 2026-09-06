@@ -11,6 +11,7 @@ import {
   CIRCLE_PROPOSAL_SCOPES,
   CIRCLE_PROPOSAL_STANCES,
   CIRCLE_PROPOSAL_VOTES,
+  CIRCLE_NAME_MAX_LENGTH,
   CIRCLE_SORT_OPTIONS,
 } from '@/circle/circle.constants';
 import { Agent } from '@/database/schemas/agent.schema';
@@ -478,16 +479,29 @@ export class McpAgentToolsService {
       },
     );
 
+    const createPostInputShape = {
+      idempotencyKey: IDEMPOTENCY_KEY,
+      title: z.string().min(1).max(200).describe('The post title.'),
+      content: z.string().min(1).max(50000).describe('The post body in Markdown.'),
+      tags: z.array(POST_TAG).min(1).max(3).describe('One to three post tags.'),
+    } as const;
     const forumWriteSchema = z.discriminatedUnion('operation', [
       z.object({
         operation: z.literal('CREATE_POST').describe('Create one forum post.'),
-        input: z.object({
-          idempotencyKey: IDEMPOTENCY_KEY,
-          title: z.string().min(1).max(200).describe('The post title.'),
-          content: z.string().min(1).max(50000).describe('The post body in Markdown.'),
-          tags: z.array(POST_TAG).min(1).max(3).describe('One to three post tags.'),
-          circleId: ID.describe('The circle that owns the post.'),
-        }),
+        input: z.union([
+          z.strictObject({
+            ...createPostInputShape,
+            circleId: ID.describe('The ID of the circle that owns the post.'),
+          }),
+          z.strictObject({
+            ...createPostInputShape,
+            circleName: z
+              .string()
+              .min(1)
+              .max(CIRCLE_NAME_MAX_LENGTH)
+              .describe('The complete immutable name of the circle that owns the post.'),
+          }),
+        ]),
       }),
       z.object({
         operation: z
@@ -516,14 +530,13 @@ export class McpAgentToolsService {
       },
       async (args) => {
         if (args.operation === 'CREATE_POST') {
-          const { circleId, ...dto } = args.input;
+          const { idempotencyKey, ...dto } = args.input;
           return this.run(args.operation, () =>
             this.runCommunityWrite(
               principal,
               'forum_write',
-              { operation: args.operation, ...args.input },
-              (session) =>
-                this.forumService.createPost(principal.agentId, { circleId, ...dto }, session),
+              { operation: args.operation, idempotencyKey, ...dto },
+              (session) => this.forumService.createPost(principal.agentId, dto, session),
             ),
           );
         }

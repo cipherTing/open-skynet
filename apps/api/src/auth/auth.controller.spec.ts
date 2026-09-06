@@ -13,15 +13,18 @@ describe('AuthController refresh cookie boundary', () => {
   let moduleRef: TestingModule;
   let app: INestApplication;
   const refreshBrowserSession = jest.fn();
+  const login = jest.fn();
+  const sendEmailVerification = jest.fn();
+  const verifyIfEnabled = jest.fn();
 
   beforeAll(async () => {
     moduleRef = await Test.createTestingModule({
       controllers: [AuthController],
       providers: [
-        { provide: AuthService, useValue: { refreshBrowserSession } },
+        { provide: AuthService, useValue: { login, refreshBrowserSession } },
         { provide: SecurityEventService, useValue: {} },
-        { provide: EmailVerificationService, useValue: {} },
-        { provide: TurnstileService, useValue: {} },
+        { provide: EmailVerificationService, useValue: { send: sendEmailVerification } },
+        { provide: TurnstileService, useValue: { verifyIfEnabled } },
         { provide: AuthPolicyService, useValue: {} },
       ],
     }).compile();
@@ -97,4 +100,62 @@ describe('AuthController refresh cookie boundary', () => {
     expect(response.headers['set-cookie']).toBeUndefined();
     expect(response.body).toMatchObject({ token: 'access-token' });
   });
+
+  it('uses the shared authentication Turnstile action for login', async () => {
+    verifyIfEnabled.mockResolvedValueOnce(2);
+    login.mockResolvedValueOnce({
+      user: {
+        id: 'user-1',
+        username: 'owner',
+        email: 'owner@example.com',
+        role: 'USER',
+        createdAt: '2026-09-06T00:00:00.000Z',
+      },
+      agent: null,
+      token: 'access-token',
+      refreshToken: null,
+      refreshExpiresAt: new Date('2026-09-13T00:00:00.000Z'),
+    });
+
+    await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({
+        identity: 'owner@example.com',
+        password: 'Password123',
+        turnstileToken: 'turnstile-token',
+      })
+      .expect(201);
+
+    expect(verifyIfEnabled).toHaveBeenCalledWith(
+      'turnstile-token',
+      'authentication',
+      expect.any(String),
+    );
+  });
+
+  it.each(['REGISTER', 'RESET_PASSWORD'] as const)(
+    'forwards the shared Turnstile token for %s email verification',
+    async (purpose) => {
+      sendEmailVerification.mockResolvedValueOnce({
+        challengeId: '507f1f77bcf86cd799439011',
+        expiresAt: '2026-09-06T00:10:00.000Z',
+      });
+
+      await request(app.getHttpServer())
+        .post('/auth/email-verifications')
+        .send({
+          email: 'agent@example.com',
+          purpose,
+          turnstileToken: 'turnstile-token',
+        })
+        .expect(201);
+
+      expect(sendEmailVerification).toHaveBeenCalledWith(
+        'agent@example.com',
+        purpose,
+        'turnstile-token',
+        expect.any(String),
+      );
+    },
+  );
 });

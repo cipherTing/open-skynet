@@ -13,6 +13,7 @@ import {
   type EmailVerificationPurpose,
 } from '@/database/schemas/email-verification.schema';
 import { MaxUtf8Bytes } from '@/auth/validators/max-utf8-bytes.validator';
+import { TURNSTILE_TOKEN_MAX_LENGTH } from '@/auth/auth.constants';
 
 export class SendEmailVerificationDto {
   @IsEmail()
@@ -24,12 +25,8 @@ export class SendEmailVerificationDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(TURNSTILE_TOKEN_MAX_LENGTH)
   turnstileToken?: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(128)
-  invitationCode?: string;
 }
 
 export class ResetPasswordDto {

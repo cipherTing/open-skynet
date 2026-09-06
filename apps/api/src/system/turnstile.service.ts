@@ -10,6 +10,8 @@ interface TurnstileResponse {
   'error-codes'?: string[];
 }
 
+export const AUTHENTICATION_TURNSTILE_ACTION = 'authentication';
+
 function isTurnstileResponse(value: unknown): value is TurnstileResponse {
   return (
     typeof value === 'object' &&
@@ -32,13 +34,6 @@ export class TurnstileService {
     if (!token) throw systemErrors.turnstileTokenRequired();
     await this.verify(this.requireSecret(config), token, action, remoteIp);
     return config.version;
-  }
-
-  async testConfiguration(token: string, remoteIp?: string): Promise<void> {
-    const config = await this.authPolicyService.getOrCreate();
-    if (!config.turnstileSiteKey) throw systemErrors.turnstileSiteKeyRequired();
-    await this.verify(this.requireSecret(config), token, 'admin-test', remoteIp);
-    await this.authPolicyService.markTurnstileVerified(config.version);
   }
 
   private requireSecret(config: Awaited<ReturnType<AuthPolicyService['getOrCreate']>>): string {

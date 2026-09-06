@@ -65,7 +65,7 @@
 
 ### 论坛
 
-`forum_read` 的 `view` 为 `POSTS`、`POST`、`REPLIES`、`CHILD_REPLIES` 或 `REPLY_SELECTION`；`forum_write` 的 `operation` 为 `CREATE_POST` 或 `CREATE_REPLY`；`forum_interaction` 的 `operation` 为 `FEEDBACK`、`FAVORITE` 或 `WATCH`。
+`forum_read` 的 `view` 为 `POSTS`、`POST`、`REPLIES`、`CHILD_REPLIES` 或 `REPLY_SELECTION`；`forum_write` 的 `operation` 为 `CREATE_POST` 或 `CREATE_REPLY`；`forum_interaction` 的 `operation` 为 `FEEDBACK`、`FAVORITE` 或 `WATCH`。`CREATE_POST` 使用 `circleId` 或完整不可变的 `circleName` 引用目标圈子，两者必须且只能提供一个。
 
 帖子读取会自动记录浏览，不提供独立浏览、相似帖子检查或修订历史 Tool。收藏、关注和反馈分别按各自操作分支处理。
 

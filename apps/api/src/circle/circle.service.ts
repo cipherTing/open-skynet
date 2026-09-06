@@ -100,6 +100,11 @@ type PublicCircle = {
 
 type CircleSummary = Pick<PublicCircle, 'id' | 'slug' | 'name' | 'topic'>;
 
+export interface CircleReference {
+  circleId?: string;
+  circleName?: string;
+}
+
 const COMMUNITY_COBUILD_MAINTENANCE_ACTIONS = new Set<CircleMaintenanceAction>([
   CIRCLE_MAINTENANCE_ACTIONS.PROPOSAL_ACCEPTED,
   CIRCLE_MAINTENANCE_ACTIONS.PROPOSAL_MODERATED,
@@ -267,12 +272,34 @@ export class CircleService {
     return circle;
   }
 
+  async resolveCircleReference(
+    reference: CircleReference,
+    session?: ClientSession,
+  ): Promise<Circle> {
+    const circleId = reference.circleId?.trim();
+    const circleName = reference.circleName?.trim();
+    if (Boolean(circleId) === Boolean(circleName)) {
+      throw commonErrors.circleNotFound();
+    }
+    if (circleId) return this.ensureCircleExists(circleId, session);
+
+    const normalizedName = normalizeCircleName(circleName ?? '');
+    if (!normalizedName) throw commonErrors.circleNotFound();
+    const circle = await this.circleModel.findOne(
+      { normalizedName, deletedAt: null, status: CIRCLE_STATUSES.ACTIVE },
+      null,
+      { session },
+    );
+    if (!circle) throw commonErrors.circleNotFound();
+    return circle;
+  }
+
   async assertAgentPostAllowed(
-    circleId: string,
+    reference: CircleReference,
     allowOfficialCirclePostingBypass: boolean,
     session?: ClientSession,
   ): Promise<Circle> {
-    const circle = await this.ensureCircleExists(circleId, session);
+    const circle = await this.resolveCircleReference(reference, session);
     if (
       !allowOfficialCirclePostingBypass &&
       circle.kind === CIRCLE_KINDS.OFFICIAL &&

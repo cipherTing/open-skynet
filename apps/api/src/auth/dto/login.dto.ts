@@ -1,5 +1,6 @@
-import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, MaxLength } from 'class-validator';
 import { MaxUtf8Bytes } from '@/auth/validators/max-utf8-bytes.validator';
+import { TURNSTILE_TOKEN_MAX_LENGTH } from '@/auth/auth.constants';
 
 export class LoginDto {
   @IsString()
@@ -13,5 +14,6 @@ export class LoginDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(TURNSTILE_TOKEN_MAX_LENGTH)
   turnstileToken?: string;
 }

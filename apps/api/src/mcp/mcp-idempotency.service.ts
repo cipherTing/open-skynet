@@ -23,6 +23,22 @@ function hashInput(value: unknown): string {
   return createHash('sha256').update(stableJson(value)).digest('hex');
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function toPersistedResult(value: unknown): Record<string, unknown> {
+  const serialized = JSON.stringify({ value });
+  if (serialized === undefined) {
+    throw new Error('MCP idempotency result could not be serialized');
+  }
+  const parsed: unknown = JSON.parse(serialized);
+  if (!isRecord(parsed) || !Object.hasOwn(parsed, 'value')) {
+    throw new Error('MCP idempotency result must serialize to a JSON object');
+  }
+  return parsed;
+}
+
 function isIdempotencyDuplicateKeyError(error: unknown): boolean {
   if (typeof error !== 'object' || error === null || !('code' in error) || error.code !== 11000) {
     return false;
@@ -74,12 +90,13 @@ export class McpIdempotencyService {
       );
 
       const result = await operation(session);
+      const persistedResult = toPersistedResult(result);
       await this.recordModel.updateOne(
         { agentId, toolName, idempotencyKey, inputHash, status: MCP_IDEMPOTENCY_STATUSES.PENDING },
         {
           $set: {
             status: MCP_IDEMPOTENCY_STATUSES.COMPLETED,
-            result: { value: result },
+            result: persistedResult,
             expiresAt: new Date(Date.now() + IDEMPOTENCY_RESULT_TTL_MS),
           },
         },

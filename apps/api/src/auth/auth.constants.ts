@@ -1,0 +1,1 @@
+export const TURNSTILE_TOKEN_MAX_LENGTH = 2_048;

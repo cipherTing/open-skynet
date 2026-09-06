@@ -1,7 +1,6 @@
 'use client';
 
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
-import { Turnstile } from '@marsidev/react-turnstile';
 import Link from 'next/link';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
@@ -1101,7 +1100,7 @@ export function AuthPolicySection() {
   if (query.isError || !query.data) return <AdminError retry={() => void query.refetch()} />;
   return (
     <AuthPolicyEditor
-      key={`${query.data.version}:${query.data.smtpVerifiedAt ?? ''}:${query.data.turnstileVerifiedAt ?? ''}`}
+      key={`${query.data.version}:${query.data.smtpVerifiedAt ?? ''}`}
       policy={query.data}
     />
   );
@@ -1112,7 +1111,38 @@ function AuthPolicyEditor({ policy }: { policy: AdminAuthPolicy }) {
   const toast = useToast();
   const queryClient = useQueryClient();
   const [testEmail, setTestEmail] = useState('');
-  const [turnstileToken, setTurnstileToken] = useState('');
+  const authPolicySchema = z
+    .object({
+      inviteRequired: z.boolean(),
+      turnstileEnabled: z.boolean(),
+      turnstileSiteKey: z.string(),
+      turnstileSecret: z.string(),
+      smtpHost: z.string(),
+      smtpPort: z.number().int().min(1).max(65_535),
+      smtpSecurity: z.enum(['NONE', 'SSL_TLS', 'STARTTLS']),
+      smtpSkipTlsVerify: z.boolean(),
+      smtpForceAuthLogin: z.boolean(),
+      smtpUsername: z.string(),
+      smtpFromAddress: z.string(),
+      smtpPassword: z.string(),
+    })
+    .superRefine((value, context) => {
+      if (!value.turnstileEnabled) return;
+      if (!value.turnstileSiteKey.trim()) {
+        context.addIssue({
+          code: 'custom',
+          path: ['turnstileSiteKey'],
+          message: t('admin.authPolicy.turnstileSiteKeyRequired'),
+        });
+      }
+      if (!policy.turnstileSecretConfigured && !value.turnstileSecret.trim()) {
+        context.addIssue({
+          code: 'custom',
+          path: ['turnstileSecret'],
+          message: t('admin.authPolicy.turnstileSecretRequired'),
+        });
+      }
+    });
   const form = useAppForm({
     defaultValues: {
       inviteRequired: policy.inviteRequired,
@@ -1129,20 +1159,7 @@ function AuthPolicyEditor({ policy }: { policy: AdminAuthPolicy }) {
       smtpPassword: '',
     },
     validators: {
-      onSubmit: z.object({
-        inviteRequired: z.boolean(),
-        turnstileEnabled: z.boolean(),
-        turnstileSiteKey: z.string(),
-        turnstileSecret: z.string(),
-        smtpHost: z.string(),
-        smtpPort: z.number().int().min(1).max(65_535),
-        smtpSecurity: z.enum(['NONE', 'SSL_TLS', 'STARTTLS']),
-        smtpSkipTlsVerify: z.boolean(),
-        smtpForceAuthLogin: z.boolean(),
-        smtpUsername: z.string(),
-        smtpFromAddress: z.string(),
-        smtpPassword: z.string(),
-      }),
+      onSubmit: authPolicySchema,
     },
     onSubmit: async ({ value }) => {
       try {
@@ -1197,16 +1214,6 @@ function AuthPolicyEditor({ policy }: { policy: AdminAuthPolicy }) {
     onError: (error) =>
       toast.error(error instanceof ApiError ? error.message : t('admin.authPolicy.testFailed')),
   });
-  const testTurnstile = useMutation({
-    mutationFn: () => adminApi.testTurnstile(turnstileToken),
-    onSuccess: async () => {
-      toast.success(t('admin.authPolicy.turnstileTested'));
-      setTurnstileToken('');
-      await queryClient.invalidateQueries({ queryKey: ['admin', 'authPolicy'] });
-    },
-    onError: (error) =>
-      toast.error(error instanceof ApiError ? error.message : t('admin.authPolicy.testFailed')),
-  });
   return (
     <form
       className="space-y-8"
@@ -1224,11 +1231,8 @@ function AuthPolicyEditor({ policy }: { policy: AdminAuthPolicy }) {
           </div>
           <p className="mt-1 text-xs text-[var(--t-sub)]">{t('admin.authPolicy.description')}</p>
         </div>
-        <form.Subscribe selector={(state) => [state.values, !state.isDefaultValue] as const}>
-          {([values, hasUnsavedChanges]) => {
-            const turnstileConfigDirty =
-              values.turnstileSiteKey !== policy.turnstileSiteKey ||
-              Boolean(values.turnstileSecret);
+        <form.Subscribe selector={(state) => !state.isDefaultValue}>
+          {(hasUnsavedChanges) => {
             return (
               <div className="grid gap-5 lg:grid-cols-2">
                 <div className="space-y-4 border-t border-[var(--t-noise)] pt-4">
@@ -1334,48 +1338,17 @@ function AuthPolicyEditor({ policy }: { policy: AdminAuthPolicy }) {
                       />
                     )}
                   </form.AppField>
-                  {values.turnstileSiteKey ? (
-                    <div className="rounded-none border border-[var(--t-noise)] p-2">
-                      <Turnstile
-                        siteKey={values.turnstileSiteKey}
-                        onSuccess={setTurnstileToken}
-                        onExpire={() => setTurnstileToken('')}
-                        options={{ action: 'admin-test', theme: 'dark' }}
-                      />
-                    </div>
-                  ) : null}
-                  <TButton
-                    type="button"
-                    variant="secondary"
-                    disabled={!turnstileToken || testTurnstile.isPending || hasUnsavedChanges}
-                    title={hasUnsavedChanges ? t('admin.authPolicy.saveBeforeTest') : undefined}
-                    onClick={() => testTurnstile.mutate()}
-                  >
-                    {t('admin.authPolicy.verifyTurnstile')}
-                  </TButton>
                   <form.AppField name="turnstileEnabled">
                     {(field) => (
                       <div className="flex items-center justify-between gap-4 rounded-none border border-[var(--t-noise)] px-3 py-3">
                         <span className="text-sm text-white/60">
                           {t('admin.authPolicy.enableTurnstile')}
                         </span>
-                        <span
-                          title={
-                            !policy.turnstileVerifiedAt || turnstileConfigDirty
-                              ? t('admin.authPolicy.verifyBeforeEnable')
-                              : undefined
-                          }
-                        >
-                          <Switch
-                            aria-label={t('admin.authPolicy.enableTurnstile')}
-                            checked={field.state.value}
-                            disabled={
-                              !field.state.value &&
-                              (!policy.turnstileVerifiedAt || turnstileConfigDirty)
-                            }
-                            onCheckedChange={field.handleChange}
-                          />
-                        </span>
+                        <Switch
+                          aria-label={t('admin.authPolicy.enableTurnstile')}
+                          checked={field.state.value}
+                          onCheckedChange={field.handleChange}
+                        />
                       </div>
                     )}
                   </form.AppField>

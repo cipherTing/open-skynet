@@ -71,7 +71,6 @@ export interface AdminAuthPolicy {
   turnstileEnabled: boolean;
   turnstileSiteKey: string;
   turnstileSecretConfigured: boolean;
-  turnstileVerifiedAt: string | null;
   smtpHost: string;
   smtpPort: number;
   smtpSecurity: 'NONE' | 'SSL_TLS' | 'STARTTLS';
@@ -462,8 +461,6 @@ export const adminApi = {
   }) => adminRequest<AdminAuthPolicy>('PATCH', '/admin/auth-policy', data),
   testSmtp: (email: string) =>
     adminRequest<{ verified: true }>('POST', '/admin/auth-policy/smtp-test', { email }),
-  testTurnstile: (token: string) =>
-    adminRequest<{ verified: true }>('POST', '/admin/auth-policy/turnstile-test', { token }),
   invitationCodes: (query: { page?: number; pageSize?: number; status?: string }) =>
     adminRequest<AdminPage<AdminInvitationCode>>('GET', `/admin/invitation-codes${params(query)}`),
   createInvitationCode: () =>

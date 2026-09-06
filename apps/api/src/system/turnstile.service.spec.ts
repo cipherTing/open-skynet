@@ -5,7 +5,6 @@ describe('TurnstileService', () => {
   const authPolicyService = {
     getOrCreate: jest.fn(),
     readTurnstileSecret: jest.fn(),
-    markTurnstileVerified: jest.fn(),
   };
   const publicAccessService = {
     getPublicConfig: jest.fn(),
@@ -47,23 +46,6 @@ describe('TurnstileService', () => {
     await expect(service.verifyIfEnabled('token', 'login', '127.0.0.1')).resolves.toBe(4);
   });
 
-  it('binds an administrator verification result to the tested config version', async () => {
-    fetchSpy.mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          success: true,
-          action: 'admin-test',
-          hostname: 'community.example.com',
-        }),
-        { status: 200 },
-      ),
-    );
-
-    await service.testConfiguration('token', '127.0.0.1');
-
-    expect(authPolicyService.markTurnstileVerified).toHaveBeenCalledWith(4);
-  });
-
   it.each([
     [{ success: true, action: 'register-email', hostname: 'community.example.com' }, 'action'],
     [{ success: true, action: 'login', hostname: 'evil.example.com' }, 'hostname'],
@@ -79,7 +61,6 @@ describe('TurnstileService', () => {
     await expect(service.verifyIfEnabled('token', 'login')).rejects.toBeInstanceOf(
       BadGatewayException,
     );
-    expect(authPolicyService.markTurnstileVerified).not.toHaveBeenCalled();
   });
 
   it('rejects malformed Siteverify responses', async () => {

@@ -1,11 +1,20 @@
 'use client';
 
-import { useCallback, useEffect, useState, type KeyboardEvent } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
-import { ArrowRight, Clock, Flame, Plus, RefreshCw, Search } from 'lucide-react';
+import {
+  ArrowUpRight,
+  Clock,
+  Flame,
+  MessageSquareText,
+  Plus,
+  RefreshCw,
+  Search,
+  Users,
+  type LucideIcon,
+} from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { ErrorState, InlineLoading } from '@/components/ui/LoadingState';
 import { AuthRequiredDialog, AuthRequiredState } from '@/components/ui/AuthRequiredDialog';
@@ -27,12 +36,10 @@ import {
   type CircleListResponse,
   type CircleSortOption,
   type ForumCircle,
-  type CircleHotPost,
 } from '@skynet/shared';
 
 const PAGE_SIZE = 18;
-const HOT_POST_ROTATION_INTERVAL_MS = 5_000;
-const CIRCLE_ROW_ESTIMATED_HEIGHT = 112;
+const CIRCLE_ROW_ESTIMATED_HEIGHT = 160;
 
 const CreateCircleModal = dynamic(
   () => import('@/components/circle/CreateCircleModal').then((mod) => mod.CreateCircleModal),
@@ -43,7 +50,6 @@ const formatTelemetryCount = (value: number) => formatNumber(Math.max(0, Math.ro
 
 export function CircleGrid() {
   const { t } = useTranslation();
-  const router = useRouter();
   const toast = useToast();
   const queryClient = useQueryClient();
   const { user, agent, isAuthenticated, isLoading: authLoading } = useAuth();
@@ -132,10 +138,6 @@ export function CircleGrid() {
   const handleSelectExisting = (circle: ForumCircle) => {
     setShowCreateModal(false);
     toast.info(t('circles.selectedExisting', { name: circle.name }));
-  };
-
-  const handleOpenCircle = (circle: Circle) => {
-    router.push(`/circles/${encodeURIComponent(circle.slug)}`);
   };
 
   const hasInitialError = activeQuery.isError && circles.length === 0;
@@ -258,7 +260,7 @@ export function CircleGrid() {
             estimateSize={() => CIRCLE_ROW_ESTIMATED_HEIGHT}
             onNearEnd={handleNearEnd}
             layoutVersion={`${sortBy}:${search}`}
-            className="border-y border-[var(--t-noise)]"
+            className="border-t border-[var(--t-noise)]"
             tail={
               loading ? (
                 <InlineLoading label={t('circles.loading')} />
@@ -278,9 +280,7 @@ export function CircleGrid() {
                 </div>
               ) : null
             }
-            renderItem={(circle) => (
-              <CircleRegistryRow circle={circle} onOpen={() => handleOpenCircle(circle)} />
-            )}
+            renderItem={(circle) => <CircleRegistryRow circle={circle} />}
           />
         )}
 
@@ -307,118 +307,100 @@ export function CircleGrid() {
   );
 }
 
-/** 名录行：sigil + 圈名 + 数据簇；点击或 Enter/Space 直接进入圈子。 */
-function CircleRegistryRow({ circle, onOpen }: { circle: Circle; onOpen: () => void }) {
+function CircleRegistryRow({ circle }: { circle: Circle }) {
   const { t } = useTranslation();
-
-  const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (event.target !== event.currentTarget) return;
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-    event.preventDefault();
-    onOpen();
-  };
+  const activePost = circle.hotPosts?.[0];
 
   return (
-    <article
-      role="link"
-      tabIndex={0}
-      aria-label={t('circles.detail.openCircle', { name: circle.name })}
-      onClick={onOpen}
-      onKeyDown={handleKeyDown}
-      className="group relative flex cursor-pointer items-center gap-3 py-3 pl-4 pr-2 outline-none transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-[var(--t-accent)]/[0.04] focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-2 focus-visible:outline-[var(--t-accent)]"
-    >
-      <span
-        aria-hidden
-        className="absolute left-0 top-0 h-full w-[2px] bg-[var(--t-accent)] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
-      />
-      <div className="min-w-0 flex-1 transition-transform duration-100 [transition-timing-function:steps(2,end)] group-hover:translate-x-1">
-        <div className="flex items-center gap-2">
-          <h3 className="truncate text-base font-black tracking-normal text-white transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)]">
-            /{circle.name}
-          </h3>
-          {circle.kind === 'OFFICIAL' ? <TTag color="accent">{t('circles.official')}</TTag> : null}
-        </div>
-        <p className="mt-0.5 line-clamp-1 text-xs leading-5 text-[var(--t-text)]/50">
-          {circle.topic}
-        </p>
-        {circle.hotPosts?.length ? <CircleHotPostsTicker posts={circle.hotPosts} /> : null}
-      </div>
-
-      <div className="hidden shrink-0 items-center gap-5 md:flex">
-        <TelemetryReading label={t('circles.members')} value={circle.memberCount} />
-        <TelemetryReading label={t('circles.posts')} value={circle.postCount} />
-      </div>
-
-      <RelativeTime
-        date={circle.lastPostAt ?? circle.createdAt}
-        className="hidden shrink-0 transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)] lg:block"
-      />
-
-      <button
-        type="button"
-        aria-label={t('circleRegistry.enter')}
-        onClick={(event) => {
-          event.stopPropagation();
-          onOpen();
-        }}
-        className="flex h-7 w-7 shrink-0 items-center justify-center border border-[var(--t-noise)] text-[var(--t-sub)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)]/60 hover:text-[var(--t-accent)]"
+    <article className="border-b border-[var(--t-noise)] bg-[var(--t-panel)]">
+      <Link
+        href={`/circles/${encodeURIComponent(circle.slug)}`}
+        aria-label={t('circles.detail.openCircle', { name: circle.name })}
+        className="group relative block min-h-[148px] px-4 py-4 outline-none transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-black focus-visible:bg-[var(--t-accent-wash)] focus-visible:outline focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-[var(--t-accent)] sm:px-5"
       >
-        <ArrowRight className="h-3.5 w-3.5" />
-      </button>
+        <span
+          aria-hidden
+          className="absolute inset-y-0 left-0 w-[2px] bg-[var(--t-accent)] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100 group-focus-visible:opacity-100"
+        />
+
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_17rem] md:items-start md:gap-6">
+          <div className="min-w-0">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <h3 className="min-w-0 truncate text-[17px] font-black leading-6 tracking-normal text-[var(--t-ink)] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)] group-focus-visible:text-[var(--t-accent)]">
+                /{circle.name}
+              </h3>
+              {circle.kind === 'OFFICIAL' ? (
+                <TTag color="accent">{t('circles.official')}</TTag>
+              ) : null}
+              {circle.joined ? <TTag>{t('circles.joined')}</TTag> : null}
+              {circle.activeProposalCount > 0 ? (
+                <TTag color="amber">
+                  {t('circles.activeProposalCount', { count: circle.activeProposalCount })}
+                </TTag>
+              ) : null}
+            </div>
+            <p className="mt-2 line-clamp-2 min-h-10 max-w-4xl text-[13px] leading-5 text-[var(--t-text)]">
+              {circle.topic}
+            </p>
+          </div>
+
+          <div className="flex min-w-0 items-stretch gap-3">
+            <dl className="grid min-w-0 flex-1 grid-cols-3 divide-x divide-[var(--t-noise)] border border-[var(--t-frame)] bg-black/40 md:min-w-[15rem]">
+              <CircleReading icon={Users} label={t('circles.members')}>
+                <MetricValue value={circle.memberCount} format={formatTelemetryCount} />
+              </CircleReading>
+              <CircleReading icon={MessageSquareText} label={t('circles.posts')}>
+                <MetricValue value={circle.postCount} format={formatTelemetryCount} />
+              </CircleReading>
+              <CircleReading icon={Clock} label={t('circles.lastActive')}>
+                <RelativeTime
+                  date={circle.lastPostAt ?? circle.createdAt}
+                  className="font-mono text-[11px] text-[var(--t-text)]"
+                />
+              </CircleReading>
+            </dl>
+            <span className="hidden w-8 shrink-0 items-center justify-center border border-[var(--t-frame)] text-[var(--t-sub)] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:border-[var(--t-accent)]/70 group-hover:text-[var(--t-accent)] group-focus-visible:border-[var(--t-accent)]/70 group-focus-visible:text-[var(--t-accent)] md:flex">
+              <ArrowUpRight aria-hidden className="h-4 w-4" />
+            </span>
+          </div>
+        </div>
+
+        <div className="mt-3 flex min-h-7 min-w-0 items-center gap-2 border-t border-[var(--t-noise2)] pt-2">
+          <Flame aria-hidden className="h-3.5 w-3.5 shrink-0 text-[var(--t-accent)]/75" />
+          <span className="shrink-0 font-sans text-[11px] font-medium tracking-normal text-[var(--t-faint)]">
+            {t('circles.activeDiscussion')}
+          </span>
+          <span
+            className={`min-w-0 truncate text-[12px] ${
+              activePost ? 'text-[var(--t-text)]' : 'text-[var(--t-faint)]'
+            }`}
+          >
+            {activePost?.title ?? t('circles.noActiveDiscussion')}
+          </span>
+        </div>
+      </Link>
     </article>
   );
 }
 
-function CircleHotPostsTicker({ posts }: { posts: CircleHotPost[] }) {
-  const { t } = useTranslation();
-  const [index, setIndex] = useState(0);
-  const [paused, setPaused] = useState(false);
-
-  useEffect(() => {
-    if (paused || posts.length <= 1) return undefined;
-    const timer = window.setInterval(() => {
-      setIndex((current) => (current + 1) % posts.length);
-    }, HOT_POST_ROTATION_INTERVAL_MS);
-    return () => window.clearInterval(timer);
-  }, [paused, posts.length]);
-
-  const post = posts[index % posts.length];
-  if (!post) return null;
-
+function CircleReading({
+  icon: Icon,
+  label,
+  children,
+}: {
+  icon: LucideIcon;
+  label: string;
+  children: ReactNode;
+}) {
   return (
-    <div
-      className="mt-2 flex min-w-0 items-center gap-2 border-t border-[var(--t-noise2)] pt-2"
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-    >
-      <span className="flex shrink-0 items-center gap-1 font-sans text-[11px] font-medium tracking-normal text-[var(--t-accent)]/70">
-        <Flame className="h-3 w-3" />
-        {t('feed.hotPostsLabel')}
-      </span>
-      <Link
-        key={post.id}
-        href={`/post/${post.id}`}
-        onClick={(event) => event.stopPropagation()}
-        title={post.title}
-        className="min-w-0 truncate text-[11px] font-medium text-white/65 transition-colors duration-150 hover:text-[var(--t-accent)] motion-safe:animate-[skynet-floating-in_180ms_ease-out]"
-      >
-        {post.title}
-      </Link>
+    <div className="min-w-0 px-2 py-2 sm:px-3">
+      <dt className="flex items-center gap-1 font-sans text-[10px] font-medium tracking-normal text-[var(--t-faint)]">
+        <Icon aria-hidden className="h-3 w-3 shrink-0" />
+        <span className="truncate">{label}</span>
+      </dt>
+      <dd className="mt-1 truncate font-mono text-sm font-semibold tabular-nums text-[var(--t-text)]">
+        {children}
+      </dd>
     </div>
-  );
-}
-
-function TelemetryReading({ label, value }: { label: string; value: number }) {
-  return (
-    <span className="flex flex-col items-end gap-0.5">
-      <span className="font-sans text-[11px] font-medium tracking-normal text-[var(--t-faint)]">
-        {label}
-      </span>
-      <MetricValue
-        value={value}
-        format={formatTelemetryCount}
-        className="font-mono text-sm text-[var(--t-text)]"
-      />
-    </span>
   );
 }

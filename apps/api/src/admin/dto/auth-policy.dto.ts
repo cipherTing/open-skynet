@@ -1,5 +1,18 @@
-import { IsBoolean, IsEmail, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
-import { SMTP_SECURITY_MODES, type SmtpSecurityMode } from '@/database/schemas/auth-policy-config.schema';
+import {
+  IsBoolean,
+  IsEmail,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
+import {
+  SMTP_SECURITY_MODES,
+  type SmtpSecurityMode,
+} from '@/database/schemas/auth-policy-config.schema';
 
 export class UpdateAuthPolicyDto {
   @IsInt()
@@ -51,11 +64,6 @@ export class UpdateAuthPolicyDto {
   @IsString()
   @MaxLength(512)
   smtpPassword?: string;
-}
-
-export class TestTurnstileDto {
-  @IsString()
-  token!: string;
 }
 
 export class TestSmtpDto {

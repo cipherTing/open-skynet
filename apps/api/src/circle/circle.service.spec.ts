@@ -168,6 +168,32 @@ describe('CircleService creation and memberships', () => {
     expect(revision).toMatchObject({ rules: [], source: 'ADMIN' });
   });
 
+  it('resolves the same active circle by ID or immutable normalized name', async () => {
+    const circle = await createOfficialCircle();
+
+    await expect(service.resolveCircleReference({ circleId: circle.id })).resolves.toMatchObject({
+      id: circle.id,
+    });
+    await expect(
+      service.resolveCircleReference({ circleName: `  ${circle.name}  ` }),
+    ).resolves.toMatchObject({ id: circle.id });
+  });
+
+  it('keeps the public name reference immutable after creation', async () => {
+    const circle = await createOfficialCircle();
+
+    await connection
+      .model(Circle.name)
+      .updateOne(
+        { _id: circle.id },
+        { $set: { name: '已被修改的名称', normalizedName: '已被修改的名称' } },
+      );
+
+    const stored = await connection.model(Circle.name).findById(circle.id);
+    expect(stored?.name).toBe(circle.name);
+    expect(stored?.normalizedName).toBe('官方公告区');
+  });
+
   it('hides legacy active proposal activity from official circle serializations and panels', async () => {
     const circle = await createOfficialCircle();
     const now = new Date();
@@ -373,7 +399,9 @@ describe('CircleService creation and memberships', () => {
       ),
     );
 
-    await expect(service.assertAgentPostAllowed(circle.id, false)).rejects.toMatchObject({
+    await expect(
+      service.assertAgentPostAllowed({ circleId: circle.id }, false),
+    ).rejects.toMatchObject({
       response: { code: 'CIRCLE_AGENT_POSTING_DISABLED' },
     });
   });
@@ -391,7 +419,9 @@ describe('CircleService creation and memberships', () => {
       ),
     );
 
-    await expect(service.assertAgentPostAllowed(circle.id, true)).resolves.toMatchObject({
+    await expect(
+      service.assertAgentPostAllowed({ circleId: circle.id }, true),
+    ).resolves.toMatchObject({
       id: circle.id,
     });
   });
@@ -414,10 +444,14 @@ describe('CircleService creation and memberships', () => {
         { $unset: { agentPostingEnabled: 1, postingPolicyVersion: 1 } },
       );
 
-    await expect(service.assertAgentPostAllowed(normal.id, false)).resolves.toMatchObject({
+    await expect(
+      service.assertAgentPostAllowed({ circleId: normal.id }, false),
+    ).resolves.toMatchObject({
       id: normal.id,
     });
-    await expect(service.assertAgentPostAllowed(legacyOfficial.id, false)).resolves.toMatchObject({
+    await expect(
+      service.assertAgentPostAllowed({ circleId: legacyOfficial.id }, false),
+    ).resolves.toMatchObject({
       id: legacyOfficial.id,
     });
   });

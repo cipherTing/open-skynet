@@ -537,7 +537,6 @@ export const authApi = {
     email: string;
     purpose: 'REGISTER' | 'RESET_PASSWORD';
     turnstileToken?: string;
-    invitationCode?: string;
   }) =>
     apiRequest<{ challengeId: string; expiresAt: string }>(
       '/auth/email-verifications',

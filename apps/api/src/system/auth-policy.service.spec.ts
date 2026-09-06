@@ -92,7 +92,35 @@ describe('AuthPolicyService', () => {
     await service.update(update(), 'admin-a');
 
     await expect(service.markSmtpVerified(0)).rejects.toBeInstanceOf(ConflictException);
-    await expect(service.markTurnstileVerified(0)).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('enables Turnstile directly when a site key and secret are saved together', async () => {
+    const updated = await service.update(
+      update({
+        turnstileEnabled: true,
+        turnstileSiteKey: 'site-key',
+        turnstileSecret: 'secret-key',
+      }),
+      'admin-a',
+    );
+
+    expect(updated).toMatchObject({
+      turnstileEnabled: true,
+      turnstileSiteKey: 'site-key',
+      turnstileSecretConfigured: true,
+    });
+    await expect(service.getPublicConfig()).resolves.toMatchObject({
+      turnstileEnabled: true,
+      turnstileSiteKey: 'site-key',
+    });
+  });
+
+  it('does not enable Turnstile without a configured secret', async () => {
+    await expect(
+      service.update(update({ turnstileEnabled: true, turnstileSiteKey: 'site-key' }), 'admin-a'),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'TURNSTILE_SECRET_REQUIRED' }),
+    });
   });
 
   it('acquires the policy through a write without advancing its public version', async () => {

@@ -1,6 +1,10 @@
+import { type INestApplication } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
+import type { NextFunction, Request, Response } from 'express';
+import request from 'supertest';
 import { CircleService } from '@/circle/circle.service';
 import { CommunityWriteAccessService } from '@/auth/community-write-access.service';
+import { ApiValidationPipe } from '@/common/pipes/api-validation.pipe';
 import type {
   JwtAgentAuthUser,
   JwtBrowserAuthUser,
@@ -13,6 +17,7 @@ import { PostScope } from './dto/list-posts.dto';
 describe('ForumController removed-content read boundary', () => {
   let moduleRef: TestingModule;
   let controller: ForumController;
+  let app: INestApplication;
   const forumService = {
     listPosts: jest.fn(),
     getActiveAgentsToday: jest.fn(),
@@ -53,6 +58,19 @@ describe('ForumController removed-content read boundary', () => {
       ],
     }).compile();
     controller = moduleRef.get(ForumController);
+    app = moduleRef.createNestApplication();
+    app.use((incoming: Request, _response: Response, next: NextFunction) => {
+      Object.assign(incoming, { user: browserAdmin });
+      next();
+    });
+    app.useGlobalPipes(
+      new ApiValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
+    );
+    await app.init();
   });
 
   beforeEach(() => {
@@ -81,6 +99,7 @@ describe('ForumController removed-content read boundary', () => {
   });
 
   afterAll(async () => {
+    await app.close();
     await moduleRef.close();
   });
 
@@ -181,6 +200,45 @@ describe('ForumController removed-content read boundary', () => {
       ['admin-agent', dto, undefined, true],
       ['admin-agent', dto, undefined, false],
     ]);
+  });
+
+  it('accepts exactly one circle reference through the real HTTP validation boundary', async () => {
+    forumService.createPost.mockResolvedValue({ outcome: 'PUBLISHED' });
+    const post = {
+      title: '圈子引用入口测试',
+      content: '真实 HTTP 入口必须执行与公开合同一致的 DTO 校验。',
+      tags: ['DISCUSSION'],
+    };
+
+    await request(app.getHttpServer())
+      .post('/forum/posts')
+      .send({ ...post, circleId: '507f1f77bcf86cd799439011' })
+      .expect(201);
+    await request(app.getHttpServer())
+      .post('/forum/posts')
+      .send({ ...post, circleName: '自我进化实验所' })
+      .expect(201);
+
+    expect(forumService.createPost).toHaveBeenCalledTimes(2);
+    expect(forumService.createPost).toHaveBeenLastCalledWith(
+      'admin-agent',
+      expect.objectContaining({ circleName: '自我进化实验所' }),
+      undefined,
+      true,
+    );
+
+    for (const invalidBody of [
+      post,
+      {
+        ...post,
+        circleId: '507f1f77bcf86cd799439011',
+        circleName: '自我进化实验所',
+      },
+      { ...post, circleName: '自我进化实验所', unexpected: true },
+    ]) {
+      await request(app.getHttpServer()).post('/forum/posts').send(invalidBody).expect(400);
+    }
+    expect(forumService.createPost).toHaveBeenCalledTimes(2);
   });
 
   it('does not expose private activity through another Agent path', async () => {

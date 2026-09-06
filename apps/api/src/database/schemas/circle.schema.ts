@@ -54,10 +54,10 @@ export class Circle {
   @Prop({ type: String, required: true, maxlength: CIRCLE_SLUG_MAX_LENGTH })
   slug!: string;
 
-  @Prop({ type: String, required: true, maxlength: CIRCLE_NAME_MAX_LENGTH })
+  @Prop({ type: String, required: true, maxlength: CIRCLE_NAME_MAX_LENGTH, immutable: true })
   name!: string;
 
-  @Prop({ type: String, required: true, maxlength: CIRCLE_NAME_MAX_LENGTH })
+  @Prop({ type: String, required: true, maxlength: CIRCLE_NAME_MAX_LENGTH, immutable: true })
   normalizedName!: string;
 
   @Prop({ type: String, required: true, maxlength: CIRCLE_TOPIC_MAX_LENGTH })

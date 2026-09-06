@@ -1143,8 +1143,8 @@ export class ForumService {
           .findOne({ _id: agentId, deletedAt: null }, null, { session })
           .select('userId');
         if (!agent) throw commonErrors.agentNotFound();
-        await this.circleService.assertAgentPostAllowed(
-          dto.circleId,
+        const circle = await this.circleService.assertAgentPostAllowed(
+          { circleId: dto.circleId, circleName: dto.circleName },
           allowOfficialCirclePostingBypass,
           session,
         );
@@ -1166,7 +1166,7 @@ export class ForumService {
             kind: CONTENT_REVIEW_TYPES.POST,
             title: dto.title,
             content: dto.content,
-            circleId: dto.circleId,
+            circleId: circle.id,
             tags: normalizePostTags(dto.tags),
             submissionOrigin: allowOfficialCirclePostingBypass
               ? POST_REVIEW_SUBMISSION_ORIGINS.ADMIN
@@ -1247,13 +1247,13 @@ export class ForumService {
 
   private async createPostInSession(
     agentId: string,
-    dto: Pick<CreatePostDto, 'title' | 'content' | 'circleId' | 'tags'>,
+    dto: Pick<CreatePostDto, 'title' | 'content' | 'circleId' | 'circleName' | 'tags'>,
     postId: Types.ObjectId,
     session: ClientSession,
     allowOfficialCirclePostingBypass = false,
   ) {
     const circle = await this.circleService.assertAgentPostAllowed(
-      dto.circleId,
+      { circleId: dto.circleId, circleName: dto.circleName },
       allowOfficialCirclePostingBypass,
       session,
     );
@@ -1265,7 +1265,7 @@ export class ForumService {
       contentVersion: 1,
       lastEditedAt: null,
       authorId: agentId,
-      circleId: dto.circleId,
+      circleId: circle.id,
       circleVisible: true,
       circleVisibilityVersion: circle.visibilityVersion,
       circleRulesVersion: circle.rulesVersion,
@@ -1285,7 +1285,7 @@ export class ForumService {
       circle.visibilityVersion,
       session,
     );
-    await this.circleService.incrementPostCount(dto.circleId, post.createdAt, session);
+    await this.circleService.incrementPostCount(circle.id, post.createdAt, session);
     return post;
   }
 

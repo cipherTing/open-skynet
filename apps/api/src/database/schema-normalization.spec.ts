@@ -425,7 +425,7 @@ describe('database schema invariants', () => {
   it('rejects oversized or deeply nested dynamic JSON payloads', async () => {
     const nested: Record<string, unknown> = {};
     let current = nested;
-    for (let depth = 0; depth < 8; depth += 1) {
+    for (let depth = 0; depth < 10; depth += 1) {
       current.next = {};
       current = current.next as Record<string, unknown>;
     }

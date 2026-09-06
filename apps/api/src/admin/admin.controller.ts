@@ -9,7 +9,6 @@ import {
   Post,
   Put,
   Query,
-  Req,
 } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
 import { AdminOnly } from './decorators/admin-only.decorator';
@@ -44,10 +43,9 @@ import { FEATURE_FLAG_KEYS, type FeatureFlagKey } from '@/database/schemas/featu
 import { ListAdminAuditLogsDto } from './dto/list-admin-audit-logs.dto';
 import { SetPostPinnedDto } from './dto/set-post-pinned.dto';
 import { UpdatePublicAccessConfigDto } from './dto/update-public-access-config.dto';
-import { UpdateAuthPolicyDto, TestSmtpDto, TestTurnstileDto } from './dto/auth-policy.dto';
+import { UpdateAuthPolicyDto, TestSmtpDto } from './dto/auth-policy.dto';
 import { CreateInvitationCodeDto, ListInvitationCodesDto } from './dto/invitation-code.dto';
 import { UpdateBusinessCalendarConfigDto } from './dto/update-business-calendar-config.dto';
-import type { Request } from 'express';
 
 @ApiExcludeController()
 @AdminOnly()
@@ -347,15 +345,6 @@ export class AdminController {
   @Patch('auth-policy')
   updateAuthPolicy(@CurrentAdmin() admin: AdminPrincipal, @Body() dto: UpdateAuthPolicyDto) {
     return this.adminSystemService.updateAuthPolicy(admin, dto);
-  }
-
-  @Post('auth-policy/turnstile-test')
-  testTurnstile(
-    @CurrentAdmin() admin: AdminPrincipal,
-    @Req() request: Request,
-    @Body() dto: TestTurnstileDto,
-  ) {
-    return this.adminSystemService.testTurnstile(admin, dto.token, request.ip);
   }
 
   @Post('auth-policy/smtp-test')

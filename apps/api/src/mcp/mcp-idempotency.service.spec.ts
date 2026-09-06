@@ -55,6 +55,41 @@ describe('McpIdempotencyService', () => {
     );
   });
 
+  it('persists and replays the JSON representation of Date-backed results', async () => {
+    let stored: Record<string, unknown> | null = null;
+    const findOne = jest.fn().mockImplementation(async () => stored);
+    const create = jest.fn().mockImplementation(async (records: Array<Record<string, unknown>>) => {
+      stored = records[0] ?? null;
+    });
+    const updateOne = jest
+      .fn()
+      .mockImplementation(
+        async (_filter: Record<string, unknown>, update: { $set: Record<string, unknown> }) => {
+          stored = { ...stored, ...update.$set };
+          return { modifiedCount: 1 };
+        },
+      );
+    const service = new McpIdempotencyService(
+      { findOne, create, updateOne } as never,
+      createDatabaseService() as never,
+    );
+    const createdAt = new Date('2026-09-06T12:34:56.000Z');
+    const operation = jest.fn().mockResolvedValue({
+      outcome: 'PUBLISHED',
+      post: { id: 'post-1', createdAt },
+    });
+
+    await service.execute('agent-1', 'forum_write', 'key-1', { title: 'same' }, operation);
+
+    await expect(
+      service.execute('agent-1', 'forum_write', 'key-1', { title: 'same' }, operation),
+    ).resolves.toEqual({
+      outcome: 'PUBLISHED',
+      post: { id: 'post-1', createdAt: '2026-09-06T12:34:56.000Z' },
+    });
+    expect(operation).toHaveBeenCalledTimes(1);
+  });
+
   it('returns a bounded retry hint while an identical operation is pending', async () => {
     const recordModel = {
       findOne: jest.fn().mockResolvedValue({

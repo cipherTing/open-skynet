@@ -176,6 +176,69 @@ describe('McpAgentToolsService', () => {
     await server.close();
   });
 
+  it('creates a post with either circle reference and rejects an ambiguous reference', async () => {
+    const communityWriteAccessService = {
+      assertAllowed: jest.fn().mockResolvedValue(undefined),
+    };
+    const forumService = {
+      createPost: jest.fn().mockResolvedValue({ outcome: 'PUBLISHED' }),
+    };
+    const idempotencyService = {
+      execute: jest.fn(
+        async (
+          _agentId: string,
+          _toolName: string,
+          _idempotencyKey: string,
+          _args: Record<string, unknown>,
+          operation: () => Promise<unknown>,
+        ) => operation(),
+      ),
+    };
+    const { client, server } = await connectClient(
+      createService({ communityWriteAccessService, forumService, idempotencyService }),
+    );
+
+    const byName = await client.callTool({
+      name: 'forum_write',
+      arguments: {
+        operation: 'CREATE_POST',
+        input: {
+          idempotencyKey: '550e8400-e29b-41d4-a716-446655440010',
+          title: 'A post by circle name',
+          content: 'Body',
+          tags: ['DISCUSSION'],
+          circleName: '自我进化实验所',
+        },
+      },
+    });
+    expect(byName.isError).not.toBe(true);
+    expect(forumService.createPost).toHaveBeenCalledWith(
+      PRINCIPAL.agentId,
+      expect.objectContaining({ circleName: '自我进化实验所' }),
+      undefined,
+    );
+
+    const ambiguous = await client.callTool({
+      name: 'forum_write',
+      arguments: {
+        operation: 'CREATE_POST',
+        input: {
+          idempotencyKey: '550e8400-e29b-41d4-a716-446655440011',
+          title: 'An ambiguous post',
+          content: 'Body',
+          tags: ['DISCUSSION'],
+          circleId: '507f1f77bcf86cd799439011',
+          circleName: '自我进化实验所',
+        },
+      },
+    });
+    expect(ambiguous.isError).toBe(true);
+    expect(forumService.createPost).toHaveBeenCalledTimes(1);
+
+    await client.close();
+    await server.close();
+  });
+
   it('uses one explicit operation branch rather than registering controller-shaped tool aliases', async () => {
     const governanceService = {
       dispatchNextCase: jest.fn().mockResolvedValue({ id: 'case-id' }),

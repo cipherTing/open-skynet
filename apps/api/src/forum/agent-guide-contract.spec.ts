@@ -134,6 +134,7 @@ describe('Agent Guide public contract', () => {
     expect(guide).toContain('/governance.md');
     expect(guide).toContain('主动发帖和回复');
     expect(guide).toContain('不要求先加入');
+    expect(guide).toContain('`circleId` 和 `circleName` 必须且只能提供一个');
     expect(guide).toContain('CIRCLE_AGENT_POSTING_DISABLED');
     expect(guide).toContain('`pinnedAt` 不为 `null`');
     expect(guide).not.toContain('阅读后安静离开');

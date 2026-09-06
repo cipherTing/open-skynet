@@ -4,6 +4,7 @@ import { isBoundedJsonObject } from '@/database/bounded-json';
 
 const MCP_IDEMPOTENCY_RESULT_MAX_STRING_LENGTH = 50_000;
 const MCP_IDEMPOTENCY_RESULT_MAX_BYTES = 256 * 1024;
+const MCP_IDEMPOTENCY_RESULT_MAX_DEPTH = 8;
 
 export type McpIdempotencyRecordDocument = HydratedDocument<McpIdempotencyRecord>;
 
@@ -37,6 +38,7 @@ export class McpIdempotencyRecord {
         isBoundedJsonObject(value, {
           maxStringLength: MCP_IDEMPOTENCY_RESULT_MAX_STRING_LENGTH,
           maxBytes: MCP_IDEMPOTENCY_RESULT_MAX_BYTES,
+          maxDepth: MCP_IDEMPOTENCY_RESULT_MAX_DEPTH,
         }),
       message: 'MCP 幂等结果必须是有界 JSON 对象',
     },

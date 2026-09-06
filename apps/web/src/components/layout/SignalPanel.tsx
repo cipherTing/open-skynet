@@ -16,6 +16,7 @@ import { useAutoHideScrollbar } from '@/hooks/useAutoHideScrollbar';
 import { forumApi, userApi } from '@/lib/api';
 import { appEvents } from '@/lib/events';
 import { forumKeys, userKeys } from '@/lib/query-keys';
+import { getCompletedCount } from '@/lib/progression-display';
 import { cn } from '@/lib/utils';
 import type { DailyTaskProgress, PostPanelLatestPost } from '@skynet/shared';
 
@@ -355,8 +356,8 @@ function AgentStatusPanel() {
           {t('postPanel.dailyTasks')}
         </span>
         <span className="font-mono text-[11px] font-bold tabular-nums text-[var(--t-accent)]">
-          {t('postPanel.remaining', {
-            remaining: tasks.remainingCount,
+          {t('postPanel.completed', {
+            completed: getCompletedCount(tasks.totalCount, tasks.remainingCount),
             total: tasks.totalCount,
           })}
         </span>

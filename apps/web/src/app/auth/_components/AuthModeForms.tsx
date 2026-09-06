@@ -1,7 +1,6 @@
 'use client';
 
-import { Turnstile } from '@marsidev/react-turnstile';
-import { BadgeCheck, KeyRound, LogIn, UserPlus } from 'lucide-react';
+import { KeyRound, LogIn, UserPlus } from 'lucide-react';
 import { useId, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { z } from 'zod';
@@ -11,13 +10,8 @@ import { useToast } from '@/components/ui/SignalToast';
 import { TButton } from '@/components/ui/terminal';
 import { ApiError, authApi, type AuthPublicConfig } from '@/lib/api';
 import {
-  acceptTurnstileToken,
-  consumeTurnstileVerification,
-  getTurnstileToken,
-  isTurnstileActionAllowed,
-  isTurnstileVerificationSuccessful,
-  resetTurnstileVerification,
-  type TurnstileVerificationState,
+  getEmailVerificationSendEligibility,
+  normalizeAuthenticationEmail,
 } from '@/lib/turnstile-verification';
 
 const USERNAME_MIN_LENGTH = 3;
@@ -35,6 +29,20 @@ const VERIFICATION_CODE_LENGTH = 6;
 interface CommonFormProps {
   config: AuthPublicConfig;
   onOpenAgreement: () => void;
+  turnstile: AuthTurnstileControl;
+}
+
+interface AuthTurnstileControl {
+  enabled: boolean;
+  ready: boolean;
+  takeToken: () => string | undefined;
+  resetAfterRequest: () => void;
+}
+
+interface EmailVerificationCooldownControl {
+  until: number | null;
+  now: number;
+  start: () => void;
 }
 
 interface LoginFormProps extends CommonFormProps {
@@ -43,6 +51,7 @@ interface LoginFormProps extends CommonFormProps {
 
 interface RegisterFormProps extends CommonFormProps {
   register: (input: Parameters<typeof authApi.register>[0]) => Promise<void>;
+  verificationCooldown: EmailVerificationCooldownControl;
 }
 
 function passwordSchema(t: (key: string) => string) {
@@ -58,6 +67,18 @@ function passwordSchema(t: (key: string) => string) {
     });
 }
 
+function emailSchema(t: (key: string) => string) {
+  return z
+    .string()
+    .trim()
+    .email(t('auth.validation.email'))
+    .max(EMAIL_MAX_LENGTH, t('auth.validation.email'));
+}
+
+function getAuthErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof ApiError ? error.message : fallback;
+}
+
 function ErrorLine({ message }: { message: string }) {
   if (!message) return null;
   return (
@@ -67,19 +88,6 @@ function ErrorLine({ message }: { message: string }) {
     >
       ERR // {message}
     </p>
-  );
-}
-
-function TurnstileVerificationStatus() {
-  const { t } = useTranslation();
-  return (
-    <div
-      role="status"
-      className="flex items-center justify-center gap-1.5 font-sans text-[12px] font-semibold tracking-normal text-[var(--t-accent)]"
-    >
-      <BadgeCheck aria-hidden="true" className="h-4 w-4" />
-      <span>{t('auth.turnstilePassed')}</span>
-    </div>
   );
 }
 
@@ -117,53 +125,9 @@ function AgreementField({
   );
 }
 
-function TurnstilePanel({
-  mode,
-  email,
-  siteKey,
-  revision,
-  verified,
-  onSuccess,
-  onReset,
-}: {
-  mode: 'login' | 'register' | 'forgot';
-  email: string;
-  siteKey: string;
-  revision: number;
-  verified: boolean;
-  onSuccess: (token: string) => void;
-  onReset: () => void;
-}) {
-  return (
-    <div className="flex flex-col items-center gap-2 border border-[var(--t-noise)] bg-black p-2">
-      <Turnstile
-        key={`${mode}-${email}-${revision}`}
-        siteKey={siteKey}
-        onSuccess={onSuccess}
-        onExpire={onReset}
-        onError={onReset}
-        options={{
-          action:
-            mode === 'login'
-              ? 'login'
-              : mode === 'register'
-                ? 'register-email'
-                : 'reset-password-email',
-          theme: 'dark',
-        }}
-      />
-      {verified ? <TurnstileVerificationStatus /> : null}
-    </div>
-  );
-}
-
-export function LoginForm({ config, login, onOpenAgreement }: LoginFormProps) {
+export function LoginForm({ login, onOpenAgreement, turnstile }: LoginFormProps) {
   const { t } = useTranslation();
   const toast = useToast();
-  const [turnstileVerification, setTurnstileVerification] = useState<TurnstileVerificationState>(
-    resetTurnstileVerification,
-  );
-  const [turnstileRevision, setTurnstileRevision] = useState(0);
   const [errorMessage, setErrorMessage] = useState('');
   const form = useAppForm({
     defaultValues: {
@@ -180,13 +144,22 @@ export function LoginForm({ config, login, onOpenAgreement }: LoginFormProps) {
     },
     onSubmit: async ({ value }) => {
       setErrorMessage('');
+      const turnstileToken = turnstile.takeToken();
+      if (turnstile.enabled && !turnstileToken) {
+        const message = t('auth.turnstileRequired');
+        setErrorMessage(message);
+        toast.error(message);
+        return;
+      }
       try {
-        await login(value.identity, value.password, getTurnstileToken(turnstileVerification));
+        await login(value.identity, value.password, turnstileToken);
         toast.success(t('auth.loginSuccess'));
       } catch (error) {
-        setTurnstileVerification(resetTurnstileVerification());
-        setTurnstileRevision((current) => current + 1);
-        setErrorMessage(error instanceof ApiError ? error.message : t('auth.operationFailed'));
+        const message = getAuthErrorMessage(error, t('auth.operationFailed'));
+        setErrorMessage(message);
+        toast.error(message);
+      } finally {
+        if (turnstile.enabled) turnstile.resetAfterRequest();
       }
     },
   });
@@ -224,17 +197,6 @@ export function LoginForm({ config, login, onOpenAgreement }: LoginFormProps) {
             />
           )}
         </form.AppField>
-        {config.turnstileEnabled ? (
-          <TurnstilePanel
-            mode="login"
-            email=""
-            siteKey={config.turnstileSiteKey}
-            revision={turnstileRevision}
-            verified={isTurnstileActionAllowed(turnstileVerification)}
-            onSuccess={(token) => setTurnstileVerification(acceptTurnstileToken(token))}
-            onReset={() => setTurnstileVerification(resetTurnstileVerification())}
-          />
-        ) : null}
         <form.AppField name="agreementAccepted">
           {(field) => (
             <AgreementField
@@ -248,10 +210,7 @@ export function LoginForm({ config, login, onOpenAgreement }: LoginFormProps) {
           {(agreementAccepted) => (
             <form.SubmitButton
               className="w-full"
-              disabled={
-                !agreementAccepted ||
-                (config.turnstileEnabled && !isTurnstileActionAllowed(turnstileVerification))
-              }
+              disabled={!agreementAccepted || (turnstile.enabled && !turnstile.ready)}
               submittingContent={t('auth.submitting')}
             >
               <LogIn className="h-3.5 w-3.5" />
@@ -269,27 +228,21 @@ function VerificationCodeField({
   code,
   sending,
   sent,
-  requiresTurnstile,
-  requiresInvitation,
+  canSend,
+  cooldownSeconds,
+  errorMessage,
   onSend,
-  onPrepareResend,
 }: {
   formField: ReactNode;
   code: string;
   sending: boolean;
   sent: boolean;
-  requiresTurnstile: boolean;
-  requiresInvitation?: boolean;
+  canSend: boolean;
+  cooldownSeconds: number;
+  errorMessage: string;
   onSend: () => void;
-  onPrepareResend: () => void;
 }) {
   const { t } = useTranslation();
-  const initialSendBlockMessage = requiresTurnstile
-    ? t('auth.turnstileRequired')
-    : requiresInvitation
-      ? t('auth.invitationRequiredNotice')
-      : null;
-  const initialSendBlocked = !sent && initialSendBlockMessage !== null;
   return (
     <div>
       <div className="flex items-end gap-2">
@@ -298,22 +251,24 @@ function VerificationCodeField({
           type="button"
           variant="secondary"
           className="mb-0.5"
-          disabled={sending || initialSendBlocked}
-          title={initialSendBlockMessage ?? undefined}
-          onClick={() => {
-            if (sent && requiresTurnstile) {
-              onPrepareResend();
-              return;
-            }
-            onSend();
-          }}
+          disabled={!canSend}
+          onClick={onSend}
         >
-          {sending ? t('auth.sendingCode') : sent ? t('auth.resendCode') : t('auth.sendCode')}
+          {sending
+            ? t('auth.sendingCode')
+            : cooldownSeconds > 0
+              ? t('auth.resendCountdown', { seconds: cooldownSeconds })
+              : sent
+                ? t('auth.resendCode')
+                : t('auth.sendCode')}
         </TButton>
       </div>
-      {initialSendBlocked ? (
-        <span className="mt-1 block text-[11px] text-[var(--t-signal)]">
-          {initialSendBlockMessage}
+      {errorMessage ? (
+        <span
+          role="alert"
+          className="mt-1 block font-sans text-[11px] leading-5 text-[var(--t-hazard)]"
+        >
+          {errorMessage}
         </span>
       ) : null}
       <span className="sr-only">{code}</span>
@@ -321,17 +276,20 @@ function VerificationCodeField({
   );
 }
 
-export function RegisterForm({ config, register, onOpenAgreement }: RegisterFormProps) {
+export function RegisterForm({
+  config,
+  register,
+  onOpenAgreement,
+  turnstile,
+  verificationCooldown,
+}: RegisterFormProps) {
   const { t } = useTranslation();
   const toast = useToast();
   const [challengeId, setChallengeId] = useState('');
-  const [turnstileVerification, setTurnstileVerification] = useState<TurnstileVerificationState>(
-    resetTurnstileVerification,
-  );
-  const [turnstileRevision, setTurnstileRevision] = useState(0);
-  const [resendPreparing, setResendPreparing] = useState(false);
   const [sendingCode, setSendingCode] = useState(false);
+  const [verificationErrorMessage, setVerificationErrorMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const registrationEmailSchema = emailSchema(t);
   const form = useAppForm({
     defaultValues: {
       username: '',
@@ -351,9 +309,7 @@ export function RegisterForm({ config, register, onOpenAgreement }: RegisterForm
           .min(USERNAME_MIN_LENGTH, t('auth.validation.usernameLength'))
           .max(USERNAME_MAX_LENGTH, t('auth.validation.usernameLength'))
           .regex(/^[A-Za-z0-9_]+$/u, t('auth.validation.usernamePattern')),
-        email: z
-          .email(t('auth.validation.email'))
-          .max(EMAIL_MAX_LENGTH, t('auth.validation.email')),
+        email: registrationEmailSchema,
         verificationCode: z.string().regex(/^\d{6}$/u, t('auth.validation.verificationCode')),
         password: passwordSchema(t),
         agentName: z
@@ -383,7 +339,7 @@ export function RegisterForm({ config, register, onOpenAgreement }: RegisterForm
       try {
         await register({
           username: value.username,
-          email: value.email,
+          email: normalizeAuthenticationEmail(value.email),
           password: value.password,
           agentName: value.agentName,
           agentDescription: value.agentDescription || undefined,
@@ -393,56 +349,60 @@ export function RegisterForm({ config, register, onOpenAgreement }: RegisterForm
         });
         toast.success(t('auth.registerSuccess'));
       } catch (error) {
-        setErrorMessage(error instanceof ApiError ? error.message : t('auth.operationFailed'));
+        const message = getAuthErrorMessage(error, t('auth.operationFailed'));
+        setErrorMessage(message);
+        toast.error(message);
       }
     },
   });
 
   const resetChallenge = () => {
     setChallengeId('');
-    setTurnstileVerification(resetTurnstileVerification());
-    setResendPreparing(false);
+    setVerificationErrorMessage('');
     form.setFieldValue('verificationCode', '');
   };
 
   const sendCode = async () => {
-    const email = form.state.values.email.trim();
-    const invitationCode = form.state.values.invitationCode.trim();
-    if (!email) return;
-    if (config.inviteRequired && !invitationCode) {
-      setErrorMessage(t('auth.validation.invitationRequired'));
-      return;
-    }
-    if (config.turnstileEnabled && !isTurnstileActionAllowed(turnstileVerification)) {
-      setErrorMessage(t('auth.turnstileRequired'));
+    const email = normalizeAuthenticationEmail(form.state.values.email);
+    const eligibility = getEmailVerificationSendEligibility({
+      email,
+      turnstileEnabled: turnstile.enabled,
+      turnstileReady: turnstile.ready,
+      cooldownUntil: verificationCooldown.until,
+      now: Date.now(),
+      sending: sendingCode,
+    });
+    if (!eligibility.canSend) return;
+    const turnstileToken = turnstile.takeToken();
+    if (turnstile.enabled && !turnstileToken) {
+      const message = t('auth.turnstileRequired');
+      setVerificationErrorMessage(message);
+      toast.error(message);
+      turnstile.resetAfterRequest();
       return;
     }
     setSendingCode(true);
+    setVerificationErrorMessage('');
+    setErrorMessage('');
     try {
       const result = await authApi.sendEmailVerification({
         email,
         purpose: 'REGISTER',
-        turnstileToken: getTurnstileToken(turnstileVerification),
-        invitationCode: config.inviteRequired ? invitationCode : undefined,
+        turnstileToken,
       });
       setChallengeId(result.challengeId);
-      setTurnstileVerification(consumeTurnstileVerification());
-      setTurnstileRevision((current) => current + 1);
-      setResendPreparing(false);
-      setErrorMessage('');
+      verificationCooldown.start();
       toast.success(t('auth.codeSent'));
     } catch (error) {
-      if (config.turnstileEnabled) {
-        setTurnstileVerification(resetTurnstileVerification());
-        setTurnstileRevision((current) => current + 1);
-      }
-      setErrorMessage(error instanceof ApiError ? error.message : t('auth.operationFailed'));
+      const message = getAuthErrorMessage(error, t('auth.operationFailed'));
+      setVerificationErrorMessage(message);
+      toast.error(message);
     } finally {
       setSendingCode(false);
+      if (turnstile.enabled) turnstile.resetAfterRequest();
     }
   };
 
-  const showTurnstile = config.turnstileEnabled && (!challengeId || resendPreparing);
   return (
     <form
       className="mt-6 space-y-4"
@@ -465,7 +425,7 @@ export function RegisterForm({ config, register, onOpenAgreement }: RegisterForm
             />
           )}
         </form.AppField>
-        <form.AppField name="email">
+        <form.AppField name="email" validators={{ onBlur: registrationEmailSchema }}>
           {(field) => (
             <field.InputField
               label={t('auth.email')}
@@ -501,34 +461,37 @@ export function RegisterForm({ config, register, onOpenAgreement }: RegisterForm
                 code="R.03"
                 required={config.inviteRequired}
                 className="h-11"
-                onValueChange={resetChallenge}
               />
             )}
           </form.AppField>
         ) : null}
-        <form.Subscribe selector={(state) => state.values.invitationCode}>
-          {(invitationCode) => (
-            <form.AppField name="verificationCode">
-              {(field) => (
-                <VerificationCodeField
-                  code="R.04"
-                  sending={sendingCode}
-                  sent={Boolean(challengeId)}
-                  requiresTurnstile={
-                    config.turnstileEnabled && !isTurnstileActionAllowed(turnstileVerification)
-                  }
-                  requiresInvitation={config.inviteRequired && !invitationCode.trim()}
-                  onSend={() => void sendCode()}
-                  onPrepareResend={() => {
-                    setResendPreparing(true);
-                    setTurnstileVerification(resetTurnstileVerification());
-                    setTurnstileRevision((current) => current + 1);
-                  }}
-                  formField={<field.OtpField label={t('auth.verificationCode')} code="R.04" />}
-                />
-              )}
-            </form.AppField>
-          )}
+        <form.Subscribe selector={(state) => state.values.email}>
+          {(email) => {
+            const eligibility = getEmailVerificationSendEligibility({
+              email,
+              turnstileEnabled: turnstile.enabled,
+              turnstileReady: turnstile.ready,
+              cooldownUntil: verificationCooldown.until,
+              now: verificationCooldown.now,
+              sending: sendingCode,
+            });
+            return (
+              <form.AppField name="verificationCode">
+                {(field) => (
+                  <VerificationCodeField
+                    code="R.04"
+                    sending={sendingCode}
+                    sent={Boolean(challengeId)}
+                    canSend={eligibility.canSend}
+                    cooldownSeconds={eligibility.cooldownSeconds}
+                    errorMessage={verificationErrorMessage}
+                    onSend={() => void sendCode()}
+                    formField={<field.OtpField label={t('auth.verificationCode')} code="R.04" />}
+                  />
+                )}
+              </form.AppField>
+            );
+          }}
         </form.Subscribe>
         <form.AppField name="password">
           {(field) => (
@@ -562,27 +525,6 @@ export function RegisterForm({ config, register, onOpenAgreement }: RegisterForm
             />
           )}
         </form.AppField>
-        {showTurnstile ? (
-          <form.Subscribe selector={(state) => state.values.email}>
-            {(email) => (
-              <TurnstilePanel
-                mode="register"
-                email={email}
-                siteKey={config.turnstileSiteKey}
-                revision={turnstileRevision}
-                verified={isTurnstileActionAllowed(turnstileVerification)}
-                onSuccess={(token) => setTurnstileVerification(acceptTurnstileToken(token))}
-                onReset={() => setTurnstileVerification(resetTurnstileVerification())}
-              />
-            )}
-          </form.Subscribe>
-        ) : null}
-        {config.turnstileEnabled &&
-        challengeId &&
-        !resendPreparing &&
-        isTurnstileVerificationSuccessful(turnstileVerification) ? (
-          <TurnstileVerificationStatus />
-        ) : null}
         <form.AppField name="agreementAccepted">
           {(field) => (
             <AgreementField
@@ -623,29 +565,27 @@ export function RegisterForm({ config, register, onOpenAgreement }: RegisterForm
 }
 
 export function ForgotPasswordForm({
-  config,
   onComplete,
+  turnstile,
+  verificationCooldown,
 }: {
   config: AuthPublicConfig;
   onComplete: () => void;
+  turnstile: AuthTurnstileControl;
+  verificationCooldown: EmailVerificationCooldownControl;
 }) {
   const { t } = useTranslation();
   const toast = useToast();
   const [challengeId, setChallengeId] = useState('');
-  const [turnstileVerification, setTurnstileVerification] = useState<TurnstileVerificationState>(
-    resetTurnstileVerification,
-  );
-  const [turnstileRevision, setTurnstileRevision] = useState(0);
-  const [resendPreparing, setResendPreparing] = useState(false);
   const [sendingCode, setSendingCode] = useState(false);
+  const [verificationErrorMessage, setVerificationErrorMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const resetEmailSchema = emailSchema(t);
   const form = useAppForm({
     defaultValues: { email: '', verificationCode: '', newPassword: '' },
     validators: {
       onSubmit: z.object({
-        email: z
-          .email(t('auth.validation.email'))
-          .max(EMAIL_MAX_LENGTH, t('auth.validation.email')),
+        email: resetEmailSchema,
         verificationCode: z.string().regex(/^\d{6}$/u, t('auth.validation.verificationCode')),
         newPassword: passwordSchema(t),
       }),
@@ -658,7 +598,7 @@ export function ForgotPasswordForm({
       setErrorMessage('');
       try {
         await authApi.resetPassword({
-          email: value.email,
+          email: normalizeAuthenticationEmail(value.email),
           verificationChallengeId: challengeId,
           verificationCode: value.verificationCode,
           newPassword: value.newPassword,
@@ -666,48 +606,58 @@ export function ForgotPasswordForm({
         toast.success(t('auth.passwordResetSuccess'));
         onComplete();
       } catch (error) {
-        setErrorMessage(error instanceof ApiError ? error.message : t('auth.operationFailed'));
+        const message = getAuthErrorMessage(error, t('auth.operationFailed'));
+        setErrorMessage(message);
+        toast.error(message);
       }
     },
   });
 
   const resetChallenge = () => {
     setChallengeId('');
-    setTurnstileVerification(resetTurnstileVerification());
-    setResendPreparing(false);
+    setVerificationErrorMessage('');
     form.setFieldValue('verificationCode', '');
   };
   const sendCode = async () => {
-    const email = form.state.values.email.trim();
-    if (!email) return;
-    if (config.turnstileEnabled && !isTurnstileActionAllowed(turnstileVerification)) {
-      setErrorMessage(t('auth.turnstileRequired'));
+    const email = normalizeAuthenticationEmail(form.state.values.email);
+    const eligibility = getEmailVerificationSendEligibility({
+      email,
+      turnstileEnabled: turnstile.enabled,
+      turnstileReady: turnstile.ready,
+      cooldownUntil: verificationCooldown.until,
+      now: Date.now(),
+      sending: sendingCode,
+    });
+    if (!eligibility.canSend) return;
+    const turnstileToken = turnstile.takeToken();
+    if (turnstile.enabled && !turnstileToken) {
+      const message = t('auth.turnstileRequired');
+      setVerificationErrorMessage(message);
+      toast.error(message);
+      turnstile.resetAfterRequest();
       return;
     }
     setSendingCode(true);
+    setVerificationErrorMessage('');
+    setErrorMessage('');
     try {
       const result = await authApi.sendEmailVerification({
         email,
         purpose: 'RESET_PASSWORD',
-        turnstileToken: getTurnstileToken(turnstileVerification),
+        turnstileToken,
       });
       setChallengeId(result.challengeId);
-      setTurnstileVerification(consumeTurnstileVerification());
-      setTurnstileRevision((current) => current + 1);
-      setResendPreparing(false);
-      setErrorMessage('');
+      verificationCooldown.start();
       toast.success(t('auth.codeSent'));
     } catch (error) {
-      if (config.turnstileEnabled) {
-        setTurnstileVerification(resetTurnstileVerification());
-        setTurnstileRevision((current) => current + 1);
-      }
-      setErrorMessage(error instanceof ApiError ? error.message : t('auth.operationFailed'));
+      const message = getAuthErrorMessage(error, t('auth.operationFailed'));
+      setVerificationErrorMessage(message);
+      toast.error(message);
     } finally {
       setSendingCode(false);
+      if (turnstile.enabled) turnstile.resetAfterRequest();
     }
   };
-  const showTurnstile = config.turnstileEnabled && (!challengeId || resendPreparing);
 
   return (
     <form
@@ -720,7 +670,7 @@ export function ForgotPasswordForm({
     >
       <form.AppForm>
         <ErrorLine message={errorMessage} />
-        <form.AppField name="email">
+        <form.AppField name="email" validators={{ onBlur: resetEmailSchema }}>
           {(field) => (
             <field.InputField
               label={t('auth.email')}
@@ -733,25 +683,34 @@ export function ForgotPasswordForm({
             />
           )}
         </form.AppField>
-        <form.AppField name="verificationCode">
-          {(field) => (
-            <VerificationCodeField
-              code="K.02"
-              sending={sendingCode}
-              sent={Boolean(challengeId)}
-              requiresTurnstile={
-                config.turnstileEnabled && !isTurnstileActionAllowed(turnstileVerification)
-              }
-              onSend={() => void sendCode()}
-              onPrepareResend={() => {
-                setResendPreparing(true);
-                setTurnstileVerification(resetTurnstileVerification());
-                setTurnstileRevision((current) => current + 1);
-              }}
-              formField={<field.OtpField label={t('auth.verificationCode')} code="K.02" />}
-            />
-          )}
-        </form.AppField>
+        <form.Subscribe selector={(state) => state.values.email}>
+          {(email) => {
+            const eligibility = getEmailVerificationSendEligibility({
+              email,
+              turnstileEnabled: turnstile.enabled,
+              turnstileReady: turnstile.ready,
+              cooldownUntil: verificationCooldown.until,
+              now: verificationCooldown.now,
+              sending: sendingCode,
+            });
+            return (
+              <form.AppField name="verificationCode">
+                {(field) => (
+                  <VerificationCodeField
+                    code="K.02"
+                    sending={sendingCode}
+                    sent={Boolean(challengeId)}
+                    canSend={eligibility.canSend}
+                    cooldownSeconds={eligibility.cooldownSeconds}
+                    errorMessage={verificationErrorMessage}
+                    onSend={() => void sendCode()}
+                    formField={<field.OtpField label={t('auth.verificationCode')} code="K.02" />}
+                  />
+                )}
+              </form.AppField>
+            );
+          }}
+        </form.Subscribe>
         <form.AppField name="newPassword">
           {(field) => (
             <field.InputField
@@ -764,27 +723,6 @@ export function ForgotPasswordForm({
             />
           )}
         </form.AppField>
-        {showTurnstile ? (
-          <form.Subscribe selector={(state) => state.values.email}>
-            {(email) => (
-              <TurnstilePanel
-                mode="forgot"
-                email={email}
-                siteKey={config.turnstileSiteKey}
-                revision={turnstileRevision}
-                verified={isTurnstileActionAllowed(turnstileVerification)}
-                onSuccess={(token) => setTurnstileVerification(acceptTurnstileToken(token))}
-                onReset={() => setTurnstileVerification(resetTurnstileVerification())}
-              />
-            )}
-          </form.Subscribe>
-        ) : null}
-        {config.turnstileEnabled &&
-        challengeId &&
-        !resendPreparing &&
-        isTurnstileVerificationSuccessful(turnstileVerification) ? (
-          <TurnstileVerificationStatus />
-        ) : null}
         <form.Subscribe selector={(state) => state.values.verificationCode}>
           {(verificationCode) => (
             <form.SubmitButton
