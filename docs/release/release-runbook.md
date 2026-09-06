@@ -23,6 +23,7 @@ GitHub **Repository Actions Secret** 只配置 `DOCKERHUB_TOKEN`。它是 Docker
 
 - Pull Request：运行源码 gate 和容器 smoke，不读取 Docker Hub 凭据，不推送镜像。
 - `main` 成功提交：在同一 job 对已 smoke 的本地 API/Web 镜像打上 `dev-<完整 Git SHA>` 并推送。
+- 手工测试镜像：仅限已推送、已通过 `pnpm check:ci` 的提交，且只能推送不可变 `dev-<完整 Git SHA>`。推送前必须完成 `pnpm containers:check`、`linux/amd64` 生产镜像构建和成对 Compose smoke；推送时必须先检查远端 tag 的 config digest，推送后回读 config 与 manifest digest。正式 SemVer tag 不适用此例外。
 - Git tag：先完成 `pnpm release:verify`，确认 tag 提交是 `origin/main` 的祖先，再 smoke 并推送完整 SemVer tag，例如 `v0.1.0-rc1` 对应 `0.1.0-rc1`。
 - 不发布 `latest`、分支名、major 或 minor 浮动 tag；候选发布使用完整 SemVer 预发布版本，例如 `v0.1.0-rc1` 对应 `0.1.0-rc1`。
 - 镜像 tag 只允许写入一次：远端 tag 不存在时推送；存在且 digest 相同允许重跑；存在但 digest 不同必须失败，禁止覆盖。
@@ -59,6 +60,6 @@ Compose 只绑定 loopback。浏览器通过站点 Origin 下的 `/api/v1` 访�
 
 ## 发布边界
 
-- 版本 tag 只能在本地预检通过后创建；Docker Hub 镜像只能在 Actions 的最终发布门禁通过后推送。
+- 版本 tag 只能在本地预检通过后创建；正式 SemVer Docker Hub 镜像只能在 Actions 的最终发布门禁通过后推送。
 - 发布 tag 不可覆盖；发现问题时发布新的修订版本。
 - 发布后观察 API 错误率、认证失败、MCP `429/503`、Tool 超时和 Redis 策略不可用事件。
