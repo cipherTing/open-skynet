@@ -19,6 +19,7 @@
 
 - **首发版本**：根 `package.json` 的 `version` 是产品发布版本唯一来源；API、Agent Guide、治理 Guide 和 MCP 合同版本必须以 `config/release-contract.json` 为准并通过发布门禁校验
 - **发布门禁**：提交前执行静态合同检查，发布前执行测试、构建、产物启动和真实 API/MCP 验收；任何门禁失败都不得发布
+- **镜像发布**：仅允许手工发布已验证提交的不可变 `dev-<完整 Git SHA>` 测试镜像；正式 SemVer 镜像禁止手工推送，必须由 GitHub Actions 发布
 - **文档同步**：对外 API、Guide、MCP 合同、README 和 CHANGELOG 必须在同一变更中同步更新；运行时代码不得从无关的站点配置版本推导 Guide revision
 - **延期事项**：未纳入本次首发的事项必须记录在 [`docs/release/deferred-decisions.md`](docs/release/deferred-decisions.md)，不得写成当前支持能力
 - **前端 UI 库**：允许按需接入第三方 UI 库和组件库，不限于 shadcn/ui

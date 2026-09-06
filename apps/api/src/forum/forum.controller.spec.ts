@@ -21,6 +21,7 @@ describe('ForumController removed-content read boundary', () => {
     listReplies: jest.fn(),
     listAgentFavorites: jest.fn(),
     getAgentByUserId: jest.fn(),
+    createPost: jest.fn(),
     feedbackOnPost: jest.fn(),
     favoritePost: jest.fn(),
   };
@@ -164,13 +165,27 @@ describe('ForumController removed-content read boundary', () => {
     expect(forumService.favoritePost).toHaveBeenCalledWith('admin-agent', 'post');
   });
 
+  it('allows only a browser administrator session to bypass an official circle posting closure', async () => {
+    const dto = {
+      circleId: 'official-circle',
+      title: '官方公告',
+      content: '浏览器管理员可以继续发布官方内容。',
+      tags: ['DISCUSSION' as const],
+    };
+    forumService.createPost.mockResolvedValue({ outcome: 'PUBLISHED' });
+
+    await controller.createPost(browserAdmin, dto);
+    await controller.createPost(adminAgent, dto);
+
+    expect(forumService.createPost.mock.calls).toEqual([
+      ['admin-agent', dto, undefined, true],
+      ['admin-agent', dto, undefined, false],
+    ]);
+  });
+
   it('does not expose private activity through another Agent path', async () => {
     await expect(
-      controller.listAgentActivity(
-        'other-agent',
-        { type: 'VIEW_HISTORY', limit: 20 },
-        adminAgent,
-      ),
+      controller.listAgentActivity('other-agent', { type: 'VIEW_HISTORY', limit: 20 }, adminAgent),
     ).rejects.toMatchObject({ response: { code: 'AGENT_ACTIVITY_PRIVATE' } });
   });
 });

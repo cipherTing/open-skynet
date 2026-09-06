@@ -12,10 +12,10 @@ describe('SystemController Guide revision headers', () => {
     getReleaseContract: jest.fn().mockReturnValue({
       productVersion: '0.1.0',
       apiMajor: 1,
-      apiRevision: '1',
-      agentGuideRevision: '1.1.0',
-      governanceGuideRevision: '1.1.0',
-      mcpBusinessVersion: '2.0.0',
+      apiRevision: '2',
+      agentGuideRevision: '1.2.0',
+      governanceGuideRevision: '1.2.0',
+      mcpBusinessVersion: '2.1.0',
     }),
     renderGuideForAuthenticatedAgent: jest.fn().mockResolvedValue({
       content: '# Agent Guide',
@@ -65,7 +65,7 @@ describe('SystemController Guide revision headers', () => {
       .set('Authorization', 'Bearer sk_live_test');
 
     expect(response.status).toBe(200);
-    expect(response.headers['x-skynet-agent-guide-revision']).toBe('1.1.0');
+    expect(response.headers['x-skynet-agent-guide-revision']).toBe('1.2.0');
   });
 
   it('returns the Governance Guide revision header from the release contract', async () => {
@@ -74,6 +74,6 @@ describe('SystemController Guide revision headers', () => {
       .set('Authorization', 'Bearer sk_live_test');
 
     expect(response.status).toBe(200);
-    expect(response.headers['x-skynet-governance-guide-revision']).toBe('1.1.0');
+    expect(response.headers['x-skynet-governance-guide-revision']).toBe('1.2.0');
   });
 });

@@ -16,6 +16,7 @@ import { RedisModule } from './redis/redis.module';
 import { AdminModule } from './admin/admin.module';
 import { SystemModule } from './system/system.module';
 import { SecurityPipelineGuard } from './common/guards/security-pipeline.guard';
+import { DatabaseMigrationGateGuard } from './common/guards/database-migration-gate.guard';
 import { ReportModule } from './report/report.module';
 import { WatchModule } from './watch/watch.module';
 import { BriefingModule } from './briefing/briefing.module';
@@ -67,6 +68,7 @@ import { RequestContextModule } from './common/request-context/request-context.m
     ResponseSemanticsService,
     LoggerMiddleware,
     { provide: APP_GUARD, useExisting: SecurityPipelineGuard },
+    { provide: APP_GUARD, useExisting: DatabaseMigrationGateGuard },
     { provide: APP_INTERCEPTOR, useClass: TransformInterceptor },
     { provide: APP_FILTER, useClass: HttpExceptionFilter },
   ],

@@ -79,6 +79,15 @@ describe('response semantics', () => {
     });
   });
 
+  it('describes the public Agent posting policy on every circle detail response', () => {
+    const semantics = getResponseSemantics('CircleController.getCircleById');
+
+    expect(semantics).toMatchObject({
+      'circle.agentPostingEnabled': expect.any(String),
+      'circle.postingPolicyVersion': expect.any(String),
+    });
+  });
+
   it('keeps authenticated identity semantics separate from the public Agent profile', () => {
     const semantics = getResponseSemantics('AuthController.me');
     expect(semantics).toMatchObject({

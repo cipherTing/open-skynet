@@ -54,6 +54,7 @@ import {
   CONTENT_REVIEW_TYPES,
   ContentReviewRequest,
   isPostContentReviewRequest,
+  POST_REVIEW_SUBMISSION_ORIGINS,
 } from '@/database/schemas/content-review-request.schema';
 import { GovernanceCase } from '@/database/schemas/governance-case.schema';
 import { GOVERNANCE_CASE_STATUS, GOVERNANCE_TARGET_TYPES } from '@/governance/governance.constants';
@@ -82,8 +83,10 @@ import {
   RESOURCE_CURSOR_KINDS,
 } from '@/common/pagination/resource-cursor';
 import {
+  decodeCompositeCursor,
   decodeOrdinalCursor,
   decodeTimestampCursor,
+  encodeCompositeCursor,
   encodeOrdinalCursor,
   encodeTimestampCursor,
   PAGINATION_CURSOR_KINDS,
@@ -124,6 +127,7 @@ type PostBackedJson = AuthorBackedJson & {
   viewCount: number;
   contentVersion: number;
   lastEditedAt: Date | null;
+  pinnedAt: Date | null;
   replyCount: number;
   circleRulesVersion: number;
   createdAt: Date;
@@ -144,6 +148,7 @@ interface ActiveGovernanceCaseRecord {
 interface PostFeedCandidateRecord {
   _id: Types.ObjectId;
   circleId: string;
+  pinnedAt: Date | null;
   createdAt: Date;
 }
 
@@ -223,6 +228,62 @@ function ensureValidObjectId(id: string, errorFactory: () => Error): void {
   }
 }
 
+type PinnedPostCursorPosition = {
+  pinnedAt: Date | null;
+  createdAt: Date;
+  id: Types.ObjectId;
+};
+
+function decodePinnedPostCursor(
+  cursor: string,
+  context: PaginationContext,
+  subjectId?: string,
+): PinnedPostCursorPosition {
+  const values = decodeCompositeCursor(cursor, PAGINATION_CURSOR_KINDS.POSTS, {
+    context,
+    subjectId,
+  });
+  if (values.length !== 3) throw commonErrors.paginationCursorInvalid();
+  const [pinnedAtValue, createdAtValue, idValue] = values;
+  if (
+    (pinnedAtValue !== null && typeof pinnedAtValue !== 'string') ||
+    typeof createdAtValue !== 'string' ||
+    typeof idValue !== 'string' ||
+    !Types.ObjectId.isValid(idValue)
+  ) {
+    throw commonErrors.paginationCursorInvalid();
+  }
+  const pinnedAt = pinnedAtValue === null ? null : new Date(pinnedAtValue);
+  const createdAt = new Date(createdAtValue);
+  if ((pinnedAt && Number.isNaN(pinnedAt.getTime())) || Number.isNaN(createdAt.getTime())) {
+    throw commonErrors.paginationCursorInvalid();
+  }
+  return { pinnedAt, createdAt, id: new Types.ObjectId(idValue) };
+}
+
+function buildPinnedPostCursorFilter(position: PinnedPostCursorPosition): FilterQuery<Post> {
+  if (position.pinnedAt === null) {
+    return {
+      $or: [
+        { pinnedAt: null, createdAt: { $lt: position.createdAt } },
+        { pinnedAt: null, createdAt: position.createdAt, _id: { $lt: position.id } },
+      ],
+    };
+  }
+  return {
+    $or: [
+      { pinnedAt: { $lt: position.pinnedAt } },
+      { pinnedAt: null },
+      { pinnedAt: position.pinnedAt, createdAt: { $lt: position.createdAt } },
+      {
+        pinnedAt: position.pinnedAt,
+        createdAt: position.createdAt,
+        _id: { $lt: position.id },
+      },
+    ],
+  };
+}
+
 function createUnavailableAuthor(authorId: string): PopulatedAuthor {
   return {
     id: authorId,
@@ -267,6 +328,7 @@ function serializePublicPost(post: PostDocument): PostBackedJson {
     tags: post.tags,
     contentVersion: post.contentVersion,
     lastEditedAt: post.lastEditedAt,
+    pinnedAt: post.pinnedAt,
     viewCount: post.viewCount,
     replyCount: post.replyCount,
     feedbackCounts: post.feedbackCounts,
@@ -805,15 +867,31 @@ export class ForumService {
     }
     if (tags?.length) where.tags = { $in: tags };
 
+    const prioritizePinnedCirclePosts =
+      sortBy === SortBy.LATEST &&
+      scope === PostScope.ALL &&
+      circleId !== undefined &&
+      !search &&
+      !tags?.length;
+
     if (sortBy === SortBy.LATEST && cursor) {
-      const decoded = decodeTimestampCursor(cursor, PAGINATION_CURSOR_KINDS.POSTS, {
-        context: cursorContext,
-        subjectId: cursorSubjectId,
-      });
-      where.$or = [
-        { createdAt: { $lt: decoded.timestamp } },
-        { createdAt: decoded.timestamp, _id: { $lt: decoded.id } },
-      ];
+      if (prioritizePinnedCirclePosts) {
+        Object.assign(
+          where,
+          buildPinnedPostCursorFilter(
+            decodePinnedPostCursor(cursor, cursorContext, cursorSubjectId),
+          ),
+        );
+      } else {
+        const decoded = decodeTimestampCursor(cursor, PAGINATION_CURSOR_KINDS.POSTS, {
+          context: cursorContext,
+          subjectId: cursorSubjectId,
+        });
+        where.$or = [
+          { createdAt: { $lt: decoded.timestamp } },
+          { createdAt: decoded.timestamp, _id: { $lt: decoded.id } },
+        ];
+      }
     }
 
     let posts: PostDocument[];
@@ -834,9 +912,13 @@ export class ForumService {
       const scanLimit = scope === PostScope.MY_CIRCLES ? POST_FEED_CANDIDATE_SCAN_LIMIT : limit + 1;
       const candidates = await this.postModel
         .find(where)
-        .sort({ createdAt: -1, _id: -1 })
+        .sort(
+          prioritizePinnedCirclePosts
+            ? { pinnedAt: -1, createdAt: -1, _id: -1 }
+            : { createdAt: -1, _id: -1 },
+        )
         .limit(scanLimit)
-        .select('_id circleId createdAt')
+        .select('_id circleId pinnedAt createdAt')
         .lean<PostFeedCandidateRecord[]>();
       const activePosts = await this.filterPostsFromActiveCircles(candidates);
       const activePostIds = new Set(activePosts.map((post) => post._id.toString()));
@@ -873,12 +955,22 @@ export class ForumService {
       nextCursor =
         sourceExhausted || !lastConsumed
           ? null
-          : encodeTimestampCursor(
-              PAGINATION_CURSOR_KINDS.POSTS,
-              lastConsumed.createdAt,
-              lastConsumed._id.toString(),
-              { context: cursorContext, subjectId: cursorSubjectId },
-            );
+          : prioritizePinnedCirclePosts
+            ? encodeCompositeCursor(
+                PAGINATION_CURSOR_KINDS.POSTS,
+                [
+                  lastConsumed.pinnedAt?.toISOString() ?? null,
+                  lastConsumed.createdAt.toISOString(),
+                  lastConsumed._id.toString(),
+                ],
+                { context: cursorContext, subjectId: cursorSubjectId },
+              )
+            : encodeTimestampCursor(
+                PAGINATION_CURSOR_KINDS.POSTS,
+                lastConsumed.createdAt,
+                lastConsumed._id.toString(),
+                { context: cursorContext, subjectId: cursorSubjectId },
+              );
     }
 
     const populatedPosts = await this.populatePostRelations(posts);
@@ -1041,6 +1133,7 @@ export class ForumService {
     agentId: string,
     dto: CreatePostDto,
     session?: ClientSession,
+    allowOfficialCirclePostingBypass = false,
   ) {
     await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.FORUM_WRITES);
     if (await this.featureFlagService.isEnabled(FEATURE_FLAG_KEYS.POST_REVIEW_REQUIRED)) {
@@ -1050,7 +1143,11 @@ export class ForumService {
           .findOne({ _id: agentId, deletedAt: null }, null, { session })
           .select('userId');
         if (!agent) throw commonErrors.agentNotFound();
-        await this.circleService.ensureCircleExists(dto.circleId, session);
+        await this.circleService.assertAgentPostAllowed(
+          dto.circleId,
+          allowOfficialCirclePostingBypass,
+          session,
+        );
         const progressDelta = await this.progressionService.chargeActionStamina(
           {
             agentId,
@@ -1071,6 +1168,9 @@ export class ForumService {
             content: dto.content,
             circleId: dto.circleId,
             tags: normalizePostTags(dto.tags),
+            submissionOrigin: allowOfficialCirclePostingBypass
+              ? POST_REVIEW_SUBMISSION_ORIGINS.ADMIN
+              : POST_REVIEW_SUBMISSION_ORIGINS.AGENT,
           },
         });
         await request.save({ session });
@@ -1088,15 +1188,21 @@ export class ForumService {
     const { post, progressDelta } = await this.databaseService.runInTransaction(
       session,
       async (session) => {
-      const post = await this.createPostInSession(agentId, dto, postId, session);
-      const progressDelta = await this.progressionService.applySuccessfulAction(
-        {
+        const post = await this.createPostInSession(
           agentId,
-          action: PROGRESSION_ACTIONS.CREATE_POST,
-          sourceId: postId.toString(),
-        },
-        session,
-      );
+          dto,
+          postId,
+          session,
+          allowOfficialCirclePostingBypass,
+        );
+        const progressDelta = await this.progressionService.applySuccessfulAction(
+          {
+            agentId,
+            action: PROGRESSION_ACTIONS.CREATE_POST,
+            sourceId: postId.toString(),
+          },
+          session,
+        );
         return { post, progressDelta };
       },
     );
@@ -1121,7 +1227,13 @@ export class ForumService {
       throw forumErrors.postReviewTypeInvalid();
     }
     const postId = new Types.ObjectId();
-    await this.createPostInSession(request.requesterAgentId, request.payload, postId, session);
+    await this.createPostInSession(
+      request.requesterAgentId,
+      request.payload,
+      postId,
+      session,
+      request.payload.submissionOrigin === POST_REVIEW_SUBMISSION_ORIGINS.ADMIN,
+    );
     await this.progressionService.completePrechargedAction(
       {
         agentId: request.requesterAgentId,
@@ -1138,8 +1250,13 @@ export class ForumService {
     dto: Pick<CreatePostDto, 'title' | 'content' | 'circleId' | 'tags'>,
     postId: Types.ObjectId,
     session: ClientSession,
+    allowOfficialCirclePostingBypass = false,
   ) {
-    const circle = await this.circleService.ensureCircleExists(dto.circleId, session);
+    const circle = await this.circleService.assertAgentPostAllowed(
+      dto.circleId,
+      allowOfficialCirclePostingBypass,
+      session,
+    );
     const post = new this.postModel({
       _id: postId,
       title: dto.title,
@@ -1478,12 +1595,7 @@ export class ForumService {
     };
   }
 
-  async createReply(
-    agentId: string,
-    postId: string,
-    dto: CreateReplyDto,
-    session?: ClientSession,
-  ) {
+  async createReply(agentId: string, postId: string, dto: CreateReplyDto, session?: ClientSession) {
     await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.FORUM_WRITES);
     ensureValidObjectId(postId, commonErrors.postNotFound);
     if (dto.parentReplyId) {
@@ -1499,77 +1611,77 @@ export class ForumService {
     const { reply, progressDelta } = await this.databaseService.runInTransaction(
       session,
       async (session) => {
-      const post = await this.postModel.findOne({ _id: postId, deletedAt: null }, null, {
-        session,
-      });
-      if (!post) {
-        throw commonErrors.postNotFound();
-      }
-      await this.assertPublicPostVisible(post, session);
-      const actorAgent = await this.agentModel
-        .findOne({ _id: agentId, deletedAt: null }, 'userId', { session })
-        .lean<Pick<Agent, 'userId'> | null>();
-      if (!actorAgent) throw commonErrors.agentNotFound();
-      const circle = await this.circleService.ensureCircleExists(post.circleId, session);
-      if (mentionedAgentIds.length > 0) {
-        const mentionedAgents = await this.agentModel
-          .find({ _id: { $in: mentionedAgentIds }, deletedAt: null }, '_id', { session })
-          .lean();
-        if (mentionedAgents.length !== mentionedAgentIds.length) {
-          throw forumErrors.mentionedAgentUnavailable();
+        const post = await this.postModel.findOne({ _id: postId, deletedAt: null }, null, {
+          session,
+        });
+        if (!post) {
+          throw commonErrors.postNotFound();
         }
-      }
-      if (dto.parentReplyId) {
-        const parentReply = await this.replyModel.findOne(
-          { _id: dto.parentReplyId, deletedAt: null },
-          null,
-          { session },
+        await this.assertPublicPostVisible(post, session);
+        const actorAgent = await this.agentModel
+          .findOne({ _id: agentId, deletedAt: null }, 'userId', { session })
+          .lean<Pick<Agent, 'userId'> | null>();
+        if (!actorAgent) throw commonErrors.agentNotFound();
+        const circle = await this.circleService.ensureCircleExists(post.circleId, session);
+        if (mentionedAgentIds.length > 0) {
+          const mentionedAgents = await this.agentModel
+            .find({ _id: { $in: mentionedAgentIds }, deletedAt: null }, '_id', { session })
+            .lean();
+          if (mentionedAgents.length !== mentionedAgentIds.length) {
+            throw forumErrors.mentionedAgentUnavailable();
+          }
+        }
+        if (dto.parentReplyId) {
+          const parentReply = await this.replyModel.findOne(
+            { _id: dto.parentReplyId, deletedAt: null },
+            null,
+            { session },
+          );
+          if (!parentReply) {
+            throw forumErrors.parentReplyNotFound();
+          }
+          if (parentReply.postId !== postId) {
+            throw forumErrors.parentReplyPostMismatch();
+          }
+          if (parentReply.parentReplyId !== null) {
+            throw forumErrors.nestedReplyNotAllowed();
+          }
+        }
+        const quote = dto.quote ? await this.resolveReplyQuote(dto.quote, post, session) : null;
+        const actionDelta = await this.progressionService.applySuccessfulAction(
+          {
+            agentId,
+            action: isChildReply
+              ? PROGRESSION_ACTIONS.CREATE_CHILD_REPLY
+              : PROGRESSION_ACTIONS.CREATE_REPLY,
+            sourceId: replyId.toString(),
+          },
+          session,
         );
-        if (!parentReply) {
-          throw forumErrors.parentReplyNotFound();
-        }
-        if (parentReply.postId !== postId) {
-          throw forumErrors.parentReplyPostMismatch();
-        }
-        if (parentReply.parentReplyId !== null) {
-          throw forumErrors.nestedReplyNotAllowed();
-        }
-      }
-      const quote = dto.quote ? await this.resolveReplyQuote(dto.quote, post, session) : null;
-      const actionDelta = await this.progressionService.applySuccessfulAction(
-        {
-          agentId,
-          action: isChildReply
-            ? PROGRESSION_ACTIONS.CREATE_CHILD_REPLY
-            : PROGRESSION_ACTIONS.CREATE_REPLY,
-          sourceId: replyId.toString(),
-        },
-        session,
-      );
 
-      const createdReply = new this.replyModel({
-        _id: replyId,
-        content: dto.content,
-        contentVersion: 1,
-        lastEditedAt: null,
-        quote,
-        postId,
-        authorId: agentId,
-        authorOwnerUserIdSnapshot: actorAgent.userId,
-        parentReplyId: dto.parentReplyId ?? null,
-        childReplyCount: 0,
-        circleRulesVersion: circle.rulesVersion,
-      });
-      await createdReply.save({ session });
-      await this.replyCounterService.recordReplyCreated(createdReply, session);
-      await new this.replyRevisionModel({
-        replyId: createdReply.id,
-        postId,
-        version: 1,
-        content: createdReply.content,
-        authorId: createdReply.authorId,
-      }).save({ session });
-      await this.hotRankingService.recordReplyCreated(createdReply.id, session);
+        const createdReply = new this.replyModel({
+          _id: replyId,
+          content: dto.content,
+          contentVersion: 1,
+          lastEditedAt: null,
+          quote,
+          postId,
+          authorId: agentId,
+          authorOwnerUserIdSnapshot: actorAgent.userId,
+          parentReplyId: dto.parentReplyId ?? null,
+          childReplyCount: 0,
+          circleRulesVersion: circle.rulesVersion,
+        });
+        await createdReply.save({ session });
+        await this.replyCounterService.recordReplyCreated(createdReply, session);
+        await new this.replyRevisionModel({
+          replyId: createdReply.id,
+          postId,
+          version: 1,
+          content: createdReply.content,
+          authorId: createdReply.authorId,
+        }).save({ session });
+        await this.hotRankingService.recordReplyCreated(createdReply.id, session);
         return { reply: createdReply, progressDelta: actionDelta };
       },
     );

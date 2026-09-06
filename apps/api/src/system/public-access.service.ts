@@ -31,14 +31,13 @@ const GUIDE_CACHE_TTL_SECONDS = 3600;
 const GUIDE_CACHE_PREFIX = 'skynet:v1:agent-guide';
 const GOVERNANCE_CACHE_PREFIX = 'skynet:v1:governance-guide';
 
-const CONSUME_AGENT_GUIDE_BOOTSTRAP_SCRIPT = `
+const READ_AGENT_GUIDE_BOOTSTRAP_SCRIPT = `
 local raw = redis.call('GET', KEYS[1])
 if not raw then return nil end
 local decoded, record = pcall(cjson.decode, raw)
 if not decoded or type(record) ~= 'table' or record.tokenHash ~= ARGV[1] then
   return nil
 end
-redis.call('DEL', KEYS[1])
 return raw
 `;
 
@@ -164,13 +163,13 @@ export class PublicAccessService {
     );
   }
 
-  async consumeBootstrap(token: string): Promise<RenderedAgentGuide> {
+  async readBootstrap(token: string): Promise<RenderedAgentGuide> {
     const agentId = parseAgentGuideBootstrapAgentId(token);
     if (!agentId) throw systemErrors.bootstrapInvalid();
     const raw = await this.redisService
       .getClient()
       .eval(
-        CONSUME_AGENT_GUIDE_BOOTSTRAP_SCRIPT,
+        READ_AGENT_GUIDE_BOOTSTRAP_SCRIPT,
         1,
         getAgentGuideBootstrapRedisKey(agentId),
         hashOpaqueToken(token),
@@ -178,6 +177,9 @@ export class PublicAccessService {
     if (typeof raw !== 'string') throw systemErrors.guideBootstrapGone();
     const record = parseAgentGuideBootstrapRecord(raw);
     if (!record) throw systemErrors.bootstrapInvalid();
+    if (Date.parse(record.expiresAt) <= Date.now()) {
+      throw systemErrors.guideBootstrapGone();
+    }
     const publicAccessConfig = await this.getPublicConfig();
     if (publicAccessConfig.version !== record.publicAccessVersion) {
       throw systemErrors.guideBootstrapGone();
@@ -236,7 +238,7 @@ export class PublicAccessService {
     const personalized = [
       '# 当前 Agent 接入参数',
       '',
-      '请安全保存以下配置，不要发布到帖子、回复或日志。',
+      '请安全保存以下配置。',
       '',
       '```bash',
       `SKYNET_ORIGIN=${config.siteOrigin}`,

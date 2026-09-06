@@ -35,10 +35,7 @@ import type { ListAdminCirclesDto } from './dto/list-admin-circles.dto';
 import type { ListAdminGovernanceDto } from './dto/list-admin-governance.dto';
 import type { ListContentReviewsDto } from './dto/list-content-reviews.dto';
 import type { DecideContentReviewDto } from './dto/decide-content-review.dto';
-import {
-  REPORT_TARGET_TYPES,
-  REPORT_TARGET_STATUSES,
-} from '@/report/report.constants';
+import { REPORT_TARGET_TYPES, REPORT_TARGET_STATUSES } from '@/report/report.constants';
 import {
   CONTENT_REVIEW_STATUSES,
   CONTENT_REVIEW_TYPES,
@@ -554,6 +551,42 @@ export class AdminService {
     };
   }
 
+  async setPostPinned(admin: AdminPrincipal, postId: string, pinned: boolean, reason: string) {
+    ensureObjectId(postId, adminErrors.contentNotFound);
+    return this.databaseService.$transaction(async (session) => {
+      const post = await this.postModel.findOne({ _id: postId, deletedAt: null }, null, {
+        session,
+      });
+      if (!post) throw adminErrors.contentNotFound();
+      const currentlyPinned = post.pinnedAt instanceof Date;
+      if (currentlyPinned === pinned) {
+        return {
+          postId: post.id,
+          pinned,
+          changed: false,
+          pinnedAt: post.pinnedAt?.toISOString() ?? null,
+        };
+      }
+      post.pinnedAt = pinned ? new Date() : null;
+      await post.save({ session });
+      await this.auditService.record({
+        actorUserId: admin.userId,
+        action: pinned ? ADMIN_AUDIT_ACTIONS.POST_PINNED : ADMIN_AUDIT_ACTIONS.POST_UNPINNED,
+        targetType: 'POST',
+        targetId: post.id,
+        reason,
+        changes: { circleId: post.circleId, pinnedAt: post.pinnedAt?.toISOString() ?? null },
+        session,
+      });
+      return {
+        postId: post.id,
+        pinned,
+        changed: true,
+        pinnedAt: post.pinnedAt?.toISOString() ?? null,
+      };
+    });
+  }
+
   private async getGovernanceCaseIdsForContent(
     targetType: 'POST' | 'REPLY',
     targetIds: string[],
@@ -756,7 +789,11 @@ export class AdminService {
   }
 
   async updateCircle(admin: AdminPrincipal, circleId: string, dto: UpdateAdminCircleDto) {
-    if (dto.topic === undefined && dto.rules === undefined) {
+    if (
+      dto.topic === undefined &&
+      dto.rules === undefined &&
+      dto.agentPostingEnabled === undefined
+    ) {
       throw adminErrors.circleUpdateRequired();
     }
     return this.databaseService.$transaction(async (session) => {
@@ -775,7 +812,13 @@ export class AdminService {
             (rule, index) =>
               rule.id !== before.rules[index]?.id || rule.text !== before.rules[index]?.text,
           ));
-      if (!topicChanged && !rulesChanged) {
+      if (dto.agentPostingEnabled !== undefined && before.kind !== 'OFFICIAL') {
+        throw circleErrors.agentPostingPolicyOfficialOnly();
+      }
+      const agentPostingEnabledChanged =
+        dto.agentPostingEnabled !== undefined &&
+        dto.agentPostingEnabled.value !== before.agentPostingEnabled;
+      if (!topicChanged && !rulesChanged && !agentPostingEnabledChanged) {
         throw circleErrors.unchanged();
       }
       const moderated = [];
@@ -805,6 +848,7 @@ export class AdminService {
         {
           topic: topicChanged ? dto.topic : undefined,
           rules: rulesChanged ? dto.rules : undefined,
+          agentPostingEnabled: agentPostingEnabledChanged ? dto.agentPostingEnabled : undefined,
           reason: dto.reason,
         },
         session,
@@ -830,6 +874,14 @@ export class AdminService {
                 next: circle.rules.map((rule) => ({ id: rule.id, text: rule.text })),
                 previousVersion: before.rulesVersion,
                 nextVersion: circle.rulesVersion,
+              }
+            : null,
+          agentPostingEnabled: agentPostingEnabledChanged
+            ? {
+                previous: before.agentPostingEnabled,
+                next: circle.agentPostingEnabled,
+                previousVersion: before.postingPolicyVersion,
+                nextVersion: circle.postingPolicyVersion,
               }
             : null,
           moderatedProposals: moderated.map((proposal) => ({

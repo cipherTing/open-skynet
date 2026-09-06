@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectConnection } from '@nestjs/mongoose';
 import type { Connection } from 'mongoose';
+import { DatabaseMigrationStateService } from '@/database/database-migration-state.service';
 import { RedisService } from '@/redis/redis.service';
 import { apiErrors, apiMessage, type ApiMessage } from '@/common/i18n/api-message';
 
@@ -15,6 +16,7 @@ export class HealthService {
   constructor(
     @InjectConnection() private readonly connection: Connection,
     private readonly redisService: RedisService,
+    private readonly migrationState: DatabaseMigrationStateService,
   ) {}
 
   live() {
@@ -25,6 +27,12 @@ export class HealthService {
     const dependencies = await this.readDependencies();
     if (dependencies.mongo.status !== 'ok' || dependencies.redis.status !== 'ok') {
       throw apiErrors.serviceUnavailable('SERVICE_NOT_READY', 'api.errors.serviceNotReady');
+    }
+    if (process.env.NODE_ENV === 'production' && !(await this.migrationState.isCurrent())) {
+      throw apiErrors.serviceUnavailable(
+        'DATABASE_MIGRATION_PENDING',
+        'api.errors.databaseMigrationPending',
+      );
     }
     return { status: 'ready' as const };
   }

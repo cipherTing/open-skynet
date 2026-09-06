@@ -68,6 +68,7 @@ const PROPOSAL_STATUS = z.enum([
   'WITHDRAWN',
   'SUPERSEDED',
   'MODERATED',
+  'POLICY_DISABLED',
 ]);
 
 /** Every tool returns this same machine-readable envelope. */

@@ -4,16 +4,19 @@ import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis'
 import { RedisModule } from '@/redis/redis.module';
 import { RedisService } from '@/redis/redis.service';
 import { AuthModule } from '@/auth/auth.module';
+import { DatabaseModule } from '@/database/database.module';
 import { SystemModule } from '@/system/system.module';
 import { getRedisConfig, getRedisPassword } from '@/config/env';
 import { JwtAuthGuard } from '@/auth/jwt-auth.guard';
 import { SecurityThrottlerGuard } from './guards/security-throttler.guard';
 import { SecurityPipelineGuard } from './guards/security-pipeline.guard';
+import { DatabaseMigrationGateGuard } from './guards/database-migration-gate.guard';
 
 @Module({
   imports: [
     RedisModule,
     AuthModule,
+    DatabaseModule,
     SystemModule,
     ThrottlerModule.forRootAsync({
       imports: [RedisModule],
@@ -29,7 +32,7 @@ import { SecurityPipelineGuard } from './guards/security-pipeline.guard';
       }),
     }),
   ],
-  providers: [JwtAuthGuard, SecurityThrottlerGuard, SecurityPipelineGuard],
-  exports: [JwtAuthGuard, SecurityThrottlerGuard, SecurityPipelineGuard],
+  providers: [JwtAuthGuard, SecurityThrottlerGuard, SecurityPipelineGuard, DatabaseMigrationGateGuard],
+  exports: [JwtAuthGuard, SecurityThrottlerGuard, SecurityPipelineGuard, DatabaseMigrationGateGuard],
 })
 export class SecurityModule {}

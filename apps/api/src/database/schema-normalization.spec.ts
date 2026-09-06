@@ -4,22 +4,23 @@ import {
   ContentReviewRequest,
   ContentReviewRequestSchema,
 } from './schemas/content-review-request.schema';
-import {
-  GovernanceCase,
-  GovernanceCaseSchema,
-} from './schemas/governance-case.schema';
-import {
-  HotProjectionWorkItemSchema,
-} from './schemas/hot-projection-work-item.schema';
+import { GovernanceCase, GovernanceCaseSchema } from './schemas/governance-case.schema';
+import { HotProjectionWorkItemSchema } from './schemas/hot-projection-work-item.schema';
 import { AgentXpEvent, AgentXpEventSchema } from './schemas/agent-xp-event.schema';
 import { AdminAuditLog, AdminAuditLogSchema } from './schemas/admin-audit-log.schema';
 import {
   AgentGovernanceHistory,
   AgentGovernanceHistorySchema,
 } from './schemas/agent-governance-history.schema';
-import { GovernanceCorrection, GovernanceCorrectionSchema } from './schemas/governance-correction.schema';
+import {
+  GovernanceCorrection,
+  GovernanceCorrectionSchema,
+} from './schemas/governance-correction.schema';
 import { GovernanceVote, GovernanceVoteSchema } from './schemas/governance-vote.schema';
-import { McpIdempotencyRecord, McpIdempotencyRecordSchema } from './schemas/mcp-idempotency-record.schema';
+import {
+  McpIdempotencyRecord,
+  McpIdempotencyRecordSchema,
+} from './schemas/mcp-idempotency-record.schema';
 import { SecurityEvent, SecurityEventSchema } from './schemas/security-event.schema';
 import { PostRevision, PostRevisionSchema } from './schemas/post-revision.schema';
 import { ReplyRevision, ReplyRevisionSchema } from './schemas/reply-revision.schema';
@@ -30,7 +31,10 @@ import {
 import { ReportTargetState, ReportTargetStateSchema } from './schemas/report-target-state.schema';
 
 const testMongoose = new mongoose.Mongoose();
-const ContentReviewModel = testMongoose.model(ContentReviewRequest.name, ContentReviewRequestSchema);
+const ContentReviewModel = testMongoose.model(
+  ContentReviewRequest.name,
+  ContentReviewRequestSchema,
+);
 const GovernanceCaseModel = testMongoose.model(GovernanceCase.name, GovernanceCaseSchema);
 const XpEventModel = testMongoose.model(AgentXpEvent.name, AgentXpEventSchema);
 const AuditModel = testMongoose.model(AdminAuditLog.name, AdminAuditLogSchema);
@@ -58,10 +62,7 @@ describe('database schema invariants', () => {
     const indexes = HotProjectionWorkItemSchema.indexes();
     expect(indexes).toEqual(
       expect.arrayContaining([
-        [
-          { sourceType: 1, sourceId: 1 },
-          expect.objectContaining({ unique: true }),
-        ],
+        [{ sourceType: 1, sourceId: 1 }, expect.objectContaining({ unique: true })],
       ]),
     );
     expect(indexes.flatMap(([keys]) => Object.keys(keys))).not.toContain('sourceKey');
@@ -77,7 +78,6 @@ describe('database schema invariants', () => {
         name: 'circle',
         normalizedName: 'circle',
         topic: 'topic',
-        creationWeekStartDate: '2026-08-10',
       },
     });
 
@@ -267,16 +267,18 @@ describe('database schema invariants', () => {
         { $set: { choice: 'NOT_VIOLATION' } },
       ).exec(),
     ).rejects.toThrow();
-    await expect(
-      GovernanceVoteModel.deleteMany({ caseId: 'case-1' }).exec(),
-    ).rejects.toThrow();
+    await expect(GovernanceVoteModel.deleteMany({ caseId: 'case-1' }).exec()).rejects.toThrow();
   });
 
   it('allows only moderation fields to change on post and reply revision history', async () => {
     const postUpdateOne = PostRevisionModel.collection.updateOne;
     const replyUpdateOne = ReplyRevisionModel.collection.updateOne;
-    PostRevisionModel.collection.updateOne = jest.fn().mockResolvedValue({ matchedCount: 1 }) as never;
-    ReplyRevisionModel.collection.updateOne = jest.fn().mockResolvedValue({ matchedCount: 1 }) as never;
+    PostRevisionModel.collection.updateOne = jest
+      .fn()
+      .mockResolvedValue({ matchedCount: 1 }) as never;
+    ReplyRevisionModel.collection.updateOne = jest
+      .fn()
+      .mockResolvedValue({ matchedCount: 1 }) as never;
 
     await expect(
       PostRevisionModel.updateOne(
@@ -310,7 +312,9 @@ describe('database schema invariants', () => {
 
   it('allows only hiddenAt to change on proposal comments', async () => {
     const updateOne = ProposalCommentModel.collection.updateOne;
-    ProposalCommentModel.collection.updateOne = jest.fn().mockResolvedValue({ matchedCount: 1 }) as never;
+    ProposalCommentModel.collection.updateOne = jest
+      .fn()
+      .mockResolvedValue({ matchedCount: 1 }) as never;
     const commentId = new mongoose.Types.ObjectId();
 
     await expect(

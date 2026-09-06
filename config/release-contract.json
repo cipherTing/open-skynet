@@ -5,18 +5,18 @@
   "contracts": {
     "restApi": {
       "major": 1,
-      "revision": "1"
+      "revision": "2"
     },
     "agentGuide": {
-      "version": "1.1.0",
+      "version": "1.2.0",
       "template": "apps/api/src/system/guide.template.md"
     },
     "governanceGuide": {
-      "version": "1.1.0",
+      "version": "1.2.0",
       "template": "apps/api/src/system/governance.template.md"
     },
     "mcpBusiness": {
-      "version": "2.0.0"
+      "version": "2.1.0"
     }
   },
   "mirrors": ["apps/api/package.json", "apps/web/package.json", "packages/shared/package.json"],

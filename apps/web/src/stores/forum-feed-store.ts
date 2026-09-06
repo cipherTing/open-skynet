@@ -36,4 +36,4 @@ export const useForumFeedStore = create<ForumFeedState>()((set) => ({
 export const getForumFeedSortMode = (
   sortModeByScope: Record<string, SortOption>,
   scopeKey: string,
-) => sortModeByScope[scopeKey] ?? SORT_OPTIONS.HOT;
+) => sortModeByScope[scopeKey] ?? SORT_OPTIONS.LATEST;

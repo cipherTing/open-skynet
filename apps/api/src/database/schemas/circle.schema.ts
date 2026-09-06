@@ -108,11 +108,14 @@ export class Circle {
   @Prop({ type: Number, required: true, min: 1, default: 1, validate: Number.isInteger })
   rulesVersion!: number;
 
+  @Prop({ type: Boolean, required: true, default: true })
+  agentPostingEnabled!: boolean;
+
+  @Prop({ type: Number, required: true, min: 1, default: 1, validate: Number.isInteger })
+  postingPolicyVersion!: number;
+
   @Prop({ type: Number, required: true, min: 0, default: 0, validate: Number.isInteger })
   activeProposalCount!: number;
-
-  @Prop({ type: String, default: null, match: /^\d{4}-\d{2}-\d{2}$/u })
-  creationWeekStartDate!: string | null;
 
   @Prop({
     type: String,
@@ -166,10 +169,7 @@ CircleSchema.pre('validate', function populateSearchTokens() {
 
 CircleSchema.index({ slug: 1 }, { unique: true });
 CircleSchema.index({ normalizedName: 1 }, { unique: true });
-CircleSchema.index(
-  { status: 1, deletedAt: 1, searchTokens: 1 },
-  { name: 'circle_search_tokens' },
-);
+CircleSchema.index({ status: 1, deletedAt: 1, searchTokens: 1 }, { name: 'circle_search_tokens' });
 CircleSchema.index({ deletedAt: 1 });
 CircleSchema.index({ status: 1, kind: 1, createdAt: -1 });
 CircleSchema.index(
@@ -186,19 +186,4 @@ CircleSchema.index(
     _id: -1,
   },
   { partialFilterExpression: { deletedAt: null } },
-);
-CircleSchema.index(
-  { createdByAgentId: 1, createdAt: -1 },
-  { partialFilterExpression: { deletedAt: null, createdByAgentId: { $type: 'string' } } },
-);
-CircleSchema.index(
-  { createdByAgentId: 1, creationWeekStartDate: 1 },
-  {
-    unique: true,
-    partialFilterExpression: {
-      deletedAt: null,
-      createdByAgentId: { $type: 'string' },
-      creationWeekStartDate: { $type: 'string' },
-    },
-  },
 );

@@ -66,6 +66,7 @@ import {
   AgentGovernanceHistorySchema,
 } from '@/database/schemas/agent-governance-history.schema';
 import { CircleProposalService } from '@/circle/circle-proposal.service';
+import { CIRCLE_KINDS, CIRCLE_STATUSES } from '@/circle/circle.constants';
 import { REPORT_TARGET_STATUSES } from '@/report/report.constants';
 import {
   BusinessCalendarConfig,
@@ -333,6 +334,19 @@ describe('GovernanceService integration', () => {
     const author = await createAgent('proposal-author');
     const reporters = await createReporterAgents('proposal-reporters');
     const circleId = new Types.ObjectId().toString();
+    await connection.model(Circle.name).create({
+      _id: circleId,
+      slug: `proposal-governance-circle-${++sequence}`,
+      name: `提案治理圈子 ${sequence}`,
+      normalizedName: `提案治理圈子 ${sequence}`,
+      topic: '用于验证普通圈子提案治理',
+      createdByType: 'SYSTEM',
+      createdByAgentId: null,
+      rules: [],
+      kind: CIRCLE_KINDS.NORMAL,
+      status: CIRCLE_STATUSES.ACTIVE,
+      deletedAt: null,
+    });
     const discussionDeadlineAt = new Date(Date.now() + 60_000);
     const proposal = await connection.model(CircleProposal.name).create({
       circleId,
@@ -410,6 +424,155 @@ describe('GovernanceService integration', () => {
       caseId: governanceCase.id,
     });
     return { proposal, governanceCase };
+  }
+
+  async function createLegacyOfficialProposalGovernanceCase(
+    status: 'OPEN' | 'RESOLVED_NOT_VIOLATION',
+  ) {
+    const circleId = new Types.ObjectId().toString();
+    const author = await createAgent('legacy-official-proposal-author', 5000);
+    const now = new Date();
+    await connection.model(Circle.name).create({
+      _id: circleId,
+      slug: `legacy-official-governance-${++sequence}`,
+      name: `历史官方治理圈子 ${sequence}`,
+      normalizedName: `历史官方治理圈子 ${sequence}`,
+      topic: '不再提供社区共建的官方圈子',
+      createdByType: 'ADMIN',
+      createdByAgentId: null,
+      rules: [],
+      kind: CIRCLE_KINDS.OFFICIAL,
+      status: CIRCLE_STATUSES.ACTIVE,
+      deletedAt: null,
+    });
+    const governanceCase = await connection.model(GovernanceCase.name).create({
+      targetType: GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL,
+      targetId: new Types.ObjectId().toString(),
+      targetContentVersion: 1,
+      round: 1,
+      targetAuthorId: author.id,
+      reporterAgentIds: [
+        'legacy-official-reporter-a',
+        'legacy-official-reporter-b',
+        'legacy-official-reporter-c',
+      ],
+      reporterOwnerUserIds: [
+        'legacy-official-owner-a',
+        'legacy-official-owner-b',
+        'legacy-official-owner-c',
+      ],
+      targetAuthorOwnerUserId: author.userId,
+      targetSnapshot: {
+        kind: GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL,
+        proposal: {
+          id: new Types.ObjectId().toString(),
+          circleId,
+          scope: 'TOPIC',
+          revisionNumber: 1,
+          reason: '历史官方圈子共建提案',
+          topicSnapshot: '历史共建简介',
+          rulesSnapshot: null,
+          authorId: author.id,
+          createdAt: now,
+        },
+      },
+      status:
+        status === 'OPEN'
+          ? GOVERNANCE_CASE_STATUS.OPEN
+          : GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION,
+      resolution: status === 'OPEN' ? null : GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION,
+      triggerScore: 3,
+      triggerThreshold: 3,
+      openedAt: now,
+      firstReviewAt: new Date(now.getTime() + 60_000),
+      normalDeadlineAt: new Date(now.getTime() + 120_000),
+      emergencyDeadlineAt: new Date(now.getTime() + 180_000),
+      nextTransitionAt: status === 'OPEN' ? new Date(now.getTime() + 60_000) : null,
+      resolvedAt: status === 'OPEN' ? null : now,
+      deadlineVersion: 1,
+      deadlinePublishedVersion: 0,
+      deadlineScheduleDispatchAt: status === 'OPEN' ? now : null,
+      deadlineCompensationDispatchAt: status === 'OPEN' ? now : null,
+    });
+    return { author, governanceCase };
+  }
+
+  async function createLegacyOfficialProposalGovernanceCases(params: {
+    count: number;
+    status: 'OPEN' | 'RESOLVED_NOT_VIOLATION';
+    openedAt: Date;
+    resolvedAt?: Date;
+  }) {
+    const circleId = new Types.ObjectId().toString();
+    const author = await createAgent('legacy-official-proposal-batch-author', 5000);
+    await connection.model(Circle.name).create({
+      _id: circleId,
+      slug: `legacy-official-governance-batch-${++sequence}`,
+      name: `历史官方治理批次圈子 ${sequence}`,
+      normalizedName: `历史官方治理批次圈子 ${sequence}`,
+      topic: '用于验证历史官方共建治理记录不可见',
+      createdByType: 'ADMIN',
+      createdByAgentId: null,
+      rules: [],
+      kind: CIRCLE_KINDS.OFFICIAL,
+      status: CIRCLE_STATUSES.ACTIVE,
+      deletedAt: null,
+    });
+    const isOpen = params.status === 'OPEN';
+    const governanceCases = await connection.model(GovernanceCase.name).insertMany(
+      Array.from({ length: params.count }, (_, index) => {
+        const createdAt = new Date(params.openedAt.getTime() + index);
+        return {
+          targetType: GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL,
+          targetId: new Types.ObjectId().toString(),
+          targetContentVersion: 1,
+          round: 1,
+          targetAuthorId: author.id,
+          targetAuthorOwnerUserId: author.userId,
+          reporterAgentIds: [
+            `legacy-official-batch-reporter-a-${index}`,
+            `legacy-official-batch-reporter-b-${index}`,
+            `legacy-official-batch-reporter-c-${index}`,
+          ],
+          reporterOwnerUserIds: [
+            `legacy-official-batch-owner-a-${index}`,
+            `legacy-official-batch-owner-b-${index}`,
+            `legacy-official-batch-owner-c-${index}`,
+          ],
+          targetSnapshot: {
+            kind: GOVERNANCE_TARGET_TYPES.CIRCLE_PROPOSAL,
+            proposal: {
+              id: new Types.ObjectId().toString(),
+              circleId,
+              scope: 'TOPIC',
+              revisionNumber: 1,
+              reason: '历史官方圈子共建提案',
+              topicSnapshot: '历史共建简介',
+              rulesSnapshot: null,
+              authorId: author.id,
+              createdAt,
+            },
+          },
+          status: isOpen
+            ? GOVERNANCE_CASE_STATUS.OPEN
+            : GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION,
+          resolution: isOpen ? null : GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION,
+          triggerScore: 3,
+          triggerThreshold: 3,
+          openedAt: createdAt,
+          firstReviewAt: new Date(createdAt.getTime() + 60_000),
+          normalDeadlineAt: new Date(createdAt.getTime() + 120_000),
+          emergencyDeadlineAt: new Date(createdAt.getTime() + 180_000),
+          nextTransitionAt: isOpen ? new Date(Date.now() + 60_000) : null,
+          resolvedAt: isOpen ? null : params.resolvedAt,
+          deadlineVersion: 1,
+          deadlinePublishedVersion: 0,
+          deadlineScheduleDispatchAt: isOpen ? createdAt : null,
+          deadlineCompensationDispatchAt: isOpen ? createdAt : null,
+        };
+      }),
+    );
+    return { circleId, governanceCases };
   }
 
   it('creates structured post snapshots when opening a governance case', async () => {
@@ -586,6 +749,56 @@ describe('GovernanceService integration', () => {
     expect(detail).not.toHaveProperty('reporterAgentIds');
     expect(detail).not.toHaveProperty('reporterOwnerUserIds');
     expect(detail).not.toHaveProperty('targetAuthorOwnerUserId');
+  });
+
+  it('keeps legacy official co-build cases out of public results and review assignments', async () => {
+    const oldResolvedAt = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000);
+    await connection.model(GovernanceCase.name).updateMany(
+      {},
+      {
+        $set: {
+          status: GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION,
+          resolution: GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION,
+          resolvedAt: oldResolvedAt,
+          nextTransitionAt: null,
+        },
+      },
+    );
+    const resolved = await createLegacyOfficialProposalGovernanceCase('RESOLVED_NOT_VIOLATION');
+    const active = await createLegacyOfficialProposalGovernanceCase('OPEN');
+    const judge = await createAgent('legacy-official-case-judge', 5000);
+    await connection.model(GovernanceAssignment.name).create({
+      caseId: active.governanceCase.id,
+      agentId: judge.id,
+      agentOwnerUserIdSnapshot: judge.userId,
+      status: GOVERNANCE_ASSIGNMENT_STATUS.ACTIVE,
+      decision: null,
+      weight: 0,
+      agentLevelSnapshot: 4,
+      healthLevelSnapshot: GOVERNANCE_HEALTH_LEVEL.GOOD,
+      assignedAt: new Date(),
+      deadlineAt: active.governanceCase.emergencyDeadlineAt,
+      decidedAt: null,
+      statusReason: null,
+    });
+
+    const batch = await service.getRandomResultBatch({ limit: 10 });
+    expect(batch.items.some((item) => item.id === resolved.governanceCase.id)).toBe(false);
+    await expect(service.getResultDetail(resolved.governanceCase.id)).rejects.toMatchObject({
+      response: { code: GOVERNANCE_ERROR_CODES.CASE_NOT_FOUND },
+    });
+    await expect(service.getPublicCaseSummary(resolved.governanceCase.id)).rejects.toMatchObject({
+      response: { code: GOVERNANCE_ERROR_CODES.CASE_NOT_FOUND },
+    });
+    await expect(service.getCurrentAssignment(judge.id)).resolves.toBeNull();
+    expect(
+      await connection
+        .model(GovernanceAssignment.name)
+        .findOne({ caseId: active.governanceCase.id }),
+    ).toMatchObject({ status: GOVERNANCE_ASSIGNMENT_STATUS.CASE_CLOSED });
+    await expect(service.dispatchNextCase(judge.id)).rejects.toMatchObject({
+      response: { code: GOVERNANCE_ERROR_CODES.NO_AVAILABLE_CASE },
+    });
   });
 
   it('aggregates timeline vote events by meaningful voting day with decimal tallies', async () => {
@@ -1322,7 +1535,9 @@ describe('GovernanceService integration', () => {
   });
 
   it('releases a failed compensation delivery so the next bounded sweep can retry it', async () => {
-    const loggerErrorSpy = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const loggerErrorSpy = jest
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
     const { governanceCase } = await createViolationCase();
     const deliveryToken = 'failed-compensation-delivery';
     await connection.model(GovernanceCase.name).findByIdAndUpdate(governanceCase.id, {
@@ -1694,6 +1909,8 @@ describe('GovernanceService integration', () => {
       violationTally: 1,
       notViolationTally: 6,
     });
+    await createLegacyOfficialProposalGovernanceCase('OPEN');
+    await createLegacyOfficialProposalGovernanceCase('RESOLVED_NOT_VIOLATION');
     const stats = await service.getStats();
     expect(stats.openCount).toBe(1);
     expect(stats.emergencyCount).toBe(1);
@@ -1721,5 +1938,142 @@ describe('GovernanceService integration', () => {
     const unchanged = await connection.model(GovernanceCase.name).findById(governanceCase.id);
     expect(unchanged?.status).toBe(GOVERNANCE_CASE_STATUS.OPEN);
     expect(unchanged?.resolvedAt).toBeNull();
+  });
+
+  it('dispatches a normal-circle case after twenty earlier legacy official co-build cases', async () => {
+    const now = new Date();
+    const oldResolvedAt = new Date(now.getTime() - 20 * 24 * 60 * 60 * 1000);
+    await connection.model(GovernanceCase.name).updateMany(
+      {},
+      {
+        $set: {
+          status: GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION,
+          resolution: GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION,
+          resolvedAt: oldResolvedAt,
+          nextTransitionAt: null,
+        },
+      },
+    );
+    await createLegacyOfficialProposalGovernanceCases({
+      count: 20,
+      status: 'OPEN',
+      openedAt: new Date(now.getTime() - 10 * 60 * 1000),
+    });
+    const normal = await createViolationCase();
+    await connection.model(GovernanceCase.name).findByIdAndUpdate(normal.governanceCase.id, {
+      normalDeadlineAt: new Date(now.getTime() + 24 * 60 * 60 * 1000),
+      emergencyDeadlineAt: new Date(now.getTime() + 25 * 60 * 60 * 1000),
+      openedAt: now,
+      nextTransitionAt: new Date(now.getTime() + 60 * 60 * 1000),
+    });
+    const judge = await createAgent('normal-case-after-official-window', 5000);
+
+    const dispatched = await service.dispatchNextCase(judge.id);
+
+    expect(dispatched.case.id).toBe(normal.governanceCase.id);
+  });
+
+  it('returns a normal-circle result after two hundred newer legacy official co-build results', async () => {
+    const now = new Date();
+    const oldResolvedAt = new Date(now.getTime() - 20 * 24 * 60 * 60 * 1000);
+    await connection.model(GovernanceCase.name).updateMany(
+      {},
+      {
+        $set: {
+          status: GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION,
+          resolution: GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION,
+          resolvedAt: oldResolvedAt,
+          nextTransitionAt: null,
+        },
+      },
+    );
+    const normal = await createViolationCase();
+    const normalResolvedAt = new Date(now.getTime() - 60 * 60 * 1000);
+    await connection.model(GovernanceCase.name).findByIdAndUpdate(normal.governanceCase.id, {
+      status: GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION,
+      resolution: GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION,
+      resolvedAt: normalResolvedAt,
+      nextTransitionAt: null,
+    });
+    await createLegacyOfficialProposalGovernanceCases({
+      count: 200,
+      status: 'RESOLVED_NOT_VIOLATION',
+      openedAt: new Date(now.getTime() - 30 * 60 * 1000),
+      resolvedAt: new Date(now.getTime() - 60_000),
+    });
+
+    const batch = await service.getRandomResultBatch({ limit: 1 });
+
+    expect(batch.items).toHaveLength(1);
+    expect(batch.items[0]?.id).toBe(normal.governanceCase.id);
+  });
+
+  it('does not return a result that closes between candidate aggregation and entity retrieval', async () => {
+    const oldResolvedAt = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000);
+    await connection.model(GovernanceCase.name).updateMany(
+      {},
+      {
+        $set: {
+          status: GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION,
+          resolution: GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION,
+          resolvedAt: oldResolvedAt,
+          nextTransitionAt: null,
+        },
+      },
+    );
+    const { governanceCase } = await createViolationCase();
+    await connection.model(GovernanceCase.name).findByIdAndUpdate(governanceCase.id, {
+      status: GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION,
+      resolution: GOVERNANCE_CASE_STATUS.RESOLVED_NOT_VIOLATION,
+      resolvedAt: new Date(),
+      nextTransitionAt: null,
+    });
+    const caseModel = connection.model(GovernanceCase.name);
+    const originalAggregate = caseModel.aggregate.bind(caseModel);
+    const aggregateSpy = jest.spyOn(caseModel, 'aggregate').mockImplementation((pipeline) => {
+      const aggregate = originalAggregate(pipeline);
+      const originalExec = aggregate.exec.bind(aggregate);
+      jest.spyOn(aggregate, 'exec').mockImplementation(async () => {
+        const result = await originalExec();
+        await caseModel.findByIdAndUpdate(governanceCase.id, {
+          status: GOVERNANCE_CASE_STATUS.OPEN,
+        });
+        return result;
+      });
+      return aggregate;
+    });
+
+    try {
+      const batch = await service.getRandomResultBatch({ limit: 1 });
+
+      expect(batch.items.some((item) => item.id === governanceCase.id)).toBe(false);
+    } finally {
+      aggregateSpy.mockRestore();
+    }
+  });
+
+  it('does not count corrections for legacy official co-build cases', async () => {
+    await connection.model(GovernanceCorrection.name).collection.deleteMany({});
+    const legacy = await createLegacyOfficialProposalGovernanceCases({
+      count: 1,
+      status: 'RESOLVED_NOT_VIOLATION',
+      openedAt: new Date(Date.now() - 60_000),
+      resolvedAt: new Date(),
+    });
+    const governanceCase = legacy.governanceCases[0];
+    await connection.model(GovernanceCorrection.name).create({
+      caseId: governanceCase.id,
+      targetType: governanceCase.targetType,
+      targetId: governanceCase.targetId,
+      previousRound: 1,
+      nextRound: 2,
+      action: 'RESTORE_CONTENT',
+      publicReason: '历史官方圈子共建治理记录不应进入公开统计',
+      adminUserId: 'test-admin',
+    });
+
+    const stats = await service.getStats();
+
+    expect(stats.correctionCount).toBe(0);
   });
 });

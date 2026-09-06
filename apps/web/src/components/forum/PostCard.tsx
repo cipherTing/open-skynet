@@ -26,7 +26,8 @@ const POST_LAYOUT_CONFIG = {
     bodyClass: 'grid h-full grid-cols-[auto_minmax(0,1fr)_auto] gap-x-4 px-4 py-3 sm:px-5',
     contentClass: 'flex min-h-0 min-w-0 flex-col overflow-hidden',
     titleClass: 'text-xl leading-tight',
-    previewClass: 'mt-1 min-h-0 flex-1 overflow-hidden line-clamp-3 text-xs leading-relaxed text-text-secondary',
+    previewClass:
+      'mt-1 min-h-0 flex-1 overflow-hidden line-clamp-3 text-xs leading-relaxed text-text-secondary',
     statsClass: 'flex h-full flex-col justify-end gap-1.5 pb-0.5',
   },
   2: {
@@ -34,7 +35,8 @@ const POST_LAYOUT_CONFIG = {
     bodyClass: 'flex h-full flex-col gap-2 px-4 py-3 sm:px-5',
     contentClass: 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden',
     titleClass: 'text-lg leading-tight',
-    previewClass: 'mt-2 min-h-0 flex-1 overflow-hidden line-clamp-6 text-xs leading-relaxed text-text-secondary',
+    previewClass:
+      'mt-2 min-h-0 flex-1 overflow-hidden line-clamp-6 text-xs leading-relaxed text-text-secondary',
     statsClass: 'flex shrink-0 items-center justify-between border-t border-[var(--t-noise)] pt-2',
   },
   3: {
@@ -42,17 +44,22 @@ const POST_LAYOUT_CONFIG = {
     bodyClass: 'flex h-full flex-col gap-1.5 px-3 py-2.5',
     contentClass: 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden',
     titleClass: 'text-base leading-tight',
-    previewClass: 'mt-1 min-h-0 flex-1 overflow-hidden line-clamp-8 text-[11px] leading-relaxed text-text-secondary',
-    statsClass: 'flex shrink-0 items-center justify-between border-t border-[var(--t-noise)] pt-1.5',
+    previewClass:
+      'mt-1 min-h-0 flex-1 overflow-hidden line-clamp-8 text-[11px] leading-relaxed text-text-secondary',
+    statsClass:
+      'flex shrink-0 items-center justify-between border-t border-[var(--t-noise)] pt-1.5',
   },
-} as const satisfies Record<ForumLayoutMode, {
-  avatarSize: number;
-  bodyClass: string;
-  contentClass: string;
-  titleClass: string;
-  previewClass: string;
-  statsClass: string;
-}>;
+} as const satisfies Record<
+  ForumLayoutMode,
+  {
+    avatarSize: number;
+    bodyClass: string;
+    contentClass: string;
+    titleClass: string;
+    previewClass: string;
+    statsClass: string;
+  }
+>;
 
 function formatCount(value: number): string {
   return formatNumber(Math.max(0, Math.round(value)));
@@ -112,7 +119,9 @@ export function PostCard({ post, layout = 1, onRequireAuth }: PostCardProps) {
         aria-hidden
         className="pointer-events-none absolute inset-y-0 left-0 w-[2px] bg-[var(--t-accent)] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100"
       />
-      <div className={`${layoutConfig.bodyClass} transition-transform duration-100 [transition-timing-function:steps(2,end)] group-hover:translate-x-[3px]`}>
+      <div
+        className={`${layoutConfig.bodyClass} transition-transform duration-100 [transition-timing-function:steps(2,end)] group-hover:translate-x-[3px]`}
+      >
         {isMasonry ? (
           <div className="flex min-w-0 items-center gap-2">
             <AuthorAvatarButton
@@ -135,20 +144,44 @@ export function PostCard({ post, layout = 1, onRequireAuth }: PostCardProps) {
             <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
               <AuthorIdentity post={post} onClick={handleAuthorClick} />
             </div>
-            <PostTaxonomy post={post} isCircleFeed={isCircleFeed} onRequireAuth={onRequireAuth} t={t} />
-            <PostTitle post={post} preview={preview} layoutConfig={layoutConfig} onRequireAuth={onRequireAuth} handleProtectedClick={handleProtectedClick} />
+            <PostTaxonomy
+              post={post}
+              isCircleFeed={isCircleFeed}
+              onRequireAuth={onRequireAuth}
+              t={t}
+            />
+            <PostTitle
+              post={post}
+              preview={preview}
+              layoutConfig={layoutConfig}
+              onRequireAuth={onRequireAuth}
+              handleProtectedClick={handleProtectedClick}
+            />
           </div>
         )}
 
         {isMasonry && (
           <div className={layoutConfig.contentClass}>
             <RelativeTime date={post.createdAt} className="mt-0.5" />
-            <PostTaxonomy post={post} isCircleFeed={isCircleFeed} onRequireAuth={onRequireAuth} t={t} />
-            <PostTitle post={post} preview={preview} layoutConfig={layoutConfig} onRequireAuth={onRequireAuth} handleProtectedClick={handleProtectedClick} />
+            <PostTaxonomy
+              post={post}
+              isCircleFeed={isCircleFeed}
+              onRequireAuth={onRequireAuth}
+              t={t}
+            />
+            <PostTitle
+              post={post}
+              preview={preview}
+              layoutConfig={layoutConfig}
+              onRequireAuth={onRequireAuth}
+              handleProtectedClick={handleProtectedClick}
+            />
           </div>
         )}
 
-        <div className={`${layoutConfig.statsClass} font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)] ${STEPS_COLOR} group-hover:text-[var(--t-accent)] ${isMasonry ? 'w-full' : ''}`}>
+        <div
+          className={`${layoutConfig.statsClass} font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)] ${STEPS_COLOR} group-hover:text-[var(--t-accent)] ${isMasonry ? 'w-full' : ''}`}
+        >
           <span className="flex items-baseline gap-1.5">
             <span>{t('feed.statReplies')}</span>
             <span className="inline-block whitespace-nowrap text-[11px] font-bold [font-variant-numeric:tabular-nums]">
@@ -250,6 +283,9 @@ function PostTaxonomy({
       {post.tags.map((tag) => (
         <TTag key={tag}>{t(`postTags.${tag}.label`)}</TTag>
       ))}
+      {post.pinnedAt !== null && isCircleFeed && (
+        <TTag color="accent">{t('feed.pinnedBadge')}</TTag>
+      )}
       {post.isHot === true && <TTag color="accent">{t('feed.hotBadge')}</TTag>}
     </div>
   );
@@ -270,7 +306,9 @@ function PostTitle({
 }) {
   return (
     <>
-      <h3 className={`mt-2 line-clamp-2 font-bold tracking-normal text-white ${layoutConfig.titleClass}`}>
+      <h3
+        className={`mt-2 line-clamp-2 font-bold tracking-normal text-white ${layoutConfig.titleClass}`}
+      >
         <Link
           href={`/post/${post.id}`}
           onClick={(event) => {

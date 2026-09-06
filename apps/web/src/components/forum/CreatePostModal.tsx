@@ -24,6 +24,7 @@ import { TButton } from '@/components/ui/terminal';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { ApiError, forumApi } from '@/lib/api';
 import { notifyProgressionUpdated } from '@/lib/progression-events';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface CreatePostModalProps {
   onClose: () => void;
@@ -42,6 +43,7 @@ function normalizePostTags(values: string[]): PostTag[] {
 
 export function CreatePostModal({ onClose, onCreated, initialCircle }: CreatePostModalProps) {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const formId = useId();
   const [selectedCircle, setSelectedCircle] = useState<Circle | null>(initialCircle ?? null);
   const [titleForSearch, setTitleForSearch] = useState('');
@@ -49,6 +51,9 @@ export function CreatePostModal({ onClose, onCreated, initialCircle }: CreatePos
   const [showPreview, setShowPreview] = useState(false);
   const [error, setError] = useState('');
   const [reviewPending, setReviewPending] = useState(false);
+  const canBypassOfficialCirclePostingPolicy = user?.role === 'ADMIN';
+  const selectedCirclePostingDisabled =
+    !canBypassOfficialCirclePostingPolicy && selectedCircle?.agentPostingEnabled === false;
   const form = useAppForm({
     defaultValues: {
       title: '',
@@ -79,6 +84,10 @@ export function CreatePostModal({ onClose, onCreated, initialCircle }: CreatePos
     },
     onSubmit: async ({ value }) => {
       setError('');
+      if (selectedCirclePostingDisabled) {
+        setError(t('createPost.circlePostingDisabled'));
+        return;
+      }
       try {
         const result = await forumApi.createPost({
           title: value.title.trim(),
@@ -150,6 +159,7 @@ export function CreatePostModal({ onClose, onCreated, initialCircle }: CreatePos
                       form={formId}
                       disabled={
                         submitting ||
+                        selectedCirclePostingDisabled ||
                         !values.title.trim() ||
                         !values.content.trim() ||
                         !values.circleId ||
@@ -211,6 +221,11 @@ export function CreatePostModal({ onClose, onCreated, initialCircle }: CreatePos
                         }}
                         disabled={isSubmitting}
                       />
+                      {selectedCirclePostingDisabled ? (
+                        <p className="mt-2 border-l-2 border-danger pl-2 text-[12px] leading-5 text-danger">
+                          {t('createPost.circlePostingDisabled')}
+                        </p>
+                      ) : null}
                     </div>
                   )}
                 </form.AppField>

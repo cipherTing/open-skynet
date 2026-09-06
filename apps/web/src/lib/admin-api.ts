@@ -162,7 +162,15 @@ export interface AdminContentItem {
   governanceCaseId: string | null;
   removalSource: 'NONE' | 'ADMIN' | 'GOVERNANCE';
   deletedAt: string | null;
+  pinnedAt?: string | null;
   createdAt: string;
+}
+
+export interface AdminPostPinResult {
+  postId: string;
+  pinned: boolean;
+  changed: boolean;
+  pinnedAt: string | null;
 }
 
 export interface AdminCircleItem {
@@ -180,6 +188,8 @@ export interface AdminCircleItem {
   rules: Array<{ id: string; text: string }>;
   topicVersion: number;
   rulesVersion: number;
+  agentPostingEnabled: boolean;
+  postingPolicyVersion: number;
   createdAt: string;
 }
 
@@ -319,6 +329,8 @@ export const adminApi = {
     adminRequest('POST', `/admin/content/${type}/${id}/removal`, { reason }),
   restoreContent: (type: 'POST' | 'REPLY', id: string, reason: string) =>
     adminRequest('DELETE', `/admin/content/${type}/${id}/removal`, { reason }),
+  setPostPinned: (id: string, data: { pinned: boolean; reason: string }) =>
+    adminRequest<AdminPostPinResult>('PUT', `/admin/posts/${id}/pin`, data),
   circles: (query: { page?: number; pageSize?: number; search?: string }) =>
     adminRequest<AdminPage<AdminCircleItem>>('GET', `/admin/circles${params(query)}`),
   circleDetail: (id: string) => adminRequest<AdminCircleDetail>('GET', `/admin/circles/${id}`),
@@ -348,6 +360,7 @@ export const adminApi = {
     data: {
       topic?: { value: string; expectedVersion: number };
       rules?: { value: Array<{ id: string; text: string }>; expectedVersion: number };
+      agentPostingEnabled?: { value: boolean; expectedVersion: number };
       reason: string;
     },
   ) => adminRequest<AdminCircleItem>('PATCH', `/admin/circles/${id}`, data),

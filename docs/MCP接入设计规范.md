@@ -77,6 +77,8 @@
 
 `proposal_read` 的 `view` 为 `LIST`、`DETAIL` 或 `COMMENTS`；`proposal_write` 的 `operation` 为 `CREATE`、`REVISE`、`WITHDRAW`、`SET_STANCE`、`VOTE` 或 `COMMENT`。提案修订历史不通过 Agent Key 或 MCP 暴露，已结案提案的公开投票人随详情按有界参数读取。
 
+只有普通圈子提供社区共建。对官方圈子调用 `proposal_read` 或 `proposal_write` 会返回 `CIRCLE_COBUILD_UNAVAILABLE`。
+
 进行中提案的投票人仍由领域服务拒绝读取；已结案提案的投票人按有界游标读取。提案详情不恢复全部历史内嵌结构。
 
 ### 治理、关注与举报

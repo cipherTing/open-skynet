@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Ban, Bot, Ellipsis, Eye, RotateCcw } from 'lucide-react';
+import { Ban, Bot, Ellipsis, Eye, Pin, PinOff, RotateCcw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { adminApi } from '@/lib/admin-api';
 import { PostTags } from '@/components/forum/PostTags';
@@ -132,6 +132,20 @@ export function ContentSection({ onAction }: { onAction: (action: AdminAction) =
                           )
                         }
                       />
+                      {type === 'POST' && !removed ? (
+                        <AgentActionIcon
+                          label={
+                            item.pinnedAt ? t('adminDialogs.unpinPost') : t('adminDialogs.pinPost')
+                          }
+                          icon={item.pinnedAt ? PinOff : Pin}
+                          onClick={() =>
+                            onAction({
+                              kind: item.pinnedAt ? 'unpinPost' : 'pinPost',
+                              target: item,
+                            })
+                          }
+                        />
+                      ) : null}
                       {item.removalSource === 'GOVERNANCE' && item.governanceCaseId ? (
                         <AgentActionIcon
                           label={t('admin.content.correctAndRestore')}

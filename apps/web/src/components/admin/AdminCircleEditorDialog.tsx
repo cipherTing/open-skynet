@@ -10,6 +10,7 @@ import { ComposerTextarea } from '@/components/ui/ComposerTextarea';
 import { TerminalDialog } from '@/components/ui/TerminalDialog';
 import { TButton, TInput } from '@/components/ui/terminal';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Switch } from '@/components/ui/switch';
 import { adminApi, type AdminCircleDetail, type AdminCircleItem } from '@/lib/admin-api';
 import { AdminLoading } from './AdminPrimitives';
 
@@ -178,6 +179,7 @@ function AdminCircleEditorForm({
       kind: 'NORMAL' as (typeof CIRCLE_KINDS)[number],
       topic: snapshot?.topic ?? '',
       rules: originalRules.map((rule) => ({ ...rule })),
+      agentPostingEnabled: snapshot?.agentPostingEnabled ?? true,
       reason: '',
     },
     validators: {
@@ -194,6 +196,7 @@ function AdminCircleEditorForm({
               }),
             )
             .max(CIRCLE_RULE_MAX_COUNT),
+          agentPostingEnabled: z.boolean(),
           reason: z.string().max(ADMIN_REASON_MAX_LENGTH),
         })
         .superRefine((value, context) => {
@@ -216,7 +219,12 @@ function AdminCircleEditorForm({
           }
           const topicChanged = Boolean(snapshot && value.topic.trim() !== snapshot.topic);
           const rulesChanged = Boolean(snapshot && !rulesEqual(value.rules, originalRules));
-          if (!topicChanged && !rulesChanged) {
+          const agentPostingChanged = Boolean(
+            snapshot &&
+            snapshot.kind === 'OFFICIAL' &&
+            value.agentPostingEnabled !== snapshot.agentPostingEnabled,
+          );
+          if (!topicChanged && !rulesChanged && !agentPostingChanged) {
             context.addIssue({
               code: 'custom',
               path: ['reason'],
@@ -245,6 +253,9 @@ function AdminCircleEditorForm({
           if (!snapshot) throw new Error(t('admin.circles.loadDetailFailed'));
           const topicChanged = value.topic.trim() !== snapshot.topic;
           const rulesChanged = !rulesEqual(value.rules, originalRules);
+          const agentPostingChanged =
+            snapshot.kind === 'OFFICIAL' &&
+            value.agentPostingEnabled !== snapshot.agentPostingEnabled;
           await adminApi.updateCircle(snapshot.id ?? snapshot._id, {
             ...(topicChanged
               ? {
@@ -259,6 +270,14 @@ function AdminCircleEditorForm({
                   rules: {
                     value: normalizeRules(value.rules),
                     expectedVersion: snapshot.rulesVersion,
+                  },
+                }
+              : {}),
+            ...(agentPostingChanged
+              ? {
+                  agentPostingEnabled: {
+                    value: value.agentPostingEnabled,
+                    expectedVersion: snapshot.postingPolicyVersion,
                   },
                 }
               : {}),
@@ -277,11 +296,16 @@ function AdminCircleEditorForm({
       {([values, isSubmitting]) => {
         const topicChanged = Boolean(snapshot && values.topic.trim() !== snapshot.topic);
         const rulesChanged = Boolean(snapshot && !rulesEqual(values.rules, originalRules));
+        const agentPostingChanged = Boolean(
+          snapshot &&
+          snapshot.kind === 'OFFICIAL' &&
+          values.agentPostingEnabled !== snapshot.agentPostingEnabled,
+        );
         const rulesValid = values.rules.every((rule) => rule.text.trim().length > 0);
         const valid = isEdit
           ? Boolean(
               snapshot &&
-              (topicChanged || rulesChanged) &&
+              (topicChanged || rulesChanged || agentPostingChanged) &&
               values.reason.trim().length >= ADMIN_REASON_MIN_LENGTH &&
               rulesValid,
             )
@@ -292,6 +316,7 @@ function AdminCircleEditorForm({
         const changeSummary: string[] = [];
         if (snapshot) {
           if (topicChanged) changeSummary.push(t('admin.circles.changeTopic'));
+          if (agentPostingChanged) changeSummary.push(t('admin.circles.changeAgentPosting'));
           const added = values.rules.filter(
             (rule) => !originalRules.some((original) => original.id === rule.id),
           );
@@ -344,7 +369,7 @@ function AdminCircleEditorForm({
               <>
                 <span className="mr-auto text-xs text-[var(--t-sub)]">
                   {isEdit && !valid
-                    ? !topicChanged && !rulesChanged
+                    ? !topicChanged && !rulesChanged && !agentPostingChanged
                       ? t('admin.circles.saveDisabledNoChanges')
                       : values.reason.trim().length < ADMIN_REASON_MIN_LENGTH
                         ? t('admin.circles.saveDisabledReason')
@@ -475,6 +500,38 @@ function AdminCircleEditorForm({
                     </section>
                   )}
                 </form.AppField>
+
+                {isEdit && snapshot?.kind === 'OFFICIAL' ? (
+                  <form.AppField name="agentPostingEnabled">
+                    {(field) => (
+                      <section className="border-y border-[var(--t-noise)] py-4">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <h3 className="flex items-center gap-2 font-sans text-[12px] font-semibold tracking-normal text-[var(--t-text)]">
+                              <span aria-hidden className="text-[var(--t-accent)]">
+                                {'//'}
+                              </span>
+                              {t('admin.circles.agentPosting')}
+                            </h3>
+                            <p className="mt-1 text-xs leading-5 text-[var(--t-sub)]">
+                              {t('admin.circles.agentPostingDescription')}
+                            </p>
+                          </div>
+                          <Switch
+                            checked={field.state.value}
+                            onCheckedChange={field.handleChange}
+                            aria-label={t('admin.circles.agentPosting')}
+                          />
+                        </div>
+                        <p className="mt-3 border-l-2 border-[var(--t-accent)] pl-3 text-xs text-[var(--t-sub)]">
+                          {field.state.value
+                            ? t('admin.circles.agentPostingEnabled')
+                            : t('admin.circles.agentPostingDisabled')}
+                        </p>
+                      </section>
+                    )}
+                  </form.AppField>
+                ) : null}
 
                 {isEdit && snapshot ? (
                   <section>

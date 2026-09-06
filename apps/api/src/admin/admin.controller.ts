@@ -7,6 +7,7 @@ import {
   ParseEnumPipe,
   Patch,
   Post,
+  Put,
   Query,
   Req,
 } from '@nestjs/common';
@@ -39,11 +40,9 @@ import {
   UpdateAdminCircleDto,
 } from './dto/admin-circle.dto';
 import { AdminGovernanceDecisionDto } from './dto/admin-governance-decision.dto';
-import {
-  FEATURE_FLAG_KEYS,
-  type FeatureFlagKey,
-} from '@/database/schemas/feature-flag.schema';
+import { FEATURE_FLAG_KEYS, type FeatureFlagKey } from '@/database/schemas/feature-flag.schema';
 import { ListAdminAuditLogsDto } from './dto/list-admin-audit-logs.dto';
+import { SetPostPinnedDto } from './dto/set-post-pinned.dto';
 import { UpdatePublicAccessConfigDto } from './dto/update-public-access-config.dto';
 import { UpdateAuthPolicyDto, TestSmtpDto, TestTurnstileDto } from './dto/auth-policy.dto';
 import { CreateInvitationCodeDto, ListInvitationCodesDto } from './dto/invitation-code.dto';
@@ -141,6 +140,15 @@ export class AdminController {
     return this.adminService.setContentRemoved(admin, type, id, false, dto.reason);
   }
 
+  @Put('posts/:id/pin')
+  setPostPinned(
+    @CurrentAdmin() admin: AdminPrincipal,
+    @Param('id') id: string,
+    @Body() dto: SetPostPinnedDto,
+  ) {
+    return this.adminService.setPostPinned(admin, id, dto.pinned, dto.reason);
+  }
+
   @Get('circles')
   circles(@Query() dto: ListAdminCirclesDto) {
     return this.adminService.listCircles(dto);
@@ -152,10 +160,7 @@ export class AdminController {
   }
 
   @Post('circles')
-  createCircle(
-    @CurrentAdmin() admin: AdminPrincipal,
-    @Body() dto: CreateAdminCircleDto,
-  ) {
+  createCircle(@CurrentAdmin() admin: AdminPrincipal, @Body() dto: CreateAdminCircleDto) {
     return this.adminService.createCircle(admin, dto);
   }
 
@@ -193,12 +198,7 @@ export class AdminController {
     @Param('proposalId') proposalId: string,
     @Body() dto: AdminCircleReasonDto,
   ) {
-    return this.adminService.moderateCircleProposal(
-      admin,
-      circleId,
-      proposalId,
-      dto.publicReason,
-    );
+    return this.adminService.moderateCircleProposal(admin, circleId, proposalId, dto.publicReason);
   }
 
   @Get('governance/cases')
@@ -254,10 +254,7 @@ export class AdminController {
   }
 
   @Post('announcements')
-  createAnnouncement(
-    @CurrentAdmin() admin: AdminPrincipal,
-    @Body() dto: CreateAnnouncementDto,
-  ) {
+  createAnnouncement(@CurrentAdmin() admin: AdminPrincipal, @Body() dto: CreateAnnouncementDto) {
     return this.adminSystemService.createAnnouncement(admin, dto);
   }
 
@@ -348,10 +345,7 @@ export class AdminController {
   }
 
   @Patch('auth-policy')
-  updateAuthPolicy(
-    @CurrentAdmin() admin: AdminPrincipal,
-    @Body() dto: UpdateAuthPolicyDto,
-  ) {
+  updateAuthPolicy(@CurrentAdmin() admin: AdminPrincipal, @Body() dto: UpdateAuthPolicyDto) {
     return this.adminSystemService.updateAuthPolicy(admin, dto);
   }
 

@@ -11,7 +11,8 @@ import { ReplyRevision } from '@/database/schemas/reply-revision.schema';
 import { CircleProposal } from '@/database/schemas/circle-proposal.schema';
 import { CircleProposalComment } from '@/database/schemas/circle-proposal-comment.schema';
 import { CircleProposalRevision } from '@/database/schemas/circle-proposal-revision.schema';
-import { CIRCLE_PROPOSAL_STATUSES } from '@/circle/circle.constants';
+import { Circle } from '@/database/schemas/circle.schema';
+import { CIRCLE_KINDS, CIRCLE_PROPOSAL_STATUSES } from '@/circle/circle.constants';
 import { Report } from '@/database/schemas/report.schema';
 import {
   ReportTargetState,
@@ -65,11 +66,11 @@ function isExpectedReportRace(error: unknown): boolean {
   if (!isMongoDuplicateKeyError(error)) return false;
   const keys = Object.keys(error.keyPattern ?? {});
   return (
-    (keys.includes('reporterAgentId') &&
-      keys.includes('targetType') &&
-      keys.includes('targetId') &&
-      keys.includes('targetContentVersion') &&
-      keys.includes('round'))
+    keys.includes('reporterAgentId') &&
+    keys.includes('targetType') &&
+    keys.includes('targetId') &&
+    keys.includes('targetContentVersion') &&
+    keys.includes('round')
   );
 }
 
@@ -120,6 +121,8 @@ export class ReportService {
     private readonly proposalCommentModel: Model<CircleProposalComment>,
     @InjectModel(CircleProposalRevision.name)
     private readonly proposalRevisionModel: Model<CircleProposalRevision>,
+    @InjectModel(Circle.name)
+    private readonly circleModel: Model<Circle>,
     @InjectModel(Agent.name)
     private readonly agentModel: Model<Agent>,
     private readonly databaseService: DatabaseService,
@@ -133,7 +136,8 @@ export class ReportService {
     dto: CreateReportDto,
     session?: ClientSession,
   ): Promise<CreateReportResult> {
-    if (session) return this.createReportInTransaction(reporterAgentId, reporterOwnerUserId, dto, session);
+    if (session)
+      return this.createReportInTransaction(reporterAgentId, reporterOwnerUserId, dto, session);
     for (let attempt = 1; attempt <= REPORT_TRANSACTION_MAX_ATTEMPTS; attempt += 1) {
       try {
         return await this.databaseService.$transaction((session) =>
@@ -155,6 +159,7 @@ export class ReportService {
     dto: CreateReportDto,
     session: ClientSession,
   ): Promise<CreateReportResult> {
+    await this.assertCommunityCoBuildTargetAvailable(dto.targetType, dto.targetId, session);
     const latestTargetState = await this.targetStateModel
       .findOne(
         {
@@ -347,7 +352,7 @@ export class ReportService {
               },
             ],
           },
-          'creatorAgentId',
+          'creatorAgentId circleId',
           { session },
         ),
         this.proposalRevisionModel.findOne(
@@ -357,6 +362,11 @@ export class ReportService {
         ),
       ]);
       if (!proposal || !revision) throw reportErrors.proposalVersionUnavailable();
+      await this.assertCommunityCoBuildCircle(
+        proposal.circleId,
+        session,
+        reportErrors.proposalVersionUnavailable,
+      );
       return proposal.creatorAgentId;
     }
     if (targetType === REPORT_TARGET_TYPES.CIRCLE_PROPOSAL_COMMENT) {
@@ -365,10 +375,15 @@ export class ReportService {
       }
       const comment = await this.proposalCommentModel.findOne(
         { _id: targetId, hiddenAt: null },
-        'authorAgentId',
+        'authorAgentId circleId',
         { session },
       );
       if (!comment) throw reportErrors.proposalCommentUnavailable();
+      await this.assertCommunityCoBuildCircle(
+        comment.circleId,
+        session,
+        reportErrors.proposalCommentUnavailable,
+      );
       return comment.authorAgentId;
     }
     const [reply, revision] = await Promise.all([
@@ -387,6 +402,47 @@ export class ReportService {
       throw reportErrors.replyVersionUnavailable();
     }
     return revision.authorId;
+  }
+
+  private async assertCommunityCoBuildCircle(
+    circleId: string,
+    session: ClientSession | undefined,
+    unavailable: () => Error,
+  ): Promise<void> {
+    const circle = await this.circleModel.findOne(
+      { _id: circleId, kind: CIRCLE_KINDS.NORMAL, deletedAt: null },
+      '_id',
+      { session },
+    );
+    if (!circle) throw unavailable();
+  }
+
+  private async assertCommunityCoBuildTargetAvailable(
+    targetType: ReportTargetType,
+    targetId: string,
+    session: ClientSession,
+  ): Promise<void> {
+    if (targetType === REPORT_TARGET_TYPES.CIRCLE_PROPOSAL) {
+      const proposal = await this.proposalModel.findById(targetId, 'circleId', { session });
+      if (proposal) {
+        await this.assertCommunityCoBuildCircle(
+          proposal.circleId,
+          session,
+          reportErrors.proposalVersionUnavailable,
+        );
+      }
+      return;
+    }
+    if (targetType === REPORT_TARGET_TYPES.CIRCLE_PROPOSAL_COMMENT) {
+      const comment = await this.proposalCommentModel.findById(targetId, 'circleId', { session });
+      if (comment) {
+        await this.assertCommunityCoBuildCircle(
+          comment.circleId,
+          session,
+          reportErrors.proposalCommentUnavailable,
+        );
+      }
+    }
   }
 
   private serializeResult(

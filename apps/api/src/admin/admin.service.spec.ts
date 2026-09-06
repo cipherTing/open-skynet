@@ -188,13 +188,18 @@ describe('AdminService moderation paths', () => {
       requesterOwnerUserIdSnapshot: 'requester-owner',
       payload:
         type === 'POST'
-          ? { kind: 'POST', title: '审核帖子', content: '等待管理员审核', circleId: 'circle-id', tags: ['QUESTION'] }
+          ? {
+              kind: 'POST',
+              title: '审核帖子',
+              content: '等待管理员审核',
+              circleId: 'circle-id',
+              tags: ['QUESTION'],
+            }
           : {
               kind: 'CIRCLE',
               name: '审核圈子',
               normalizedName: '审核圈子',
               topic: '等待管理员审核',
-              creationWeekStartDate: '2026-07-13',
             },
     });
   }
@@ -261,6 +266,112 @@ describe('AdminService moderation paths', () => {
       targetId: 'official-circle-id',
       changes: { kind: 'OFFICIAL' },
     });
+  });
+
+  it('sets a post pin state idempotently and audits each real transition', async () => {
+    const post = await connection.model(Post.name).create({
+      title: '置顶测试帖子',
+      content: '管理员置顶必须是稳定的目标状态写入。',
+      tags: ['DISCUSSION'],
+      authorId: new Types.ObjectId().toString(),
+      circleId: new Types.ObjectId().toString(),
+      circleRulesVersion: 1,
+      circleVisible: true,
+      deletedAt: null,
+    });
+
+    await expect(
+      service.setPostPinned(ADMIN, post.id, true, '置顶这条重要公告。'),
+    ).resolves.toMatchObject({ postId: post.id, pinned: true, changed: true });
+    await expect(connection.model(Post.name).findById(post.id).lean()).resolves.toMatchObject({
+      pinnedAt: expect.any(Date),
+    });
+
+    await expect(
+      service.setPostPinned(ADMIN, post.id, true, '重复置顶不应重复记录。'),
+    ).resolves.toMatchObject({ postId: post.id, pinned: true, changed: false });
+
+    await expect(
+      service.setPostPinned(ADMIN, post.id, false, '取消已不再需要的置顶。'),
+    ).resolves.toMatchObject({ postId: post.id, pinned: false, changed: true, pinnedAt: null });
+
+    expect(
+      await connection.model(AdminAuditLog.name).find({ targetId: post.id }).sort({ createdAt: 1 }),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ action: 'POST_PINNED' }),
+        expect.objectContaining({ action: 'POST_UNPINNED' }),
+      ]),
+    );
+    expect(await connection.model(AdminAuditLog.name).countDocuments({ targetId: post.id })).toBe(
+      2,
+    );
+  });
+
+  it('records an official circle Agent posting policy change in the administrator audit log', async () => {
+    const circleId = new Types.ObjectId().toString();
+    const before = {
+      id: circleId,
+      kind: 'OFFICIAL' as const,
+      topic: '官方发布和交流',
+      topicVersion: 1,
+      rules: [],
+      rulesVersion: 1,
+      agentPostingEnabled: true,
+      postingPolicyVersion: 1,
+    };
+    const updated = {
+      ...before,
+      agentPostingEnabled: false,
+      postingPolicyVersion: 2,
+    };
+    circleService.getCircleForAdmin.mockResolvedValue(before);
+    circleService.updateCircleForAdmin.mockResolvedValue(updated);
+    circleService.serializeCircleForAdmin.mockReturnValue(updated);
+
+    await service.updateCircle(ADMIN, circleId, {
+      agentPostingEnabled: { value: false, expectedVersion: 1 },
+      reason: '官方公告发布期间暂不接收外部投稿。',
+    });
+
+    expect(
+      await connection.model(AdminAuditLog.name).findOne({ targetId: circleId }),
+    ).toMatchObject({
+      action: 'CIRCLE_UPDATED',
+      reason: '官方公告发布期间暂不接收外部投稿。',
+      changes: {
+        agentPostingEnabled: {
+          previous: true,
+          next: false,
+          previousVersion: 1,
+          nextVersion: 2,
+        },
+      },
+    });
+  });
+
+  it('rejects Agent posting policy updates for normal circles before creating an audit record', async () => {
+    const circleId = new Types.ObjectId().toString();
+    circleService.getCircleForAdmin.mockResolvedValue({
+      id: circleId,
+      kind: 'NORMAL',
+      topic: '普通讨论',
+      topicVersion: 1,
+      rules: [],
+      rulesVersion: 1,
+      agentPostingEnabled: true,
+      postingPolicyVersion: 1,
+    });
+
+    await expect(
+      service.updateCircle(ADMIN, circleId, {
+        agentPostingEnabled: { value: false, expectedVersion: 1 },
+        reason: '普通圈子不允许修改这个策略。',
+      }),
+    ).rejects.toMatchObject({
+      response: { code: 'CIRCLE_AGENT_POSTING_POLICY_OFFICIAL_ONLY' },
+    });
+    expect(await connection.model(AdminAuditLog.name).countDocuments()).toBe(0);
   });
 
   it('records administrator governance decisions with the public reason', async () => {

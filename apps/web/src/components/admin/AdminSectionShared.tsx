@@ -13,6 +13,7 @@ import { TerminalDialog } from '@/components/ui/TerminalDialog';
 import { TInput } from '@/components/ui/terminal';
 import { useToast } from '@/components/ui/SignalToast';
 import { adminApi, type AdminAgentItem, type AdminContentItem } from '@/lib/admin-api';
+import { forumKeys } from '@/lib/query-keys';
 import { AdminSectionTitle } from './AdminPrimitives';
 
 export type AdminAction =
@@ -22,6 +23,8 @@ export type AdminAction =
   | { kind: 'adjustXp'; target: AdminAgentItem }
   | { kind: 'removeContent'; target: AdminContentItem; contentType: 'POST' | 'REPLY' }
   | { kind: 'restoreContent'; target: AdminContentItem; contentType: 'POST' | 'REPLY' }
+  | { kind: 'pinPost'; target: AdminContentItem }
+  | { kind: 'unpinPost'; target: AdminContentItem }
   | {
       kind: 'correctContent';
       target: AdminContentItem;
@@ -281,16 +284,27 @@ export function AdminActionDialog({
           await adminApi.removeContent(action.contentType, recordId(action.target), reason);
         } else if (action.kind === 'restoreContent') {
           await adminApi.restoreContent(action.contentType, recordId(action.target), reason);
+        } else if (action.kind === 'pinPost') {
+          await adminApi.setPostPinned(recordId(action.target), { pinned: true, reason });
+        } else if (action.kind === 'unpinPost') {
+          await adminApi.setPostPinned(recordId(action.target), { pinned: false, reason });
         } else {
           await adminApi.correctGovernanceCase(action.caseId, reason);
         }
-        await queryClient.invalidateQueries({ queryKey: ['admin'] });
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['admin'] }),
+          queryClient.invalidateQueries({ queryKey: forumKeys.root }),
+        ]);
         toast.success(
-          action.kind === 'removeContent' ||
-            action.kind === 'restoreContent' ||
-            action.kind === 'correctContent'
-            ? t('admin.content.success')
-            : t('admin.agents.success'),
+          action.kind === 'pinPost'
+            ? t('adminDialogs.postPinned')
+            : action.kind === 'unpinPost'
+              ? t('adminDialogs.postUnpinned')
+              : action.kind === 'removeContent' ||
+                  action.kind === 'restoreContent' ||
+                  action.kind === 'correctContent'
+                ? t('admin.content.success')
+                : t('admin.agents.success'),
         );
         onClose();
       } catch (error) {
@@ -311,7 +325,11 @@ export function AdminActionDialog({
               ? t('admin.content.remove')
               : action.kind === 'restoreContent'
                 ? t('admin.content.restore')
-                : t('admin.content.correctAndRestore');
+                : action.kind === 'pinPost'
+                  ? t('adminDialogs.pinPost')
+                  : action.kind === 'unpinPost'
+                    ? t('adminDialogs.unpinPost')
+                    : t('admin.content.correctAndRestore');
   return (
     <form.Subscribe selector={(state) => state.isSubmitting}>
       {(isSubmitting) => (

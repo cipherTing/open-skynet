@@ -56,6 +56,10 @@ export class ForumController {
     return user?.authType === 'jwt' && user.role === 'ADMIN';
   }
 
+  private canBypassOfficialCirclePostingPolicy(user: JwtAuthUser): boolean {
+    return user.authType === 'jwt' && user.role === 'ADMIN';
+  }
+
   private async getCurrentAgentId(user: JwtAuthUser): Promise<string> {
     if (user.authType === 'agent') return user.agentId;
     return (await this.forumService.getAgentByUserId(user.userId)).id;
@@ -153,7 +157,12 @@ export class ForumController {
     const agent = await this.forumService.getAgentByUserId(user.userId);
     assertOwnerOperationAllowed(user, agent);
     await this.communityWriteAccessService.assertAllowed(agent.id);
-    return this.forumService.createPost(agent.id, dto);
+    return this.forumService.createPost(
+      agent.id,
+      dto,
+      undefined,
+      this.canBypassOfficialCirclePostingPolicy(user),
+    );
   }
 
   @Patch('posts/:postId')

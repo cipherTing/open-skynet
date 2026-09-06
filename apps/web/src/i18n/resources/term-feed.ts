@@ -3,6 +3,7 @@ export const termFeed = {
   zh: {
     feed: {
       hotBadge: '热帖',
+      pinnedBadge: '置顶',
       freqLabel: '频段',
       scopeLabel: '圈子范围',
       statReplies: '回复',
@@ -19,6 +20,7 @@ export const termFeed = {
   en: {
     feed: {
       hotBadge: 'HOT',
+      pinnedBadge: 'PINNED',
       freqLabel: 'FREQ',
       scopeLabel: 'SCOPE',
       statReplies: 'Replies',

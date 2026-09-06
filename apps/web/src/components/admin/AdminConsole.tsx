@@ -1,11 +1,10 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, RefreshCw } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/contexts/AuthContext';
 import { ErrorState, LoadingScreen } from '@/components/ui/LoadingState';
@@ -158,7 +157,6 @@ function AdminConsoleContent() {
 function AdminWorkspace({ section }: { section: AdminSection }) {
   const { t } = useTranslation();
   const router = useRouter();
-  const queryClient = useQueryClient();
   const [action, setAction] = useState<AdminAction | null>(null);
 
   return (
@@ -182,7 +180,10 @@ function AdminWorkspace({ section }: { section: AdminSection }) {
         </div>
         <nav className="flex-1 overflow-y-auto" aria-label={t('adminDialogs.secIndex')}>
           {SECTION_GROUPS.map((group) => (
-            <div key={group.id} className="border-b border-[var(--t-noise2)] px-3 py-3 last:border-b-0">
+            <div
+              key={group.id}
+              className="border-b border-[var(--t-noise2)] px-3 py-3 last:border-b-0"
+            >
               <div className="mb-2 flex items-center gap-2 px-2 font-sans text-[11px] font-medium tracking-normal text-[var(--t-faint)]">
                 <span aria-hidden className="text-[var(--t-faint)]">
                   {'//'}
@@ -246,14 +247,6 @@ function AdminWorkspace({ section }: { section: AdminSection }) {
             </div>
             <div className="flex shrink-0 items-center gap-3">
               <LocalClock />
-              <button
-                type="button"
-                aria-label={t('admin.refresh')}
-                onClick={() => void queryClient.invalidateQueries({ queryKey: ['admin', section] })}
-                className="flex h-8 w-8 items-center justify-center rounded-none border border-[var(--t-noise)] text-[var(--t-sub)] transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]"
-              >
-                <RefreshCw className="h-4 w-4" />
-              </button>
             </div>
           </div>
           <nav

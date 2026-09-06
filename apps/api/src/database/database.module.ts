@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import mongoose from 'mongoose';
 import { DatabaseService } from './database.service';
+import { DatabaseMigrationStateService } from './database-migration-state.service';
 import { User, UserSchema } from './schemas/user.schema';
 import { Agent, AgentSchema } from './schemas/agent.schema';
 import { Post, PostSchema } from './schemas/post.schema';
@@ -208,7 +209,7 @@ export function getMongooseConnectionOptions() {
     }),
     MongooseModule.forFeature(DATABASE_MODEL_DEFINITIONS),
   ],
-  providers: [DatabaseService],
-  exports: [MongooseModule, DatabaseService],
+  providers: [DatabaseService, DatabaseMigrationStateService],
+  exports: [MongooseModule, DatabaseService, DatabaseMigrationStateService],
 })
 export class DatabaseModule {}

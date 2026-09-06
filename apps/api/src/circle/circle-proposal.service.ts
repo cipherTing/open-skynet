@@ -24,6 +24,7 @@ import { FeatureFlagService } from '@/system/feature-flag.service';
 import {
   CIRCLE_MAINTENANCE_ACTIONS,
   CIRCLE_MAINTENANCE_ACTOR_TYPES,
+  CIRCLE_KINDS,
   CIRCLE_PROPOSAL_DISCUSSION_HOURS,
   CIRCLE_PROPOSAL_MAX_LIFETIME_DAYS,
   CIRCLE_PROPOSAL_SCOPES,
@@ -191,6 +192,7 @@ export class CircleProposalService {
 
   async list(circleId: string, dto: ListCircleProposalsDto, viewerAgentId?: string) {
     const circle = await this.getCircle(circleId);
+    this.assertCoBuildAvailable(circle);
     const limit = dto.limit ?? CURSOR_PAGINATION_DEFAULT_LIMIT;
     const filter: Record<string, unknown> = {
       circleId: circle.id,
@@ -236,6 +238,7 @@ export class CircleProposalService {
     query: CircleProposalDetailQueryDto = {},
     session?: ClientSession,
   ) {
+    await this.getCoBuildCircle(circleId, session);
     const proposal = await this.getProposal(circleId, proposalId, session);
     const terminal = !ACTIVE_STATUSES.includes(proposal.status);
     const viewerOwnerUserId = viewerAgentId
@@ -256,26 +259,34 @@ export class CircleProposalService {
           null,
           { session },
         ),
-        this.stanceModel.countDocuments({
-          ...activeStanceFilter,
-          stance: CIRCLE_PROPOSAL_STANCES.SUPPORT,
-        }, { session }),
-        this.stanceModel.countDocuments({
-          ...activeStanceFilter,
-          stance: CIRCLE_PROPOSAL_STANCES.OBJECTION,
-        }, { session }),
+        this.stanceModel.countDocuments(
+          {
+            ...activeStanceFilter,
+            stance: CIRCLE_PROPOSAL_STANCES.SUPPORT,
+          },
+          { session },
+        ),
+        this.stanceModel.countDocuments(
+          {
+            ...activeStanceFilter,
+            stance: CIRCLE_PROPOSAL_STANCES.OBJECTION,
+          },
+          { session },
+        ),
         viewerOwnerUserId
-          ? this.stanceModel.findOne({
-              ...activeStanceFilter,
-              ownerUserIdSnapshot: viewerOwnerUserId,
-            }, null, { session })
-          : Promise.resolve(null),
-        viewerOwnerUserId
-          ? this.voteModel.findOne(
-              { proposalId, ownerUserIdSnapshot: viewerOwnerUserId },
+          ? this.stanceModel.findOne(
+              {
+                ...activeStanceFilter,
+                ownerUserIdSnapshot: viewerOwnerUserId,
+              },
               null,
               { session },
             )
+          : Promise.resolve(null),
+        viewerOwnerUserId
+          ? this.voteModel.findOne({ proposalId, ownerUserIdSnapshot: viewerOwnerUserId }, null, {
+              session,
+            })
           : Promise.resolve(null),
         viewerAgentId
           ? this.getEligibility(circleId, viewerAgentId, session)
@@ -285,13 +296,18 @@ export class CircleProposalService {
     const shouldReadVoters =
       terminal && (query.votersLimit !== undefined || query.votersCursor !== undefined);
     const voters = shouldReadVoters
-      ? await this.listVoters(circleId, proposalId, {
-          limit: Math.min(
-            query.votersLimit ?? CURSOR_PAGINATION_DEFAULT_LIMIT,
-            CURSOR_PAGINATION_MAX_LIMIT,
-          ),
-          cursor: query.votersCursor,
-        }, session)
+      ? await this.listVoters(
+          circleId,
+          proposalId,
+          {
+            limit: Math.min(
+              query.votersLimit ?? CURSOR_PAGINATION_DEFAULT_LIMIT,
+              CURSOR_PAGINATION_MAX_LIMIT,
+            ),
+            cursor: query.votersCursor,
+          },
+          session,
+        )
       : null;
     return {
       ...this.serializeSummary(proposal),
@@ -319,6 +335,7 @@ export class CircleProposalService {
   }
 
   async listRevisions(circleId: string, proposalId: string, dto: ListCircleProposalHistoryDto) {
+    await this.getCoBuildCircle(circleId);
     await this.getProposal(circleId, proposalId);
     const limit = dto.limit ?? CURSOR_PAGINATION_DEFAULT_LIMIT;
     const cursor = dto.cursor
@@ -356,6 +373,7 @@ export class CircleProposalService {
     dto: ListCircleProposalHistoryDto,
     session?: ClientSession,
   ) {
+    await this.getCoBuildCircle(circleId, session);
     const proposal = await this.getProposal(circleId, proposalId, session);
     if (ACTIVE_STATUSES.includes(proposal.status)) throw circleProposalErrors.votersNotPublic();
     const limit = dto.limit ?? CURSOR_PAGINATION_DEFAULT_LIMIT;
@@ -369,15 +387,15 @@ export class CircleProposalService {
     const candidates = await this.voteModel
       .find(
         {
-        proposalId,
-        ...(cursor
-          ? {
-              $or: [
-                { createdAt: { $gt: cursor.timestamp } },
-                { createdAt: cursor.timestamp, _id: { $gt: cursor.id } },
-              ],
-            }
-          : {}),
+          proposalId,
+          ...(cursor
+            ? {
+                $or: [
+                  { createdAt: { $gt: cursor.timestamp } },
+                  { createdAt: cursor.timestamp, _id: { $gt: cursor.id } },
+                ],
+              }
+            : {}),
         },
         null,
         { session },
@@ -415,6 +433,7 @@ export class CircleProposalService {
     dto: CreateCircleProposalDto,
     session?: ClientSession,
   ) {
+    await this.getCoBuildCircle(circleId, session);
     await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.FORUM_WRITES);
     const idempotencyKey = assertIdempotencyKey(idempotencyKeyHeader);
     const existingActor = await this.getParticipant(circleId, actorAgentId, true, session);
@@ -552,6 +571,7 @@ export class CircleProposalService {
     dto: ReviseCircleProposalDto,
     session?: ClientSession,
   ) {
+    await this.getCoBuildCircle(circleId, session);
     const idempotencyKey = assertIdempotencyKey(idempotencyKeyHeader);
     const actor = await this.getParticipant(circleId, actorAgentId, true, session);
     const duplicate = await this.revisionModel.findOne(
@@ -664,6 +684,7 @@ export class CircleProposalService {
     dto: SetCircleProposalStanceDto,
     session?: ClientSession,
   ) {
+    await this.getCoBuildCircle(circleId, session);
     if (dto.action === CIRCLE_PROPOSAL_STANCE_ACTIONS.WITHDRAW) {
       return this.withdrawStance(circleId, proposalId, actorAgentId, dto, session);
     }
@@ -726,6 +747,7 @@ export class CircleProposalService {
     dto: ExpectedCircleProposalVersionDto,
     session?: ClientSession,
   ) {
+    await this.getCoBuildCircle(circleId, session);
     await this.databaseService.runInTransaction(session, async (session) => {
       const circle = await this.getActiveCircle(circleId, session);
       const actor = await this.getParticipant(circle.id, actorAgentId, true, session);
@@ -768,6 +790,7 @@ export class CircleProposalService {
     dto: CreateCircleProposalCommentDto,
     session?: ClientSession,
   ) {
+    await this.getCoBuildCircle(circleId, session);
     const idempotencyKey = assertIdempotencyKey(idempotencyKeyHeader);
     const actor = await this.getParticipant(circleId, actorAgentId, false, session);
     const existing = await this.commentModel.findOne(
@@ -847,6 +870,7 @@ export class CircleProposalService {
   }
 
   async listComments(circleId: string, proposalId: string, dto: ListCircleProposalCommentsDto) {
+    await this.getCoBuildCircle(circleId);
     await this.getProposal(circleId, proposalId);
     const limit = dto.limit ?? CURSOR_PAGINATION_DEFAULT_LIMIT;
     const filter: Record<string, unknown> = { proposalId, hiddenAt: null };
@@ -888,6 +912,7 @@ export class CircleProposalService {
     dto: CastCircleProposalVoteDto,
     session?: ClientSession,
   ) {
+    await this.getCoBuildCircle(circleId, session);
     const actor = await this.getParticipant(circleId, actorAgentId, true, session);
     const existingVote = await this.voteModel.findOne(
       {
@@ -984,6 +1009,7 @@ export class CircleProposalService {
     dto: ExpectedCircleProposalVersionDto,
     session?: ClientSession,
   ) {
+    await this.getCoBuildCircle(circleId, session);
     await this.databaseService.runInTransaction(session, async (session) => {
       const circle = await this.getActiveCircle(circleId, session);
       const actor = await this.getParticipant(circle.id, actorAgentId, true, session);
@@ -1165,6 +1191,16 @@ export class CircleProposalService {
       { session },
     );
     if (!proposal) return false;
+    const circle = await this.getCircle(proposal.circleId, session);
+    if (circle.kind === CIRCLE_KINDS.OFFICIAL) {
+      await this.closeProposal(
+        proposal,
+        CIRCLE_PROPOSAL_STATUSES.POLICY_DISABLED,
+        new Date(),
+        session,
+      );
+      return true;
+    }
     const phaseDeadlineAt =
       proposal.status === CIRCLE_PROPOSAL_STATUSES.DISCUSSION
         ? proposal.discussionDeadlineAt
@@ -1230,6 +1266,10 @@ export class CircleProposalService {
     if (!proposal) return false;
 
     const circle = await this.getCircle(proposal.circleId, session);
+    if (circle.kind === CIRCLE_KINDS.OFFICIAL) {
+      await this.closeProposal(proposal, CIRCLE_PROPOSAL_STATUSES.POLICY_DISABLED, now, session);
+      return true;
+    }
     if (circle.status !== CIRCLE_STATUSES.ACTIVE) {
       throw new Error(`活跃共建提案所属圈子不是活跃状态: ${proposal.id}`);
     }
@@ -1667,6 +1707,16 @@ export class CircleProposalService {
     return circle;
   }
 
+  private async getCoBuildCircle(circleId: string, session?: ClientSession): Promise<Circle> {
+    const circle = await this.getCircle(circleId, session);
+    this.assertCoBuildAvailable(circle);
+    return circle;
+  }
+
+  private assertCoBuildAvailable(circle: Circle): void {
+    if (circle.kind !== CIRCLE_KINDS.NORMAL) throw circleProposalErrors.unavailable();
+  }
+
   private async resolveOwnerUserId(
     agentId: string,
     session?: ClientSession,
@@ -1723,11 +1773,7 @@ export class CircleProposalService {
     };
   }
 
-  private async getEligibility(
-    circleId: string,
-    agentId: string,
-    session?: ClientSession,
-  ) {
+  private async getEligibility(circleId: string, agentId: string, session?: ClientSession) {
     try {
       await this.getActiveCircle(circleId, session);
       const participant = await this.getParticipant(circleId, agentId, true, session);

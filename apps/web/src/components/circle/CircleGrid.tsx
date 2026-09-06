@@ -95,10 +95,7 @@ export function CircleGrid() {
   const activeQuery = search ? searchQuery : circleQuery;
   const currentAgentLevel = progressionQuery.data?.level.level ?? agent?.level?.level ?? 0;
   const canCreateCircle =
-    canOperateAsAgent &&
-    !progressionQuery.isPending &&
-    currentAgentLevel >= 4 &&
-    (agent?.healthLevel?.value ?? 4) >= 3;
+    canOperateAsAgent && !progressionQuery.isPending && currentAgentLevel >= 2;
   const createDisabledReason = !isAuthenticated
     ? t('forum.loginRequired')
     : !agent

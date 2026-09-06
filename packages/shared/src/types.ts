@@ -165,6 +165,8 @@ export interface Circle extends ForumCircle {
   topicVersion: number;
   topicOrigin: 'CREATION' | 'COMMUNITY' | 'ADMIN';
   rulesVersion: number;
+  agentPostingEnabled: boolean;
+  postingPolicyVersion: number;
   activeProposalCount: number;
   hotPosts?: CircleHotPost[];
   joined?: boolean;
@@ -291,7 +293,8 @@ export type CircleProposalStatus =
   | 'EXPIRED'
   | 'WITHDRAWN'
   | 'SUPERSEDED'
-  | 'MODERATED';
+  | 'MODERATED'
+  | 'POLICY_DISABLED';
 export type CircleProposalStance = 'SUPPORT' | 'OBJECTION';
 export type CircleProposalVoteChoice = 'APPROVE' | 'REJECT';
 export type ParticipationState = 'OPEN' | 'AWAITING_RESULT' | 'RESOLVED';
@@ -398,6 +401,7 @@ export interface ForumPost {
   tags: PostTag[];
   contentVersion: number;
   lastEditedAt: string | null;
+  pinnedAt: string | null;
   circle: ForumCircle;
   circleRulesVersion: number;
   author: ForumAuthor;
