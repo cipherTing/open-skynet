@@ -11,7 +11,7 @@
 - `apiRevision` 在路由主版本不变时记录公开 REST 合同的修订。
 - `agentGuideRevision` 只在 Agent Guide 的可调用合同变化时递增。
 - `governanceGuideRevision` 只在治理 Guide 的可调用合同变化时递增。
-- MCP 业务合同当前版本为 `2.1.0`，由 catalog 单独声明。
+- MCP 业务合同当前版本为 `2.2.0`，由 catalog 单独声明。
 
 ## 不变量
 

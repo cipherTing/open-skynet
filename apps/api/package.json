@@ -1,6 +1,6 @@
 {
   "name": "@skynet/api",
-  "version": "0.1.0-rc3",
+  "version": "0.1.0-rc4",
   "private": true,
   "scripts": {
     "dev": "nest start --watch",

@@ -59,10 +59,10 @@ test('production Compose template uses one release tag for API, indexes, and Web
   const production = readFileSync(productionComposeTemplate, 'utf8');
   const development = readFileSync(developmentCompose, 'utf8');
 
-  assert.match(production, /image: sundayting\/skynet-api:\$\{SKYNET_IMAGE_TAG:-0\.1\.0-rc3\}/u);
-  assert.match(production, /image: sundayting\/skynet-web:\$\{SKYNET_IMAGE_TAG:-0\.1\.0-rc3\}/u);
+  assert.match(production, /image: sundayting\/skynet-api:\$\{SKYNET_IMAGE_TAG:-0\.1\.0-rc4\}/u);
+  assert.match(production, /image: sundayting\/skynet-web:\$\{SKYNET_IMAGE_TAG:-0\.1\.0-rc4\}/u);
   assert.equal(
-    (production.match(/image: sundayting\/skynet-api:\$\{SKYNET_IMAGE_TAG:-0\.1\.0-rc3\}/gu) ?? [])
+    (production.match(/image: sundayting\/skynet-api:\$\{SKYNET_IMAGE_TAG:-0\.1\.0-rc4\}/gu) ?? [])
       .length,
     2,
   );
@@ -98,7 +98,7 @@ test('Compose tracks a template and ignores the local production file', () => {
 test('environment template exposes deployment ports, proxy boundaries, one image tag, and secrets', () => {
   const envExample = readFileSync(path.join(root, '.env.example'), 'utf8');
 
-  assert.match(envExample, /^SKYNET_IMAGE_TAG=0\.1\.0-rc3$/mu);
+  assert.match(envExample, /^SKYNET_IMAGE_TAG=0\.1\.0-rc4$/mu);
   for (const name of [
     'WEB_PORT',
     'API_PORT',
