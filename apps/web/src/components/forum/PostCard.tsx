@@ -9,6 +9,7 @@ import { CircleBadge } from '@/components/circle/CircleBadge';
 import { RelativeTime, TTag } from '@/components/ui/terminal';
 import { useForumFeedContext } from './ForumFeedContext';
 import { formatNumber } from '@/lib/utils';
+import { createPostExcerpt } from '@/lib/post-excerpt';
 import type { ForumLayoutMode } from '@/stores/forum-layout-store';
 import type { ForumPost } from '@skynet/shared';
 import { GovernanceCaseStamp } from '@/components/governance/GovernanceCaseStamp';
@@ -25,27 +26,27 @@ const POST_LAYOUT_CONFIG = {
     avatarSize: 32,
     bodyClass: 'grid h-full grid-cols-[auto_minmax(0,1fr)_auto] gap-x-4 px-4 py-3 sm:px-5',
     contentClass: 'flex min-h-0 min-w-0 flex-col overflow-hidden',
-    titleClass: 'text-xl leading-tight',
+    titleClass: 'text-lg leading-tight sm:text-xl line-clamp-1',
     previewClass:
-      'mt-1 min-h-0 flex-1 overflow-hidden line-clamp-3 text-xs leading-relaxed text-text-secondary',
+      'mt-1 min-h-0 shrink-0 overflow-hidden line-clamp-3 text-xs leading-relaxed text-text-secondary sm:line-clamp-1',
     statsClass: 'flex h-full flex-col justify-end gap-1.5 pb-0.5',
   },
   2: {
     avatarSize: 26,
     bodyClass: 'flex h-full flex-col gap-2 px-4 py-3 sm:px-5',
     contentClass: 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden',
-    titleClass: 'text-lg leading-tight',
+    titleClass: 'text-lg leading-tight line-clamp-2',
     previewClass:
-      'mt-2 min-h-0 flex-1 overflow-hidden line-clamp-6 text-xs leading-relaxed text-text-secondary',
+      'mt-2 min-h-0 shrink-0 overflow-hidden line-clamp-2 text-xs leading-relaxed text-text-secondary',
     statsClass: 'flex shrink-0 items-center justify-between border-t border-[var(--t-noise)] pt-2',
   },
   3: {
     avatarSize: 22,
     bodyClass: 'flex h-full flex-col gap-1.5 px-3 py-2.5',
     contentClass: 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden',
-    titleClass: 'text-base leading-tight',
+    titleClass: 'text-base leading-tight line-clamp-2',
     previewClass:
-      'mt-1 min-h-0 flex-1 overflow-hidden line-clamp-8 text-[11px] leading-relaxed text-text-secondary',
+      'mt-1 min-h-0 shrink-0 overflow-hidden line-clamp-5 text-[11px] leading-relaxed text-text-secondary',
     statsClass:
       'flex shrink-0 items-center justify-between border-t border-[var(--t-noise)] pt-1.5',
   },
@@ -69,10 +70,10 @@ export function PostCard({ post, layout = 1, onRequireAuth }: PostCardProps) {
   const router = useRouter();
   const { t } = useTranslation();
   const { isCircleFeed } = useForumFeedContext();
-  const preview = post.content.replace(/[#`*\n]/g, ' ').trim();
   const isHot = post.isHot === true;
   const isMasonry = layout > 1;
   const layoutConfig = POST_LAYOUT_CONFIG[layout];
+  const preview = createPostExcerpt(post.content, post.mentions);
 
   const handlePostClick = () => {
     if (onRequireAuth) {
@@ -162,7 +163,6 @@ export function PostCard({ post, layout = 1, onRequireAuth }: PostCardProps) {
 
         {isMasonry && (
           <div className={layoutConfig.contentClass}>
-            <RelativeTime date={post.createdAt} className="mt-0.5" />
             <PostTaxonomy
               post={post}
               isCircleFeed={isCircleFeed}
@@ -182,18 +182,40 @@ export function PostCard({ post, layout = 1, onRequireAuth }: PostCardProps) {
         <div
           className={`${layoutConfig.statsClass} font-sans text-[12px] font-medium tracking-normal text-[var(--t-faint)] ${STEPS_COLOR} group-hover:text-[var(--t-accent)] ${isMasonry ? 'w-full' : ''}`}
         >
-          <span className="flex items-baseline gap-1.5">
-            <span>{t('feed.statReplies')}</span>
-            <span className="inline-block whitespace-nowrap text-[11px] font-bold [font-variant-numeric:tabular-nums]">
-              {formatCount(post.replyCount)}
-            </span>
-          </span>
-          <span className="flex items-baseline gap-1.5">
-            <span>{t('feed.statViews')}</span>
-            <span className="inline-block whitespace-nowrap text-[11px] font-bold [font-variant-numeric:tabular-nums]">
-              {formatCount(post.viewCount)}
-            </span>
-          </span>
+          {isMasonry ? (
+            <>
+              <span className="flex items-baseline gap-3">
+                <span className="flex items-baseline gap-1.5">
+                  <span>{t('feed.statReplies')}</span>
+                  <span className="inline-block whitespace-nowrap text-[11px] font-bold [font-variant-numeric:tabular-nums]">
+                    {formatCount(post.replyCount)}
+                  </span>
+                </span>
+                <span className="flex items-baseline gap-1.5">
+                  <span>{t('feed.statViews')}</span>
+                  <span className="inline-block whitespace-nowrap text-[11px] font-bold [font-variant-numeric:tabular-nums]">
+                    {formatCount(post.viewCount)}
+                  </span>
+                </span>
+              </span>
+              <RelativeTime date={post.createdAt} />
+            </>
+          ) : (
+            <>
+              <span className="flex items-baseline gap-1.5">
+                <span>{t('feed.statReplies')}</span>
+                <span className="inline-block whitespace-nowrap text-[11px] font-bold [font-variant-numeric:tabular-nums]">
+                  {formatCount(post.replyCount)}
+                </span>
+              </span>
+              <span className="flex items-baseline gap-1.5">
+                <span>{t('feed.statViews')}</span>
+                <span className="inline-block whitespace-nowrap text-[11px] font-bold [font-variant-numeric:tabular-nums]">
+                  {formatCount(post.viewCount)}
+                </span>
+              </span>
+            </>
+          )}
         </div>
 
         {post.activeGovernanceCase ? (
@@ -307,7 +329,7 @@ function PostTitle({
   return (
     <>
       <h3
-        className={`mt-2 line-clamp-2 font-bold tracking-normal text-white ${layoutConfig.titleClass}`}
+        className={`mt-2 font-bold tracking-normal text-white ${layoutConfig.titleClass}`}
       >
         <Link
           href={`/post/${post.id}`}

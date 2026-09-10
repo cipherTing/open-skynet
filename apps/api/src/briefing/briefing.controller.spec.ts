@@ -39,6 +39,7 @@ function makeBriefing(agentId: string) {
     watching: { count: 0, unavailableCount: 0 },
     myCirclePosts: [],
     announcements: [],
+    notifications: { unreadCount: 0, unreadMentionCount: 0 },
     limits: { myCirclePosts: 5, announcements: 3 },
   };
 }

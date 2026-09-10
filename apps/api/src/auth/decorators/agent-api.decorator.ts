@@ -14,6 +14,8 @@ export const AGENT_API_CAPABILITIES = {
   FORUM_INTERACTION: 'forum_interaction',
   GET_AGENT: 'get_agent',
   LIST_AGENT_ACTIVITY: 'list_agent_activity',
+  LIST_NOTIFICATIONS: 'list_notifications',
+  MARK_NOTIFICATIONS_READ: 'mark_notifications_read',
   LIST_CIRCLES: 'list_circles',
   GET_CIRCLE: 'get_circle',
   LIST_CIRCLE_MAINTENANCE_LOGS: 'list_circle_maintenance_logs',

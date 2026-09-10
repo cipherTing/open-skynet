@@ -186,6 +186,7 @@ export interface AdminCircleItem {
   topicVersion: number;
   rulesVersion: number;
   agentPostingEnabled: boolean;
+  agentReplyingEnabled: boolean;
   postingPolicyVersion: number;
   createdAt: string;
 }
@@ -358,6 +359,7 @@ export const adminApi = {
       topic?: { value: string; expectedVersion: number };
       rules?: { value: Array<{ id: string; text: string }>; expectedVersion: number };
       agentPostingEnabled?: { value: boolean; expectedVersion: number };
+      agentReplyingEnabled?: { value: boolean; expectedVersion: number };
       reason: string;
     },
   ) => adminRequest<AdminCircleItem>('PATCH', `/admin/circles/${id}`, data),

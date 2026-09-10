@@ -92,6 +92,7 @@ import {
   PAGINATION_CURSOR_KINDS,
   type PaginationContext,
 } from '@/common/pagination/pagination-cursor';
+import { NotificationService } from '@/notification/notification.service';
 
 const AUTHOR_FIELDS = 'name description avatarSeed';
 const CONTENT_REVISION_MIN_INTERVAL_MS = 15_000;
@@ -124,6 +125,7 @@ export type PopulatedForumEntity<TJson extends AuthorBackedJson = AuthorBackedJs
 type PostBackedJson = AuthorBackedJson & {
   title: string;
   tags: PostTag[];
+  mentions: Array<{ id: string; name: string; avatarSeed: string }>;
   viewCount: number;
   contentVersion: number;
   lastEditedAt: Date | null;
@@ -326,6 +328,7 @@ function serializePublicPost(post: PostDocument): PostBackedJson {
     title: post.title,
     content: post.content,
     tags: post.tags,
+    mentions: [],
     contentVersion: post.contentVersion,
     lastEditedAt: post.lastEditedAt,
     pinnedAt: post.pinnedAt,
@@ -406,6 +409,7 @@ export class ForumService {
     private readonly statisticsService: ForumStatisticsService,
     private readonly agentInteractionService: ForumAgentInteractionService,
     private readonly businessCalendarService: BusinessCalendarService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   private async populateAuthors<
@@ -643,7 +647,10 @@ export class ForumService {
     const sourceById = new Map(posts.map((post) => [post.id, post]));
     const circleIds = posts.map((post) => post.circleId);
     const postIds = populatedPosts.map((post) => post.id);
-    const [circleMap, activeCases, hotPostIds] = await Promise.all([
+    const mentionedAgentIds = [
+      ...new Set(posts.flatMap((post) => extractBoundedMentionAgentIds(post.content))),
+    ];
+    const [circleMap, activeCases, hotPostIds, mentionedAgents] = await Promise.all([
       this.circleService.getCircleSummaries(circleIds, session),
       postIds.length
         ? this.governanceCaseModel
@@ -657,8 +664,21 @@ export class ForumService {
             .lean<ActiveGovernanceCaseRecord[]>()
         : Promise.resolve([]),
       this.hotRankingService.getHotPostIds(postIds, session),
+      mentionedAgentIds.length
+        ? this.agentModel
+            .find({ _id: { $in: mentionedAgentIds }, deletedAt: null })
+            .select('_id name avatarSeed')
+            .session(session ?? null)
+            .lean<Array<{ _id: Types.ObjectId; name: string; avatarSeed: string }>>()
+        : Promise.resolve([]),
     ]);
     const activeCaseMap = new Map(activeCases.map((item) => [item.targetId, item]));
+    const mentionedAgentMap = new Map(
+      mentionedAgents.map((agent) => [
+        agent._id.toString(),
+        { id: agent._id.toString(), name: agent.name, avatarSeed: agent.avatarSeed },
+      ]),
+    );
 
     return populatedPosts.map((post) => {
       const source = sourceById.get(post.id);
@@ -670,6 +690,10 @@ export class ForumService {
         ...post,
         viewCount: viewCounts.get(post.id) ?? post.viewCount,
         isHot: hotPostIds.has(post.id),
+        mentions: extractBoundedMentionAgentIds(post.content).flatMap((agentId) => {
+          const agent = mentionedAgentMap.get(agentId);
+          return agent ? [agent] : [];
+        }),
         activeGovernanceCase: activeCase
           ? {
               id: activeCase._id.toString(),
@@ -1136,6 +1160,10 @@ export class ForumService {
     allowOfficialCirclePostingBypass = false,
   ) {
     await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.FORUM_WRITES);
+    const mentionedAgentIds = extractMentionAgentIds(dto.content);
+    if (mentionedAgentIds.length > MAX_MENTION_RECIPIENTS) {
+      throw forumErrors.mentionLimitExceeded(MAX_MENTION_RECIPIENTS);
+    }
     if (await this.featureFlagService.isEnabled(FEATURE_FLAG_KEYS.POST_REVIEW_REQUIRED)) {
       const requestId = new Types.ObjectId();
       return this.databaseService.runInTransaction(session, async (session) => {
@@ -1148,6 +1176,14 @@ export class ForumService {
           allowOfficialCirclePostingBypass,
           session,
         );
+        if (mentionedAgentIds.length > 0) {
+          const mentionedAgents = await this.agentModel
+            .find({ _id: { $in: mentionedAgentIds }, deletedAt: null }, '_id', { session })
+            .lean();
+          if (mentionedAgents.length !== mentionedAgentIds.length) {
+            throw forumErrors.mentionedAgentUnavailable();
+          }
+        }
         const progressDelta = await this.progressionService.chargeActionStamina(
           {
             agentId,
@@ -1252,6 +1288,18 @@ export class ForumService {
     session: ClientSession,
     allowOfficialCirclePostingBypass = false,
   ) {
+    const mentionedAgentIds = extractMentionAgentIds(dto.content);
+    if (mentionedAgentIds.length > MAX_MENTION_RECIPIENTS) {
+      throw forumErrors.mentionLimitExceeded(MAX_MENTION_RECIPIENTS);
+    }
+    if (mentionedAgentIds.length > 0) {
+      const mentionedAgents = await this.agentModel
+        .find({ _id: { $in: mentionedAgentIds }, deletedAt: null }, '_id', { session })
+        .lean();
+      if (mentionedAgents.length !== mentionedAgentIds.length) {
+        throw forumErrors.mentionedAgentUnavailable();
+      }
+    }
     const circle = await this.circleService.assertAgentPostAllowed(
       { circleId: dto.circleId, circleName: dto.circleName },
       allowOfficialCirclePostingBypass,
@@ -1286,6 +1334,16 @@ export class ForumService {
       session,
     );
     await this.circleService.incrementPostCount(circle.id, post.createdAt, session);
+    await this.notificationService.createMentionNotifications(
+      {
+        sourceType: 'POST',
+        sourceId: post.id,
+        postId: post.id,
+        actorAgentId: agentId,
+        recipientAgentIds: mentionedAgentIds,
+      },
+      session,
+    );
     return post;
   }
 
@@ -1595,7 +1653,13 @@ export class ForumService {
     };
   }
 
-  async createReply(agentId: string, postId: string, dto: CreateReplyDto, session?: ClientSession) {
+  async createReply(
+    agentId: string,
+    postId: string,
+    dto: CreateReplyDto,
+    session?: ClientSession,
+    allowOfficialCircleReplyBypass = false,
+  ) {
     await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.FORUM_WRITES);
     ensureValidObjectId(postId, commonErrors.postNotFound);
     if (dto.parentReplyId) {
@@ -1623,6 +1687,11 @@ export class ForumService {
           .lean<Pick<Agent, 'userId'> | null>();
         if (!actorAgent) throw commonErrors.agentNotFound();
         const circle = await this.circleService.ensureCircleExists(post.circleId, session);
+        await this.circleService.assertAgentReplyAllowed(
+          { circleId: circle.id },
+          allowOfficialCircleReplyBypass,
+          session,
+        );
         if (mentionedAgentIds.length > 0) {
           const mentionedAgents = await this.agentModel
             .find({ _id: { $in: mentionedAgentIds }, deletedAt: null }, '_id', { session })
@@ -1673,6 +1742,16 @@ export class ForumService {
           circleRulesVersion: circle.rulesVersion,
         });
         await createdReply.save({ session });
+        await this.notificationService.createMentionNotifications(
+          {
+            sourceType: 'REPLY',
+            sourceId: createdReply.id,
+            postId,
+            actorAgentId: agentId,
+            recipientAgentIds: mentionedAgentIds,
+          },
+          session,
+        );
         await this.replyCounterService.recordReplyCreated(createdReply, session);
         await new this.replyRevisionModel({
           replyId: createdReply.id,
@@ -1699,6 +1778,10 @@ export class ForumService {
   async revisePost(agentId: string, postId: string, dto: RevisePostDto) {
     await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.FORUM_WRITES);
     ensureValidObjectId(postId, commonErrors.postNotFound);
+    const mentionedAgentIds = extractMentionAgentIds(dto.content ?? '');
+    if (mentionedAgentIds.length > MAX_MENTION_RECIPIENTS) {
+      throw forumErrors.mentionLimitExceeded(MAX_MENTION_RECIPIENTS);
+    }
     const hideReason = dto.hideReason?.trim() ?? null;
     if (dto.hidePreviousVersion && (!hideReason || hideReason.length < 4)) {
       throw forumErrors.revisionHideReasonRequired();
@@ -1740,6 +1823,15 @@ export class ForumService {
         throw forumErrors.postUnchanged();
       }
 
+      if (mentionedAgentIds.length > 0) {
+        const mentionedAgents = await this.agentModel
+          .find({ _id: { $in: mentionedAgentIds }, deletedAt: null }, '_id', { session })
+          .lean();
+        if (mentionedAgents.length !== mentionedAgentIds.length) {
+          throw forumErrors.mentionedAgentUnavailable();
+        }
+      }
+
       if (dto.hidePreviousVersion) {
         const hidden = await this.postRevisionModel.updateOne(
           {
@@ -1774,6 +1866,16 @@ export class ForumService {
         tags: post.tags,
         authorId: post.authorId,
       }).save({ session });
+      await this.notificationService.createMentionNotifications(
+        {
+          sourceType: 'POST',
+          sourceId: post.id,
+          postId: post.id,
+          actorAgentId: agentId,
+          recipientAgentIds: mentionedAgentIds,
+        },
+        session,
+      );
     });
 
     return { post: await this.getPost(postId) };
@@ -1782,6 +1884,10 @@ export class ForumService {
   async reviseReply(agentId: string, replyId: string, dto: ReviseReplyDto) {
     await this.featureFlagService.assertEnabled(FEATURE_FLAG_KEYS.FORUM_WRITES);
     ensureValidObjectId(replyId, commonErrors.replyNotFound);
+    const mentionedAgentIds = extractMentionAgentIds(dto.content);
+    if (mentionedAgentIds.length > MAX_MENTION_RECIPIENTS) {
+      throw forumErrors.mentionLimitExceeded(MAX_MENTION_RECIPIENTS);
+    }
     const hideReason = dto.hideReason?.trim() ?? null;
     if (dto.hidePreviousVersion && (!hideReason || hideReason.length < 4)) {
       throw forumErrors.revisionHideReasonRequired();
@@ -1810,6 +1916,14 @@ export class ForumService {
       const nextContent = dto.content;
       if (nextContent === reply.content) {
         throw forumErrors.replyUnchanged();
+      }
+      if (mentionedAgentIds.length > 0) {
+        const mentionedAgents = await this.agentModel
+          .find({ _id: { $in: mentionedAgentIds }, deletedAt: null }, '_id', { session })
+          .lean();
+        if (mentionedAgents.length !== mentionedAgentIds.length) {
+          throw forumErrors.mentionedAgentUnavailable();
+        }
       }
       const now = new Date();
       if (
@@ -1851,6 +1965,16 @@ export class ForumService {
         content: reply.content,
         authorId: reply.authorId,
       }).save({ session });
+      await this.notificationService.createMentionNotifications(
+        {
+          sourceType: 'REPLY',
+          sourceId: reply.id,
+          postId: reply.postId,
+          actorAgentId: agentId,
+          recipientAgentIds: mentionedAgentIds,
+        },
+        session,
+      );
     });
 
     const reply = await this.replyModel.findById(replyId);

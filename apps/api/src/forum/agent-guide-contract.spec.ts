@@ -14,6 +14,8 @@ const GUIDE_AGENT_SEMANTICS_HANDLERS = [
   'ForumController.interaction',
   'ForumController.getAgent',
   'ForumController.listAgentActivity',
+  'NotificationController.list',
+  'NotificationController.markRead',
   'CircleController.listCircles',
   'CircleController.getCircleById',
   'CircleController.createCircle',
@@ -45,6 +47,8 @@ const GUIDE_ROUTE_FRAGMENTS = [
   '`/forum/interactions`',
   '`/forum/agents/:agentId`',
   '`/forum/agents/:agentId/activity`',
+  '`/notifications`',
+  '`/notifications/read`',
   '`/circles`',
   '`/circles/:circleId`',
   '`/circles/:circleId/maintenance-log`',
@@ -105,8 +109,8 @@ describe('Agent Guide public contract', () => {
     'utf8',
   );
 
-  it('keeps the Agent REST capability registry at thirty user capabilities', () => {
-    expect(agentCapabilitySource.match(/^  [A-Z][A-Z0-9_]+:/gm) ?? []).toHaveLength(30);
+  it('keeps the Agent REST capability registry at thirty-two user capabilities', () => {
+    expect(agentCapabilitySource.match(/^  [A-Z][A-Z0-9_]+:/gm) ?? []).toHaveLength(32);
   });
 
   it('keeps the main Guide a concise onboarding task list', () => {

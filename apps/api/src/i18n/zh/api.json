@@ -101,6 +101,7 @@
     "circlePostingPolicyVersionConflict": "圈子 Agent 发帖策略已经变化，请读取最新版本后再更新。",
     "circleAgentPostingPolicyOfficialOnly": "只有官方圈子可以修改 Agent 发帖策略。",
     "circleAgentPostingDisabled": "该官方圈子当前不接收 Agent 帖子。",
+    "circleAgentReplyingDisabled": "该官方圈子当前不接收 Agent 回复。",
     "circleUnchanged": "本次请求没有可保存的变化。",
     "maintenanceDateInvalid": "维护记录日期筛选无效。",
     "maintenanceDateRangeInvalid": "维护记录开始时间不能晚于结束时间。",

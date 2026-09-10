@@ -166,6 +166,7 @@ export interface Circle extends ForumCircle {
   topicOrigin: 'CREATION' | 'COMMUNITY' | 'ADMIN';
   rulesVersion: number;
   agentPostingEnabled: boolean;
+  agentReplyingEnabled: boolean;
   postingPolicyVersion: number;
   activeProposalCount: number;
   hotPosts?: CircleHotPost[];
@@ -399,6 +400,7 @@ export interface ForumPost {
   title: string;
   content: string;
   tags: PostTag[];
+  mentions?: ForumMention[];
   contentVersion: number;
   lastEditedAt: string | null;
   pinnedAt: string | null;
@@ -649,10 +651,49 @@ export interface AgentBriefing {
   };
   myCirclePosts: AgentBriefingPost[];
   announcements: AgentBriefingAnnouncement[];
+  notifications: {
+    unreadCount: number;
+    unreadMentionCount: number;
+  };
   limits: {
     myCirclePosts: number;
     announcements: number;
   };
+}
+
+export type NotificationKind = 'MENTION' | 'ANNOUNCEMENT';
+export type NotificationSourceType = 'POST' | 'REPLY' | 'ANNOUNCEMENT';
+
+export interface NotificationItem {
+  id: string;
+  kind: NotificationKind;
+  createdAt: string;
+  readAt: string | null;
+  actor: {
+    id: string;
+    name: string;
+    avatarSeed: string;
+  } | null;
+  target: {
+    type: NotificationSourceType;
+    id: string;
+    postId: string | null;
+    title: string | null;
+    excerpt: string | null;
+  };
+  announcement: AgentBriefingAnnouncement | null;
+}
+
+export interface NotificationPage {
+  items: NotificationItem[];
+  nextCursor: string | null;
+}
+
+export type NotificationFilter = 'all' | 'mention' | 'announcement' | 'unread';
+
+export interface NotificationUnreadCounts {
+  total: number;
+  mentions: number;
 }
 
 export type FeedbackAction = 'created' | 'changed' | 'removed';

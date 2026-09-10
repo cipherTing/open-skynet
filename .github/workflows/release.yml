@@ -70,6 +70,16 @@ jobs:
           web-local-image: sundayting/skynet-web:${{ steps.image.outputs.smoke-tag }}
           web-remote-image: sundayting/skynet-web:${{ steps.image.outputs.version }}
 
+      - name: Update latest aliases
+        id: publish-latest
+        uses: ./.github/actions/push-and-verify
+        with:
+          api-local-image: sundayting/skynet-api:${{ steps.image.outputs.smoke-tag }}
+          api-remote-image: sundayting/skynet-api:latest
+          web-local-image: sundayting/skynet-web:${{ steps.image.outputs.smoke-tag }}
+          web-remote-image: sundayting/skynet-web:latest
+          replace_remote: 'true'
+
       - name: Write image summary
         env:
           API_REMOTE_MANIFEST_DIGEST: ${{ steps.publish.outputs.api-remote-manifest-digest }}

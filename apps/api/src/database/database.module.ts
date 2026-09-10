@@ -129,6 +129,7 @@ import {
   McpIdempotencyRecord,
   McpIdempotencyRecordSchema,
 } from './schemas/mcp-idempotency-record.schema';
+import { Notification, NotificationSchema } from './schemas/notification.schema';
 import { getMongoConnectionOptions, getRequiredMongoUri } from '@/config/env';
 
 // Register soft-delete plugin globally for all schemas
@@ -189,6 +190,7 @@ export const DATABASE_MODEL_DEFINITIONS = [
   { name: HotCandidateGeneration.name, schema: HotCandidateGenerationSchema },
   { name: CirclePostVisibilityState.name, schema: CirclePostVisibilityStateSchema },
   { name: McpIdempotencyRecord.name, schema: McpIdempotencyRecordSchema },
+  { name: Notification.name, schema: NotificationSchema },
 ];
 
 export function getMongooseConnectionOptions() {

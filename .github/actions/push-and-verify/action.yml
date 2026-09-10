@@ -14,6 +14,10 @@ inputs:
   web-remote-image:
     description: Docker Hub Web image reference to publish.
     required: true
+  replace_remote:
+    description: Allow replacing a mutable tag after the immutable release has been verified.
+    required: false
+    default: 'false'
 
 outputs:
   api-remote-manifest-digest:
@@ -148,8 +152,13 @@ runs:
           local remote_image="$1"
           local local_config_digest="$2"
 
+          if [[ "${{ inputs.replace_remote }}" == 'true' && "$remote_image" != 'sundayting/skynet-api:latest' && "$remote_image" != 'sundayting/skynet-web:latest' ]]; then
+            echo 'replace-remote is reserved for latest aliases' >&2
+            return 1
+          fi
+
           read_remote_image "$remote_image" || return 1
-          if [[ "$REMOTE_IMAGE_STATE" == 'present' && "$REMOTE_CONFIG_DIGEST" != "$local_config_digest" ]]; then
+          if [[ "${{ inputs.replace_remote }}" != 'true' && "$REMOTE_IMAGE_STATE" == 'present' && "$REMOTE_CONFIG_DIGEST" != "$local_config_digest" ]]; then
             echo "remote tag already exists with a different smoke identity: ${remote_image}" >&2
             return 1
           fi
@@ -161,7 +170,7 @@ runs:
           local local_config_digest="$3"
 
           read_remote_image "$remote_image" || return 1
-          if [[ "$REMOTE_IMAGE_STATE" == 'missing' ]]; then
+          if [[ "$REMOTE_IMAGE_STATE" == 'missing' || "${{ inputs.replace_remote }}" == 'true' ]]; then
             docker image tag "$local_image" "$remote_image"
             docker image push "$remote_image"
             read_remote_image "$remote_image" || return 1

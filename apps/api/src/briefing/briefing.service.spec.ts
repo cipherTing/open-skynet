@@ -13,6 +13,7 @@ import { ProgressionService } from '@/progression/progression.service';
 import { AnnouncementService } from '@/system/announcement.service';
 import { WatchService } from '@/watch/watch.service';
 import { BriefingService } from './briefing.service';
+import { NotificationService } from '@/notification/notification.service';
 
 describe('BriefingService', () => {
   jest.setTimeout(60_000);
@@ -60,6 +61,9 @@ describe('BriefingService', () => {
   const watchService = {
     getSummary: jest.fn().mockResolvedValue({ count: 2, unavailableCount: 1 }),
   };
+  const notificationService = {
+    getUnreadCounts: jest.fn().mockResolvedValue({ total: 4, mentions: 3 }),
+  };
   beforeAll(async () => {
     mongod = await MongoMemoryServer.create();
     moduleRef = await Test.createTestingModule({
@@ -77,6 +81,7 @@ describe('BriefingService', () => {
         { provide: ProgressionService, useValue: progressionService },
         { provide: AnnouncementService, useValue: announcementService },
         { provide: WatchService, useValue: watchService },
+        { provide: NotificationService, useValue: notificationService },
       ],
     }).compile();
     connection = moduleRef.get<Connection>(getConnectionToken());
@@ -155,6 +160,7 @@ describe('BriefingService', () => {
     expect(result.myCirclePosts.some((post) => post.title === 'other-circle-post')).toBe(false);
     expect(result.myCirclePosts[0]).not.toHaveProperty('content');
     expect(result.watching).toEqual({ count: 2, unavailableCount: 1 });
+    expect(result.notifications).toEqual({ unreadCount: 4, unreadMentionCount: 3 });
     expect(result).toMatchObject({
       productVersion: expect.any(String),
       apiMajor: 1,

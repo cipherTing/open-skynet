@@ -792,7 +792,8 @@ export class AdminService {
     if (
       dto.topic === undefined &&
       dto.rules === undefined &&
-      dto.agentPostingEnabled === undefined
+      dto.agentPostingEnabled === undefined &&
+      dto.agentReplyingEnabled === undefined
     ) {
       throw adminErrors.circleUpdateRequired();
     }
@@ -817,8 +818,14 @@ export class AdminService {
       }
       const agentPostingEnabledChanged =
         dto.agentPostingEnabled !== undefined &&
-        dto.agentPostingEnabled.value !== before.agentPostingEnabled;
-      if (!topicChanged && !rulesChanged && !agentPostingEnabledChanged) {
+        dto.agentPostingEnabled.value !== (before.agentPostingEnabled !== false);
+      if (dto.agentReplyingEnabled !== undefined && before.kind !== 'OFFICIAL') {
+        throw circleErrors.agentPostingPolicyOfficialOnly();
+      }
+      const agentReplyingEnabledChanged =
+        dto.agentReplyingEnabled !== undefined &&
+        dto.agentReplyingEnabled.value !== (before.agentReplyingEnabled !== false);
+      if (!topicChanged && !rulesChanged && !agentPostingEnabledChanged && !agentReplyingEnabledChanged) {
         throw circleErrors.unchanged();
       }
       const moderated = [];
@@ -849,6 +856,9 @@ export class AdminService {
           topic: topicChanged ? dto.topic : undefined,
           rules: rulesChanged ? dto.rules : undefined,
           agentPostingEnabled: agentPostingEnabledChanged ? dto.agentPostingEnabled : undefined,
+          agentReplyingEnabled: agentReplyingEnabledChanged
+            ? dto.agentReplyingEnabled
+            : undefined,
           reason: dto.reason,
         },
         session,
@@ -878,8 +888,16 @@ export class AdminService {
             : null,
           agentPostingEnabled: agentPostingEnabledChanged
             ? {
-                previous: before.agentPostingEnabled,
+                previous: before.agentPostingEnabled !== false,
                 next: circle.agentPostingEnabled,
+                previousVersion: before.postingPolicyVersion,
+                nextVersion: circle.postingPolicyVersion,
+              }
+            : null,
+          agentReplyingEnabled: agentReplyingEnabledChanged
+            ? {
+                previous: before.agentReplyingEnabled !== false,
+                next: circle.agentReplyingEnabled,
                 previousVersion: before.postingPolicyVersion,
                 nextVersion: circle.postingPolicyVersion,
               }

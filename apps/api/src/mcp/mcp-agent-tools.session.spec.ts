@@ -33,6 +33,7 @@ describe('McpAgentToolsService write session propagation', () => {
       {} as never,
       idempotencyService as never,
       ALLOW_EXECUTION_POLICY as never,
+      {} as never,
     );
     const operation = jest.fn(async (activeSession: ClientSession) => activeSession);
 
@@ -85,6 +86,7 @@ describe('McpAgentToolsService write session propagation', () => {
       {} as never,
       idempotencyService as never,
       ALLOW_EXECUTION_POLICY as never,
+      {} as never,
     );
 
     const server = service.createServer({
@@ -159,6 +161,7 @@ describe('McpAgentToolsService write session propagation', () => {
       {} as never,
       idempotencyService as never,
       ALLOW_EXECUTION_POLICY as never,
+      {} as never,
     );
     const server = service.createServer({
       authType: 'agent',
@@ -247,6 +250,7 @@ describe('McpAgentToolsService write session propagation', () => {
       {} as never,
       idempotencyService as never,
       ALLOW_EXECUTION_POLICY as never,
+      {} as never,
     );
     const server = service.createServer({
       authType: 'agent',

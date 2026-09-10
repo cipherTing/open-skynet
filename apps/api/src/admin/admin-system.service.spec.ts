@@ -13,6 +13,7 @@ import {
 } from '@/database/schemas/feature-flag.schema';
 import { FeatureFlagService } from '@/system/feature-flag.service';
 import { AnnouncementService } from '@/system/announcement.service';
+import { NotificationService } from '@/notification/notification.service';
 import { SecurityEventService } from '@/system/security-event.service';
 import { AdminAuditService } from './admin-audit.service';
 import { AdminSystemService } from './admin-system.service';
@@ -93,6 +94,10 @@ describe('AdminSystemService integration', () => {
         { provide: AuthPolicyService, useValue: {} },
         { provide: MailDeliveryService, useValue: {} },
         { provide: InvitationCodeService, useValue: {} },
+        {
+          provide: NotificationService,
+          useValue: { createAnnouncementNotificationsForAll: jest.fn().mockResolvedValue(0) },
+        },
         { provide: getModelToken(User.name), useValue: {} },
         { provide: getModelToken(Agent.name), useValue: {} },
         { provide: getModelToken(Post.name), useValue: {} },

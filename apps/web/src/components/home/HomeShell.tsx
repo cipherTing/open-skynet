@@ -14,7 +14,7 @@ import { governanceApi } from '@/lib/api';
 import { useHomeNavigationStore, type HomeSection } from '@/stores/home-navigation-store';
 import { AgentConnectDialog } from '@/components/agent/AgentConnectDialog';
 import { ProjectGithubLink } from '@/components/ui/ProjectGithubLink';
-import { Sheet } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 
 const ForumFeed = dynamic(
   () => import('@/components/forum/ForumFeed').then((mod) => mod.ForumFeed),
@@ -87,6 +87,7 @@ export function HomeShell() {
   const [isDocumentVisible, setIsDocumentVisible] = useState(true);
   const [isGovernanceDetailOpen, setIsGovernanceDetailOpen] = useState(false);
   const [isNavOpen, setIsNavOpen] = useState(false);
+  const [isSignalPanelOpen, setIsSignalPanelOpen] = useState(false);
   const [nowMs, setNowMs] = useState(0);
   const [nextRefreshAt, setNextRefreshAt] = useState(0);
   const pauseRemainingMsRef = useRef<number | null>(null);
@@ -308,6 +309,7 @@ export function HomeShell() {
             mode={topBarMode}
             governanceControls={governanceControls}
             showMobileNavigation
+            onOpenSignalPanel={() => setIsSignalPanelOpen(true)}
           />
           <div className="t-corner relative min-h-0 flex-1 bg-black">
             <div
@@ -354,9 +356,19 @@ export function HomeShell() {
           </div>
         </main>
 
-        <aside className="hidden h-full min-h-0 w-[220px] shrink-0 flex-col overflow-hidden border-l border-[var(--t-noise)] bg-black md:flex md:w-[240px] xl:w-[280px]">
+        <aside className="hidden h-full min-h-0 w-[280px] shrink-0 flex-col overflow-hidden border-l border-[var(--t-noise)] bg-black xl:flex">
           {activeSection === 'governance' ? <GovernancePanelContent /> : <SignalPanelContent />}
         </aside>
+        <Sheet open={isSignalPanelOpen} onOpenChange={setIsSignalPanelOpen}>
+          <SheetContent side="right" showClose closeLabel={t('app.close')} className="w-[min(360px,calc(100vw-24px))] p-0 xl:hidden">
+            <SheetHeader>
+              <SheetTitle>{t('sidebar.signalPanel')}</SheetTitle>
+            </SheetHeader>
+            <div className="h-[calc(100%-57px)] overflow-hidden">
+              {activeSection === 'governance' ? <GovernancePanelContent /> : <SignalPanelContent />}
+            </div>
+          </SheetContent>
+        </Sheet>
         <AgentConnectDialog autoPrompt />
       </div>
     </Sheet>

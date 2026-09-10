@@ -99,6 +99,31 @@ const CONTENT_REVIEW_REQUESTER_INDEX: ExpectedIndex = {
   partialFilterExpression: { type: 'CIRCLE', status: 'PENDING' },
 };
 
+const NOTIFICATION_UNIQUE_INDEX: ExpectedIndex = {
+  collection: 'notifications',
+  name: 'uq_notifications_recipient_kind_source',
+  key: { recipientAgentId: 1, kind: 1, sourceType: 1, sourceId: 1 },
+  unique: true,
+};
+
+const NOTIFICATION_RECIPIENT_INDEX: ExpectedIndex = {
+  collection: 'notifications',
+  name: 'idx_notifications_recipient_created_at',
+  key: { recipientAgentId: 1, createdAt: -1, _id: -1 },
+};
+
+const NOTIFICATION_KIND_INDEX: ExpectedIndex = {
+  collection: 'notifications',
+  name: 'idx_notifications_recipient_kind_created_at',
+  key: { recipientAgentId: 1, kind: 1, createdAt: -1, _id: -1 },
+};
+
+const NOTIFICATION_READ_INDEX: ExpectedIndex = {
+  collection: 'notifications',
+  name: 'idx_notifications_recipient_read_created_at',
+  key: { recipientAgentId: 1, readAt: 1, createdAt: -1, _id: -1 },
+};
+
 const LEGACY_POST_INDEX: ExpectedIndex = {
   collection: 'posts',
   name: 'circleId_1_circleVisible_1_createdAt_-1__id_-1',
@@ -183,7 +208,59 @@ const RC2_MIGRATION: DatabaseMigration = {
   },
 };
 
-const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [RC2_MIGRATION];
+const RC5_NOTIFICATION_MIGRATION_CONTRACT = {
+  createdIndexes: [
+    NOTIFICATION_UNIQUE_INDEX,
+    NOTIFICATION_RECIPIENT_INDEX,
+    NOTIFICATION_KIND_INDEX,
+    NOTIFICATION_READ_INDEX,
+  ],
+} as const;
+
+const RC5_NOTIFICATION_MIGRATION: DatabaseMigration = {
+  id: '20260909_001_rc4_to_rc5_notifications',
+  checksum: migrationChecksum(RC5_NOTIFICATION_MIGRATION_CONTRACT),
+  apply: async (context) => {
+    const indexes = [
+      NOTIFICATION_UNIQUE_INDEX,
+      NOTIFICATION_RECIPIENT_INDEX,
+      NOTIFICATION_KIND_INDEX,
+      NOTIFICATION_READ_INDEX,
+    ];
+    for (const index of indexes) {
+      await context.assertLockHeld();
+      await ensureExpectedIndex(context.database, index);
+    }
+    for (const index of indexes) {
+      await context.assertLockHeld();
+      await verifyExpectedIndex(context.database, index);
+    }
+  },
+};
+
+const RC5_CIRCLE_REPLY_POLICY_MIGRATION_CONTRACT = {
+  normalizedFields: ['circles.agentReplyingEnabled'],
+} as const;
+
+const RC5_CIRCLE_REPLY_POLICY_MIGRATION: DatabaseMigration = {
+  id: '20260909_002_rc4_to_rc5_circle_reply_policy',
+  checksum: migrationChecksum(RC5_CIRCLE_REPLY_POLICY_MIGRATION_CONTRACT),
+  apply: async (context) => {
+    await updateInBatches(
+      context.database.collection('circles'),
+      { agentReplyingEnabled: { $exists: false } },
+      { $set: { agentReplyingEnabled: true } },
+      context.assertLockHeld,
+    );
+    await context.assertLockHeld();
+  },
+};
+
+const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
+  RC2_MIGRATION,
+  RC5_NOTIFICATION_MIGRATION,
+  RC5_CIRCLE_REPLY_POLICY_MIGRATION,
+];
 
 export function getDatabaseMigrationRequirements(): readonly DatabaseMigrationRequirement[] {
   return DATABASE_MIGRATIONS.map(({ id, checksum }) => ({ id, checksum }));
@@ -313,7 +390,9 @@ async function dropExpectedLegacyIndex(
     );
   }
   await database.collection(expected.collection).dropIndex(expected.name);
-  if ((await listIndexes(database, expected.collection)).some((index) => index.name === expected.name)) {
+  if (
+    (await listIndexes(database, expected.collection)).some((index) => index.name === expected.name)
+  ) {
     throw new Error(`Database index ${expected.collection}:${expected.name} was not removed`);
   }
 }
@@ -327,9 +406,7 @@ async function updateInBatches(
   let lastId: MigrationObjectId | null = null;
   while (true) {
     await assertLockHeld();
-    const query: MigrationFilter = lastId
-      ? { $and: [filter, { _id: { $gt: lastId } }] }
-      : filter;
+    const query: MigrationFilter = lastId ? { $and: [filter, { _id: { $gt: lastId } }] } : filter;
     const batch = await collection
       .find(query)
       .sort({ _id: 1 })
@@ -516,10 +593,7 @@ async function withMigrationLock<T>(
       const lock = await locks.findOneAndUpdate(
         {
           _id: MIGRATION_LOCK_ID,
-          $or: [
-            { leaseExpiresAt: { $lte: now } },
-            { leaseExpiresAt: { $exists: false } },
-          ],
+          $or: [{ leaseExpiresAt: { $lte: now } }, { leaseExpiresAt: { $exists: false } }],
         },
         { $set: { owner, leaseExpiresAt: new Date(now.getTime() + MIGRATION_LOCK_LEASE_MS) } },
         { upsert: true, returnDocument: 'after' },
@@ -605,9 +679,7 @@ export async function runDatabaseMigrations(
     }
 
     for (const pendingRecord of pendingRecords) {
-      const migration = DATABASE_MIGRATIONS.find(
-        (candidate) => candidate.id === pendingRecord.id,
-      );
+      const migration = DATABASE_MIGRATIONS.find((candidate) => candidate.id === pendingRecord.id);
       if (!migration) throw new Error(`Database migration ${pendingRecord.id} is not registered`);
       try {
         await records.insertOne({

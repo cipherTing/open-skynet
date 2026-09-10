@@ -54,6 +54,9 @@ import {
 import { BusinessCalendarService } from '@/system/business-calendar.service';
 import { circleErrors } from '@/common/errors/business-errors';
 import { CreatePostDto } from './dto/create-post.dto';
+import { Notification, NotificationSchema } from '@/database/schemas/notification.schema';
+import { Announcement, AnnouncementSchema } from '@/database/schemas/announcement.schema';
+import { NotificationService } from '@/notification/notification.service';
 
 type ForumServiceReplyItem = Awaited<ReturnType<ForumService['listReplies']>>['items'][number];
 
@@ -86,6 +89,18 @@ describe('ForumService circle feeds', () => {
       async (
         reference: { circleId?: string; circleName?: string },
         _allowOfficialCirclePostingBypass = false,
+      ) => {
+        const circle = reference.circleId
+          ? await connection.model(Circle.name).findById(reference.circleId)
+          : await connection.model(Circle.name).findOne({ normalizedName: reference.circleName });
+        if (!circle) throw new Error('circle missing');
+        return circle;
+      },
+    ),
+    assertAgentReplyAllowed: jest.fn(
+      async (
+        reference: { circleId?: string; circleName?: string },
+        _allowOfficialCircleReplyBypass = false,
       ) => {
         const circle = reference.circleId
           ? await connection.model(Circle.name).findById(reference.circleId)
@@ -154,6 +169,8 @@ describe('ForumService circle feeds', () => {
           { name: ViewHistory.name, schema: ViewHistorySchema },
           { name: PostViewCounterShard.name, schema: PostViewCounterShardSchema },
           { name: InteractionHistory.name, schema: InteractionHistorySchema },
+          { name: Notification.name, schema: NotificationSchema },
+          { name: Announcement.name, schema: AnnouncementSchema },
           { name: BusinessCalendarConfig.name, schema: BusinessCalendarConfigSchema },
         ]),
       ],
@@ -196,6 +213,12 @@ describe('ForumService circle feeds', () => {
           provide: PostVisibilityService,
           useValue: { recordPostCreated: jest.fn().mockResolvedValue(undefined) },
         },
+        {
+          provide: NotificationService,
+          useValue: {
+            createMentionNotifications: jest.fn().mockResolvedValue(0),
+          },
+        },
       ],
     }).compile();
     connection = moduleRef.get<Connection>(getConnectionToken());
@@ -212,6 +235,13 @@ describe('ForumService circle feeds', () => {
     featureFlagServiceMock.assertEnabled.mockResolvedValue(undefined);
     featureFlagServiceMock.isEnabled.mockResolvedValue(false);
     circleServiceMock.assertAgentPostAllowed.mockImplementation(async (reference) => {
+      const circle = reference.circleId
+        ? await connection.model(Circle.name).findById(reference.circleId)
+        : await connection.model(Circle.name).findOne({ normalizedName: reference.circleName });
+      if (!circle) throw new Error('circle missing');
+      return circle;
+    });
+    circleServiceMock.assertAgentReplyAllowed.mockImplementation(async (reference) => {
       const circle = reference.circleId
         ? await connection.model(Circle.name).findById(reference.circleId)
         : await connection.model(Circle.name).findOne({ normalizedName: reference.circleName });
@@ -1159,6 +1189,24 @@ describe('ForumService circle feeds', () => {
       sourceAuthor: null,
     });
     expect(await connection.model(PostRevision.name).countDocuments({ postId: post.id })).toBe(2);
+  });
+
+  it('blocks Agent replies in an official circle when its reply policy is closed', async () => {
+    const circle = await createCircle('closed-official-reply-circle');
+    await connection
+      .model(Circle.name)
+      .updateOne({ _id: circle.id }, { $set: { kind: 'OFFICIAL', agentReplyingEnabled: false } });
+    const author = await createAgent('closed-reply-author');
+    const replier = await createAgent('closed-reply-agent');
+    const post = await createPost(circle.id, author.id, 1);
+    circleServiceMock.assertAgentReplyAllowed.mockRejectedValue(
+      circleErrors.agentReplyingDisabled(),
+    );
+
+    await expect(
+      service.createReply(replier.id, post.id, { content: '不应写入官方圈子的回复。' }),
+    ).rejects.toMatchObject({ response: { code: 'CIRCLE_AGENT_REPLYING_DISABLED' } });
+    expect(await connection.model(Reply.name).countDocuments()).toBe(0);
   });
 
   it('bounds top-level and branch replies with stable cursors', async () => {

@@ -25,7 +25,7 @@ GitHub **Repository Actions Secret** 只配置 `DOCKERHUB_TOKEN`。它是 Docker
 - `main` 成功提交：在同一 job 对已 smoke 的本地 API/Web 镜像打上 `dev-<完整 Git SHA>` 并推送。
 - 手工测试镜像：仅限已推送、已通过 `pnpm check:ci` 的提交，且只能推送不可变 `dev-<完整 Git SHA>`。推送前必须完成 `pnpm containers:check`、`linux/amd64` 生产镜像构建和成对 Compose smoke；推送时必须先检查远端 tag 的 config digest，推送后回读 config 与 manifest digest。正式 SemVer tag 不适用此例外。
 - Git tag：先将已验证的发布提交合并并推送到 `main`，创建本地完整 SemVer tag，以该 tag 运行 `RELEASE_TAG=<tag> pnpm release:verify`，确认提交是 `origin/main` 的祖先后再推送 tag；例如 `v0.1.0-rc4` 对应 `0.1.0-rc4`。
-- 不发布 `latest`、分支名、major 或 minor 浮动 tag；候选发布使用完整 SemVer 预发布版本，例如 `v0.1.0-rc4` 对应 `0.1.0-rc4`。
+- 通过发布验收的版本同时更新 `latest`；不发布分支名、major 或 minor 浮动 tag。候选发布使用完整 SemVer 预发布版本，例如 `v0.1.0-rc4` 对应 `0.1.0-rc4`，并将 `latest` 指向该版本。
 - 镜像 tag 只允许写入一次：远端 tag 不存在时推送；存在且 digest 相同允许重跑；存在但 digest 不同必须失败，禁止覆盖。
 
 ## 发布前

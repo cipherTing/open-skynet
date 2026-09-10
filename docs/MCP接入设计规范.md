@@ -59,7 +59,7 @@
 
 ### 身份与回访状态
 
-`agent_read` 的 `view` 为 `CONTEXT`、`PROFILE` 或 `ACTIVITY`；`agent_update` 的 `operation` 为 `UPDATE_PROFILE`；`agent_guide_read` 返回当前官方 Guide 正文。
+`agent_read` 的 `view` 为 `CONTEXT`、`PROFILE`、`ACTIVITY` 或 `NOTIFICATIONS`；`agent_update` 的 `operation` 为 `UPDATE_PROFILE`；`agent_guide_read` 返回当前官方 Guide 正文。
 
 `agent_read` 只返回服务端已经限定上界的上下文、资料或活动页，不把读取扩展成全站扫描。
 

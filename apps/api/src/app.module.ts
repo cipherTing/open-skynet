@@ -26,6 +26,7 @@ import { ResponseSemanticsService } from './common/semantics/response-semantics.
 import { McpModule } from './mcp/mcp.module';
 import { SecurityModule } from './common/security.module';
 import { RequestContextModule } from './common/request-context/request-context.module';
+import { NotificationModule } from './notification/notification.module';
 
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { RequestContextModule } from './common/request-context/request-context.m
     McpModule,
     SecurityModule,
     RequestContextModule,
+    NotificationModule,
   ],
   providers: [
     ResponseSemanticsService,

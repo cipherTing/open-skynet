@@ -3,9 +3,6 @@
 import { useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeSanitize from 'rehype-sanitize';
 import { Quote, Reply } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { AgentAvatar } from '@/components/ui/AgentAvatar';
@@ -13,6 +10,7 @@ import { AgentLevelBadge } from '@/components/ui/AgentLevelBadge';
 import { FeedbackBar, hasVisibleFeedback } from './FeedbackBar';
 import { ReportDialog } from './ReportDialog';
 import { ReplyInput } from './ReplyInput';
+import { MentionMarkdown } from './MentionMarkdown';
 import { ReplyRevisionActions } from './ReplyRevisionActions';
 import { usePageScrollViewport } from '@/components/layout/PageScrollViewport';
 import { ApiError, forumApi } from '@/lib/api';
@@ -26,7 +24,6 @@ import { isForumDeletedReply } from '@skynet/shared';
 import type {
   FeedbackType,
   ForumDeletedReply,
-  ForumMention,
   ForumReply,
   ForumReplyItem,
   ForumReplyQuote,
@@ -129,30 +126,6 @@ function ReplyQuoteBlock({
     </Link>
   );
 }
-
-function escapeMarkdownText(value: string): string {
-  return value.replace(/([\\`*_[\]{}()#+\-.!|>])/g, '\\$1');
-}
-
-function highlightMentions(content: string, mentions: ForumMention[] = []): string {
-  const mentionById = new Map(mentions.map((mention) => [mention.id.toLowerCase(), mention]));
-  return content.replace(/@\{([a-f\d]{24})\}/gi, (match, agentId: string) => {
-    const mention = mentionById.get(agentId.toLowerCase());
-    if (!mention) return match;
-    return `[**@${escapeMarkdownText(mention.name)}**](/agent/${encodeURIComponent(mention.id)})`;
-  });
-}
-
-const markdownComponents = {
-  a: ({ href, children }: React.ComponentProps<'a'>) =>
-    href?.startsWith('/agent/') ? (
-      <Link href={href} className="text-accent hover:underline">
-        {children}
-      </Link>
-    ) : (
-      <a href={href}>{children}</a>
-    ),
-};
 
 function getAgentOperationUnavailableReason(
   isAuthenticated: boolean,
@@ -400,7 +373,6 @@ export function ReplyThread({
     setReplyInputRevision(isReplyInputVisible ? null : ownerOperationRevision);
   };
 
-  const processedContent = highlightMentions(reply.content, reply.mentions);
   const removed = Boolean(reply.deletedAt);
   const highlighted = highlightedReplyId === reply.id;
 
@@ -464,13 +436,7 @@ export function ReplyThread({
             ref={replyContentRef}
             className="prose-deck mb-2.5 max-w-[80ch] text-[13px] leading-relaxed"
           >
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              rehypePlugins={[rehypeSanitize]}
-              components={markdownComponents}
-            >
-              {processedContent}
-            </ReactMarkdown>
+            <MentionMarkdown content={reply.content} mentions={reply.mentions} />
           </div>
 
           {!removed &&
@@ -600,7 +566,6 @@ function ChildReplyItem({
   const { ownerOperationEnabled, canOperateAsAgent } = useOwnerOperation();
   const { agent, isAuthenticated } = useAuth();
   const toast = useToast();
-  const processedContent = highlightMentions(child.content, child.mentions);
   const removed = Boolean(child.deletedAt);
   const highlighted = highlightedReplyId === child.id;
   const hasAgent = !!agent;
@@ -705,13 +670,7 @@ function ChildReplyItem({
         <ReplyQuoteBlock quote={child.quote} postId={postId} />
 
         <div className="prose-deck mb-2 max-w-[80ch] text-[12px] leading-relaxed">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            rehypePlugins={[rehypeSanitize]}
-            components={markdownComponents}
-          >
-            {processedContent}
-          </ReactMarkdown>
+          <MentionMarkdown content={child.content} mentions={child.mentions} />
         </div>
 
         {!removed && (showFeedback || canFeedback || feedbackReason || reportReason) && (

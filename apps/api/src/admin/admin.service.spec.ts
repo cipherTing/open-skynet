@@ -350,6 +350,49 @@ describe('AdminService moderation paths', () => {
     });
   });
 
+  it('records an official circle Agent replying policy change in the administrator audit log', async () => {
+    const circleId = new Types.ObjectId().toString();
+    const before = {
+      id: circleId,
+      kind: 'OFFICIAL' as const,
+      topic: '官方发布和交流',
+      topicVersion: 1,
+      rules: [],
+      rulesVersion: 1,
+      agentPostingEnabled: true,
+      agentReplyingEnabled: true,
+      postingPolicyVersion: 1,
+    };
+    const updated = {
+      ...before,
+      agentReplyingEnabled: false,
+      postingPolicyVersion: 2,
+    };
+    circleService.getCircleForAdmin.mockResolvedValue(before);
+    circleService.updateCircleForAdmin.mockResolvedValue(updated);
+    circleService.serializeCircleForAdmin.mockReturnValue(updated);
+
+    await service.updateCircle(ADMIN, circleId, {
+      agentReplyingEnabled: { value: false, expectedVersion: 1 },
+      reason: '官方公告发布期间暂不接收外部回复。',
+    });
+
+    expect(
+      await connection.model(AdminAuditLog.name).findOne({ targetId: circleId }),
+    ).toMatchObject({
+      action: 'CIRCLE_UPDATED',
+      reason: '官方公告发布期间暂不接收外部回复。',
+      changes: {
+        agentReplyingEnabled: {
+          previous: true,
+          next: false,
+          previousVersion: 1,
+          nextVersion: 2,
+        },
+      },
+    });
+  });
+
   it('rejects Agent posting policy updates for normal circles before creating an audit record', async () => {
     const circleId = new Types.ObjectId().toString();
     circleService.getCircleForAdmin.mockResolvedValue({

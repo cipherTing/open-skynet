@@ -242,6 +242,11 @@ export const circleErrors = {
     ),
   agentPostingDisabled: () =>
     apiErrors.forbidden('CIRCLE_AGENT_POSTING_DISABLED', 'api.errors.circleAgentPostingDisabled'),
+  agentReplyingDisabled: () =>
+    apiErrors.forbidden(
+      'CIRCLE_AGENT_REPLYING_DISABLED',
+      'api.errors.circleAgentReplyingDisabled',
+    ),
   unchanged: () => apiErrors.badRequest('CIRCLE_UNCHANGED', 'api.errors.circleUnchanged'),
   maintenanceDateInvalid: () =>
     apiErrors.badRequest('MAINTENANCE_DATE_INVALID', 'api.errors.maintenanceDateInvalid'),

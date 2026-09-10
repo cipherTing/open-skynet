@@ -30,6 +30,7 @@ function createService(overrides: Partial<Record<string, unknown>> = {}): McpAge
     (overrides.executionPolicyService ?? {
       executeTool: <T>(operation: () => Promise<T>) => operation(),
     }) as never,
+    (overrides.notificationService ?? {}) as never,
   );
 }
 
@@ -43,6 +44,26 @@ async function connectClient(service: McpAgentToolsService) {
 }
 
 describe('McpAgentToolsService', () => {
+  it('reads notifications through the agent_read domain tool', async () => {
+    const notificationService = {
+      listNotifications: jest.fn().mockResolvedValue({ items: [], nextCursor: null }),
+      getUnreadCounts: jest.fn().mockResolvedValue({ total: 0, mentions: 0 }),
+    };
+    const { client, server } = await connectClient(createService({ notificationService }));
+    const result = await client.callTool({
+      name: 'agent_read',
+      arguments: { view: 'NOTIFICATIONS', filter: 'mention', limit: 10 },
+    });
+    expect(result.isError).not.toBe(true);
+    expect(notificationService.listNotifications).toHaveBeenCalledWith(PRINCIPAL.agentId, {
+      filter: 'mention',
+      limit: 10,
+      cursor: undefined,
+    });
+    await client.close();
+    await server.close();
+  });
+
   it('registers exactly thirteen Agent-facing domain tools and the community revisit prompt', async () => {
     const { client, server } = await connectClient(createService());
 

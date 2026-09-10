@@ -11,8 +11,8 @@ const CURRENT_POST_INDEX = 'circleId_1_circleVisible_1_pinnedAt_-1_createdAt_-1_
 const LEGACY_CIRCLE_CREATED_INDEX = 'createdByAgentId_1_createdAt_-1';
 const LEGACY_CIRCLE_WEEK_INDEX = 'createdByAgentId_1_creationWeekStartDate_1';
 const LEGACY_REVIEW_WEEK_INDEX = 'uq_content_review_circle_requester_week';
-const CURRENT_REVIEW_REQUESTER_INDEX =
-  'idx_content_review_circle_pending_requester_created_at';
+const CURRENT_REVIEW_REQUESTER_INDEX = 'idx_content_review_circle_pending_requester_created_at';
+const NOTIFICATION_UNIQUE_INDEX = 'uq_notifications_recipient_kind_source';
 
 describe('database migrations', () => {
   let replicaSet: MongoMemoryReplSet;
@@ -45,14 +45,18 @@ describe('database migrations', () => {
     const deletedCircleCreatedAt = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
     await database.collection('agents').insertOne({ _id: agentId, name: 'migration-agent' });
-    await database.collection('posts').createIndex(
-      { circleId: 1, circleVisible: 1, createdAt: -1, _id: -1 },
-      { partialFilterExpression: { deletedAt: null } },
-    );
-    await database.collection('circles').createIndex(
-      { createdByAgentId: 1, createdAt: -1 },
-      { partialFilterExpression: { deletedAt: null, createdByAgentId: { $type: 'string' } } },
-    );
+    await database
+      .collection('posts')
+      .createIndex(
+        { circleId: 1, circleVisible: 1, createdAt: -1, _id: -1 },
+        { partialFilterExpression: { deletedAt: null } },
+      );
+    await database
+      .collection('circles')
+      .createIndex(
+        { createdByAgentId: 1, createdAt: -1 },
+        { partialFilterExpression: { deletedAt: null, createdByAgentId: { $type: 'string' } } },
+      );
     await database.collection('circles').createIndex(
       { createdByAgentId: 1, creationWeekStartDate: 1 },
       {
@@ -142,15 +146,27 @@ describe('database migrations', () => {
     expect(contractedReviewIndexes.map((index) => index.name)).not.toContain(
       LEGACY_REVIEW_WEEK_INDEX,
     );
+    const notificationIndexes = await database.collection('notifications').indexes();
+    expect(notificationIndexes.map((index) => index.name)).toContain(NOTIFICATION_UNIQUE_INDEX);
 
-    expect(await database.collection('posts').findOne({ circleId: 'legacy-circle' })).toMatchObject({
-      pinnedAt: null,
-    });
-    expect(await database.collection('circles').findOne({ createdByAgentId: agentId.toString() })).toEqual(
-      expect.objectContaining({ agentPostingEnabled: true, postingPolicyVersion: 1 }),
+    expect(await database.collection('posts').findOne({ circleId: 'legacy-circle' })).toMatchObject(
+      {
+        pinnedAt: null,
+      },
     );
     expect(
-      await database.collection('circles').countDocuments({ creationWeekStartDate: { $exists: true } }),
+      await database.collection('circles').findOne({ createdByAgentId: agentId.toString() }),
+    ).toEqual(
+      expect.objectContaining({
+        agentPostingEnabled: true,
+        agentReplyingEnabled: true,
+        postingPolicyVersion: 1,
+      }),
+    );
+    expect(
+      await database
+        .collection('circles')
+        .countDocuments({ creationWeekStartDate: { $exists: true } }),
     ).toBe(0);
     expect(
       await database
@@ -161,23 +177,23 @@ describe('database migrations', () => {
       await database.collection('content_review_requests').findOne({ type: 'POST' }),
     ).toMatchObject({ payload: { submissionOrigin: 'AGENT' } });
 
-    await expect(
-      runDatabaseMigrations(connection),
-    ).resolves.toEqual([]);
+    await expect(runDatabaseMigrations(connection)).resolves.toEqual([]);
   });
 
   it('refuses to remove a same-name index whose definition is not an approved legacy index', async () => {
     const database = connection.db;
     if (!database) throw new Error('Test database is unavailable');
 
-    await database.collection('posts').createIndex(
-      { circleId: 1, circleVisible: 1, createdAt: 1, _id: -1 },
-      { name: LEGACY_POST_INDEX, partialFilterExpression: { deletedAt: null } },
-    );
+    await database
+      .collection('posts')
+      .createIndex(
+        { circleId: 1, circleVisible: 1, createdAt: 1, _id: -1 },
+        { name: LEGACY_POST_INDEX, partialFilterExpression: { deletedAt: null } },
+      );
 
-    await expect(
-      runDatabaseMigrations(connection),
-    ).rejects.toThrow('does not match the approved legacy definition');
+    await expect(runDatabaseMigrations(connection)).rejects.toThrow(
+      'does not match the approved legacy definition',
+    );
 
     expect((await database.collection('posts').indexes()).map((index) => index.name)).toContain(
       LEGACY_POST_INDEX,
@@ -195,7 +211,7 @@ describe('database migrations', () => {
     ).rejects.toThrow('final schema check failed');
 
     expect(await database.collection('database_migrations').countDocuments()).toBe(0);
-    await expect(runDatabaseMigrations(connection)).resolves.toHaveLength(1);
+    await expect(runDatabaseMigrations(connection)).resolves.toHaveLength(3);
   });
 
   it('converges the complete schema before recording the migration', async () => {
@@ -203,11 +219,11 @@ describe('database migrations', () => {
       runDatabaseMigrations(connection, async (activeConnection) => {
         await syncDatabaseIndexes(activeConnection, DATABASE_MODEL_DEFINITIONS);
       }),
-    ).resolves.toHaveLength(1);
+    ).resolves.toHaveLength(3);
 
     const verification = await syncDatabaseIndexes(connection, DATABASE_MODEL_DEFINITIONS);
-    expect(verification.every((result) => result.created.length === 0 && result.dropped.length === 0)).toBe(
-      true,
-    );
+    expect(
+      verification.every((result) => result.created.length === 0 && result.dropped.length === 0),
+    ).toBe(true);
   });
 });

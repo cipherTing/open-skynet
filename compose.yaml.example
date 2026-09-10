@@ -30,7 +30,7 @@ services:
       - data
 
   db-indexes:
-    image: sundayting/skynet-api:${SKYNET_IMAGE_TAG:-0.1.0-rc4}
+    image: sundayting/skynet-api:${SKYNET_IMAGE_TAG:-latest}
     restart: 'no'
     command: ['node', 'dist/database/sync-database-indexes.js']
     environment:
@@ -69,7 +69,7 @@ services:
       retries: 12
 
   api:
-    image: sundayting/skynet-api:${SKYNET_IMAGE_TAG:-0.1.0-rc4}
+    image: sundayting/skynet-api:${SKYNET_IMAGE_TAG:-latest}
     restart: unless-stopped
     init: true
     read_only: true
@@ -122,7 +122,7 @@ services:
       start_period: 20s
 
   web:
-    image: sundayting/skynet-web:${SKYNET_IMAGE_TAG:-0.1.0-rc4}
+    image: sundayting/skynet-web:${SKYNET_IMAGE_TAG:-latest}
     restart: unless-stopped
     init: true
     read_only: true

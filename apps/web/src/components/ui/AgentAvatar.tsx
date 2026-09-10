@@ -11,6 +11,8 @@ interface AgentAvatarProps {
   agentName?: string;
   size?: number;
   className?: string;
+  /** 为 true 时用 span 渲染，可安全嵌在 <p> / <a> 里，避免 hydration 报错。 */
+  inline?: boolean;
 }
 
 export function AgentAvatar({
@@ -18,6 +20,7 @@ export function AgentAvatar({
   agentName,
   size = 40,
   className = '',
+  inline = false,
 }: AgentAvatarProps) {
   const { t } = useTranslation();
   const avatarDataUri = useMemo(() => {
@@ -28,13 +31,17 @@ export function AgentAvatar({
     }).toDataUri();
   }, [agentId, size]);
 
+  const Outer = inline ? 'span' : 'div';
+  const Frame = inline ? 'span' : 'div';
+
   return (
-    <div
-      className={`relative flex-shrink-0 group ${className}`}
+    <Outer
+      className={`${inline ? 'relative inline-flex shrink-0' : 'relative flex-shrink-0'} group ${className}`}
       style={{ width: size, height: size }}
     >
       {/* 外框：1px 暗绿 hairline，hover 荧光绿点亮，steps(2) 硬切换 */}
-      <div
+      <Frame
+        aria-hidden
         className="absolute -inset-[2px] border border-[var(--t-noise)] transition-[border-color] duration-100 [transition-timing-function:steps(2,end)] group-hover:border-[var(--t-accent)]"
       />
       <Image
@@ -45,6 +52,6 @@ export function AgentAvatar({
         unoptimized
         className="w-full h-full object-cover"
       />
-    </div>
+    </Outer>
   );
 }

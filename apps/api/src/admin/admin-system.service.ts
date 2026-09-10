@@ -41,6 +41,7 @@ import {
 } from '@/database/schemas/business-calendar-config.schema';
 import { BusinessCalendarService } from '@/system/business-calendar.service';
 import type { UpdateBusinessCalendarConfigDto } from './dto/update-business-calendar-config.dto';
+import { NotificationService } from '@/notification/notification.service';
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -78,6 +79,7 @@ export class AdminSystemService {
     private readonly mailDeliveryService: MailDeliveryService,
     private readonly invitationCodeService: InvitationCodeService,
     private readonly businessCalendarService: BusinessCalendarService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   getAuthPolicy() {
@@ -502,6 +504,12 @@ export class AdminSystemService {
       announcement.status = nextStatus;
       announcement.updatedByUserId = admin.userId;
       await announcement.save({ session });
+      if (nextStatus === ANNOUNCEMENT_STATUSES.PUBLISHED) {
+        await this.notificationService.createAnnouncementNotificationsForAll(
+          announcement.id,
+          session,
+        );
+      }
       await this.auditService.record({
         actorUserId: admin.userId,
         action:

@@ -316,14 +316,14 @@ function CircleRegistryRow({ circle }: { circle: Circle }) {
       <Link
         href={`/circles/${encodeURIComponent(circle.slug)}`}
         aria-label={t('circles.detail.openCircle', { name: circle.name })}
-        className="group relative block min-h-[148px] px-4 py-4 outline-none transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-black focus-visible:bg-[var(--t-accent-wash)] focus-visible:outline focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-[var(--t-accent)] sm:px-5"
+        className="group relative block min-h-[132px] px-4 py-3.5 outline-none transition-colors duration-100 [transition-timing-function:steps(2,end)] hover:bg-black focus-visible:bg-[var(--t-accent-wash)] focus-visible:outline focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-[var(--t-accent)] sm:px-5"
       >
         <span
           aria-hidden
           className="absolute inset-y-0 left-0 w-[2px] bg-[var(--t-accent)] opacity-0 transition-opacity duration-100 [transition-timing-function:steps(2,end)] group-hover:opacity-100 group-focus-visible:opacity-100"
         />
 
-        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_17rem] md:items-start md:gap-6">
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_14rem] md:items-start md:gap-5">
           <div className="min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <h3 className="min-w-0 truncate text-[17px] font-black leading-6 tracking-normal text-[var(--t-ink)] transition-colors duration-100 [transition-timing-function:steps(2,end)] group-hover:text-[var(--t-accent)] group-focus-visible:text-[var(--t-accent)]">
@@ -345,7 +345,7 @@ function CircleRegistryRow({ circle }: { circle: Circle }) {
           </div>
 
           <div className="flex min-w-0 items-stretch gap-3">
-            <dl className="grid min-w-0 flex-1 grid-cols-3 divide-x divide-[var(--t-noise)] border border-[var(--t-frame)] bg-black/40 md:min-w-[15rem]">
+            <dl className="grid min-w-0 flex-1 grid-cols-3 divide-x divide-[var(--t-noise)] border border-[var(--t-frame)] bg-black/40 md:min-w-[13rem]">
               <CircleReading icon={Users} label={t('circles.members')}>
                 <MetricValue value={circle.memberCount} format={formatTelemetryCount} />
               </CircleReading>
@@ -393,12 +393,12 @@ function CircleReading({
   children: ReactNode;
 }) {
   return (
-    <div className="min-w-0 px-2 py-2 sm:px-3">
-      <dt className="flex items-center gap-1 font-sans text-[10px] font-medium tracking-normal text-[var(--t-faint)]">
+    <div className="min-w-0 px-1.5 py-1.5 sm:px-2.5">
+      <dt className="flex items-center gap-1 font-sans text-[9px] font-medium tracking-normal text-[var(--t-faint)]">
         <Icon aria-hidden className="h-3 w-3 shrink-0" />
         <span className="truncate">{label}</span>
       </dt>
-      <dd className="mt-1 truncate font-mono text-sm font-semibold tabular-nums text-[var(--t-text)]">
+      <dd className="mt-0.5 truncate font-mono text-xs font-semibold tabular-nums text-[var(--t-text)]">
         {children}
       </dd>
     </div>

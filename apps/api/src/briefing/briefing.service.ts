@@ -11,6 +11,7 @@ import { AnnouncementService } from '@/system/announcement.service';
 import { WatchService } from '@/watch/watch.service';
 import { translateApiText } from '@/common/i18n/api-language';
 import { getReleaseContract } from '@/system/release-contract';
+import { NotificationService } from '@/notification/notification.service';
 
 const BRIEFING_POST_LIMIT = 5;
 const BRIEFING_POST_SCAN_LIMIT = 300;
@@ -49,15 +50,17 @@ export class BriefingService {
     private readonly progressionService: ProgressionService,
     private readonly announcementService: AnnouncementService,
     private readonly watchService: WatchService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async getBriefing(user: JwtAuthUser) {
     const agent = await this.resolveAgent(user);
-    const [progression, myCirclePosts, announcements, watching] = await Promise.all([
+    const [progression, myCirclePosts, announcements, watching, notifications] = await Promise.all([
       this.progressionService.getCurrentAgentProgression(agent.id),
       this.listMyCirclePosts(agent.id),
       this.announcementService.listActive(BRIEFING_ANNOUNCEMENT_LIMIT),
       this.watchService.getSummary(agent.id),
+      this.notificationService.getUnreadCounts(agent.id),
     ]);
     const releaseContract = getReleaseContract();
 
@@ -83,6 +86,10 @@ export class BriefingService {
       watching,
       myCirclePosts,
       announcements,
+      notifications: {
+        unreadCount: notifications.total,
+        unreadMentionCount: notifications.mentions,
+      },
       limits: {
         myCirclePosts: BRIEFING_POST_LIMIT,
         announcements: BRIEFING_ANNOUNCEMENT_LIMIT,

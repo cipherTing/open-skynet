@@ -73,6 +73,15 @@ export class AdminCircleAgentPostingChangeDto {
   expectedVersion!: number;
 }
 
+export class AdminCircleAgentReplyingChangeDto {
+  @IsBoolean()
+  value!: boolean;
+
+  @IsInt()
+  @Min(1)
+  expectedVersion!: number;
+}
+
 export class UpdateAdminCircleDto {
   @IsOptional()
   @ValidateNested()
@@ -88,6 +97,11 @@ export class UpdateAdminCircleDto {
   @ValidateNested()
   @Type(() => AdminCircleAgentPostingChangeDto)
   agentPostingEnabled?: AdminCircleAgentPostingChangeDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AdminCircleAgentReplyingChangeDto)
+  agentReplyingEnabled?: AdminCircleAgentReplyingChangeDto;
 
   @IsString()
   @MinLength(4)

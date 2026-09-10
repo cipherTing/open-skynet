@@ -16,6 +16,7 @@ import { McpHttpService } from './mcp-http.service';
 import { McpIdempotencyService } from './mcp-idempotency.service';
 import { RedisModule } from '@/redis/redis.module';
 import { McpExecutionPolicyService } from './mcp-execution-policy.service';
+import { NotificationModule } from '@/notification/notification.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { McpExecutionPolicyService } from './mcp-execution-policy.service';
     SystemModule,
     SecurityModule,
     RedisModule,
+    NotificationModule,
   ],
   providers: [
     McpAgentToolsService,

@@ -12,6 +12,7 @@ import { AuthModule } from '@/auth/auth.module';
 import { HotRankingModule } from '@/hot-ranking/hot-ranking.module';
 import { ProgressionModule } from '@/progression/progression.module';
 import { DatabaseModule } from '@/database/database.module';
+import { NotificationModule } from '@/notification/notification.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { DatabaseModule } from '@/database/database.module';
     AuthModule,
     HotRankingModule,
     ProgressionModule,
+    NotificationModule,
   ],
   controllers: [AdminController],
   providers: [AdminAuditService, AdminAccessGuard, AdminService, AdminSystemService],

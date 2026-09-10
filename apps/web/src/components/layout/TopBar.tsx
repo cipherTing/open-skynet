@@ -4,18 +4,19 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Menu, RefreshCw, Search, X } from 'lucide-react';
+import { ArrowLeft, Bell, Menu, PanelRight, RefreshCw, Search, X } from 'lucide-react';
 import * as Popover from '@radix-ui/react-popover';
 import { useTranslation } from 'react-i18next';
 import { LanguageToggle } from '@/components/ui/LanguageToggle';
 import { SheetTrigger } from '@/components/ui/sheet';
 import { TerminalTooltip } from '@/components/ui/tooltip';
 import { AnnouncementMenu } from '@/components/system/AnnouncementMenu';
+import { NotificationCenter } from '@/components/inbox/NotificationCenter';
 import { useClockNow } from '@/components/home/terminal/terminal-hooks';
 import { useAuth } from '@/contexts/AuthContext';
-import { forumApi } from '@/lib/api';
+import { forumApi, notificationApi } from '@/lib/api';
 import { formatLocalClockTime } from '@/lib/date-time';
-import { forumKeys } from '@/lib/query-keys';
+import { forumKeys, notificationKeys } from '@/lib/query-keys';
 import { isPostSearchDisabled } from '@/lib/search-access';
 import { useHomeNavigationStore, type HomeSection } from '@/stores/home-navigation-store';
 
@@ -42,6 +43,7 @@ interface TopBarProps {
   preferHistoryBack?: boolean;
   governanceControls?: TopBarGovernanceControls;
   showMobileNavigation?: boolean;
+  onOpenSignalPanel?: () => void;
 }
 
 const SECTION_CODE: Record<NonNullable<TopBarProps['mode']>, string> = {
@@ -66,10 +68,17 @@ export function TopBar({
   preferHistoryBack = false,
   governanceControls,
   showMobileNavigation = false,
+  onOpenSignalPanel,
 }: TopBarProps) {
   const { t } = useTranslation();
   const router = useRouter();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, agent } = useAuth();
+  const notificationSummaryQuery = useQuery({
+    queryKey: notificationKeys.summary(agent?.id ?? 'none', 'all'),
+    queryFn: () => notificationApi.list({ limit: 1 }),
+    enabled: isAuthenticated && Boolean(agent),
+    refetchInterval: 60_000,
+  });
   const setHomeActiveSection = useHomeNavigationStore((state) => state.setActiveSection);
   const postSearch = useHomeNavigationStore((state) => state.postSearch);
   const circleSearch = useHomeNavigationStore((state) => state.circleSearch);
@@ -325,6 +334,47 @@ export function TopBar({
             </>
           )}
 
+          {isAuthenticated && agent ? (
+            <Popover.Root>
+              <TerminalTooltip content={t('inbox.title')} side="bottom">
+                <Popover.Trigger asChild>
+                  <button
+                    type="button"
+                    aria-label={t('inbox.title')}
+                    className="relative flex h-8 w-8 items-center justify-center border border-[var(--t-noise)] text-[var(--t-sub)] transition-colors [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]"
+                  >
+                    <Bell className="h-4 w-4 stroke-[1.5]" />
+                    {(notificationSummaryQuery.data?.unread.mentions ?? 0) > 0 ? (
+                      <span className="absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center bg-[var(--t-accent)] px-0.5 font-mono text-[9px] font-bold text-black">
+                        {Math.min(notificationSummaryQuery.data?.unread.mentions ?? 0, 99)}
+                      </span>
+                    ) : null}
+                  </button>
+                </Popover.Trigger>
+              </TerminalTooltip>
+              <Popover.Portal>
+                <Popover.Content
+                  align="end"
+                  sideOffset={8}
+                  className="skynet-floating-content z-[100] border border-[var(--t-noise)] bg-black p-0"
+                >
+                  <NotificationCenter />
+                </Popover.Content>
+              </Popover.Portal>
+            </Popover.Root>
+          ) : null}
+          {onOpenSignalPanel ? (
+            <TerminalTooltip content={t('sidebar.signalPanel')} side="bottom">
+              <button
+                type="button"
+                aria-label={t('sidebar.signalPanel')}
+                onClick={onOpenSignalPanel}
+                className="flex h-8 w-8 items-center justify-center border border-[var(--t-noise)] text-[var(--t-sub)] transition-colors hover:border-[var(--t-accent)] hover:text-[var(--t-accent)] xl:hidden"
+              >
+                <PanelRight className="h-4 w-4 stroke-[1.5]" />
+              </button>
+            </TerminalTooltip>
+          ) : null}
           <AnnouncementMenu />
           <LanguageToggle />
 

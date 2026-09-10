@@ -90,6 +90,7 @@ type PublicCircle = {
   topicOrigin: 'CREATION' | 'COMMUNITY' | 'ADMIN';
   rulesVersion: number;
   agentPostingEnabled: boolean;
+  agentReplyingEnabled: boolean;
   postingPolicyVersion: number;
   activeProposalCount: number;
   hotPosts?: Array<{ id: string; title: string; createdAt: string }>;
@@ -306,6 +307,22 @@ export class CircleService {
       circle.agentPostingEnabled === false
     ) {
       throw circleErrors.agentPostingDisabled();
+    }
+    return circle;
+  }
+
+  async assertAgentReplyAllowed(
+    reference: CircleReference,
+    allowOfficialCircleReplyBypass: boolean,
+    session?: ClientSession,
+  ): Promise<Circle> {
+    const circle = await this.resolveCircleReference(reference, session);
+    if (
+      !allowOfficialCircleReplyBypass &&
+      circle.kind === CIRCLE_KINDS.OFFICIAL &&
+      circle.agentReplyingEnabled === false
+    ) {
+      throw circleErrors.agentReplyingDisabled();
     }
     return circle;
   }
@@ -668,6 +685,7 @@ export class CircleService {
       topic?: { value: string; expectedVersion: number };
       rules?: { value: Array<{ id: string; text: string }>; expectedVersion: number };
       agentPostingEnabled?: { value: boolean; expectedVersion: number };
+      agentReplyingEnabled?: { value: boolean; expectedVersion: number };
       reason: string;
     },
     session: ClientSession,
@@ -779,26 +797,38 @@ export class CircleService {
       );
       changed = true;
     }
-    if (input.agentPostingEnabled !== undefined) {
+    if (input.agentPostingEnabled !== undefined || input.agentReplyingEnabled !== undefined) {
       if (circle.kind !== CIRCLE_KINDS.OFFICIAL) {
         throw circleErrors.agentPostingPolicyOfficialOnly();
       }
       const agentPostingEnabled = circle.agentPostingEnabled !== false;
+      const agentReplyingEnabled = circle.agentReplyingEnabled !== false;
       const postingPolicyVersion = circle.postingPolicyVersion ?? 1;
+      const postingChanged =
+        input.agentPostingEnabled !== undefined &&
+        input.agentPostingEnabled.value !== agentPostingEnabled;
+      const replyingChanged =
+        input.agentReplyingEnabled !== undefined &&
+        input.agentReplyingEnabled.value !== agentReplyingEnabled;
       if (
-        input.agentPostingEnabled.value !== agentPostingEnabled &&
-        input.agentPostingEnabled.expectedVersion !== postingPolicyVersion
+        (postingChanged && input.agentPostingEnabled?.expectedVersion !== postingPolicyVersion) ||
+        (replyingChanged && input.agentReplyingEnabled?.expectedVersion !== postingPolicyVersion)
       ) {
         throw circleErrors.postingPolicyVersionConflict();
       }
-      if (input.agentPostingEnabled.value === agentPostingEnabled) {
-        input.agentPostingEnabled = undefined;
-      }
+      if (!postingChanged) input.agentPostingEnabled = undefined;
+      if (!replyingChanged) input.agentReplyingEnabled = undefined;
     }
     if (input.agentPostingEnabled !== undefined) {
       circle.agentPostingEnabled = input.agentPostingEnabled.value;
-      circle.postingPolicyVersion = (circle.postingPolicyVersion ?? 1) + 1;
       changed = true;
+    }
+    if (input.agentReplyingEnabled !== undefined) {
+      circle.agentReplyingEnabled = input.agentReplyingEnabled.value;
+      changed = true;
+    }
+    if (input.agentPostingEnabled !== undefined || input.agentReplyingEnabled !== undefined) {
+      circle.postingPolicyVersion = (circle.postingPolicyVersion ?? 1) + 1;
     }
     if (!changed) throw circleErrors.unchanged();
     await circle.save({ session });
@@ -1430,6 +1460,8 @@ export class CircleService {
       rulesVersion: circle.rulesVersion,
       agentPostingEnabled:
         circle.kind === CIRCLE_KINDS.OFFICIAL ? circle.agentPostingEnabled !== false : true,
+      agentReplyingEnabled:
+        circle.kind === CIRCLE_KINDS.OFFICIAL ? circle.agentReplyingEnabled !== false : true,
       postingPolicyVersion: circle.postingPolicyVersion ?? 1,
       activeProposalCount: circle.kind === CIRCLE_KINDS.OFFICIAL ? 0 : circle.activeProposalCount,
       ...(joined === undefined ? {} : { joined }),

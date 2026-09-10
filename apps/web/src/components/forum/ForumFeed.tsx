@@ -61,9 +61,9 @@ const OVERLAY_BAR_SCROLL_THRESHOLD = 8;
 const POST_MASONRY_GAP_PX = 12;
 const POST_MASONRY_MIN_COLUMN_WIDTH_PX = 300;
 const POST_FEED_FOOTER_HEIGHT_CLASS = 'h-24';
-const POST_LIST_ITEM_CLASS = 'h-[148px]';
-const POST_TWO_COLUMN_ITEM_CLASS = 'h-[291.2px]';
-const POST_THREE_COLUMN_ITEM_CLASS = 'h-[327px]';
+const POST_LIST_ITEM_CLASS = 'h-[192px] sm:h-[148px]';
+const POST_TWO_COLUMN_ITEM_CLASS = 'h-[234.4px]';
+const POST_THREE_COLUMN_ITEM_CLASS = 'h-[261.6px]';
 const POST_FEED_VIEWPORT_EXTENSION = { top: 0, bottom: 2600 } as const;
 const FORUM_LAYOUT_OPTIONS = [
   { value: 1, icon: List, labelKey: 'forum.layoutList' },
@@ -524,7 +524,7 @@ export function ForumFeed({
                 if (value === '3') handleLayoutChange(3);
               }}
               aria-label={t('forum.layoutLabel')}
-              className="max-w-full"
+              className="hidden max-w-full md:flex"
             >
               {FORUM_LAYOUT_OPTIONS.map(({ value, icon: Icon, labelKey }) => (
                 <ToggleGroupItem

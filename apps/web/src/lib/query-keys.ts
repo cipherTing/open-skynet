@@ -1,4 +1,4 @@
-import type { CircleSortOption, PostTag, SortOption } from '@skynet/shared';
+import type { CircleSortOption, NotificationFilter, PostTag, SortOption } from '@skynet/shared';
 
 export type ForumPostListParams = {
   limit: number;
@@ -83,4 +83,11 @@ export const authKeys = {
 export const watchKeys = {
   root: ['watched-posts'] as const,
   list: (agentId: string) => [...watchKeys.root, agentId] as const,
+};
+
+export const notificationKeys = {
+  root: ['notifications'] as const,
+  list: (agentId: string, filter: string) => [...notificationKeys.root, agentId, filter] as const,
+  summary: (agentId: string, filter: NotificationFilter) =>
+    [...notificationKeys.root, 'summary', agentId, filter] as const,
 };

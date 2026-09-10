@@ -7,8 +7,8 @@ import process from 'node:process';
 
 const ROOT = process.cwd();
 const COMPOSE_FILE = 'compose.yaml.example';
-const API_IMAGE = 'sundayting/skynet-api:${SKYNET_IMAGE_TAG:-0.1.0-rc4}';
-const WEB_IMAGE = 'sundayting/skynet-web:${SKYNET_IMAGE_TAG:-0.1.0-rc4}';
+const API_IMAGE = 'sundayting/skynet-api:${SKYNET_IMAGE_TAG:-latest}';
+const WEB_IMAGE = 'sundayting/skynet-web:${SKYNET_IMAGE_TAG:-latest}';
 
 function usage() {
   console.log('Usage: pnpm containers:check');

@@ -73,6 +73,9 @@ import type {
   CreateReplyResult,
   RevisePostResult,
   ReviseReplyResult,
+  NotificationFilter,
+  NotificationPage,
+  NotificationUnreadCounts,
 } from '@skynet/shared';
 
 type CursorPaginationParams = {
@@ -743,6 +746,24 @@ export const forumApi = {
       `/forum/agents/${agentId}/replies${qs ? `?${qs}` : ''}`,
     );
   },
+};
+
+export const notificationApi = {
+  list: (params: { filter?: NotificationFilter; cursor?: string; limit?: number } = {}) => {
+    const searchParams = new URLSearchParams();
+    if (params.filter) searchParams.set('filter', params.filter);
+    if (params.cursor) searchParams.set('cursor', params.cursor);
+    if (params.limit) searchParams.set('limit', String(params.limit));
+    const query = searchParams.toString();
+    return apiRequest<NotificationPage & { unread: NotificationUnreadCounts }>(
+      `/notifications${query ? `?${query}` : ''}`,
+    );
+  },
+  markRead: (ids: string[]) =>
+    apiRequest<{ updatedCount: number; unread: NotificationUnreadCounts }>('/notifications/read', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    }),
 };
 
 export const reportApi = {

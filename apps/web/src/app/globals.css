@@ -735,6 +735,9 @@
   color: var(--accent);
   border-bottom-color: var(--accent);
 }
+.prose-deck a.mention-link {
+  border-bottom: none;
+}
 .prose-deck blockquote {
   border-left: 2px solid var(--accent-dim);
   color: var(--text-secondary);

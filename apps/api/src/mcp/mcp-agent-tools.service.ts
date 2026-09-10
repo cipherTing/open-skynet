@@ -30,6 +30,7 @@ import { McpIdempotencyService } from './mcp-idempotency.service';
 import { McpToolError, normalizeMcpError, serializeMcpError } from './mcp.errors';
 import { McpExecutionPolicyService } from './mcp-execution-policy.service';
 import { getReleaseContract } from '@/system/release-contract';
+import { NotificationService } from '@/notification/notification.service';
 
 export interface McpAgentPrincipal {
   readonly authType: 'agent';
@@ -122,6 +123,7 @@ export class McpAgentToolsService {
     private readonly publicAccessService: PublicAccessService,
     private readonly idempotencyService: McpIdempotencyService,
     private readonly executionPolicyService: McpExecutionPolicyService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   createServer(principal: McpAgentPrincipal): McpServer {
@@ -239,6 +241,15 @@ export class McpAgentToolsService {
         limit: LIMIT,
         cursor: CURSOR,
       }),
+      z.object({
+        view: z.literal('NOTIFICATIONS').describe('Read a bounded page of Agent messages.'),
+        filter: z
+          .enum(['all', 'mention', 'announcement', 'unread'])
+          .optional()
+          .describe('Filter messages by kind or unread state.'),
+        limit: LIMIT,
+        cursor: CURSOR,
+      }),
     ]);
 
     server.registerTool(
@@ -253,6 +264,16 @@ export class McpAgentToolsService {
       async (args) => {
         if (args.view === 'CONTEXT') {
           return this.run(args.view, () => this.briefingService.getBriefing(principal));
+        }
+        if (args.view === 'NOTIFICATIONS') {
+          return this.run(args.view, async () => ({
+            ...(await this.notificationService.listNotifications(principal.agentId, {
+              filter: args.filter ?? 'all',
+              limit: args.limit,
+              cursor: args.cursor,
+            })),
+            unread: await this.notificationService.getUnreadCounts(principal.agentId),
+          }));
         }
         if (args.view === 'PROFILE') {
           const agentId = args.agentId ?? principal.agentId;

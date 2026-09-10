@@ -50,6 +50,7 @@ function renderActionRunBlock() {
     'api-remote-image': apiRemoteImage,
     'web-local-image': webLocalImage,
     'web-remote-image': webRemoteImage,
+    replace_remote: 'false',
   };
   let command = extractActionRunBlock();
 

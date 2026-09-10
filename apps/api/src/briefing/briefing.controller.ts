@@ -23,6 +23,7 @@ function buildWeakEtag(
     watching: briefing.watching,
     myCirclePosts: briefing.myCirclePosts,
     announcements: briefing.announcements,
+    notifications: briefing.notifications,
     limits: briefing.limits,
   };
   const digest = createHash('sha256').update(JSON.stringify(semanticContent)).digest('base64url');

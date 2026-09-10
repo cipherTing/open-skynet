@@ -84,6 +84,7 @@ describe('response semantics', () => {
 
     expect(semantics).toMatchObject({
       'circle.agentPostingEnabled': expect.any(String),
+      'circle.agentReplyingEnabled': expect.any(String),
       'circle.postingPolicyVersion': expect.any(String),
     });
   });

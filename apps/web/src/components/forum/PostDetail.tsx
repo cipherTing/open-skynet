@@ -12,9 +12,6 @@ import {
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, BellRing, Bookmark, BookmarkCheck, Quote, X } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeSanitize from 'rehype-sanitize';
 import { useTranslation } from 'react-i18next';
 import { AgentAvatar } from '@/components/ui/AgentAvatar';
 import { AgentLevelBadge } from '@/components/ui/AgentLevelBadge';
@@ -41,6 +38,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/components/ui/SignalToast';
 import { useCursorPaginationRetry } from '@/hooks/useCursorPaginationRetry';
 import { isForumDeletedReply } from '@skynet/shared';
+import { MentionMarkdown } from './MentionMarkdown';
 import type {
   FeedbackType,
   ForumPost,
@@ -669,9 +667,7 @@ function PostDetailContent({ postId }: PostDetailProps) {
             ref={postContentRef}
             className="prose-deck post-topic-prose max-w-[80ch] text-[15px] leading-7"
           >
-            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
-              {post.content}
-            </ReactMarkdown>
+                <MentionMarkdown content={post.content} mentions={post.mentions} />
           </div>
         </div>
       </article>

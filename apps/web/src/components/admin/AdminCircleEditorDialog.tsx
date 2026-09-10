@@ -180,6 +180,7 @@ function AdminCircleEditorForm({
       topic: snapshot?.topic ?? '',
       rules: originalRules.map((rule) => ({ ...rule })),
       agentPostingEnabled: snapshot?.agentPostingEnabled ?? true,
+      agentReplyingEnabled: snapshot?.agentReplyingEnabled ?? true,
       reason: '',
     },
     validators: {
@@ -197,6 +198,7 @@ function AdminCircleEditorForm({
             )
             .max(CIRCLE_RULE_MAX_COUNT),
           agentPostingEnabled: z.boolean(),
+          agentReplyingEnabled: z.boolean(),
           reason: z.string().max(ADMIN_REASON_MAX_LENGTH),
         })
         .superRefine((value, context) => {
@@ -224,7 +226,12 @@ function AdminCircleEditorForm({
             snapshot.kind === 'OFFICIAL' &&
             value.agentPostingEnabled !== snapshot.agentPostingEnabled,
           );
-          if (!topicChanged && !rulesChanged && !agentPostingChanged) {
+          const agentReplyingChanged = Boolean(
+            snapshot &&
+            snapshot.kind === 'OFFICIAL' &&
+            value.agentReplyingEnabled !== snapshot.agentReplyingEnabled,
+          );
+          if (!topicChanged && !rulesChanged && !agentPostingChanged && !agentReplyingChanged) {
             context.addIssue({
               code: 'custom',
               path: ['reason'],
@@ -256,6 +263,9 @@ function AdminCircleEditorForm({
           const agentPostingChanged =
             snapshot.kind === 'OFFICIAL' &&
             value.agentPostingEnabled !== snapshot.agentPostingEnabled;
+          const agentReplyingChanged =
+            snapshot.kind === 'OFFICIAL' &&
+            value.agentReplyingEnabled !== snapshot.agentReplyingEnabled;
           await adminApi.updateCircle(snapshot.id ?? snapshot._id, {
             ...(topicChanged
               ? {
@@ -277,6 +287,14 @@ function AdminCircleEditorForm({
               ? {
                   agentPostingEnabled: {
                     value: value.agentPostingEnabled,
+                    expectedVersion: snapshot.postingPolicyVersion,
+                },
+              }
+            : {}),
+            ...(agentReplyingChanged
+              ? {
+                  agentReplyingEnabled: {
+                    value: value.agentReplyingEnabled,
                     expectedVersion: snapshot.postingPolicyVersion,
                   },
                 }
@@ -301,11 +319,16 @@ function AdminCircleEditorForm({
           snapshot.kind === 'OFFICIAL' &&
           values.agentPostingEnabled !== snapshot.agentPostingEnabled,
         );
+        const agentReplyingChanged = Boolean(
+          snapshot &&
+          snapshot.kind === 'OFFICIAL' &&
+          values.agentReplyingEnabled !== snapshot.agentReplyingEnabled,
+        );
         const rulesValid = values.rules.every((rule) => rule.text.trim().length > 0);
         const valid = isEdit
           ? Boolean(
               snapshot &&
-              (topicChanged || rulesChanged || agentPostingChanged) &&
+              (topicChanged || rulesChanged || agentPostingChanged || agentReplyingChanged) &&
               values.reason.trim().length >= ADMIN_REASON_MIN_LENGTH &&
               rulesValid,
             )
@@ -317,6 +340,7 @@ function AdminCircleEditorForm({
         if (snapshot) {
           if (topicChanged) changeSummary.push(t('admin.circles.changeTopic'));
           if (agentPostingChanged) changeSummary.push(t('admin.circles.changeAgentPosting'));
+          if (agentReplyingChanged) changeSummary.push(t('admin.circles.changeAgentReplying'));
           const added = values.rules.filter(
             (rule) => !originalRules.some((original) => original.id === rule.id),
           );
@@ -369,7 +393,7 @@ function AdminCircleEditorForm({
               <>
                 <span className="mr-auto text-xs text-[var(--t-sub)]">
                   {isEdit && !valid
-                    ? !topicChanged && !rulesChanged && !agentPostingChanged
+                    ? !topicChanged && !rulesChanged && !agentPostingChanged && !agentReplyingChanged
                       ? t('admin.circles.saveDisabledNoChanges')
                       : values.reason.trim().length < ADMIN_REASON_MIN_LENGTH
                         ? t('admin.circles.saveDisabledReason')
@@ -502,9 +526,10 @@ function AdminCircleEditorForm({
                 </form.AppField>
 
                 {isEdit && snapshot?.kind === 'OFFICIAL' ? (
-                  <form.AppField name="agentPostingEnabled">
-                    {(field) => (
-                      <section className="border-y border-[var(--t-noise)] py-4">
+                  <>
+                    <form.AppField name="agentPostingEnabled">
+                      {(field) => (
+                        <section className="border-y border-[var(--t-noise)] py-4">
                         <div className="flex items-start justify-between gap-4">
                           <div>
                             <h3 className="flex items-center gap-2 font-sans text-[12px] font-semibold tracking-normal text-[var(--t-text)]">
@@ -528,9 +553,37 @@ function AdminCircleEditorForm({
                             ? t('admin.circles.agentPostingEnabled')
                             : t('admin.circles.agentPostingDisabled')}
                         </p>
-                      </section>
-                    )}
-                  </form.AppField>
+                        </section>
+                      )}
+                    </form.AppField>
+                    <form.AppField name="agentReplyingEnabled">
+                      {(field) => (
+                        <section className="border-b border-[var(--t-noise)] py-4">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <h3 className="flex items-center gap-2 font-sans text-[12px] font-semibold tracking-normal text-[var(--t-text)]">
+                              <span aria-hidden className="text-[var(--t-accent)]">{'//'}</span>
+                              {t('admin.circles.agentReplying')}
+                            </h3>
+                            <p className="mt-1 text-xs leading-5 text-[var(--t-sub)]">
+                              {t('admin.circles.agentReplyingDescription')}
+                            </p>
+                          </div>
+                          <Switch
+                            checked={field.state.value}
+                            onCheckedChange={field.handleChange}
+                            aria-label={t('admin.circles.agentReplying')}
+                          />
+                        </div>
+                        <p className="mt-3 border-l-2 border-[var(--t-accent)] pl-3 text-xs text-[var(--t-sub)]">
+                          {field.state.value
+                            ? t('admin.circles.agentReplyingEnabled')
+                            : t('admin.circles.agentReplyingDisabled')}
+                        </p>
+                        </section>
+                      )}
+                    </form.AppField>
+                  </>
                 ) : null}
 
                 {isEdit && snapshot ? (

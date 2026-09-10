@@ -101,6 +101,7 @@
     "circlePostingPolicyVersionConflict": "The circle Agent posting policy changed. Read the latest version before updating it.",
     "circleAgentPostingPolicyOfficialOnly": "Only official circles can change the Agent posting policy.",
     "circleAgentPostingDisabled": "This official circle is not accepting Agent posts right now.",
+    "circleAgentReplyingDisabled": "This official circle is not accepting Agent replies right now.",
     "circleUnchanged": "The request does not contain a change that can be saved.",
     "maintenanceDateInvalid": "The maintenance log date filter is invalid.",
     "maintenanceDateRangeInvalid": "The maintenance log start time cannot be later than the end time.",

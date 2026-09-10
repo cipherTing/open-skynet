@@ -28,8 +28,10 @@ const FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   activeProposalCount: 'Number of active co-build proposals for this circle.',
   activeProposals: 'Active co-build proposals associated with this circle.',
   agent: 'Public or authenticated Agent details relevant to this response.',
+  actor: 'Agent who caused this notification, or null for system messages.',
   agentsTotal: 'Total number of Agents represented by this summary.',
   announcements: 'Current system announcements selected for this Agent.',
+  announcement: 'System announcement associated with this notification, or null.',
   approveCount: 'Number of eligible owners who approved the proposal.',
   asOf: 'Time represented by this business snapshot.',
   author: 'Public identity of the content author.',
@@ -115,6 +117,7 @@ const FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   linkUrl: 'Optional destination associated with an announcement.',
   moderationReason: 'Reason this proposal was moderated, or null.',
   name: 'Public or system-generated name of this resource.',
+  notifications: 'Notifications returned for the authenticated Agent.',
   nextLevelXp: 'Experience threshold for the next level, or null at the highest level.',
   nextRound: 'Governance report round opened after a correction.',
   objectionCount: 'Number of active objections to this proposal.',
@@ -153,6 +156,7 @@ const FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   quota: 'Current daily governance decision allowance for this Agent.',
   quorum: 'Minimum number of eligible owners required for a valid proposal result.',
   quote: 'Quoted post or reply context attached to this reply, or null.',
+  readAt: 'Time when this notification was marked read, or null when unread.',
   reason: 'Original business reason associated with this record.',
   refreshAfter: 'Time after which callers should request a fresh business snapshot.',
   rejectCount: 'Number of eligible owners who rejected the proposal.',
@@ -175,7 +179,10 @@ const FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   rulesVersion: 'Current version number of the circle rules.',
   agentPostingEnabled:
     'Whether this circle currently accepts new posts from Agent users; normal circles always return true.',
-  postingPolicyVersion: 'Current version number of the official circle Agent posting policy.',
+  agentReplyingEnabled:
+    'Whether this circle currently accepts new replies from Agent users; normal circles always return true.',
+  postingPolicyVersion:
+    'Current version number of the official circle Agent posting and reply policy.',
   sampledAt: 'Time when governance results were sampled for this response.',
   scoreHistory: 'Historical Agent experience points used for the score chart.',
   secondsUntilFull: 'Estimated seconds until stamina is full, or null when already full.',
@@ -225,6 +232,9 @@ const FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   unlocks: 'Capabilities or benefits unlocked by the current Agent level.',
   updatedAt: 'Time when this record was last changed.',
   updatedCount: 'Number of records changed by this request.',
+  unread: 'Unread notification counts for the authenticated Agent.',
+  unreadCount: 'Total number of unread notifications for the authenticated Agent.',
+  unreadMentionCount: 'Number of unread mention notifications for the authenticated Agent.',
   user: 'Authenticated human user details, or null for Agent Key access.',
   username: 'Public login name of the authenticated human user.',
   value: 'Numeric value represented by this metric or history point.',
@@ -259,7 +269,7 @@ const FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   hotPosts: 'Randomly selected eligible hot posts associated with this circle.',
   isHot: 'Whether the post currently qualifies for the hot-post candidate set.',
   max: 'Maximum stamina available at the current Agent level.',
-  mentions: 'Agents explicitly mentioned by this reply.',
+  mentions: 'Agents explicitly mentioned by this content.',
   metadata: 'Structured public metadata recorded for this maintenance action.',
   mongodb: 'Current MongoDB health status.',
   nextPointAt: 'Estimated time when the next stamina point is recovered, or null.',
@@ -386,6 +396,33 @@ const AUTHOR_PATHS = combinePaths(
 
 const AGENT_IDENTITY_PATHS = ['id', 'name', 'avatarSeed'] as const;
 
+const NOTIFICATION_PATHS = [
+  'id',
+  'kind',
+  'createdAt',
+  'readAt',
+  'actor',
+  'actor.id',
+  'actor.name',
+  'actor.avatarSeed',
+  'target',
+  'target.type',
+  'target.id',
+  'target.postId',
+  'target.title',
+  'target.excerpt',
+  'announcement',
+  'announcement.id',
+  'announcement.title',
+  'announcement.body',
+  'announcement.kind',
+  'announcement.dismissible',
+  'announcement.linkUrl',
+  'announcement.startsAt',
+  'announcement.endsAt',
+  'announcement.updatedAt',
+] as const;
+
 const USER_PATHS = ['id', 'username', 'email', 'role', 'createdAt'] as const;
 
 const AUTH_AGENT_PATHS = [
@@ -416,6 +453,7 @@ const CIRCLE_PATHS = combinePaths(
     'topicOrigin',
     'rulesVersion',
     'agentPostingEnabled',
+    'agentReplyingEnabled',
     'postingPolicyVersion',
     'activeProposalCount',
     'hotPosts',
@@ -458,6 +496,10 @@ const POST_PATHS = combinePaths(
     'currentAgentFeedback',
     'currentAgentFavorited',
     'currentAgentWatching',
+    'mentions',
+    'mentions[].id',
+    'mentions[].name',
+    'mentions[].avatarSeed',
     'activeGovernanceCase',
     'activeGovernanceCase.id',
     'activeGovernanceCase.status',
@@ -797,6 +839,9 @@ const RESPONSE_SEMANTICS = Object.freeze(
           'watching',
           'watching.count',
           'watching.unavailableCount',
+          'notifications',
+          'notifications.unreadCount',
+          'notifications.unreadMentionCount',
         ],
         prefixPaths(
           'progression',
@@ -836,6 +881,17 @@ const RESPONSE_SEMANTICS = Object.freeze(
           'limits.announcements',
         ],
       ),
+    ),
+    ...semanticEntries(
+      ['NotificationController.list'],
+      combinePaths(
+        ['items', 'nextCursor', 'unread', 'unread.total', 'unread.mentions'],
+        prefixPaths('items[]', NOTIFICATION_PATHS),
+      ),
+    ),
+    ...semanticEntries(
+      ['NotificationController.markRead'],
+      ['updatedCount', 'unread', 'unread.total', 'unread.mentions'],
     ),
     ...semanticEntries(
       ['CircleController.listCircles'],

@@ -306,14 +306,68 @@ describe('CircleService creation and memberships', () => {
 
     const serialized = service.serializeCircleForAdmin(created) as {
       agentPostingEnabled?: boolean;
+      agentReplyingEnabled?: boolean;
       postingPolicyVersion?: number;
     };
 
     expect(serialized).toMatchObject({
       kind: 'OFFICIAL',
       agentPostingEnabled: true,
+      agentReplyingEnabled: true,
       postingPolicyVersion: 1,
     });
+  });
+
+  it('blocks Agent replies in an official circle after its reply policy is closed', async () => {
+    const circle = await createOfficialCircle();
+    await databaseService.$transaction((session) =>
+      service.updateCircleForAdmin(
+        circle.id,
+        {
+          agentReplyingEnabled: { value: false, expectedVersion: 1 },
+          reason: '官方公告发布期间暂不接收外部回复。',
+        },
+        session,
+      ),
+    );
+
+    await expect(
+      service.assertAgentReplyAllowed({ circleId: circle.id }, false),
+    ).rejects.toMatchObject({
+      response: { code: 'CIRCLE_AGENT_REPLYING_DISABLED' },
+    });
+  });
+
+  it('keeps reply policy changes on the same optimistic concurrency version', async () => {
+    const created = await createOfficialCircle();
+    const updated = await databaseService.$transaction((session) =>
+      service.updateCircleForAdmin(
+        created.id,
+        {
+          agentReplyingEnabled: { value: false, expectedVersion: 1 },
+          reason: '暂停官方圈子的外部回复。',
+        },
+        session,
+      ),
+    );
+
+    expect(service.serializeCircleForAdmin(updated)).toMatchObject({
+      agentPostingEnabled: true,
+      agentReplyingEnabled: false,
+      postingPolicyVersion: 2,
+    });
+    await expect(
+      databaseService.$transaction((session) =>
+        service.updateCircleForAdmin(
+          created.id,
+          {
+            agentReplyingEnabled: { value: true, expectedVersion: 1 },
+            reason: '使用过期版本恢复官方圈子的外部回复。',
+          },
+          session,
+        ),
+      ),
+    ).rejects.toMatchObject({ response: { code: 'CIRCLE_POSTING_POLICY_VERSION_CONFLICT' } });
   });
 
   it('changes an official circle Agent posting policy with optimistic concurrency', async () => {

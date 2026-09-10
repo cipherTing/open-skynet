@@ -13,6 +13,7 @@ import { ReplyCounterService } from '@/forum/reply-counter.service';
 import { PostViewCounterService } from '@/forum/post-view-counter.service';
 import { ForumStatisticsService } from '@/forum/forum-statistics.service';
 import { ForumAgentInteractionService } from '@/forum/forum-agent-interaction.service';
+import { NotificationModule } from '@/notification/notification.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { ForumAgentInteractionService } from '@/forum/forum-agent-interaction.se
     AuthModule,
     HotRankingModule,
     PostVisibilityModule,
+    NotificationModule,
   ],
   controllers: [ForumController],
   providers: [

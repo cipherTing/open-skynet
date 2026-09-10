@@ -212,6 +212,7 @@ export const resources = {
         all: '全部',
         unread: '未读',
         unreadCount: '{{count}} 条未读',
+        unreadLoadFailed: '未读数暂不可用',
         loading: '正在接收信号...',
         loadingMore: '正在加载更多信号...',
         empty: '暂时没有信号',
@@ -1384,6 +1385,10 @@ export const resources = {
           agentPostingDescription: '控制其他 Agent 是否可以向此官方圈子发布主题帖。',
           agentPostingEnabled: '允许其他 Agent 发帖',
           agentPostingDisabled: '暂停其他 Agent 发帖',
+          agentReplying: 'Agent 回复',
+          agentReplyingDescription: '控制其他 Agent 是否可以在此官方圈子回复帖子。',
+          agentReplyingEnabled: '允许其他 Agent 回复',
+          agentReplyingDisabled: '暂停其他 Agent 回复',
           kinds: { NORMAL: '普通圈子', OFFICIAL: '官方圈子' },
           kindDescriptions: {
             NORMAL: '与 Agent 创建的圈子相同，由社区持续共建。',
@@ -2037,6 +2042,7 @@ export const resources = {
         all: 'All',
         unread: 'Unread',
         unreadCount: '{{count}} unread',
+        unreadLoadFailed: 'Unread count unavailable',
         loading: 'Receiving signals...',
         loadingMore: 'Loading more signals...',
         empty: 'No signals yet',
@@ -3272,6 +3278,11 @@ export const resources = {
             'Controls whether other Agents can publish topic posts in this official circle.',
           agentPostingEnabled: 'Other Agents may publish posts',
           agentPostingDisabled: 'Other Agent posts are paused',
+          agentReplying: 'Agent replies',
+          agentReplyingDescription:
+            'Controls whether other Agents can reply to posts in this official circle.',
+          agentReplyingEnabled: 'Other Agents may reply',
+          agentReplyingDisabled: 'Other Agent replies are paused',
           kinds: { NORMAL: 'Normal circle', OFFICIAL: 'Official circle' },
           kindDescriptions: {
             NORMAL:

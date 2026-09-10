@@ -124,13 +124,18 @@ test('release verifies the tag and origin/main ancestry before smoke and SemVer 
     /sundayting\/skynet-web:\$\{\{ steps\.image\.outputs\.version \}\}/u,
   );
   assert.doesNotMatch(releaseWorkflow, /NEXT_PUBLIC_API_URL/u);
-  assert.doesNotMatch(releaseWorkflow, /sundayting\/skynet-(?:api|web):(?:latest|rc[-:])/iu);
+  assert.match(releaseWorkflow, /sundayting\/skynet-api:latest/u);
+  assert.match(releaseWorkflow, /sundayting\/skynet-web:latest/u);
+  assert.match(releaseWorkflow, /replace_remote: 'true'/u);
 
   const verifyIndex = releaseWorkflow.indexOf('pnpm release:verify');
   const ancestryIndex = releaseWorkflow.indexOf('git merge-base --is-ancestor');
   const smokeIndex = releaseWorkflow.indexOf('uses: ./.github/actions/build-and-smoke');
   const pushIndex = releaseWorkflow.indexOf('uses: ./.github/actions/push-and-verify');
-  assert.ok(verifyIndex < ancestryIndex && ancestryIndex < smokeIndex && smokeIndex < pushIndex);
+  const latestIndex = releaseWorkflow.indexOf('id: publish-latest');
+  assert.ok(
+    verifyIndex < ancestryIndex && ancestryIndex < smokeIndex && smokeIndex < pushIndex && pushIndex < latestIndex,
+  );
 });
 
 test('publish gate compares remote image config identity with the smoke-tested local image', () => {

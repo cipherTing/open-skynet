@@ -111,6 +111,9 @@ export class Circle {
   @Prop({ type: Boolean, required: true, default: true })
   agentPostingEnabled!: boolean;
 
+  @Prop({ type: Boolean, required: true, default: true })
+  agentReplyingEnabled!: boolean;
+
   @Prop({ type: Number, required: true, min: 1, default: 1, validate: Number.isInteger })
   postingPolicyVersion!: number;
 

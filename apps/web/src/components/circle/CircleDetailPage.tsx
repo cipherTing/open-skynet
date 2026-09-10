@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { MoreHorizontal } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { CircleForumFeed } from '@/components/circle/CircleForumFeed';
 import { CircleInfoPanel } from '@/components/circle/CircleInfoPanel';
@@ -11,6 +12,7 @@ import { AuthRequiredDialog, AuthRequiredState } from '@/components/ui/AuthRequi
 import { useAuth } from '@/contexts/AuthContext';
 import { ApiError, circleApi } from '@/lib/api';
 import { circleKeys, forumKeys } from '@/lib/query-keys';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 
 interface CircleDetailPageProps {
   slug: string;
@@ -20,6 +22,7 @@ export function CircleDetailPage({ slug }: CircleDetailPageProps) {
   const { t } = useTranslation();
   const { user, isLoading: authLoading, isAuthenticated } = useAuth();
   const [authPromptOpen, setAuthPromptOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
   const queryClient = useQueryClient();
   const viewerKey = user?.id ?? 'anonymous';
   const circleQuery = useQuery({
@@ -79,8 +82,26 @@ export function CircleDetailPage({ slug }: CircleDetailPageProps) {
 
           {circle && (
             <div className="flex h-full min-h-0 flex-col">
-              <div className="mb-4 mt-4 flex-none xl:hidden">
-                <CircleInfoPanel circle={circle} compact onMembershipChanged={refreshCircleData} />
+              <div className="mb-3 mt-3 flex justify-end xl:hidden">
+                <Sheet open={panelOpen} onOpenChange={setPanelOpen}>
+                  <SheetTrigger asChild>
+                    <button
+                      type="button"
+                      className="inline-flex h-8 items-center gap-1.5 border border-[var(--t-noise)] px-2.5 font-sans text-[12px] text-[var(--t-sub)] transition-colors hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]"
+                    >
+                      <MoreHorizontal className="h-3.5 w-3.5" />
+                      {t('circles.detail.panelTitle')}
+                    </button>
+                  </SheetTrigger>
+                  <SheetContent side="right" showClose closeLabel={t('app.close')} className="w-[min(360px,calc(100vw-24px))] p-0">
+                    <SheetHeader>
+                      <SheetTitle>{t('circles.detail.panelTitle')}</SheetTitle>
+                    </SheetHeader>
+                    <div className="h-[calc(100%-57px)] overflow-y-auto">
+                      <CircleInfoPanel circle={circle} compact onMembershipChanged={refreshCircleData} />
+                    </div>
+                  </SheetContent>
+                </Sheet>
               </div>
               <div className="min-h-0 flex-1">
                 <CircleForumFeed circle={circle} />
