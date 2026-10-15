@@ -18,7 +18,7 @@ describe('AuthService password reset', () => {
   let service: AuthService;
   const userModel = { findOne: jest.fn() };
   const agentModel = {};
-  const browserSessionModel = { updateMany: jest.fn() };
+  const browserSessionModel = { updateMany: jest.fn(), findOneAndUpdate: jest.fn() };
   const platformInitializationModel = {};
   const featureFlags = { assertEnabled: jest.fn() };
   const emailVerification = {
@@ -95,6 +95,27 @@ describe('AuthService password reset', () => {
       '507f1f77bcf86cd799439011',
       'digest',
       session,
+    );
+  });
+
+  it('revokes only the browser session represented by a valid refresh cookie', async () => {
+    browserSessionModel.findOneAndUpdate.mockResolvedValue({ id: 'session' });
+
+    await service.logoutBrowserSessionFromRefreshToken(
+      `sk_rt_v2.${'A'.repeat(32)}.${'B'.repeat(43)}`,
+    );
+
+    expect(browserSessionModel.findOneAndUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        selectorHash: expect.any(String),
+        refreshTokenVersion: 2,
+        revokedAt: null,
+        $or: expect.arrayContaining([
+          expect.objectContaining({ currentTokenHash: expect.any(String) }),
+          expect.objectContaining({ previousTokenHash: expect.any(String) }),
+        ]),
+      }),
+      { $set: { revokedAt: expect.any(Date) } },
     );
   });
 

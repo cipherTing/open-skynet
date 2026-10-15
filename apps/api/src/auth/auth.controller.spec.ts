@@ -8,12 +8,18 @@ import { SecurityEventService } from '@/system/security-event.service';
 import { TurnstileService } from '@/system/turnstile.service';
 import { AuthPolicyService } from '@/system/auth-policy.service';
 import { authErrors } from '@/common/errors/business-errors';
+import { AgentBrowserSessionService } from './agent-browser-session.service';
 
 describe('AuthController refresh cookie boundary', () => {
   let moduleRef: TestingModule;
   let app: INestApplication;
   const refreshBrowserSession = jest.fn();
   const login = jest.fn();
+  const loginWithAgentKey = jest.fn();
+  const refreshAgentBrowserSession = jest.fn();
+  const logoutAgentBrowserSession = jest.fn();
+  const revokeAgentSessionFromRefreshToken = jest.fn();
+  const logoutBrowserSessionFromRefreshToken = jest.fn();
   const sendEmailVerification = jest.fn();
   const verifyIfEnabled = jest.fn();
 
@@ -21,7 +27,19 @@ describe('AuthController refresh cookie boundary', () => {
     moduleRef = await Test.createTestingModule({
       controllers: [AuthController],
       providers: [
-        { provide: AuthService, useValue: { login, refreshBrowserSession } },
+        {
+          provide: AuthService,
+          useValue: { login, refreshBrowserSession, logoutBrowserSessionFromRefreshToken },
+        },
+        {
+          provide: AgentBrowserSessionService,
+          useValue: {
+            loginWithAgentKey,
+            refreshAgentBrowserSession,
+            logoutAgentBrowserSession,
+            revokeAgentSessionFromRefreshToken,
+          },
+        },
         { provide: SecurityEventService, useValue: {} },
         { provide: EmailVerificationService, useValue: { send: sendEmailVerification } },
         { provide: TurnstileService, useValue: { verifyIfEnabled } },
@@ -130,6 +148,180 @@ describe('AuthController refresh cookie boundary', () => {
       'turnstile-token',
       'authentication',
       expect.any(String),
+    );
+  });
+
+  it('exchanges an Agent Key for an Agent-only session and HttpOnly refresh cookie', async () => {
+    loginWithAgentKey.mockResolvedValueOnce({
+      sessionType: 'AGENT',
+      user: null,
+      agent: { id: 'agent-1', name: 'Story Agent' },
+      token: 'agent-access-token',
+      refreshToken: `sk_agt_rt_v1.${'A'.repeat(32)}.${'B'.repeat(43)}`,
+      refreshExpiresAt: new Date('2026-10-21T00:00:00.000Z'),
+    });
+
+    const response = await request(app.getHttpServer())
+      .post('/auth/agent-session')
+      .send({ key: 'sk_live_valid_key' })
+      .expect(201);
+
+    expect(response.body).toMatchObject({
+      sessionType: 'AGENT',
+      user: null,
+      agent: { id: 'agent-1', name: 'Story Agent' },
+      token: 'agent-access-token',
+    });
+    expect(loginWithAgentKey).toHaveBeenCalledWith('sk_live_valid_key');
+    expect(response.headers['set-cookie']).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(
+          /^skynet_agent_refresh=sk_agt_rt_v1\.[A-Z]{32}\.[A-Z]{43}; Path=\/api\/v1\/auth; Expires=.*; HttpOnly; SameSite=Lax$/u,
+        ),
+      ]),
+    );
+  });
+
+  it('revokes prior browser identities when a user switches to an Agent session', async () => {
+    loginWithAgentKey.mockResolvedValueOnce({
+      sessionType: 'AGENT',
+      user: null,
+      agent: { id: 'agent-1', name: 'Story Agent' },
+      token: 'agent-access-token',
+      refreshToken: `sk_agt_rt_v1.${'E'.repeat(32)}.${'F'.repeat(43)}`,
+      refreshExpiresAt: new Date('2026-10-21T00:00:00.000Z'),
+    });
+
+    const response = await request(app.getHttpServer())
+      .post('/auth/agent-session')
+      .set(
+        'Cookie',
+        `skynet_refresh=sk_rt_v2.${'A'.repeat(32)}.${'B'.repeat(43)}; skynet_agent_refresh=sk_agt_rt_v1.${'C'.repeat(32)}.${'D'.repeat(43)}`,
+      )
+      .send({ key: 'sk_live_valid_key' })
+      .expect(201);
+
+    expect(logoutBrowserSessionFromRefreshToken).toHaveBeenCalledWith(
+      `sk_rt_v2.${'A'.repeat(32)}.${'B'.repeat(43)}`,
+    );
+    expect(revokeAgentSessionFromRefreshToken).toHaveBeenCalledWith(
+      `sk_agt_rt_v1.${'C'.repeat(32)}.${'D'.repeat(43)}`,
+    );
+    expect(response.body.sessionType).toBe('AGENT');
+  });
+
+  it('discovers an Agent session from its dedicated cookie through the shared refresh endpoint', async () => {
+    refreshAgentBrowserSession.mockResolvedValueOnce({
+      sessionType: 'AGENT',
+      user: null,
+      agent: { id: 'agent-1', name: 'Story Agent' },
+      token: 'next-agent-access-token',
+      refreshToken: `sk_agt_rt_v1.${'C'.repeat(32)}.${'D'.repeat(43)}`,
+      refreshExpiresAt: new Date('2026-10-21T00:00:00.000Z'),
+    });
+
+    const response = await request(app.getHttpServer())
+      .post('/auth/session/refresh')
+      .set('Cookie', `skynet_agent_refresh=sk_agt_rt_v1.${'A'.repeat(32)}.${'B'.repeat(43)}`)
+      .expect(201);
+
+    expect(refreshAgentBrowserSession).toHaveBeenCalledWith(
+      `sk_agt_rt_v1.${'A'.repeat(32)}.${'B'.repeat(43)}`,
+    );
+    expect(response.body).toMatchObject({
+      sessionType: 'AGENT',
+      user: null,
+      agent: { id: 'agent-1' },
+      token: 'next-agent-access-token',
+    });
+    expect(response.headers['set-cookie']).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(
+          /^skynet_agent_refresh=sk_agt_rt_v1\.[C]{32}\.[D]{43}; Path=\/api\/v1\/auth; Expires=.*; HttpOnly; SameSite=Lax$/u,
+        ),
+      ]),
+    );
+  });
+
+  it('discovers a user session from the existing user refresh cookie through the shared endpoint', async () => {
+    refreshBrowserSession.mockResolvedValueOnce({
+      user: {
+        id: 'user-1',
+        username: 'owner',
+        email: 'owner@example.com',
+        role: 'USER',
+        createdAt: '2026-10-14T00:00:00.000Z',
+      },
+      agent: null,
+      token: 'user-access-token',
+      refreshToken: `sk_rt_v2.${'C'.repeat(32)}.${'D'.repeat(43)}`,
+      refreshExpiresAt: new Date('2026-10-21T00:00:00.000Z'),
+    });
+
+    const response = await request(app.getHttpServer())
+      .post('/auth/session/refresh')
+      .set('Cookie', `skynet_refresh=sk_rt_v2.${'A'.repeat(32)}.${'B'.repeat(43)}`)
+      .expect(201);
+
+    expect(refreshBrowserSession).toHaveBeenCalledWith(
+      `sk_rt_v2.${'A'.repeat(32)}.${'B'.repeat(43)}`,
+    );
+    expect(response.body).toMatchObject({
+      sessionType: 'USER',
+      user: { id: 'user-1' },
+      token: 'user-access-token',
+    });
+    expect(response.headers['set-cookie']).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(
+          /^skynet_refresh=sk_rt_v2\.[C]{32}\.[D]{43}; Path=\/api\/v1\/auth; Expires=.*; HttpOnly; SameSite=Lax$/u,
+        ),
+      ]),
+    );
+  });
+
+  it('rejects and clears both refresh cookies rather than guessing between session types', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/auth/session/refresh')
+      .set(
+        'Cookie',
+        `skynet_refresh=sk_rt_v2.${'A'.repeat(32)}.${'B'.repeat(43)}; skynet_agent_refresh=sk_agt_rt_v1.${'C'.repeat(32)}.${'D'.repeat(43)}`,
+      )
+      .expect(401);
+
+    expect(refreshBrowserSession).not.toHaveBeenCalled();
+    expect(refreshAgentBrowserSession).not.toHaveBeenCalled();
+    expect(logoutBrowserSessionFromRefreshToken).toHaveBeenCalledWith(
+      `sk_rt_v2.${'A'.repeat(32)}.${'B'.repeat(43)}`,
+    );
+    expect(revokeAgentSessionFromRefreshToken).toHaveBeenCalledWith(
+      `sk_agt_rt_v1.${'C'.repeat(32)}.${'D'.repeat(43)}`,
+    );
+    expect(response.headers['set-cookie']).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^skynet_refresh=; Path=\/api\/v1\/auth; Expires=/u),
+        expect.stringMatching(/^skynet_agent_refresh=; Path=\/api\/v1\/auth; Expires=/u),
+      ]),
+    );
+  });
+
+  it('revokes the Agent session and clears only its refresh cookie on logout', async () => {
+    logoutAgentBrowserSession.mockResolvedValueOnce(undefined);
+
+    const response = await request(app.getHttpServer())
+      .post('/auth/agent-session/logout')
+      .set('Cookie', `skynet_agent_refresh=sk_agt_rt_v1.${'A'.repeat(32)}.${'B'.repeat(43)}`)
+      .expect(201);
+
+    expect(logoutAgentBrowserSession).toHaveBeenCalledWith(
+      `sk_agt_rt_v1.${'A'.repeat(32)}.${'B'.repeat(43)}`,
+    );
+    expect(response.headers['set-cookie']).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(
+          /^skynet_agent_refresh=; Path=\/api\/v1\/auth; Expires=/u,
+        ),
+      ]),
     );
   });
 

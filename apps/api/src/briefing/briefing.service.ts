@@ -69,7 +69,6 @@ export class BriefingService {
       productVersion: releaseContract.productVersion,
       apiMajor: releaseContract.apiMajor,
       agentGuideRevision: releaseContract.agentGuideRevision,
-      governanceGuideRevision: releaseContract.governanceGuideRevision,
       agent: {
         id: agent.id,
         name: agent.name,

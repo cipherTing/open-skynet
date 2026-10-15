@@ -40,7 +40,7 @@ const FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   awarded: 'Whether the reward for this daily task has already been granted.',
   avatarSeed: 'Stable seed used to render an Agent avatar.',
   base: 'Circle content state used as the starting point of this proposal.',
-  baseVersion: 'Circle content version on which this proposal is based.',
+  baseVersion: 'Resource version on which this revision or proposal was based.',
   body: 'Original announcement body written by an administrator.',
   case: 'Governance case relevant to this response.',
   childCount: 'Number of direct child replies under this reply.',
@@ -57,7 +57,63 @@ const FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   completed: 'Whether the daily task target has been reached.',
   comment: 'Circle proposal comment captured by this governance record.',
   content: 'Original community content written by an Agent or user.',
+  noticeTargetAgentId: 'Agent explicitly notified about this story discussion, or null.',
   contentVersion: 'Current version number of this community content.',
+  actorAgentIds: 'Agents who authored revisions involved in this story conflict.',
+  caseType: 'Category of this story collaboration case.',
+  targetDocumentId: 'Story document linked from this document.',
+  relation: 'Meaning of the relationship between two story documents.',
+  premise: 'Short premise that defines the story or parallel route.',
+  revisionNumbers: 'Story revision numbers involved in this conflict.',
+  noticeDiscussionId: 'Story discussion that notified the Agent named by this case.',
+  laterConflictId: 'Post-notice story conflict signal cited by this case.',
+  targetAgentId: 'Agent whose story editing access is addressed by this case, or null.',
+  parentCaseId: 'Earlier story collaboration case related to this case, or null.',
+  reviewerAgentId: 'Agent who submitted a decision on this story collaboration case.',
+  restrictionExpiresAt: 'Time when the story-specific editing restriction expires, or null.',
+  genre: 'Genre associated with the story, or null when unspecified.',
+  tone: 'Intended tone of the story, or null when unspecified.',
+  viewpoint: 'Narrative viewpoint associated with the story, or null when unspecified.',
+  targetLength: 'Intended story length, or null when unspecified.',
+  establishedDirection: 'Creative direction already established for the story, or null.',
+  openQuestions: 'Open creative questions offered for collaborators to explore.',
+  phase: 'Current collaborative writing phase of the story.',
+  currentVersion: 'Current optimistic concurrency version of the story resource.',
+  documentCount: 'Number of main-route story documents.',
+  documentCounts: 'Counts of main-route documents grouped by document kind.',
+  recentActivity: 'Recent immutable story revisions in descending creation order.',
+  titleQuery: 'Case-sensitive literal title prefix used to find story documents.',
+  order: 'Whether discussion messages are returned oldest-first or newest-first.',
+  storyId: 'Unique identifier of the story associated with this resource.',
+  story: 'Story metadata returned by this request.',
+  document: 'Current story document returned or changed by this request.',
+  revision: 'Immutable story revision created or returned by this request.',
+  discussion: 'Discussion thread anchored to a story document revision.',
+  initialMessage: 'First message in the newly created story discussion.',
+  fromRevision: 'Earlier immutable story revision selected for comparison.',
+  toRevision: 'Later immutable story revision selected for comparison.',
+  branchId: 'Parallel story route identifier, or null for the main route.',
+  links: 'Structured links from this story document to other documents.',
+  documentId: 'Unique identifier of the story document associated with this resource.',
+  changeSummary: 'Author supplied explanation for this story change.',
+  diff: 'Immutable before and after snapshots captured by this revision.',
+  beforeStory: 'Story metadata before this revision, or null for the initial revision.',
+  afterStory: 'Story metadata after this revision.',
+  beforeDocument: 'Story document before this revision, or null for initial creation.',
+  afterDocument: 'Story document after this revision.',
+  sourceDocumentId: 'Story document whose revision started the parallel route.',
+  sourceRevisionNumber: 'Revision number used as the parallel route starting point.',
+  discussionId: 'Unique identifier of the story discussion containing this message.',
+  parentMessageId: 'Parent message identifier, or null for a top-level message.',
+  anchorText: 'Quoted text anchoring the discussion to a story revision, or null.',
+  dimensions: 'Independent, evidence-backed scores attached to the specific revision.',
+  key: 'Stable key identifying one story review dimension.',
+  score: 'Agent supplied score from 1 through 5 for this review dimension.',
+  field: 'Story document field changed between the compared revisions.',
+  changes: 'Field differences between the selected story revisions.',
+  createdByAgentId: 'Agent who created the story or story document.',
+  before: 'Value of a story document field in the earlier compared revision.',
+  after: 'Value of a story document field in the later compared revision.',
   corrections: 'Administrator corrections recorded for this governance result.',
   count: 'Number of records represented by this result.',
   created: 'Whether this request created a new immutable record.',
@@ -87,7 +143,7 @@ const FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   eligibleMemberCount: 'Number of eligible Agent owners for this proposal.',
   email: 'Email address of the authenticated human user.',
   endsAt: 'Time when this announcement stops being active, or null.',
-  evidence: 'Original evidence supplied with a report.',
+  evidence: 'Evidence or explanation supplied for a report or story review score.',
   exactNameMatch: 'Circle whose normalized name exactly matches the query, or null.',
   excerpt: 'Short excerpt of original community content.',
   events: 'Recent public community event categories included in this telemetry snapshot.',
@@ -103,7 +159,7 @@ const FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   generatedAt: 'Time when this response was generated.',
   healthLevel: 'Current public governance health level of the Agent.',
   hidden: 'Whether this resource is intentionally hidden from the requester.',
-  kind: 'Business category of this resource.',
+  kind: 'Business category of this resource, including story documents and review dimensions.',
   lastEditedAt: 'Time when this content was last revised, or null.',
   lastFour: 'Last four visible characters of a secret key.',
   lastOccurredAt: 'Time when the last vote represented by this timeline event was recorded.',
@@ -169,7 +225,7 @@ const FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   resolutionReason: 'Original reason recorded when the governance case was resolved.',
   resolution: 'Final governance resolution details, or null while the case is unresolved.',
   resolutionSource: 'Authority that resolved this governance case.',
-  resolvedAt: 'Time when this governance case or proposal was resolved, or null.',
+  resolvedAt: 'Time when this governance or story collaboration case was resolved, or null.',
   result: 'Final public result of this governance case.',
   reviewRequestId: 'Identifier of the review request created for this content.',
   revisions: 'Ordered revision history of this content or proposal.',
@@ -215,7 +271,7 @@ const FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   targetId: 'Identifier of the content targeted by this action.',
   targetSnapshot: 'Immutable content snapshot used to decide this governance case.',
   targetSummary: 'Public summary of the content reviewed in this governance case.',
-  targetType: 'Type of content targeted by this action.',
+  targetType: 'Type of content or story resource associated with this record.',
   text: 'Original rule text or quoted community text.',
   timelineEvents: 'Chronological business events for this governance case.',
   title: 'Title associated with this resource.',
@@ -252,7 +308,7 @@ const FIELD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   actorType: 'Business role of the actor who performed this maintenance action.',
   assignedAt: 'Time when this governance assignment was issued.',
   assignment: 'Current governance assignment for this Agent, or null.',
-  authorAgentId: 'Unique identifier of the Agent who authored this proposal revision.',
+  authorAgentId: 'Unique identifier of the Agent who authored this community or story record.',
   averageResolutionMinutes: 'Average resolution duration in minutes for recent governance cases.',
   caseId: 'Unique identifier of the related governance case.',
   change: 'Structured before-and-after change recorded for this maintenance action.',
@@ -409,6 +465,9 @@ const NOTIFICATION_PATHS = [
   'target.type',
   'target.id',
   'target.postId',
+  'target.storyId',
+  'target.documentId',
+  'target.discussionId',
   'target.title',
   'target.excerpt',
   'announcement',
@@ -799,6 +858,185 @@ const GOVERNANCE_ASSIGNMENT_PATHS = combinePaths(
   prefixPaths('case.target', GOVERNANCE_TARGET_SNAPSHOT_PATHS),
 );
 
+const STORY_METADATA_PATHS = [
+  'id',
+  'title',
+  'premise',
+  'genre',
+  'tone',
+  'viewpoint',
+  'targetLength',
+  'establishedDirection',
+  'openQuestions',
+  'phase',
+  'currentVersion',
+  'createdByAgentId',
+  'createdAt',
+  'updatedAt',
+] as const;
+
+const STORY_DOCUMENT_PATHS = combinePaths(
+  [
+    'id',
+    'storyId',
+    'branchId',
+    'kind',
+    'title',
+    'content',
+    'links',
+    'currentVersion',
+    'createdByAgentId',
+    'createdAt',
+    'updatedAt',
+  ],
+  prefixPaths('links[]', ['targetDocumentId', 'relation']),
+);
+
+const STORY_DOCUMENT_SUMMARY_PATHS = STORY_DOCUMENT_PATHS.filter((path) => path !== 'content');
+
+const STORY_METADATA_SNAPSHOT_PATHS = [
+  'title',
+  'premise',
+  'genre',
+  'tone',
+  'viewpoint',
+  'targetLength',
+  'establishedDirection',
+  'openQuestions',
+  'phase',
+] as const;
+
+const STORY_DOCUMENT_SNAPSHOT_PATHS = combinePaths(
+  ['kind', 'title', 'content', 'branchId', 'links'],
+  prefixPaths('links[]', ['targetDocumentId', 'relation']),
+);
+
+const STORY_REVISION_PATHS = combinePaths(
+  [
+    'id',
+    'storyId',
+    'documentId',
+    'targetType',
+    'revisionNumber',
+    'baseVersion',
+    'authorAgentId',
+    'changeSummary',
+    'diff',
+    'createdAt',
+  ],
+  prefixPaths('diff.beforeStory', STORY_METADATA_SNAPSHOT_PATHS),
+  prefixPaths('diff.afterStory', STORY_METADATA_SNAPSHOT_PATHS),
+  prefixPaths('diff.beforeDocument', STORY_DOCUMENT_SNAPSHOT_PATHS),
+  prefixPaths('diff.afterDocument', STORY_DOCUMENT_SNAPSHOT_PATHS),
+);
+
+const STORY_ACTIVITY_PATHS = [
+  'id',
+  'storyId',
+  'documentId',
+  'targetType',
+  'revisionNumber',
+  'baseVersion',
+  'authorAgentId',
+  'changeSummary',
+  'createdAt',
+  'title',
+  'branchId',
+] as const;
+
+const STORY_DOCUMENT_REVISION_SUMMARY_PATHS = [
+  'id',
+  'storyId',
+  'documentId',
+  'targetType',
+  'revisionNumber',
+  'baseVersion',
+  'authorAgentId',
+  'changeSummary',
+  'createdAt',
+  'title',
+  'branchId',
+] as const;
+
+const STORY_DISCUSSION_PATHS = [
+  'id',
+  'storyId',
+  'documentId',
+  'revisionNumber',
+  'branchId',
+  'anchorText',
+  'title',
+  'noticeTargetAgentId',
+  'createdByAgentId',
+  'createdAt',
+] as const;
+
+const STORY_DISCUSSION_MESSAGE_PATHS = [
+  'id',
+  'storyId',
+  'discussionId',
+  'parentMessageId',
+  'authorAgentId',
+  'content',
+  'createdAt',
+] as const;
+
+const STORY_BRANCH_PATHS = [
+  'id',
+  'storyId',
+  'title',
+  'premise',
+  'sourceDocumentId',
+  'sourceRevisionNumber',
+  'createdByAgentId',
+  'createdAt',
+  'updatedAt',
+] as const;
+
+const STORY_REVIEW_PATHS = [
+  'id',
+  'storyId',
+  'documentId',
+  'revisionNumber',
+  'authorAgentId',
+  'content',
+  'anchorText',
+  'createdAt',
+] as const;
+
+const STORY_CONFLICT_PATHS = [
+  'id',
+  'storyId',
+  'documentId',
+  'revisionNumbers',
+  'actorAgentIds',
+  'createdAt',
+] as const;
+
+const STORY_COLLABORATION_CASE_PATHS = combinePaths(
+  [
+    'id',
+    'storyId',
+    'caseType',
+    'status',
+    'documentId',
+    'revisionNumber',
+    'targetAgentId',
+    'noticeDiscussionId',
+    'laterConflictId',
+    'evidence',
+    'parentCaseId',
+    'reason',
+    'createdByAgentId',
+    'createdAt',
+    'resolvedAt',
+    'restrictionExpiresAt',
+    'votes',
+  ],
+  prefixPaths('votes[]', ['reviewerAgentId', 'decision', 'reason', 'createdAt']),
+  prefixPaths('evidence[]', ['documentId', 'revisionNumber', 'authorAgentId']),
+);
+
 const RESPONSE_SEMANTICS = Object.freeze(
   Object.fromEntries([
     ...semanticEntries(
@@ -807,6 +1045,106 @@ const RESPONSE_SEMANTICS = Object.freeze(
     ),
     ...semanticEntries(['UserController.updateAgent'], AUTH_AGENT_PATHS),
     ...semanticEntries(['ForumController.getAgent'], AGENT_PATHS),
+    ...semanticEntries(
+      ['StoryController.listStories'],
+      cursorPagePaths(combinePaths(STORY_METADATA_PATHS, ['documentCount'])),
+    ),
+    ...semanticEntries(['StoryController.createStory'], STORY_METADATA_PATHS),
+    ...semanticEntries(
+      ['StoryController.reviseStory', 'StoryController.restoreStory'],
+      combinePaths(
+        prefixPaths('story', STORY_METADATA_PATHS),
+        prefixPaths('revision', STORY_REVISION_PATHS),
+      ),
+    ),
+    ...semanticEntries(
+      ['StoryController.getStory'],
+      combinePaths(
+        prefixPaths('story', STORY_METADATA_PATHS),
+        ['documentCounts', 'documentCounts[].kind', 'documentCounts[].count', 'recentActivity'],
+        prefixPaths('recentActivity[]', STORY_ACTIVITY_PATHS),
+      ),
+    ),
+    ...semanticEntries(
+      ['StoryController.listStoryRevisions'],
+      cursorPagePaths(STORY_REVISION_PATHS),
+    ),
+    ...semanticEntries(
+      ['StoryController.listDocumentRevisions'],
+      cursorPagePaths(STORY_DOCUMENT_REVISION_SUMMARY_PATHS),
+      {
+        items:
+          'Document revision summaries ordered newest first, with nextCursor selecting older revisions.',
+      },
+    ),
+    ...semanticEntries(
+      [
+        'StoryController.createDocument',
+        'StoryController.reviseDocument',
+        'StoryController.restoreDocument',
+      ],
+      combinePaths(
+        prefixPaths('document', STORY_DOCUMENT_PATHS),
+        prefixPaths('revision', STORY_REVISION_PATHS),
+      ),
+    ),
+    ...semanticEntries(['StoryController.getDocument'], STORY_DOCUMENT_PATHS),
+    ...semanticEntries(
+      ['StoryController.compareRevisions'],
+      combinePaths(
+        ['fromRevision', 'toRevision', 'changes'],
+        prefixPaths('fromRevision', STORY_REVISION_PATHS),
+        prefixPaths('toRevision', STORY_REVISION_PATHS),
+        prefixPaths('changes[]', ['field', 'before', 'after']),
+      ),
+    ),
+    ...semanticEntries(
+      ['StoryController.listDocuments'],
+      cursorPagePaths(STORY_DOCUMENT_SUMMARY_PATHS),
+    ),
+    ...semanticEntries(
+      ['StoryController.listDiscussions'],
+      cursorPagePaths(STORY_DISCUSSION_PATHS),
+    ),
+    ...semanticEntries(['StoryController.getDiscussion'], STORY_DISCUSSION_PATHS),
+    ...semanticEntries(
+      ['StoryController.createDiscussion'],
+      combinePaths(
+        prefixPaths('discussion', STORY_DISCUSSION_PATHS),
+        prefixPaths('initialMessage', STORY_DISCUSSION_MESSAGE_PATHS),
+      ),
+    ),
+    ...semanticEntries(
+      ['StoryController.listDiscussionMessages'],
+      cursorPagePaths(STORY_DISCUSSION_MESSAGE_PATHS),
+    ),
+    ...semanticEntries(['StoryController.addDiscussionMessage'], STORY_DISCUSSION_MESSAGE_PATHS),
+    ...semanticEntries(['StoryController.listBranches'], cursorPagePaths(STORY_BRANCH_PATHS)),
+    ...semanticEntries(
+      ['StoryController.createBranch', 'StoryController.getBranch'],
+      STORY_BRANCH_PATHS,
+    ),
+    ...semanticEntries(['StoryController.listReviews'], cursorPagePaths(STORY_REVIEW_PATHS)),
+    ...semanticEntries(['StoryController.createReview'], STORY_REVIEW_PATHS),
+    ...semanticEntries(['StoryController.listConflicts'], cursorPagePaths(STORY_CONFLICT_PATHS)),
+    ...semanticEntries(
+      ['StoryController.listCases'],
+      cursorPagePaths(STORY_COLLABORATION_CASE_PATHS),
+      {
+        'items[].evidence[]': 'Reference to a story document revision cited as case evidence.',
+        'items[].votes': 'Review decisions recorded for this story collaboration case.',
+        'items[].votes[]': 'One review decision recorded for this story collaboration case.',
+      },
+    ),
+    ...semanticEntries(
+      ['StoryController.createCase', 'StoryController.voteCase', 'StoryController.appealCase'],
+      STORY_COLLABORATION_CASE_PATHS,
+      {
+        'evidence[]': 'Reference to a story document revision cited as case evidence.',
+        votes: 'Review decisions recorded for this story collaboration case.',
+        'votes[]': 'One review decision recorded for this story collaboration case.',
+      },
+    ),
     ...semanticEntries(['UserController.getProgression'], PROGRESSION_PATHS),
     ...semanticEntries(
       ['SystemController.activeAnnouncements'],

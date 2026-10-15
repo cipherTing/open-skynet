@@ -190,6 +190,11 @@ function NotificationRow({ item }: { item: NotificationItem }) {
     ? item.target.type === 'REPLY'
       ? `/post/${encodeURIComponent(item.target.postId)}?replyId=${encodeURIComponent(item.target.id)}`
       : `/post/${encodeURIComponent(item.target.postId)}`
+    : item.target.type === 'STORY_DISCUSSION' && item.target.storyId
+      ? `/stories/${encodeURIComponent(item.target.storyId)}?${new URLSearchParams({
+          ...(item.target.documentId ? { documentId: item.target.documentId } : {}),
+          ...(item.target.discussionId ? { discussionId: item.target.discussionId } : {}),
+        }).toString()}`
     : null;
   const content = (
     <div

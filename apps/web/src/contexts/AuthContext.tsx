@@ -4,22 +4,14 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, authApi, clearAccessToken, setAccessToken } from '@/lib/api';
 import { appEvents } from '@/lib/events';
 import { authKeys } from '@/lib/query-keys';
-import type { Agent, UserRole } from '@skynet/shared';
+import {
+  getAuthSessionState,
+  type AuthAgent,
+  type AuthSession,
+  type AuthUser,
+} from '@/lib/auth-session';
 
-export interface AuthUser {
-  id: string;
-  username: string;
-  email: string;
-  role: UserRole;
-}
-
-export type AuthAgent = Agent;
-
-type AuthSession = {
-  user: AuthUser;
-  agent: AuthAgent | null;
-  token: string;
-};
+export type { AuthAgent, AuthSession, AuthUser } from '@/lib/auth-session';
 
 type AuthSessionState = {
   session: AuthSession | null;
@@ -29,10 +21,14 @@ type AuthSessionState = {
 interface AuthContextType {
   user: AuthUser | null;
   agent: AuthAgent | null;
+  sessionType: AuthSession['sessionType'] | null;
   isLoading: boolean;
   isUnavailable: boolean;
   isAuthenticated: boolean;
+  isAgentSession: boolean;
+  viewerKey: string;
   login: (identity: string, password: string, turnstileToken?: string) => Promise<void>;
+  loginAgent: (key: string) => Promise<void>;
   register: (data: Parameters<typeof authApi.register>[0]) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -46,7 +42,7 @@ const isExpiredAuthError = (error: unknown) =>
 
 async function loadAuthSession(): Promise<AuthSession | null> {
   try {
-    const data = await authApi.refresh();
+    const data = await authApi.refreshSession();
     setAccessToken(data.token);
     return data;
   } catch (err) {
@@ -73,8 +69,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ? { session: null, status: 'loading' }
       : { session: authSessionQuery.data ?? null, status: 'ready' };
   const authSession = authSessionState.session;
-  const user = authSession?.user ?? null;
-  const agent = authSession?.agent ?? null;
+  const authSessionView = getAuthSessionState(authSession);
+  const { user, agent } = authSessionView;
 
   const clearAuthState = useCallback(() => {
     clearAccessToken();
@@ -92,7 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshUser = useCallback(async () => {
     try {
-      const data = await authApi.refresh();
+      const data = await authApi.refreshSession();
       setAccessToken(data.token);
       queryClient.setQueryData<AuthSession | null>(authSessionKey, data);
     } catch (err) {
@@ -133,17 +129,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (identity: string, password: string, turnstileToken?: string) => {
     const data = await authApi.login({ identity, password, turnstileToken });
     setAccessToken(data.token);
+    queryClient.clear();
+    const session: Extract<AuthSession, { sessionType: 'USER' }> = {
+      sessionType: 'USER',
+      user: data.user,
+      agent: data.agent,
+      token: data.token,
+    };
+    queryClient.setQueryData<AuthSession | null>(authSessionKey, session);
+  };
+
+  const loginAgent = async (key: string) => {
+    const data = await authApi.loginAgent(key);
+    setAccessToken(data.token);
+    queryClient.clear();
     queryClient.setQueryData<AuthSession | null>(authSessionKey, data);
   };
 
   const register = async (input: Parameters<typeof authApi.register>[0]) => {
     const data = await authApi.register(input);
     setAccessToken(data.token);
-    queryClient.setQueryData<AuthSession | null>(authSessionKey, data);
+    queryClient.clear();
+    const session: Extract<AuthSession, { sessionType: 'USER' }> = {
+      sessionType: 'USER',
+      user: data.user,
+      agent: data.agent,
+      token: data.token,
+    };
+    queryClient.setQueryData<AuthSession | null>(authSessionKey, session);
   };
 
   const logout = async () => {
-    await authApi.logout();
+    if (authSession?.sessionType === 'AGENT') {
+      await authApi.logoutAgent();
+    } else {
+      await authApi.logout();
+    }
     resetBrowserSession();
   };
 
@@ -152,10 +173,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         user,
         agent,
+        sessionType: authSessionView.sessionType,
         isLoading: authSessionState.status === 'loading',
         isUnavailable: authSessionState.status === 'error',
-        isAuthenticated: !!user,
+        isAuthenticated: authSessionView.isAuthenticated,
+        isAgentSession: authSessionView.isAgentSession,
+        viewerKey: authSessionView.viewerKey,
         login,
+        loginAgent,
         register,
         logout,
         refreshUser,

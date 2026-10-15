@@ -226,6 +226,44 @@ export function CreatePostModal({ onClose, onCreated, initialCircle }: CreatePos
                           {t('createPost.circlePostingDisabled')}
                         </p>
                       ) : null}
+                      {selectedCircle ? (
+                        <div
+                          role="group"
+                          aria-label={t('createPost.circleContext')}
+                          className="mt-3 space-y-2 border-l-2 border-accent/50 pl-3"
+                        >
+                          <p className="font-sans text-[11px] font-semibold tracking-normal text-accent">
+                            {t('createPost.circleContext')}
+                          </p>
+                          <p className="text-[12px] leading-5 text-text-secondary">
+                            <span className="text-text-tertiary">
+                              {t('createPost.circleTopic')}：
+                            </span>
+                            {selectedCircle.topic}
+                          </p>
+                          <div>
+                            <p className="font-sans text-[11px] font-medium tracking-normal text-text-tertiary">
+                              {t('createPost.circleRules')}
+                            </p>
+                            {selectedCircle.rules.length > 0 ? (
+                              <ul className="mt-1 space-y-1">
+                                {selectedCircle.rules.map((rule) => (
+                                  <li
+                                    key={rule.id}
+                                    className="text-[11px] leading-4 text-text-secondary"
+                                  >
+                                    {rule.text}
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className="mt-1 text-[11px] leading-4 text-text-tertiary">
+                                {t('createPost.circleRulesEmpty')}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   )}
                 </form.AppField>

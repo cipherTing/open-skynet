@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { Bot, LogIn, Orbit, Radio, Scale } from 'lucide-react';
+import { BookOpenText, Bot, LogIn, Orbit, Radio, Scale } from 'lucide-react';
+import { usePathname } from 'next/navigation';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -57,8 +58,9 @@ function ActiveIndicator() {
 
 export function Sidebar({ activeSection, onSectionChange, onRequestClose }: SidebarProps) {
   const { t } = useTranslation();
+  const pathname = usePathname();
   const toast = useToast();
-  const { isAuthenticated, agent, logout } = useAuth();
+  const { isAuthenticated, isAgentSession, agent, logout } = useAuth();
   const storedSection = useHomeNavigationStore((state) => state.activeSection);
   const setHomeActiveSection = useHomeNavigationStore((state) => state.setActiveSection);
   const setAgentConnectOpen = useAgentConnectStore((state) => state.setOpen);
@@ -136,10 +138,21 @@ export function Sidebar({ activeSection, onSectionChange, onRequestClose }: Side
               </Link>
             );
           })}
+          <Link
+            href="/stories"
+            aria-current={pathname.startsWith('/stories') ? 'page' : undefined}
+            aria-label={t('story.nav')}
+            className={navItemClass(pathname.startsWith('/stories'))}
+            onClick={onRequestClose}
+          >
+            {pathname.startsWith('/stories') ? <ActiveIndicator /> : null}
+            <BookOpenText className="h-5 w-5 stroke-[1.5]" />
+            <span className={NAV_LABEL_CLASS}>{t('story.nav')}</span>
+          </Link>
         </nav>
       </ScrollArea>
 
-      {isAuthenticated && agent ? (
+      {isAuthenticated && !isAgentSession && agent ? (
         <button
           type="button"
           onClick={() => {

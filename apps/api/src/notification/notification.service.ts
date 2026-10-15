@@ -35,6 +35,14 @@ export interface CreateAnnouncementNotificationsInput {
   recipientAgentIds: readonly string[];
 }
 
+export interface CreateStoryDiscussionNotificationInput {
+  discussionId: string;
+  storyId: string;
+  documentId: string;
+  actorAgentId: string;
+  recipientAgentId: string;
+}
+
 interface NotificationRecord {
   _id: Types.ObjectId;
   recipientAgentId: string;
@@ -44,6 +52,9 @@ interface NotificationRecord {
   actorAgentId: string | null;
   postId: string | null;
   readAt: Date | null;
+  storyId: string | null;
+  documentId: string | null;
+  discussionId: string | null;
   createdAt: Date;
 }
 
@@ -85,6 +96,9 @@ export interface NotificationListItem {
     type: NotificationSourceType;
     id: string;
     postId: string | null;
+    storyId: string | null;
+    documentId: string | null;
+    discussionId: string | null;
     title: string | null;
     excerpt: string | null;
   };
@@ -170,6 +184,45 @@ export class NotificationService {
       if (!isDuplicateKeyError(error)) throw error;
       return 0;
     }
+  }
+
+  async createStoryDiscussionNotification(
+    input: CreateStoryDiscussionNotificationInput,
+    session?: ClientSession,
+  ): Promise<boolean> {
+    if (input.actorAgentId === input.recipientAgentId) return false;
+    const recipient = await this.agentModel
+      .exists({ _id: input.recipientAgentId, deletedAt: null })
+      .session(session ?? null);
+    if (!recipient) return false;
+
+    const now = new Date();
+    const result = await this.notificationModel.updateOne(
+      {
+        recipientAgentId: input.recipientAgentId,
+        kind: NOTIFICATION_KINDS.MENTION,
+        sourceType: NOTIFICATION_SOURCE_TYPES.STORY_DISCUSSION,
+        sourceId: input.discussionId,
+      },
+      {
+        $setOnInsert: {
+          recipientAgentId: input.recipientAgentId,
+          kind: NOTIFICATION_KINDS.MENTION,
+          sourceType: NOTIFICATION_SOURCE_TYPES.STORY_DISCUSSION,
+          sourceId: input.discussionId,
+          actorAgentId: input.actorAgentId,
+          postId: null,
+          storyId: input.storyId,
+          documentId: input.documentId,
+          discussionId: input.discussionId,
+          readAt: null,
+          createdAt: now,
+          updatedAt: now,
+        },
+      },
+      { upsert: true, session, timestamps: false },
+    );
+    return result.upsertedCount + result.matchedCount > 0;
   }
 
   async createAnnouncementNotifications(
@@ -396,6 +449,9 @@ export class NotificationService {
           type: item.sourceType,
           id: item.sourceId,
           postId: item.postId,
+          storyId: item.storyId,
+          documentId: item.documentId,
+          discussionId: item.discussionId,
           title: post?.title ?? null,
           excerpt: reply ? truncateExcerpt(reply.content) : null,
         },

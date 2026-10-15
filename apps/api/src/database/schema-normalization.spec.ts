@@ -17,10 +17,6 @@ import {
   GovernanceCorrectionSchema,
 } from './schemas/governance-correction.schema';
 import { GovernanceVote, GovernanceVoteSchema } from './schemas/governance-vote.schema';
-import {
-  McpIdempotencyRecord,
-  McpIdempotencyRecordSchema,
-} from './schemas/mcp-idempotency-record.schema';
 import { SecurityEvent, SecurityEventSchema } from './schemas/security-event.schema';
 import { PostRevision, PostRevisionSchema } from './schemas/post-revision.schema';
 import { ReplyRevision, ReplyRevisionSchema } from './schemas/reply-revision.schema';
@@ -29,6 +25,7 @@ import {
   CircleProposalCommentSchema,
 } from './schemas/circle-proposal-comment.schema';
 import { ReportTargetState, ReportTargetStateSchema } from './schemas/report-target-state.schema';
+import { StoryDocumentSchema } from './schemas/story.schema';
 
 const testMongoose = new mongoose.Mongoose();
 const ContentReviewModel = testMongoose.model(
@@ -44,10 +41,6 @@ const GovernanceHistoryModel = testMongoose.model(
 );
 const CorrectionModel = testMongoose.model(GovernanceCorrection.name, GovernanceCorrectionSchema);
 const GovernanceVoteModel = testMongoose.model(GovernanceVote.name, GovernanceVoteSchema);
-const McpIdempotencyModel = testMongoose.model(
-  McpIdempotencyRecord.name,
-  McpIdempotencyRecordSchema,
-);
 const SecurityEventModel = testMongoose.model(SecurityEvent.name, SecurityEventSchema);
 const PostRevisionModel = testMongoose.model(PostRevision.name, PostRevisionSchema);
 const ReplyRevisionModel = testMongoose.model(ReplyRevision.name, ReplyRevisionSchema);
@@ -66,6 +59,21 @@ describe('database schema invariants', () => {
       ]),
     );
     expect(indexes.flatMap(([keys]) => Object.keys(keys))).not.toContain('sourceKey');
+  });
+
+  it('indexes story-scoped, branch-scoped document title prefixes with and without kind filters', () => {
+    expect(StoryDocumentSchema.indexes()).toEqual(
+      expect.arrayContaining([
+        [
+          { storyId: 1, branchId: 1, title: 1, _id: 1 },
+          expect.objectContaining({ name: 'story_document_title_prefix' }),
+        ],
+        [
+          { storyId: 1, branchId: 1, kind: 1, title: 1, _id: 1 },
+          expect.objectContaining({ name: 'story_document_kind_title_prefix' }),
+        ],
+      ]),
+    );
   });
 
   it('rejects a content review payload whose kind does not match its type', async () => {
@@ -422,24 +430,7 @@ describe('database schema invariants', () => {
     expect(GovernanceVoteSchema.path('weight').options.immutable).toBe(true);
   });
 
-  it('rejects oversized or deeply nested dynamic JSON payloads', async () => {
-    const nested: Record<string, unknown> = {};
-    let current = nested;
-    for (let depth = 0; depth < 10; depth += 1) {
-      current.next = {};
-      current = current.next as Record<string, unknown>;
-    }
-    const mcpRecord = new McpIdempotencyModel({
-      agentId: 'agent-1',
-      toolName: 'forum_read',
-      idempotencyKey: 'key-1',
-      inputHash: 'hash-1',
-      status: 'COMPLETED',
-      result: nested,
-      expiresAt: new Date(Date.now() + 60_000),
-    });
-    await expect(mcpRecord.validate()).rejects.toThrow();
-
+  it('rejects oversized security event details', async () => {
     const securityEvent = new SecurityEventModel({
       type: 'TEST',
       severity: 'LOW',
@@ -452,20 +443,6 @@ describe('database schema invariants', () => {
       expiresAt: new Date(Date.now() + 60_000),
     });
     await expect(securityEvent.validate()).rejects.toThrow();
-  });
-
-  it('accepts a bounded MCP idempotency result for a maximum-size Chinese post', async () => {
-    const record = new McpIdempotencyModel({
-      agentId: 'agent-1',
-      toolName: 'forum_write',
-      idempotencyKey: 'key-long-post',
-      inputHash: 'hash-long-post',
-      status: 'COMPLETED',
-      result: { value: { post: { content: '帖'.repeat(50_000) } } },
-      expiresAt: new Date(Date.now() + 60_000),
-    });
-
-    await expect(record.validate()).resolves.toBeUndefined();
   });
 
   it('rejects report target states that exceed the qualified reporter threshold', async () => {

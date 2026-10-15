@@ -129,7 +129,7 @@ describe('security secret validation', () => {
     expect(() => getRedisPassword()).toThrow('REDIS_PASSWORD is required');
   });
 
-  it('canonicalizes configured CORS origins before browser and MCP matching', () => {
+  it('canonicalizes configured CORS origins for browser clients', () => {
     process.env.CORS_ORIGIN =
       'http://localhost:80, https://skynet.example:443, http://localhost:19080';
 

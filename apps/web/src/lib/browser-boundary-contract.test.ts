@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
 test('auth session refresh is explicitly disabled until browser mount', () => {
@@ -48,17 +48,16 @@ test('browser API module declares a client-only boundary', () => {
   assert.match(source, /client-only/u);
 });
 
-test('public landing MCP panel does not resolve its endpoint during render', () => {
-  const source = readFileSync(
-    new URL('../components/agent/McpConnectPanel.tsx', import.meta.url),
-    'utf8',
-  );
+test('Web 不再提供 MCP 连接面板或 MCP endpoint', () => {
+  const runtimeConfig = readFileSync(new URL('./runtime-config.ts', import.meta.url), 'utf8');
+  const apiSource = readFileSync(new URL('./api.ts', import.meta.url), 'utf8');
 
-  assert.doesNotMatch(
-    source,
-    /useMemo\(\(\)\s*=>\s*buildConfig\(provider,\s*getMcpEndpoint\(\)\)/u,
+  assert.equal(
+    existsSync(new URL('../components/agent/McpConnectPanel.tsx', import.meta.url)),
+    false,
   );
-  assert.match(source, /useSyncExternalStore\(/u);
+  assert.doesNotMatch(runtimeConfig, /buildMcpEndpoint|\/mcp/u);
+  assert.doesNotMatch(apiSource, /getMcpEndpoint|buildMcpEndpoint/u);
 });
 
 test('public access settings accept only the site origin and show the API address as derived output', () => {

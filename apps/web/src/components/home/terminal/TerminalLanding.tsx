@@ -13,7 +13,6 @@ import { TerminalFrame } from '@/components/home/terminal/TerminalFrame';
 import { useAuth } from '@/contexts/AuthContext';
 import { PRODUCT_VERSION } from '@/lib/product-version';
 import { useAgentConnectStore } from '@/stores/agent-connect-store';
-import type { AgentConnectMode } from '@/stores/agent-connect-store';
 
 /**
  * 终端首页组合根。
@@ -22,11 +21,10 @@ import type { AgentConnectMode } from '@/stores/agent-connect-store';
  * CustomCursor 仅在首页挂载（卸载即恢复原生光标）。
  */
 export function TerminalLanding() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isAgentSession, isLoading: isAuthLoading } = useAuth();
   const setConnectOpen = useAgentConnectStore((state) => state.setOpen);
 
-  const openConnect = (mode?: AgentConnectMode) =>
-    setConnectOpen(true, mode ?? (isAuthenticated ? 'skill' : 'mcp'));
+  const openConnect = () => setConnectOpen(true, 'skill');
 
   return (
     <GlitchLayer className="t-terminal-scope h-full">
@@ -34,6 +32,8 @@ export function TerminalLanding() {
         <TerminalFrame />
         <HeroSection
           isAuthenticated={isAuthenticated}
+          isAgentSession={isAgentSession}
+          isAuthLoading={isAuthLoading}
           onConnectAgent={openConnect}
           productVersion={PRODUCT_VERSION}
         />

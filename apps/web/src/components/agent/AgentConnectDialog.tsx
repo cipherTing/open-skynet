@@ -8,11 +8,9 @@ import { useTranslation } from 'react-i18next';
 import { userApi, ApiError } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/components/ui/SignalToast';
-import { useAgentConnectStore, type AgentConnectMode } from '@/stores/agent-connect-store';
+import { useAgentConnectStore } from '@/stores/agent-connect-store';
 import { TerminalDialog } from '@/components/ui/TerminalDialog';
 import { TerminalTooltip } from '@/components/ui/tooltip';
-import { TTabContent, TTabs } from '@/components/ui/terminal';
-import { McpConnectPanel } from './McpConnectPanel';
 import { formatExactTimestamp } from '@/lib/date-time';
 
 function localDateKey(): string {
@@ -45,9 +43,8 @@ function ConnectStep({ index, text }: { index: number; text: string }) {
 export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolean }) {
   const { t, i18n } = useTranslation();
   const toast = useToast();
-  const { user, agent, isAuthenticated } = useAuth();
+  const { user, agent, isAuthenticated, isAgentSession } = useAuth();
   const open = useAgentConnectStore((state) => state.open);
-  const requestedMode = useAgentConnectStore((state) => state.mode);
   const setOpen = useAgentConnectStore((state) => state.setOpen);
   const [link, setLink] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
@@ -57,25 +54,34 @@ export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolea
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showExistingLink, setShowExistingLink] = useState(true);
-  const accessMode: AgentConnectMode = requestedMode;
   const keyQuery = useQuery({
     queryKey: ['agent-connect', 'key-info', agent?.id],
     queryFn: userApi.getKeyInfo,
-    enabled: isAuthenticated && Boolean(agent),
+    enabled: isAuthenticated && !isAgentSession && Boolean(agent),
   });
   const linkStatusQuery = useQuery({
     queryKey: ['agent-connect', 'guide-link-status', agent?.id],
     queryFn: userApi.getGuideLinkStatus,
-    enabled: open && accessMode === 'skill' && isAuthenticated && Boolean(agent),
+    enabled: open && isAuthenticated && !isAgentSession && Boolean(agent),
     staleTime: 0,
   });
   const hasKey = Boolean(keyQuery.data);
 
   useEffect(() => {
-    if (!autoPrompt || !user || !agent || keyQuery.isPending || keyQuery.isError || hasKey) return;
+    if (
+      isAgentSession ||
+      !autoPrompt ||
+      !user ||
+      !agent ||
+      keyQuery.isPending ||
+      keyQuery.isError ||
+      hasKey
+    ) {
+      return;
+    }
     const reminderKey = `skynet-agent-connect-reminder:${user.id}:${localDateKey()}`;
     if (window.localStorage.getItem(reminderKey) !== 'hidden') setOpen(true);
-  }, [agent, autoPrompt, hasKey, keyQuery.isError, keyQuery.isPending, setOpen, user]);
+  }, [agent, autoPrompt, hasKey, isAgentSession, keyQuery.isError, keyQuery.isPending, setOpen, user]);
 
   const generateLink = async () => {
     if (keyQuery.isError) return;
@@ -136,14 +142,14 @@ export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolea
           setLink('');
           setExpiresAt('');
           setShowExistingLink(true);
-          setOpen(false, 'skill');
+          setOpen(false);
           return;
         }
         setOpen(true);
       }}
       title={t('circleDialogs.agentConnectTitle')}
       description={t('agentConnect.description')}
-      code={accessMode === 'mcp' ? 'AGENT.MCP' : 'AGENT.LINK'}
+      code="AGENT.LINK"
       size="md"
       contentClassName={CUT_PANEL_CLASS}
     >
@@ -154,18 +160,7 @@ export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolea
         <p className="text-sm leading-6 text-text-secondary">{t('agentConnect.description')}</p>
       </div>
 
-      <TTabs
-        active={accessMode}
-        onChange={(next) => {
-          if (next === 'skill' || next === 'mcp') setOpen(true, next);
-        }}
-        items={[
-          { id: 'skill', label: t('agentConnect.modeSkill') },
-          { id: 'mcp', label: t('agentConnect.modeMcp') },
-        ]}
-        className="mt-5"
-      >
-        <TTabContent value="skill" className="mt-4 outline-none">
+      <div className="mt-5 outline-none">
           <ol className="space-y-2 border-l border-[var(--t-noise)] pl-4">
             <ConnectStep index={1} text={t('agentConnect.stepCommand')} />
             <ConnectStep index={2} text={t('agentConnect.stepSend')} />
@@ -313,12 +308,7 @@ export function AgentConnectDialog({ autoPrompt = false }: { autoPrompt?: boolea
               </button>
             </div>
           )}
-        </TTabContent>
-
-        <TTabContent value="mcp" className="mt-4 outline-none">
-          <McpConnectPanel isAuthenticated={isAuthenticated} hasKey={hasKey} />
-        </TTabContent>
-      </TTabs>
+      </div>
     </TerminalDialog>
   );
 }

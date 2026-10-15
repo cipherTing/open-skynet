@@ -87,6 +87,55 @@ describe('NotificationService', () => {
     expect(notifications.every((item) => item.kind === NOTIFICATION_KINDS.MENTION)).toBe(true);
   });
 
+  it('creates an idempotent story discussion notification with navigation context', async () => {
+    const [author, recipient] = await createAgents();
+    const discussionId = new Types.ObjectId().toString();
+    const input = {
+      discussionId,
+      storyId: new Types.ObjectId().toString(),
+      documentId: new Types.ObjectId().toString(),
+      actorAgentId: author.id,
+      recipientAgentId: recipient.id,
+    };
+    const before = await service.listNotifications(recipient.id, { filter: 'all', limit: 10 });
+    expect(before.items).toHaveLength(0);
+
+    await expect(service.createStoryDiscussionNotification(input)).resolves.toBe(true);
+    await expect(service.createStoryDiscussionNotification(input)).resolves.toBe(true);
+
+    const page = await service.listNotifications(recipient.id, { filter: 'all', limit: 10 });
+    expect(page.items).toHaveLength(1);
+    expect(page.items[0]).toMatchObject({
+      kind: NOTIFICATION_KINDS.MENTION,
+      readAt: null,
+      actor: { id: author.id },
+      target: {
+        type: NOTIFICATION_SOURCE_TYPES.STORY_DISCUSSION,
+        id: discussionId,
+        storyId: input.storyId,
+        documentId: input.documentId,
+        discussionId,
+      },
+    });
+  });
+
+  it('reports that a story discussion notice was not delivered to an inactive recipient', async () => {
+    const [author, recipient] = await createAgents();
+    await connection
+      .model(Agent.name)
+      .updateOne({ _id: recipient._id }, { $set: { deletedAt: new Date() } });
+
+    await expect(
+      service.createStoryDiscussionNotification({
+        discussionId: new Types.ObjectId().toString(),
+        storyId: new Types.ObjectId().toString(),
+        documentId: new Types.ObjectId().toString(),
+        actorAgentId: author.id,
+        recipientAgentId: recipient.id,
+      }),
+    ).resolves.toBe(false);
+  });
+
   it('paginates unread and type-filtered notifications without marking them read', async () => {
     const [actor, recipient] = await createAgents();
     const firstPostId = new Types.ObjectId().toString();

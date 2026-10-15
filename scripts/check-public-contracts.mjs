@@ -75,54 +75,60 @@ async function main(argv) {
   if (typeof productVersion !== 'string' || productVersion.length === 0)
     throw new Error('Product version is missing');
 
+  const skillEntry = await readText(root, 'skills/skynet/SKILL.md');
+  const skillName = skillEntry.match(/^name:\s*([^\s]+)\s*$/mu)?.[1];
+  if (skillName !== 'skynet') throw new Error('skills/skynet/SKILL.md must declare name: skynet');
+  const installer = await readText(root, 'scripts/install-skynet-skill.py');
+  if (!installer.includes('"--skill-ref"'))
+    throw new Error('Skynet Skill installer must require the release tag via --skill-ref');
+  const readme = await readText(root, 'README.md');
+  const skillTag = `v${productVersion}`;
+  if (
+    !readme.includes(
+      `https://raw.githubusercontent.com/cipherTing/open-skynet/${skillTag}/scripts/install-skynet-skill.py`,
+    ) ||
+    !readme.includes(`--skill-ref ${skillTag}`)
+  ) {
+    throw new Error(`README Skill installer must use product tag ${skillTag}`);
+  }
+
   const contracts = config.contracts;
   const guide = contracts?.agentGuide;
-  const governanceGuide = contracts?.governanceGuide;
   const restApiMajor = contracts?.restApi?.major;
-  if (!guide || !governanceGuide || !Number.isInteger(restApiMajor))
+  if (!guide || !Number.isInteger(restApiMajor))
     throw new Error('Incomplete public release contracts');
+  if ('governanceGuide' in contracts)
+    throw new Error('Standalone Governance Guide is no longer a public release contract');
+  if ('mcpBusiness' in contracts) throw new Error('MCP is no longer a public release contract');
 
   const guidePath = guide.template;
-  const governancePath = governanceGuide.template;
   const guideContent = await readText(root, guidePath);
-  const governanceContent = await readText(root, governancePath);
   if (frontMatterVersion(guideContent, guidePath) !== guide.version)
     throw new Error(
       `Agent Guide version does not match release catalog: expected ${guide.version}`,
     );
-  if (frontMatterVersion(governanceContent, governancePath) !== governanceGuide.version)
-    throw new Error(
-      `Governance Guide version does not match release catalog: expected ${governanceGuide.version}`,
-    );
-  for (const [content, relativePath] of [
-    [guideContent, guidePath],
-    [governanceContent, governancePath],
-  ]) {
-    const apiPrefix = content.match(/^api_prefix:\s*([^\s]+)\s*$/mu)?.[1];
-    if (apiPrefix !== `/api/v${restApiMajor}`)
-      throw new Error(`${relativePath} must declare /api/v${restApiMajor}`);
+  const apiPrefix = guideContent.match(/^api_prefix:\s*([^\s]+)\s*$/mu)?.[1];
+  if (apiPrefix !== `/api/v${restApiMajor}`)
+    throw new Error(`${guidePath} must declare /api/v${restApiMajor}`);
+  if (
+    !guideContent.includes('open-skynet/{{SKYNET_SKILL_REF}}/scripts/install-skynet-skill.py') ||
+    !guideContent.includes("--skill-ref '{{SKYNET_SKILL_REF}}'")
+  ) {
+    throw new Error(`${guidePath} must pass its versioned Skill ref to the installer`);
   }
 
   const mainSource = await readText(root, 'apps/api/src/main.ts');
-  const mcpSource = await readText(root, 'apps/api/src/mcp/mcp-agent-tools.service.ts');
   checkRuntimeVersion(
     mainSource,
     'apps/api/src/main.ts',
     productVersion,
     /\.setVersion\(\s*['"]([^'"]+)['"]\s*\)/u,
   );
-  checkRuntimeVersion(
-    mcpSource,
-    'apps/api/src/mcp/mcp-agent-tools.service.ts',
-    productVersion,
-    /version:\s*['"]([^'"]+)['"]/u,
-  );
-
   const changelog = await readText(root, 'CHANGELOG.md');
   if (!new RegExp(`^## \\[${escapeRegExp(productVersion)}\\](?:\\s|$)`, 'mu').test(changelog))
     throw new Error(`CHANGELOG.md is missing the ${productVersion} release entry`);
   console.log(
-    `Public contracts OK: product=${productVersion}, api=/api/v${restApiMajor}, guide=${guide.version}, governance=${governanceGuide.version}`,
+    `Public contracts OK: product=${productVersion}, api=/api/v${restApiMajor}, guide=${guide.version}, governance=none`,
   );
 }
 

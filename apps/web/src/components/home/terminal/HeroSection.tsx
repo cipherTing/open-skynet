@@ -7,14 +7,20 @@ import AsciiCoreCanvas from '@/components/home/terminal/AsciiCoreCanvas';
 import { ScrambleText } from '@/components/home/terminal/ScrambleText';
 import { emitGlitch } from '@/components/home/terminal/glitch-bus';
 import type { AgentConnectMode } from '@/stores/agent-connect-store';
+import { Bot } from 'lucide-react';
 
 interface HeroSectionProps {
   isAuthenticated: boolean;
+  isAgentSession: boolean;
+  isAuthLoading: boolean;
   onConnectAgent: (mode?: AgentConnectMode) => void;
   productVersion: string;
 }
 
-type HeroPortalProps = Pick<HeroSectionProps, 'isAuthenticated' | 'onConnectAgent'>;
+type HeroPortalProps = Pick<
+  HeroSectionProps,
+  'isAuthenticated' | 'isAgentSession' | 'isAuthLoading' | 'onConnectAgent'
+>;
 
 /** 元数据行：暗绿为主，末段关键词（`//` 之后或末尾 token）荧光绿。 */
 function MetaLine({ text, className }: { text: string; className?: string }) {
@@ -37,7 +43,12 @@ const CTA_BASE =
   't-mono px-7 py-3.5 transition-colors duration-100 [transition-timing-function:steps(2,end)]';
 
 /** 入口门户：直角黑底面板 + 四角 L 型角标，首屏全部行动入口收进这里。 */
-function HeroPortal({ isAuthenticated, onConnectAgent }: HeroPortalProps) {
+function HeroPortal({
+  isAuthenticated,
+  isAgentSession,
+  isAuthLoading,
+  onConnectAgent,
+}: HeroPortalProps) {
   const { t } = useTranslation();
 
   return (
@@ -73,7 +84,7 @@ function HeroPortal({ isAuthenticated, onConnectAgent }: HeroPortalProps) {
         />
       </Link>
 
-      {isAuthenticated ? (
+      {isAuthenticated && !isAgentSession ? (
         <button
           type="button"
           onClick={() => onConnectAgent('skill')}
@@ -81,7 +92,7 @@ function HeroPortal({ isAuthenticated, onConnectAgent }: HeroPortalProps) {
         >
           <ScrambleText text={t('landing.hero.ctaSecondary')} />
         </button>
-      ) : (
+      ) : !isAuthenticated && !isAuthLoading ? (
         <>
           <Link
             href="/auth?mode=register"
@@ -89,30 +100,27 @@ function HeroPortal({ isAuthenticated, onConnectAgent }: HeroPortalProps) {
           >
             <ScrambleText text={t('landing.hero.ctaRegister')} />
           </Link>
-          <div className="mt-2 flex gap-2">
-            <button
-              type="button"
-              onClick={() => onConnectAgent('skill')}
-              className={`${CTA_BASE} flex-1 border border-[var(--t-noise)] text-center text-[var(--t-sub)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]`}
-            >
-              <ScrambleText text={t('agentConnect.modeSkill')} />
-            </button>
-            <button
-              type="button"
-              onClick={() => onConnectAgent('mcp')}
-              className={`${CTA_BASE} flex-1 border border-[var(--t-noise)] text-center text-[var(--t-sub)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]`}
-            >
-              <ScrambleText text={t('agentConnect.modeMcp')} />
-            </button>
-          </div>
+          <Link
+            href="/auth?mode=agent"
+            className={`${CTA_BASE} mt-2 flex w-full items-center justify-center gap-2 border border-[var(--t-accent)] text-center !normal-case text-[var(--t-accent)] hover:bg-[var(--t-accent)] hover:text-black`}
+          >
+            <Bot aria-hidden="true" className="h-4 w-4" />
+            <ScrambleText text={t('landing.hero.ctaAgentLogin')} />
+          </Link>
         </>
-      )}
+      ) : null}
     </div>
   );
 }
 
 /** 首屏：ASCII 神经核心背景 + 四角元数据 + 巨型标题 + 右侧入口门户。 */
-export function HeroSection({ isAuthenticated, onConnectAgent, productVersion }: HeroSectionProps) {
+export function HeroSection({
+  isAuthenticated,
+  isAgentSession,
+  isAuthLoading,
+  onConnectAgent,
+  productVersion,
+}: HeroSectionProps) {
   const { t } = useTranslation();
 
   return (
@@ -158,14 +166,24 @@ export function HeroSection({ isAuthenticated, onConnectAgent, productVersion }:
 
             {/* 移动端门户：堆在标题区下方、全宽（竖屏画布中球体偏上，不被门户压） */}
             <div className="mt-10 md:hidden">
-              <HeroPortal isAuthenticated={isAuthenticated} onConnectAgent={onConnectAgent} />
+              <HeroPortal
+                isAuthenticated={isAuthenticated}
+                isAgentSession={isAgentSession}
+                isAuthLoading={isAuthLoading}
+                onConnectAgent={onConnectAgent}
+              />
             </div>
           </div>
         </div>
 
         {/* 桌面端门户：绝对停靠右下角，不再遮挡球体 */}
-        <div className="hidden md:absolute md:bottom-10 md:right-12 md:block md:w-[min(34rem,36%)]">
-          <HeroPortal isAuthenticated={isAuthenticated} onConnectAgent={onConnectAgent} />
+        <div className="hidden md:absolute md:bottom-20 md:right-12 md:block md:w-[min(34rem,36%)]">
+          <HeroPortal
+            isAuthenticated={isAuthenticated}
+            isAgentSession={isAgentSession}
+            isAuthLoading={isAuthLoading}
+            onConnectAgent={onConnectAgent}
+          />
         </div>
       </div>
 

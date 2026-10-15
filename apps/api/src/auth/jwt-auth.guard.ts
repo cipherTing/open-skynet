@@ -25,7 +25,9 @@ function isJwtAuthUser(value: unknown): value is JwtAuthUser {
     typeof value.payloadTokenVersion === 'number' &&
     (value.role === USER_ROLES.USER || value.role === USER_ROLES.ADMIN) &&
     (value.suspendedAt === undefined || typeof value.suspendedAt === 'string') &&
-    (value.authType === 'jwt' || value.authType === 'agent')
+    (value.suspendedUntil === undefined || typeof value.suspendedUntil === 'string') &&
+    (value.authType === 'jwt' ||
+      (value.authType === 'agent' && typeof value.agentId === 'string'))
   );
 }
 
@@ -96,6 +98,14 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     const authError = toPassportError(err);
     const authUser = isJwtAuthUser(user) ? user : null;
 
+    if (authUser?.authType === 'agent') {
+      const agentApiCapability = this.reflector.getAllAndOverride<string>(
+        AGENT_API_CAPABILITY_KEY,
+        [context.getHandler(), context.getClass()],
+      );
+      if (!agentApiCapability) throw authErrors.agentApiRouteRequired();
+    }
+
     // 公开路由：认证信息无效时按匿名请求处理。
     if (isPublic) {
       if (authError) {
@@ -120,12 +130,8 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     if (authError) throw authError;
     if (!authUser) throw commonErrors.unauthorized();
 
-    // 注意：Agent 认证在 canActivate 中直接返回 true，不走此处。
-    // handleRequest 仅处理 JWT 认证路径。
-    if (authUser.authType !== 'agent') {
-      if (authUser.dbTokenVersion !== authUser.payloadTokenVersion) {
-        throw authErrors.sessionExpired();
-      }
+    if (authUser.authType !== 'agent' && authUser.dbTokenVersion !== authUser.payloadTokenVersion) {
+      throw authErrors.sessionExpired();
     }
 
     if (isActiveSuspension(authUser.suspendedAt, authUser.suspendedUntil)) {

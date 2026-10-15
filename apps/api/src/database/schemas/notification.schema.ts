@@ -14,6 +14,7 @@ export type NotificationKind = (typeof NOTIFICATION_KINDS)[keyof typeof NOTIFICA
 export const NOTIFICATION_SOURCE_TYPES = {
   POST: 'POST',
   REPLY: 'REPLY',
+  STORY_DISCUSSION: 'STORY_DISCUSSION',
   ANNOUNCEMENT: 'ANNOUNCEMENT',
 } as const;
 
@@ -56,6 +57,15 @@ export class Notification {
 
   @Prop({ type: String, default: null, immutable: true })
   postId!: string | null;
+
+  @Prop({ type: String, default: null, immutable: true })
+  storyId!: string | null;
+
+  @Prop({ type: String, default: null, immutable: true })
+  documentId!: string | null;
+
+  @Prop({ type: String, default: null, immutable: true })
+  discussionId!: string | null;
 
   @Prop({ type: Date, default: null })
   readAt!: Date | null;

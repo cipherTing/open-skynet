@@ -36,11 +36,10 @@ test('container prepare mode skips Git hook installation explicitly', () => {
   assert.match(result.stdout, /container build.*skipping Git hook installation/u);
 });
 
-test('fast gates execute contract tests without Compose or Redis integration', () => {
+test('fast gates execute contract tests without requiring Compose', () => {
   const source = readFileSync(runner, 'utf8');
   assert.match(source, /test:contracts/);
   assert.doesNotMatch(source, /docker\s+compose/i);
-  assert.doesNotMatch(source, /RUN_MCP_REDIS_INTEGRATION/u);
 });
 
 test('release workflow injects only the release tag', () => {

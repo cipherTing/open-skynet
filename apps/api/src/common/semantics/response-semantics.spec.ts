@@ -124,6 +124,44 @@ describe('response semantics', () => {
     expect(semantics).not.toHaveProperty('progressDelta.dailyTaskUpdates[].items');
   });
 
+  it('describes version-bound story feedback without score fields', () => {
+    const semantics = getResponseSemantics('StoryController.listReviews');
+    expect(semantics).toMatchObject({
+      'items[].id': expect.any(String),
+      'items[].documentId': expect.any(String),
+      'items[].revisionNumber': expect.any(String),
+      'items[].content': expect.any(String),
+      'items[].anchorText': expect.any(String),
+    });
+    expect(semantics).not.toHaveProperty('items[].dimensions');
+    expect(semantics).not.toHaveProperty('items[].dimensions[].score');
+  });
+
+  it('does not advertise automatic mainline protection or caller-selected restriction windows', () => {
+    const document = getResponseSemantics('StoryController.getDocument');
+    const conflicts = getResponseSemantics('StoryController.listConflicts');
+    const cases = getResponseSemantics('StoryController.listCases');
+
+    expect(document).not.toHaveProperty('mainlineProtectedUntil');
+    expect(document).not.toHaveProperty('activeConflictId');
+    expect(Object.keys(conflicts ?? {})).not.toContain('items[].protectionExpiresAt');
+    expect(Object.keys(cases ?? {})).not.toContain('items[].requestedRestrictionHours');
+    expect(cases).not.toHaveProperty('requestedRestrictionHours');
+  });
+
+  it('describes discussion location, including the anchored story branch', () => {
+    expect(getResponseSemantics('StoryController.listDiscussions')).toMatchObject({
+      'items[].documentId': expect.any(String),
+      'items[].revisionNumber': expect.any(String),
+      'items[].branchId': expect.any(String),
+    });
+    expect(getResponseSemantics('StoryController.getDiscussion')).toMatchObject({
+      documentId: expect.any(String),
+      revisionNumber: expect.any(String),
+      branchId: expect.any(String),
+    });
+  });
+
   it('covers every governance snapshot, summary and timeline variant', () => {
     const feed = getResponseSemantics('GovernanceController.resultFeed');
     expect(feed).toMatchObject({
@@ -162,6 +200,32 @@ describe('response semantics', () => {
     });
     expect(semantics).not.toHaveProperty('items[].currentRevision');
     expect(semantics).not.toHaveProperty('items[].voting');
+  });
+
+  it('keeps story discovery semantics lightweight while describing full document and revision reads', () => {
+    const directory = getResponseSemantics('StoryController.listDocuments');
+    expect(directory).toMatchObject({
+      'items[].title': expect.any(String),
+      'items[].links[].targetDocumentId': expect.any(String),
+    });
+    expect(directory?.['items[].content']).toBeUndefined();
+    const activity = getResponseSemantics('StoryController.getStory');
+    expect(activity).toMatchObject({
+      'recentActivity[].title': expect.any(String),
+      'recentActivity[].branchId': expect.any(String),
+    });
+    expect(activity?.['recentActivity[].diff']).toBeUndefined();
+    expect(getResponseSemantics('StoryController.getDocument')).toHaveProperty('content');
+    const revisions = getResponseSemantics('StoryController.listDocumentRevisions');
+    expect(revisions).toMatchObject({
+      items: expect.stringContaining('newest first'),
+      'items[].revisionNumber': expect.any(String),
+      'items[].title': expect.any(String),
+    });
+    expect(revisions?.['items[].diff']).toBeUndefined();
+    expect(getResponseSemantics('StoryController.listStoryRevisions')?.['items[].diff']).toEqual(
+      expect.any(String),
+    );
   });
 
   it('describes root-array responses without inventing an items wrapper', () => {

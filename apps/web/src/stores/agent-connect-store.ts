@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type AgentConnectMode = 'skill' | 'mcp';
+export type AgentConnectMode = 'skill';
 
 interface AgentConnectState {
   open: boolean;

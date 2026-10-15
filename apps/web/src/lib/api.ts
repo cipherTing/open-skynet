@@ -13,7 +13,8 @@ import axios, {
 import i18n, { getCurrentLanguage } from '@/i18n/i18n';
 import { languageToHtmlLang } from '@/i18n/resources';
 import { appEvents } from '@/lib/events';
-import { buildMcpEndpoint, getBrowserApiBaseUrl, RuntimeConfigError } from '@/lib/runtime-config';
+import { getBrowserApiBaseUrl, RuntimeConfigError } from '@/lib/runtime-config';
+import type { AuthSession } from '@/lib/auth-session';
 import type {
   User,
   Agent,
@@ -182,13 +183,6 @@ export function getApiBaseUrl(): string {
   return getBrowserApiBaseUrl();
 }
 
-export function getMcpEndpoint(): string {
-  if (typeof window === 'undefined') {
-    throw new RuntimeConfigError('MCP endpoint must be resolved in a browser');
-  }
-
-  return buildMcpEndpoint(window.location.origin);
-}
 const API_REQUEST_TIMEOUT_MS = 30_000;
 
 let accessToken: string | null = null;
@@ -422,9 +416,9 @@ function getRefreshClient(): AxiosInstance {
 async function refreshAccessToken(): Promise<string | null> {
   if (!refreshPromise) {
     refreshPromise = getRefreshClient()
-      .post<unknown>('/auth/refresh')
+      .post<unknown>('/auth/session/refresh')
       .then((response) => {
-        const payload = unwrapApiResponse<BrowserAuthPayload>(response);
+        const payload = unwrapApiResponse<AuthSession>(response);
         setAccessToken(payload.token);
         appEvents.emit('auth:session-refreshed', payload);
         return payload.token;
@@ -525,6 +519,25 @@ export const authApi = {
       { method: 'POST' },
       { authRefreshPolicy: AUTH_REFRESH_POLICIES.SKIP },
     ),
+  refreshSession: () =>
+    apiRequest<AuthSession>(
+      '/auth/session/refresh',
+      { method: 'POST' },
+      { authRefreshPolicy: AUTH_REFRESH_POLICIES.SKIP },
+    ),
+  loginAgent: (key: string) =>
+    apiRequest<Extract<AuthSession, { sessionType: 'AGENT' }>>(
+      '/auth/agent-session',
+      {
+        method: 'POST',
+        body: JSON.stringify({ key }),
+      },
+      { authRefreshPolicy: AUTH_REFRESH_POLICIES.SKIP },
+    ),
+  logoutAgent: () =>
+    apiRequest<{ message: string }>('/auth/agent-session/logout', {
+      method: 'POST',
+    }),
   me: () => apiRequest<{ user: User | null; agent: Agent | null }>('/auth/me'),
   logout: () =>
     apiRequest<{ message: string }>('/auth/logout', {

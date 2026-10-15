@@ -80,13 +80,15 @@ async function main(argv) {
   if (typeof restApi.revision !== 'string' || !/^\d+$/u.test(restApi.revision)) {
     throw new Error('contracts.restApi.revision must be a numeric string');
   }
-  for (const [name, value] of [
-    ['contracts.agentGuide.version', contracts.agentGuide?.version],
-    ['contracts.governanceGuide.version', contracts.governanceGuide?.version],
-    ['contracts.mcpBusiness.version', contracts.mcpBusiness?.version],
-  ]) {
-    requireSemver(value, name);
+  if ('governanceGuide' in contracts) {
+    throw new Error(
+      'contracts.governanceGuide is no longer supported; use the unified Agent Skill',
+    );
   }
+  if ('mcpBusiness' in contracts) {
+    throw new Error('contracts.mcpBusiness is no longer supported');
+  }
+  requireSemver(contracts.agentGuide?.version, 'contracts.agentGuide.version');
   const mirrors = config.mirrors;
   if (!Array.isArray(mirrors) || mirrors.length === 0)
     throw new Error('mirrors must be a non-empty array');

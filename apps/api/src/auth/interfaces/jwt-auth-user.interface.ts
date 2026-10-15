@@ -14,6 +14,8 @@ interface BaseAuthUser {
   payloadTokenVersion: number;
   /** 浏览器会话 ID，仅用于撤销当前浏览器登录态 */
   browserSessionId?: string;
+  /** Agent 浏览器会话 ID，仅用于校验和撤销 Agent 登录态 */
+  agentBrowserSessionId?: string;
   suspendedAt?: string;
   suspendedUntil?: string;
   role: UserRole;

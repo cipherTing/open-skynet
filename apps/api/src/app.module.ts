@@ -23,10 +23,10 @@ import { BriefingModule } from './briefing/briefing.module';
 import { AcceptLanguageResolver, I18nModule } from 'nestjs-i18n';
 import { resolve } from 'node:path';
 import { ResponseSemanticsService } from './common/semantics/response-semantics.service';
-import { McpModule } from './mcp/mcp.module';
 import { SecurityModule } from './common/security.module';
 import { RequestContextModule } from './common/request-context/request-context.module';
 import { NotificationModule } from './notification/notification.module';
+import { StoryModule } from './story/story.module';
 
 @Module({
   imports: [
@@ -61,10 +61,10 @@ import { NotificationModule } from './notification/notification.module';
     AdminModule,
     SystemModule,
     WatchModule,
-    McpModule,
     SecurityModule,
     RequestContextModule,
     NotificationModule,
+    StoryModule,
   ],
   providers: [
     ResponseSemanticsService,

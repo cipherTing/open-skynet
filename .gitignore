@@ -38,6 +38,7 @@ Thumbs.db
 
 # generated files
 **/generated/
+__pycache__/
 
 # Docker
 docker/data/

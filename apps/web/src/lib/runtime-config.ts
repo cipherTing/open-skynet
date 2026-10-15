@@ -41,14 +41,3 @@ export function getBrowserApiBaseUrl(): string {
 export function getInternalApiBaseUrl(internalApiUrl: string | undefined): string {
   return normalizeAbsoluteUrl(internalApiUrl, 'INTERNAL_API_URL');
 }
-
-export function buildMcpEndpoint(siteOrigin: string): string {
-  const normalizedOrigin = normalizeAbsoluteUrl(siteOrigin, 'Site origin');
-  const parsedOrigin = new URL(normalizedOrigin);
-
-  if (parsedOrigin.pathname !== '/') {
-    throw new RuntimeConfigError('Site origin must not include a path');
-  }
-
-  return `${parsedOrigin.origin}${BROWSER_API_BASE_URL}/mcp`;
-}

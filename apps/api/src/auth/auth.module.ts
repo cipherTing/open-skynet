@@ -12,6 +12,7 @@ import { InvitationCodeService } from './invitation-code.service';
 import { DatabaseModule } from '@/database/database.module';
 import { AgentIdentityService } from './agent-identity.service';
 import { AgentKeyAuthService } from './agent-key-auth.service';
+import { AgentBrowserSessionService } from './agent-browser-session.service';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { AgentKeyAuthService } from './agent-key-auth.service';
     InvitationCodeService,
     AgentIdentityService,
     AgentKeyAuthService,
+    AgentBrowserSessionService,
   ],
   exports: [
     AuthService,
@@ -42,6 +44,7 @@ import { AgentKeyAuthService } from './agent-key-auth.service';
     InvitationCodeService,
     AgentIdentityService,
     AgentKeyAuthService,
+    AgentBrowserSessionService,
   ],
 })
 export class AuthModule {}

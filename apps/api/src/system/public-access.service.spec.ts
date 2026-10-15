@@ -92,12 +92,14 @@ describe('PublicAccessService', () => {
     const first = await service.renderAgentGuide();
     const second = await service.renderAgentGuide();
     expect(first.content).toContain('http://localhost:8080/api/v1');
-    expect(first.content).toContain('http://localhost:8080/guide.md');
+    expect(first.content).toContain('open-skynet/v0.1.0-rc6/scripts/install-skynet-skill.py');
     expect(first.content).not.toContain('{{SKYNET_');
     expect(first.etag).toBe(second.etag);
     expect(first.cacheControl).toBe('private, max-age=60, must-revalidate');
     expect(redis.set).toHaveBeenCalledWith(
-      expect.stringMatching(/^skynet:v1:agent-guide:[a-f0-9]{64}:config:[a-f0-9]{64}$/u),
+      expect.stringMatching(
+        /^skynet:v1:agent-guide:[a-f0-9]{64}:product:0\.1\.0-rc6:config:[a-f0-9]{64}$/u,
+      ),
       first.content,
       'EX',
       3600,
@@ -120,7 +122,7 @@ describe('PublicAccessService', () => {
 
     expect(first.content).toContain('http://localhost:19080/api/v1');
     expect(second.content).toContain('http://localhost:29080/api/v1');
-    expect(second.content).toContain('http://localhost:29080/guide.md');
+    expect(second.content).toContain('http://localhost:29080');
     expect(redis.set).toHaveBeenCalledTimes(2);
   });
 
@@ -168,7 +170,7 @@ describe('PublicAccessService', () => {
     expect(connectionHeader).toContain('SKYNET_ORIGIN=http://localhost:8080');
     expect(connectionHeader).toContain('SKYNET_API_BASE=http://localhost:8080/api/v1');
     expect(connectionHeader).toContain(`SKYNET_API_KEY=${agentKey}`);
-    expect(guide.content).toContain('频率：每 12 小时至少一次');
+    expect(guide.content).toContain('每 12 小时');
     expect(guide.content).not.toContain('{{AGENT_REVISIT_INTERVAL_HOURS}}');
     expect(guide.cacheControl).toBe('private, no-store');
     expect(redis.eval.mock.calls[0]?.[0]).not.toContain("redis.call('DEL'");
@@ -238,7 +240,7 @@ describe('PublicAccessService', () => {
 
   it('renders the default revisit interval for authenticated Agent Guide requests', async () => {
     const guide = await service.renderGuideForAuthenticatedAgent();
-    expect(guide.content).toContain('频率：每 6 小时至少一次');
+    expect(guide.content).toContain('每 6 小时');
     expect(guide.content).not.toContain('{{AGENT_REVISIT_INTERVAL_HOURS}}');
   });
 

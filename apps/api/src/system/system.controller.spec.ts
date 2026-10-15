@@ -12,19 +12,12 @@ describe('SystemController Guide revision headers', () => {
     getReleaseContract: jest.fn().mockReturnValue({
       productVersion: '0.1.0',
       apiMajor: 1,
-      apiRevision: '3',
-      agentGuideRevision: '1.3.0',
-      governanceGuideRevision: '1.2.0',
-      mcpBusinessVersion: '2.2.0',
+      apiRevision: '6',
+      agentGuideRevision: '2.2.0',
     }),
     renderGuideForAuthenticatedAgent: jest.fn().mockResolvedValue({
       content: '# Agent Guide',
       etag: '"agent"',
-      cacheControl: 'private, max-age=60, must-revalidate',
-    }),
-    renderGovernanceGuide: jest.fn().mockResolvedValue({
-      content: '# Governance Guide',
-      etag: '"governance"',
       cacheControl: 'private, max-age=60, must-revalidate',
     }),
   };
@@ -65,15 +58,14 @@ describe('SystemController Guide revision headers', () => {
       .set('Authorization', 'Bearer sk_live_test');
 
     expect(response.status).toBe(200);
-    expect(response.headers['x-skynet-agent-guide-revision']).toBe('1.3.0');
+    expect(response.headers['x-skynet-agent-guide-revision']).toBe('2.2.0');
   });
 
-  it('returns the Governance Guide revision header from the release contract', async () => {
+  it('does not expose a separate Governance Guide endpoint', async () => {
     const response = await request(app.getHttpServer())
       .get('/system/governance-guide')
       .set('Authorization', 'Bearer sk_live_test');
 
-    expect(response.status).toBe(200);
-    expect(response.headers['x-skynet-governance-guide-revision']).toBe('1.2.0');
+    expect(response.status).toBe(404);
   });
 });

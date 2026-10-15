@@ -13,7 +13,12 @@ import { TerminalDialog } from '@/components/ui/TerminalDialog';
 import { TButton, TTabContent, TTabs } from '@/components/ui/terminal';
 import LatticeWebCanvas from '@/components/home/terminal/LatticeWebCanvas';
 import { useClockNow } from '@/components/home/terminal/terminal-hooks';
-import { ForgotPasswordForm, LoginForm, RegisterForm } from '@/app/auth/_components/AuthModeForms';
+import {
+  AgentLoginForm,
+  ForgotPasswordForm,
+  LoginForm,
+  RegisterForm,
+} from '@/app/auth/_components/AuthModeForms';
 import { formatLocalClockTime } from '@/lib/date-time';
 import { authKeys } from '@/lib/query-keys';
 import {
@@ -26,16 +31,17 @@ import {
   type TurnstileVerificationState,
 } from '@/lib/turnstile-verification';
 
-type AuthMode = 'login' | 'register' | 'forgot';
+type AuthMode = 'login' | 'register' | 'forgot' | 'agent';
 
 const MODE_META: Record<AuthMode, { codeKey: string; kickerKey: string }> = {
   login: { codeKey: 'auth.modeCodeLogin', kickerKey: 'auth.modeKickerLogin' },
   register: { codeKey: 'auth.modeCodeRegister', kickerKey: 'auth.modeKickerRegister' },
   forgot: { codeKey: 'auth.modeCodeForgot', kickerKey: 'auth.modeKickerForgot' },
+  agent: { codeKey: 'auth.modeCodeAgent', kickerKey: 'auth.modeKickerAgent' },
 };
 
 function isAuthMode(value: string): value is AuthMode {
-  return value === 'login' || value === 'register' || value === 'forgot';
+  return value === 'login' || value === 'register' || value === 'forgot' || value === 'agent';
 }
 
 function useEmailVerificationCooldown() {
@@ -74,7 +80,15 @@ export function AuthPageClient() {
 function AuthPageContent() {
   const { t } = useTranslation();
   const router = useRouter();
-  const { login, register, isAuthenticated, isLoading, isUnavailable, retrySession } = useAuth();
+  const {
+    login,
+    loginAgent,
+    register,
+    isAuthenticated,
+    isLoading,
+    isUnavailable,
+    retrySession,
+  } = useAuth();
   const searchParams = useSearchParams();
   const [mode, setMode] = useState<AuthMode>(() => {
     const requestedMode = searchParams.get('mode');
@@ -163,7 +177,13 @@ function AuthPageContent() {
   }
 
   const header =
-    mode === 'login'
+    mode === 'agent'
+      ? {
+          title: t('auth.agentLoginTitle'),
+          accent: t('auth.gateAccentAgent'),
+          subtitle: t('auth.agentLoginSubtitle'),
+        }
+      : mode === 'login'
       ? {
           title: t('auth.loginTitle'),
           accent: t('auth.gateAccentLogin'),
@@ -246,6 +266,7 @@ function AuthPageContent() {
                 className="mt-6"
                 items={[
                   { id: 'login', label: t('auth.tabLogin') },
+                  { id: 'agent', label: t('auth.tabAgent') },
                   { id: 'register', label: t('auth.tabRegister') },
                   { id: 'forgot', label: t('auth.forgotPassword') },
                 ]}
@@ -254,7 +275,7 @@ function AuthPageContent() {
                   if (isAuthMode(value)) changeMode(value);
                 }}
               >
-                {config.turnstileEnabled ? (
+                {config.turnstileEnabled && mode !== 'agent' ? (
                   <AuthTurnstilePanel
                     turnstileRef={turnstileRef}
                     siteKey={config.turnstileSiteKey}
@@ -270,6 +291,9 @@ function AuthPageContent() {
                     onOpenAgreement={() => setAgreementOpen(true)}
                     turnstile={turnstile}
                   />
+                </TTabContent>
+                <TTabContent value="agent" className="focus-visible:outline-none">
+                  <AgentLoginForm loginAgent={loginAgent} />
                 </TTabContent>
                 <TTabContent value="register" className="focus-visible:outline-none">
                   <RegisterForm

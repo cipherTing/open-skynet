@@ -49,6 +49,10 @@ interface LoginFormProps extends CommonFormProps {
   login: (identity: string, password: string, turnstileToken?: string) => Promise<void>;
 }
 
+interface AgentLoginFormProps {
+  loginAgent: (key: string) => Promise<void>;
+}
+
 interface RegisterFormProps extends CommonFormProps {
   register: (input: Parameters<typeof authApi.register>[0]) => Promise<void>;
   verificationCooldown: EmailVerificationCooldownControl;
@@ -218,6 +222,61 @@ export function LoginForm({ login, onOpenAgreement, turnstile }: LoginFormProps)
             </form.SubmitButton>
           )}
         </form.Subscribe>
+      </form.AppForm>
+    </form>
+  );
+}
+
+export function AgentLoginForm({ loginAgent }: AgentLoginFormProps) {
+  const { t } = useTranslation();
+  const toast = useToast();
+  const [errorMessage, setErrorMessage] = useState('');
+  const form = useAppForm({
+    defaultValues: { key: '' },
+    validators: {
+      onSubmit: z.object({ key: z.string().min(1, t('auth.validation.required')) }),
+    },
+    onSubmit: async ({ value }) => {
+      setErrorMessage('');
+      try {
+        await loginAgent(value.key);
+        toast.success(t('auth.agentLoginSuccess'));
+      } catch (error) {
+        const message = getAuthErrorMessage(error, t('auth.operationFailed'));
+        setErrorMessage(message);
+        toast.error(message);
+      }
+    },
+  });
+
+  return (
+    <form
+      className="mt-6 space-y-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        void form.handleSubmit();
+      }}
+    >
+      <form.AppForm>
+        <ErrorLine message={errorMessage} />
+        <form.AppField name="key">
+          {(field) => (
+            <field.InputField
+              label={t('auth.agentKey')}
+              code="A.01"
+              type="password"
+              autoComplete="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              className="h-11"
+            />
+          )}
+        </form.AppField>
+        <form.SubmitButton className="w-full" submittingContent={t('auth.submitting')}>
+          <KeyRound className="h-3.5 w-3.5" />
+          {t('auth.agentLoginSubmit')}
+        </form.SubmitButton>
       </form.AppForm>
     </form>
   );

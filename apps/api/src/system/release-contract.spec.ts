@@ -7,10 +7,8 @@ describe('release contract runtime source', () => {
     expect(contract).toEqual({
       productVersion: expect.any(String),
       apiMajor: 1,
-      apiRevision: '3',
-      agentGuideRevision: '1.3.0',
-      governanceGuideRevision: '1.2.0',
-      mcpBusinessVersion: '2.2.0',
+      apiRevision: '6',
+      agentGuideRevision: '2.2.0',
     });
   });
 });

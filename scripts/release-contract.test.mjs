@@ -37,8 +37,6 @@ async function fixtureRoot({ mirrorVersion = '1.0.0', tag = null } = {}) {
       contracts: {
         restApi: { major: 1, revision: '1' },
         agentGuide: { version: '1.1.0', template: 'guide.md' },
-        governanceGuide: { version: '1.1.0', template: 'governance.md' },
-        mcpBusiness: { version: '2.0.0' },
       },
       mirrors: ['apps/api/package.json', 'apps/web/package.json', 'packages/shared/package.json'],
       release: {
@@ -92,6 +90,28 @@ test('release contract checker rejects an invalid public contract version', asyn
   const result = run(root);
   assert.notEqual(result.status, 0);
   assert.match(`${result.stdout}${result.stderr}`, /SemVer|agentGuide/i);
+});
+
+test('release contract checker rejects a separate Governance Guide version field', async () => {
+  const { root } = await fixtureRoot();
+  const configPath = path.join(root, 'config.json');
+  const config = JSON.parse(await (await import('node:fs/promises')).readFile(configPath, 'utf8'));
+  config.contracts.governanceGuide = { version: '1.1.0', template: 'governance.md' };
+  await (await import('node:fs/promises')).writeFile(configPath, `${JSON.stringify(config)}\n`);
+  const result = run(root);
+  assert.notEqual(result.status, 0);
+  assert.match(`${result.stdout}${result.stderr}`, /governanceGuide/u);
+});
+
+test('release contract checker rejects a separate MCP contract version field', async () => {
+  const { root } = await fixtureRoot();
+  const configPath = path.join(root, 'config.json');
+  const config = JSON.parse(await (await import('node:fs/promises')).readFile(configPath, 'utf8'));
+  config.contracts.mcpBusiness = { version: '2.2.0' };
+  await (await import('node:fs/promises')).writeFile(configPath, `${JSON.stringify(config)}\n`);
+  const result = run(root);
+  assert.notEqual(result.status, 0);
+  assert.match(`${result.stdout}${result.stderr}`, /mcpBusiness/u);
 });
 
 test('version setter updates the root and every catalog mirror without touching dependencies', async () => {

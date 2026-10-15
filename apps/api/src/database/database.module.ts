@@ -20,6 +20,10 @@ import { InteractionHistory, InteractionHistorySchema } from './schemas/interact
 import { AgentProgress, AgentProgressSchema } from './schemas/agent-progress.schema';
 import { AgentXpEvent, AgentXpEventSchema } from './schemas/agent-xp-event.schema';
 import { BrowserSession, BrowserSessionSchema } from './schemas/browser-session.schema';
+import {
+  AgentBrowserSession,
+  AgentBrowserSessionSchema,
+} from './schemas/agent-browser-session.schema';
 import { GovernanceCase, GovernanceCaseSchema } from './schemas/governance-case.schema';
 import {
   GovernanceAssignment,
@@ -125,11 +129,33 @@ import {
   CirclePostVisibilityState,
   CirclePostVisibilityStateSchema,
 } from './schemas/circle-post-visibility-state.schema';
-import {
-  McpIdempotencyRecord,
-  McpIdempotencyRecordSchema,
-} from './schemas/mcp-idempotency-record.schema';
 import { Notification, NotificationSchema } from './schemas/notification.schema';
+import {
+  Story,
+  StoryBranch,
+  StoryBranchSchema,
+  StoryDiscussion,
+  StoryDiscussionMessage,
+  StoryDiscussionMessageSchema,
+  StoryDiscussionSchema,
+  StoryDocument,
+  StoryDocumentSchema,
+  StoryReview,
+  StoryReviewSchema,
+  StoryRevision,
+  StoryRevisionSchema,
+  StorySchema,
+} from './schemas/story.schema';
+import {
+  StoryCollaborationCase,
+  StoryCollaborationCaseSchema,
+  StoryCollaborationVote,
+  StoryCollaborationVoteSchema,
+  StoryEditConflict,
+  StoryEditConflictSchema,
+  StoryEnforcementEvent,
+  StoryEnforcementEventSchema,
+} from './schemas/story-collaboration.schema';
 import { getMongoConnectionOptions, getRequiredMongoUri } from '@/config/env';
 
 // Register soft-delete plugin globally for all schemas
@@ -151,6 +177,7 @@ export const DATABASE_MODEL_DEFINITIONS = [
   { name: AgentProgress.name, schema: AgentProgressSchema },
   { name: AgentXpEvent.name, schema: AgentXpEventSchema },
   { name: BrowserSession.name, schema: BrowserSessionSchema },
+  { name: AgentBrowserSession.name, schema: AgentBrowserSessionSchema },
   { name: GovernanceCase.name, schema: GovernanceCaseSchema },
   { name: GovernanceAssignment.name, schema: GovernanceAssignmentSchema },
   { name: GovernanceDailyQuota.name, schema: GovernanceDailyQuotaSchema },
@@ -189,8 +216,18 @@ export const DATABASE_MODEL_DEFINITIONS = [
   { name: HotReplyBranchFanout.name, schema: HotReplyBranchFanoutSchema },
   { name: HotCandidateGeneration.name, schema: HotCandidateGenerationSchema },
   { name: CirclePostVisibilityState.name, schema: CirclePostVisibilityStateSchema },
-  { name: McpIdempotencyRecord.name, schema: McpIdempotencyRecordSchema },
   { name: Notification.name, schema: NotificationSchema },
+  { name: Story.name, schema: StorySchema },
+  { name: StoryDocument.name, schema: StoryDocumentSchema },
+  { name: StoryRevision.name, schema: StoryRevisionSchema },
+  { name: StoryDiscussion.name, schema: StoryDiscussionSchema },
+  { name: StoryDiscussionMessage.name, schema: StoryDiscussionMessageSchema },
+  { name: StoryBranch.name, schema: StoryBranchSchema },
+  { name: StoryReview.name, schema: StoryReviewSchema },
+  { name: StoryEditConflict.name, schema: StoryEditConflictSchema },
+  { name: StoryCollaborationCase.name, schema: StoryCollaborationCaseSchema },
+  { name: StoryCollaborationVote.name, schema: StoryCollaborationVoteSchema },
+  { name: StoryEnforcementEvent.name, schema: StoryEnforcementEventSchema },
 ];
 
 export function getMongooseConnectionOptions() {

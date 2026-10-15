@@ -6,8 +6,6 @@ interface ReleaseCatalog {
   readonly contracts: {
     readonly restApi: { readonly major: number; readonly revision: string };
     readonly agentGuide: { readonly version: string };
-    readonly governanceGuide: { readonly version: string };
-    readonly mcpBusiness: { readonly version: string };
   };
 }
 
@@ -16,8 +14,6 @@ export interface ReleaseContract {
   readonly apiMajor: number;
   readonly apiRevision: string;
   readonly agentGuideRevision: string;
-  readonly governanceGuideRevision: string;
-  readonly mcpBusinessVersion: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -41,17 +37,17 @@ function readJson(path: string): unknown {
 }
 
 function readCatalog(value: unknown): ReleaseCatalog {
-  if (!isRecord(value) || value.productVersionSource !== 'package.json' || !isRecord(value.contracts)) {
+  if (
+    !isRecord(value) ||
+    value.productVersionSource !== 'package.json' ||
+    !isRecord(value.contracts)
+  ) {
     throw new Error('发布合同 catalog 无效');
   }
   const contracts = value.contracts;
   const restApi = isRecord(contracts.restApi) ? contracts.restApi : null;
   const agentGuide = isRecord(contracts.agentGuide) ? contracts.agentGuide : null;
-  const governanceGuide = isRecord(contracts.governanceGuide)
-    ? contracts.governanceGuide
-    : null;
-  const mcpBusiness = isRecord(contracts.mcpBusiness) ? contracts.mcpBusiness : null;
-  if (!restApi || !agentGuide || !governanceGuide || !mcpBusiness) {
+  if (!restApi || !agentGuide) {
     throw new Error('发布合同 catalog contracts 无效');
   }
   const apiMajor = restApi.major;
@@ -68,12 +64,6 @@ function readCatalog(value: unknown): ReleaseCatalog {
       agentGuide: {
         version: requiredString(agentGuide.version, 'contracts.agentGuide.version'),
       },
-      governanceGuide: {
-        version: requiredString(governanceGuide.version, 'contracts.governanceGuide.version'),
-      },
-      mcpBusiness: {
-        version: requiredString(mcpBusiness.version, 'contracts.mcpBusiness.version'),
-      },
     },
   };
 }
@@ -88,8 +78,6 @@ function loadReleaseContract(): ReleaseContract {
     apiMajor: catalog.contracts.restApi.major,
     apiRevision: catalog.contracts.restApi.revision,
     agentGuideRevision: catalog.contracts.agentGuide.version,
-    governanceGuideRevision: catalog.contracts.governanceGuide.version,
-    mcpBusinessVersion: catalog.contracts.mcpBusiness.version,
   };
 }
 
@@ -103,5 +91,3 @@ export const PRODUCT_VERSION = RELEASE_CONTRACT.productVersion;
 export const REST_API_MAJOR = RELEASE_CONTRACT.apiMajor;
 export const REST_API_REVISION = RELEASE_CONTRACT.apiRevision;
 export const AGENT_GUIDE_REVISION = RELEASE_CONTRACT.agentGuideRevision;
-export const GOVERNANCE_GUIDE_REVISION = RELEASE_CONTRACT.governanceGuideRevision;
-export const MCP_BUSINESS_VERSION = RELEASE_CONTRACT.mcpBusinessVersion;

@@ -21,7 +21,7 @@
 
 ## `skipped` 与 `not run`
 
-- `skipped` 表示命令或测试已经运行，测试框架根据可复查的前置条件跳过了检查。例如 MCP Redis 集成套件在未设置 `RUN_MCP_REDIS_INTEGRATION=1` 时由 Jest 标记为跳过。
+- `skipped` 表示命令或测试已经运行，测试框架根据可复查的前置条件跳过了检查。
 - `not run` 表示本次根本没有启动该检查。例如页面交互审查尚未获得用户授权，或本地没有启动完整开发环境。
 - 两者都不是 `passed`，也不能用于宣称“全部验证通过”。
 
@@ -29,10 +29,9 @@
 
 使用一项一行的表格，保留命令、前置条件和实际结果，避免用“绿了”“基本没问题”替代证据。
 
-| 验证               | 结果      | 要求级别   | 方法            | 证据或原因                                                                                            |
-| ------------------ | --------- | ---------- | --------------- | ----------------------------------------------------------------------------------------------------- |
-| API 定向 Jest      | `passed`  | `required` | `automated`     | `pnpm --filter @skynet/api exec jest --config jest.config.cjs --runInBand --watchman=false <pattern>` |
-| MCP Redis 集成套件 | `skipped` | `optional` | `automated`     | 未设置 `RUN_MCP_REDIS_INTEGRATION=1`，Jest 已报告跳过。                                               |
-| 页面交互审查       | `not run` | `required` | `manual review` | 尚未获得浏览器审查授权。                                                                              |
+| 验证          | 结果      | 要求级别   | 方法            | 证据或原因                                                                                            |
+| ------------- | --------- | ---------- | --------------- | ----------------------------------------------------------------------------------------------------- |
+| API 定向 Jest | `passed`  | `required` | `automated`     | `pnpm --filter @skynet/api exec jest --config jest.config.cjs --runInBand --watchman=false <pattern>` |
+| 页面交互审查  | `not run` | `required` | `manual review` | 尚未获得浏览器审查授权。                                                                              |
 
 只列出与当前变更有关的验证。每条 `failed`、`skipped`、`not run` 或未完成的 `manual review` 都必须在交付说明中保留，不得被汇总成通过。

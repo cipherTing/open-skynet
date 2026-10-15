@@ -19,6 +19,7 @@ import {
   getDefaultPublicAccessAddresses,
 } from './public-access.constants';
 import { systemErrors } from '@/common/errors/business-errors';
+import { getReleaseContract } from './release-contract';
 import {
   getAgentGuideBootstrapRedisKey,
   parseAgentGuideBootstrapAgentId,
@@ -29,7 +30,6 @@ const AGENT_REVISIT_INTERVAL_PLACEHOLDER = '{{AGENT_REVISIT_INTERVAL_HOURS}}';
 
 const GUIDE_CACHE_TTL_SECONDS = 3600;
 const GUIDE_CACHE_PREFIX = 'skynet:v1:agent-guide';
-const GOVERNANCE_CACHE_PREFIX = 'skynet:v1:governance-guide';
 
 const READ_AGENT_GUIDE_BOOTSTRAP_SCRIPT = `
 local raw = redis.call('GET', KEYS[1])
@@ -63,7 +63,6 @@ type PublicAccessCacheConfig = Pick<
 @Injectable()
 export class PublicAccessService {
   private readonly guideTemplate: string;
-  private readonly governanceTemplate: string;
   private readonly templateHash: string;
 
   constructor(
@@ -73,10 +72,7 @@ export class PublicAccessService {
     @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
   ) {
     this.guideTemplate = readFileSync(resolve(__dirname, 'guide.template.md'), 'utf8');
-    this.governanceTemplate = readFileSync(resolve(__dirname, 'governance.template.md'), 'utf8');
-    this.templateHash = createHash('sha256')
-      .update(this.guideTemplate + this.governanceTemplate)
-      .digest('hex');
+    this.templateHash = createHash('sha256').update(this.guideTemplate).digest('hex');
   }
 
   async getPublicConfig(): Promise<PublicAccessConfigView> {
@@ -128,7 +124,8 @@ export class PublicAccessService {
   private async renderAgentGuideWithConfig(
     config: PublicAccessConfigView,
   ): Promise<RenderedAgentGuide> {
-    const cacheKey = this.getGuideCacheKey(config);
+    const productVersion = getReleaseContract().productVersion;
+    const cacheKey = this.getGuideCacheKey(config, productVersion);
     const redis = this.redisService.getClient();
     const cached = await redis.get(cacheKey);
     if (cached) return this.buildRenderedGuide(cached);
@@ -136,22 +133,8 @@ export class PublicAccessService {
     const content = this.guideTemplate
       .replaceAll('{{SKYNET_ORIGIN}}', config.siteOrigin)
       .replaceAll('{{SKYNET_API_BASE}}', config.apiBaseUrl)
-      .replaceAll('{{SKYNET_GUIDE_URL}}', config.guideUrl);
-    await redis.set(cacheKey, content, REDIS_SET_EXPIRATION_UNITS.SECONDS, GUIDE_CACHE_TTL_SECONDS);
-    return this.buildRenderedGuide(content);
-  }
-
-  async renderGovernanceGuide(): Promise<RenderedAgentGuide> {
-    const config = await this.getPublicConfig();
-    const cacheKey = this.getGovernanceGuideCacheKey(config);
-    const redis = this.redisService.getClient();
-    const cached = await redis.get(cacheKey);
-    if (cached) return this.buildRenderedGuide(cached);
-
-    const content = this.governanceTemplate
-      .replaceAll('{{SKYNET_ORIGIN}}', config.siteOrigin)
-      .replaceAll('{{SKYNET_API_BASE}}', config.apiBaseUrl)
-      .replaceAll('{{SKYNET_GUIDE_URL}}', config.guideUrl);
+      .replaceAll('{{SKYNET_GUIDE_URL}}', config.guideUrl)
+      .replaceAll('{{SKYNET_SKILL_REF}}', `v${productVersion}`);
     await redis.set(cacheKey, content, REDIS_SET_EXPIRATION_UNITS.SECONDS, GUIDE_CACHE_TTL_SECONDS);
     return this.buildRenderedGuide(content);
   }
@@ -201,12 +184,8 @@ export class PublicAccessService {
     return this.buildPersonalizedGuide(content, publicAccessConfig, agentKey);
   }
 
-  private getGuideCacheKey(config: PublicAccessCacheConfig): string {
-    return `${GUIDE_CACHE_PREFIX}:${this.templateHash}:config:${this.getPublicAccessCacheIdentity(config)}`;
-  }
-
-  private getGovernanceGuideCacheKey(config: PublicAccessCacheConfig): string {
-    return `${GOVERNANCE_CACHE_PREFIX}:${this.templateHash}:config:${this.getPublicAccessCacheIdentity(config)}`;
+  private getGuideCacheKey(config: PublicAccessCacheConfig, productVersion: string): string {
+    return `${GUIDE_CACHE_PREFIX}:${this.templateHash}:product:${productVersion}:config:${this.getPublicAccessCacheIdentity(config)}`;
   }
 
   private getPublicAccessCacheIdentity(config: PublicAccessCacheConfig): string {

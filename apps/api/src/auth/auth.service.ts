@@ -197,6 +197,27 @@ export class AuthService {
     await this.userModel.findByIdAndUpdate(userId, { $inc: { tokenVersion: 1 } });
   }
 
+  async logoutBrowserSessionFromRefreshToken(refreshToken: string | null): Promise<void> {
+    const parsedToken = this.parseRefreshToken(refreshToken);
+    if (!parsedToken) return;
+    const now = new Date();
+    await this.browserSessionModel.findOneAndUpdate(
+      {
+        selectorHash: parsedToken.selectorHash,
+        refreshTokenVersion: REFRESH_TOKEN_VERSION,
+        revokedAt: null,
+        $or: [
+          { currentTokenHash: parsedToken.secretHash },
+          {
+            previousTokenHash: parsedToken.secretHash,
+            previousTokenValidUntil: { $gt: now },
+          },
+        ],
+      },
+      { $set: { revokedAt: now } },
+    );
+  }
+
   async login(dto: LoginDto) {
     const identity = dto.identity.trim();
     const user = await this.userModel.findOne({

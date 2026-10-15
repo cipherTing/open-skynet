@@ -22,6 +22,7 @@ import {
   PRE_AUTH_THROTTLE,
 } from './security-throttler.constants';
 import { PRE_AUTH_THROTTLE_KEY } from './pre-auth-throttle.decorator';
+import type { PreAuthThrottleOptions } from './pre-auth-throttle.decorator';
 
 const THROTTLE_TRACKER_PREFIXES = {
   OWNER: 'owner',
@@ -60,23 +61,24 @@ export class SecurityThrottlerGuard extends ThrottlerGuard {
 
   async canActivateBeforeAuthentication(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
-    if (!this.shouldThrottleBeforeAuthentication(context, request)) return true;
+    const throttle = this.getPreAuthThrottle(context, request);
+    if (!throttle) return true;
 
     const tracker = buildSecurityThrottleTracker(undefined, request.ip);
-    const key = this.generateKey(context, tracker, PRE_AUTH_THROTTLE.NAME);
+    const key = this.generateKey(context, tracker, throttle.name);
     const { totalHits, timeToExpire, isBlocked, timeToBlockExpire } =
       await this.storageService.increment(
         key,
-        PRE_AUTH_THROTTLE.TTL_MS,
-        PRE_AUTH_THROTTLE.LIMIT,
-        PRE_AUTH_THROTTLE.BLOCK_DURATION_MS,
-        PRE_AUTH_THROTTLE.NAME,
+        throttle.ttlMs,
+        throttle.limit,
+        throttle.blockDurationMs,
+        throttle.name,
       );
 
     if (isBlocked) {
       await this.throwThrottlingException(context, {
-        limit: PRE_AUTH_THROTTLE.LIMIT,
-        ttl: PRE_AUTH_THROTTLE.TTL_MS,
+          limit: throttle.limit,
+          ttl: throttle.ttlMs,
         key,
         tracker,
         totalHits,
@@ -98,17 +100,38 @@ export class SecurityThrottlerGuard extends ThrottlerGuard {
     return Promise.resolve(buildSecurityThrottleTracker(req.user, ip));
   }
 
-  private shouldThrottleBeforeAuthentication(
+  private getPreAuthThrottle(
     context: ExecutionContext,
     request: Request,
-  ): boolean {
+  ): PreAuthThrottleOptions | null {
+    const metadata = this.reflector.getAllAndOverride<boolean | PreAuthThrottleOptions>(
+      PRE_AUTH_THROTTLE_KEY,
+      [context.getHandler(), context.getClass()],
+    );
+    if (metadata === true) return this.defaultPreAuthThrottle();
+    if (metadata && this.isPreAuthThrottleOptions(metadata)) return metadata;
+
     const token = this.readBearerToken(request);
-    if (token.startsWith(CREDENTIAL_TOKEN_PREFIXES.AGENT_KEY)) return true;
+    return token.startsWith(CREDENTIAL_TOKEN_PREFIXES.AGENT_KEY)
+      ? this.defaultPreAuthThrottle()
+      : null;
+  }
+
+  private defaultPreAuthThrottle(): PreAuthThrottleOptions {
+    return {
+      name: PRE_AUTH_THROTTLE.NAME,
+      ttlMs: PRE_AUTH_THROTTLE.TTL_MS,
+      limit: PRE_AUTH_THROTTLE.LIMIT,
+      blockDurationMs: PRE_AUTH_THROTTLE.BLOCK_DURATION_MS,
+    };
+  }
+
+  private isPreAuthThrottleOptions(value: PreAuthThrottleOptions): boolean {
     return (
-      this.reflector.getAllAndOverride<boolean>(PRE_AUTH_THROTTLE_KEY, [
-        context.getHandler(),
-        context.getClass(),
-      ]) === true
+      typeof value.name === 'string' &&
+      Number.isInteger(value.ttlMs) &&
+      Number.isInteger(value.limit) &&
+      Number.isInteger(value.blockDurationMs)
     );
   }
 

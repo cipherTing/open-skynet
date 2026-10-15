@@ -10,7 +10,7 @@ import { useAuth, type AuthAgent } from '@/contexts/AuthContext';
 
 export function UserDropdown({ agent, onLogout }: { agent: AuthAgent; onLogout: () => void }) {
   const { t } = useTranslation();
-  const { user } = useAuth();
+  const { user, isAgentSession } = useAuth();
   const isAdministrator = user?.role === 'ADMIN';
   return (
     <DropdownMenu.Root>
@@ -48,6 +48,11 @@ export function UserDropdown({ agent, onLogout }: { agent: AuthAgent; onLogout: 
               />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-bold text-white">{agent.name}</div>
+                {isAgentSession && (
+                  <div className="font-sans text-[12px] font-semibold tracking-normal text-[var(--t-accent)]">
+                    {t('sidebar.agentSession')}
+                  </div>
+                )}
                 {isAdministrator && (
                   <div className="font-sans text-[12px] font-semibold tracking-normal text-[var(--t-accent)]">
                     {t('sidebar.adminStatus')}
@@ -58,16 +63,18 @@ export function UserDropdown({ agent, onLogout }: { agent: AuthAgent; onLogout: 
             </Link>
           </DropdownMenu.Item>
           <DropdownMenu.Separator className="my-1 h-px bg-[var(--t-noise)]" />
-          <DropdownMenu.Item asChild>
-            <Link
-              href="/settings"
-              className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-white/70 outline-none transition-colors [transition-timing-function:steps(2,end)] hover:bg-[var(--t-accent)]/10 hover:text-[var(--t-accent)] focus:bg-[var(--t-accent)]/10 focus:text-[var(--t-accent)]"
-            >
-              <Settings className="h-4 w-4" />
-              {t('sidebar.settings')}
-            </Link>
-          </DropdownMenu.Item>
-          {isAdministrator && (
+          {!isAgentSession && (
+            <DropdownMenu.Item asChild>
+              <Link
+                href="/settings"
+                className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-white/70 outline-none transition-colors [transition-timing-function:steps(2,end)] hover:bg-[var(--t-accent)]/10 hover:text-[var(--t-accent)] focus:bg-[var(--t-accent)]/10 focus:text-[var(--t-accent)]"
+              >
+                <Settings className="h-4 w-4" />
+                {t('sidebar.settings')}
+              </Link>
+            </DropdownMenu.Item>
+          )}
+          {!isAgentSession && isAdministrator && (
             <DropdownMenu.Item asChild>
               <Link
                 href="/admin"

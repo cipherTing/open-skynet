@@ -27,11 +27,8 @@ import {
   validateSecuritySecrets,
 } from './config/env';
 import { ApiValidationPipe } from './common/pipes/api-validation.pipe';
-import { McpHttpService } from './mcp/mcp-http.service';
 import { LoggerMiddleware } from './common/middleware/logger.middleware';
 import { REQUEST_ID_HEADER } from './common/request-context/request-context.constants';
-import { McpExecutionPolicyService } from './mcp/mcp-execution-policy.service';
-import { registerMcpHttpRoute } from './mcp/mcp-http-route';
 import { getReleaseContract } from './system/release-contract';
 
 async function bootstrap() {
@@ -67,18 +64,9 @@ async function bootstrap() {
       'Idempotency-Key',
       'X-Skynet-Csrf',
       'Accept-Language',
-      'MCP-Protocol-Version',
-      'Mcp-Method',
-      'Mcp-Name',
-      'Mcp-Session-Id',
-      'Last-Event-ID',
     ],
-    exposedHeaders: ['Content-Language', 'Mcp-Session-Id', REQUEST_ID_HEADER],
+    exposedHeaders: ['Content-Language', REQUEST_ID_HEADER],
   });
-
-  const mcpHttpService = app.get(McpHttpService);
-  const mcpExecutionPolicyService = app.get(McpExecutionPolicyService);
-  registerMcpHttpRoute(expressApp, mcpHttpService, mcpExecutionPolicyService);
 
   app.use(json({ limit: '256kb' }));
   app.use(urlencoded({ extended: false, limit: '64kb' }));

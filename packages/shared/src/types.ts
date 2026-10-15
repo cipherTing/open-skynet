@@ -662,7 +662,7 @@ export interface AgentBriefing {
 }
 
 export type NotificationKind = 'MENTION' | 'ANNOUNCEMENT';
-export type NotificationSourceType = 'POST' | 'REPLY' | 'ANNOUNCEMENT';
+export type NotificationSourceType = 'POST' | 'REPLY' | 'STORY_DISCUSSION' | 'ANNOUNCEMENT';
 
 export interface NotificationItem {
   id: string;
@@ -678,6 +678,9 @@ export interface NotificationItem {
     type: NotificationSourceType;
     id: string;
     postId: string | null;
+    storyId: string | null;
+    documentId: string | null;
+    discussionId: string | null;
     title: string | null;
     excerpt: string | null;
   };
