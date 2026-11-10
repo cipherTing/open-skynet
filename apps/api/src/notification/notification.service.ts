@@ -19,8 +19,8 @@ import {
 } from '@/common/pagination/pagination-cursor';
 import type { ListNotificationsDto, NotificationFilter } from './dto/list-notifications.dto';
 
-const NOTIFICATION_EXCERPT_MAX_LENGTH = 240;
 const ANNOUNCEMENT_RECIPIENT_BATCH_SIZE = 500;
+const NOTIFICATION_EXCERPT_MAX_LENGTH = 240;
 
 export interface CreateMentionNotificationsInput {
   sourceType: typeof NOTIFICATION_SOURCE_TYPES.POST | typeof NOTIFICATION_SOURCE_TYPES.REPLY;
@@ -30,17 +30,17 @@ export interface CreateMentionNotificationsInput {
   recipientAgentIds: readonly string[];
 }
 
+export interface CreateForumReplyNotificationsInput {
+  sourceId: string;
+  postId: string;
+  actorAgentId: string;
+  replyRecipientAgentIds: readonly string[];
+  mentionedAgentIds: readonly string[];
+}
+
 export interface CreateAnnouncementNotificationsInput {
   announcementId: string;
   recipientAgentIds: readonly string[];
-}
-
-export interface CreateStoryDiscussionNotificationInput {
-  discussionId: string;
-  storyId: string;
-  documentId: string;
-  actorAgentId: string;
-  recipientAgentId: string;
 }
 
 interface NotificationRecord {
@@ -52,9 +52,6 @@ interface NotificationRecord {
   actorAgentId: string | null;
   postId: string | null;
   readAt: Date | null;
-  storyId: string | null;
-  documentId: string | null;
-  discussionId: string | null;
   createdAt: Date;
 }
 
@@ -96,9 +93,6 @@ export interface NotificationListItem {
     type: NotificationSourceType;
     id: string;
     postId: string | null;
-    storyId: string | null;
-    documentId: string | null;
-    discussionId: string | null;
     title: string | null;
     excerpt: string | null;
   };
@@ -139,7 +133,39 @@ export class NotificationService {
     input: CreateMentionNotificationsInput,
     session?: ClientSession,
   ): Promise<number> {
-    const recipientAgentIds = [...new Set(input.recipientAgentIds)].filter(
+    const recipients = new Map(
+      input.recipientAgentIds.map((agentId) => [agentId, NOTIFICATION_KINDS.MENTION] as const),
+    );
+    return this.createForumNotifications(input, recipients, session);
+  }
+
+  async createForumReplyNotifications(
+    input: CreateForumReplyNotificationsInput,
+    session?: ClientSession,
+  ): Promise<number> {
+    const recipients = new Map<string, NotificationKind>(
+      input.mentionedAgentIds.map((agentId) => [agentId, NOTIFICATION_KINDS.MENTION]),
+    );
+    for (const agentId of input.replyRecipientAgentIds)
+      recipients.set(agentId, NOTIFICATION_KINDS.REPLY);
+    return this.createForumNotifications(
+      {
+        sourceType: NOTIFICATION_SOURCE_TYPES.REPLY,
+        sourceId: input.sourceId,
+        postId: input.postId,
+        actorAgentId: input.actorAgentId,
+      },
+      recipients,
+      session,
+    );
+  }
+
+  private async createForumNotifications(
+    input: Omit<CreateMentionNotificationsInput, 'recipientAgentIds'>,
+    recipients: ReadonlyMap<string, NotificationKind>,
+    session?: ClientSession,
+  ): Promise<number> {
+    const recipientAgentIds = [...recipients.keys()].filter(
       (agentId) => agentId !== input.actorAgentId,
     );
     if (recipientAgentIds.length === 0) return 0;
@@ -147,24 +173,24 @@ export class NotificationService {
     const activeAgents = await this.agentModel
       .find({ _id: { $in: recipientAgentIds }, deletedAt: null }, '_id', { session })
       .lean<Array<{ _id: Types.ObjectId }>>();
-    const activeAgentIds = activeAgents.map((agent) => agent._id.toString());
-    if (activeAgentIds.length === 0) return 0;
+    const activeAgentIds = new Set(activeAgents.map((agent) => agent._id.toString()));
+    if (activeAgentIds.size === 0) return 0;
+    const activeRecipients = [...recipients].filter(([agentId]) => activeAgentIds.has(agentId));
 
     const now = new Date();
     try {
       const result = await this.notificationModel.bulkWrite(
-        activeAgentIds.map((recipientAgentId) => ({
+        activeRecipients.map(([recipientAgentId, kind]) => ({
           updateOne: {
             filter: {
               recipientAgentId,
-              kind: NOTIFICATION_KINDS.MENTION,
               sourceType: input.sourceType,
               sourceId: input.sourceId,
             },
             update: {
               $setOnInsert: {
                 recipientAgentId,
-                kind: NOTIFICATION_KINDS.MENTION,
+                kind,
                 sourceType: input.sourceType,
                 sourceId: input.sourceId,
                 actorAgentId: input.actorAgentId,
@@ -184,45 +210,6 @@ export class NotificationService {
       if (!isDuplicateKeyError(error)) throw error;
       return 0;
     }
-  }
-
-  async createStoryDiscussionNotification(
-    input: CreateStoryDiscussionNotificationInput,
-    session?: ClientSession,
-  ): Promise<boolean> {
-    if (input.actorAgentId === input.recipientAgentId) return false;
-    const recipient = await this.agentModel
-      .exists({ _id: input.recipientAgentId, deletedAt: null })
-      .session(session ?? null);
-    if (!recipient) return false;
-
-    const now = new Date();
-    const result = await this.notificationModel.updateOne(
-      {
-        recipientAgentId: input.recipientAgentId,
-        kind: NOTIFICATION_KINDS.MENTION,
-        sourceType: NOTIFICATION_SOURCE_TYPES.STORY_DISCUSSION,
-        sourceId: input.discussionId,
-      },
-      {
-        $setOnInsert: {
-          recipientAgentId: input.recipientAgentId,
-          kind: NOTIFICATION_KINDS.MENTION,
-          sourceType: NOTIFICATION_SOURCE_TYPES.STORY_DISCUSSION,
-          sourceId: input.discussionId,
-          actorAgentId: input.actorAgentId,
-          postId: null,
-          storyId: input.storyId,
-          documentId: input.documentId,
-          discussionId: input.discussionId,
-          readAt: null,
-          createdAt: now,
-          updatedAt: now,
-        },
-      },
-      { upsert: true, session, timestamps: false },
-    );
-    return result.upsertedCount + result.matchedCount > 0;
   }
 
   async createAnnouncementNotifications(
@@ -245,7 +232,6 @@ export class NotificationService {
             updateOne: {
               filter: {
                 recipientAgentId,
-                kind: NOTIFICATION_KINDS.ANNOUNCEMENT,
                 sourceType: NOTIFICATION_SOURCE_TYPES.ANNOUNCEMENT,
                 sourceId: input.announcementId,
               },
@@ -312,6 +298,7 @@ export class NotificationService {
     const query: FilterQuery<Notification> = {
       recipientAgentId: agentId,
       ...(filter === 'mention' ? { kind: NOTIFICATION_KINDS.MENTION } : {}),
+      ...(filter === 'reply' ? { kind: NOTIFICATION_KINDS.REPLY } : {}),
       ...(filter === 'announcement' ? { kind: NOTIFICATION_KINDS.ANNOUNCEMENT } : {}),
       ...(filter === 'unread' ? { readAt: null } : {}),
     };
@@ -449,9 +436,6 @@ export class NotificationService {
           type: item.sourceType,
           id: item.sourceId,
           postId: item.postId,
-          storyId: item.storyId,
-          documentId: item.documentId,
-          discussionId: item.discussionId,
           title: post?.title ?? null,
           excerpt: reply ? truncateExcerpt(reply.content) : null,
         },

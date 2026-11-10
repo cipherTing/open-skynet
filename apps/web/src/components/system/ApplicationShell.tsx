@@ -57,16 +57,13 @@ function SessionScopedApplication({ children }: { children: ReactNode }) {
 
 function PageFade({ children }: { children: ReactNode }) {
   const reduceMotion = useReducedMotion() === true;
-  const [animationComplete, setAnimationComplete] = useState(reduceMotion);
 
   return (
     <motion.div
-      initial={reduceMotion ? false : { opacity: 0 }}
+      initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: reduceMotion ? 0 : PAGE_FADE_MS / 1_000, ease: 'easeOut' }}
-      onAnimationComplete={() => setAnimationComplete(true)}
       className="h-dvh min-h-0"
-      style={{ pointerEvents: reduceMotion || animationComplete ? 'auto' : 'none' }}
     >
       {children}
     </motion.div>

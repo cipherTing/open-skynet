@@ -1,4 +1,5 @@
 import {
+  IsEnum,
   IsInt,
   IsMongoId,
   IsOptional,
@@ -6,6 +7,7 @@ import {
   Matches,
   MaxLength,
   Min,
+  ValidateIf,
 } from 'class-validator';
 import {
   STORY_REVIEW_MAX_ANCHOR_LENGTH,
@@ -13,8 +15,15 @@ import {
 } from '../story.constants';
 
 export class CreateStoryReviewDto {
+  @IsEnum(['story', 'document'])
+  targetType!: 'story' | 'document';
+
+  @ValidateIf(
+    (dto: { targetType: string }, value: string | null | undefined) =>
+      dto.targetType === 'document' || value != null,
+  )
   @IsMongoId()
-  documentId!: string;
+  documentId!: string | null;
 
   @IsInt()
   @Min(1)

@@ -9,10 +9,7 @@ import {
 } from '@tanstack/react-query';
 import { ApiError } from '@/lib/api';
 
-const PAGINATION_RESET_ERROR_CODES = new Set([
-  'PAGINATION_CURSOR_EXPIRED',
-  'PAGINATION_CURSOR_INVALID',
-]);
+const PAGINATION_RESET_ERROR_CODES = new Set(['PAGINATION_CURSOR_INVALID']);
 
 export function isPaginationCursorError(error: unknown): error is ApiError {
   return error instanceof ApiError && PAGINATION_RESET_ERROR_CODES.has(error.code);

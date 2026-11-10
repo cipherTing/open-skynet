@@ -15,12 +15,8 @@ import {
   StoryDiscussion,
   StoryDiscussionMessage,
   StoryRevision,
+  type StoryDocumentSnapshot,
 } from '@/database/schemas/story.schema';
-import {
-  Notification,
-  NOTIFICATION_KINDS,
-  NOTIFICATION_SOURCE_TYPES,
-} from '@/database/schemas/notification.schema';
 import {
   StoryCollaborationCase,
   type StoryCollaborationCaseDocument,
@@ -29,9 +25,11 @@ import {
   StoryCollaborationIdentitySnapshot,
   StoryEnforcementEvent,
 } from '@/database/schemas/story-collaboration.schema';
-import { Types, type ClientSession, type Model } from 'mongoose';
+import { Types, type ClientSession, type Model, type FilterQuery } from 'mongoose';
 import { createHash } from 'node:crypto';
 import { storyErrors } from './story.errors';
+import { StoryActivityService, STORY_ACTIVITY_KINDS } from './story-activity.service';
+import type { StoryActivityKind } from '@/database/schemas/story-activity.schema';
 import {
   STORY_COLLABORATION_CASE_STATUSES,
   STORY_COLLABORATION_CASE_TYPES,
@@ -45,7 +43,7 @@ import {
   type StoryCollaborationVoteDecision,
 } from './story.constants';
 import {
-  STORY_NOTICE_RESPONSE_WINDOW_MS,
+  STORY_DISCUSSION_RESPONSE_WINDOW_MS,
   STORY_RESTRICTION_DURATION_MS,
   STORY_RESTRICTION_REVIEWER_COUNT,
 } from './story-collaboration.constants';
@@ -53,6 +51,7 @@ import {
 const DEFAULT_PAGE_LIMIT = 20;
 const MAX_PAGE_LIMIT = 50;
 const CURSOR_CONTEXT_SEPARATOR = ':';
+const CASE_ACTIVITY_SUMMARY_MAX_LENGTH = 1000;
 
 export interface StoryCollaborationActor {
   agentId: string;
@@ -79,7 +78,7 @@ export type CreateStoryCollaborationCaseDto =
       caseType: typeof STORY_COLLABORATION_CASE_TYPES.WRITE_RESTRICTION;
       targetAgentId: string;
       documentId: string;
-      noticeDiscussionId: string;
+      addressedDiscussionId: string;
       laterConflictId: string;
       reason: string;
     };
@@ -117,7 +116,7 @@ export interface StoryCollaborationCaseView {
   documentId: string | null;
   revisionNumber: number | null;
   targetAgentId: string | null;
-  noticeDiscussionId: string | null;
+  addressedDiscussionId: string | null;
   laterConflictId: string | null;
   evidence: StoryCollaborationEvidenceView[];
   parentCaseId: string | null;
@@ -136,12 +135,7 @@ interface RevisionReference extends StoryCollaborationEvidenceInput {
 }
 
 function isDuplicateKeyError(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    (error as { code?: unknown }).code === 11000
-  );
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 11000;
 }
 
 function conflictAlreadyOpenError() {
@@ -188,33 +182,28 @@ function storyEditRestrictedError(expiresAt: Date) {
   });
 }
 
-function revisionSnapshotHash(value: unknown): string | null {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
-  const snapshot = value as Record<string, unknown>;
-  const links = snapshot['links'];
-  const canonicalSnapshot = {
-    kind: snapshot['kind'],
-    title: snapshot['title'],
-    content: snapshot['content'],
-    branchId: snapshot['branchId'] ?? null,
-    links: Array.isArray(links)
-      ? links
-          .map((item) => {
-            if (item === null || typeof item !== 'object' || Array.isArray(item)) return item;
-            const link = item as Record<string, unknown>;
-            return {
-              targetDocumentId: link['targetDocumentId'],
-              relation: link['relation'],
-            };
-          })
-          .sort((left, right) => {
-            const leftKey = JSON.stringify(left);
-            const rightKey = JSON.stringify(right);
-            return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
-          })
-      : [],
-  };
-  return createHash('sha256').update(JSON.stringify(canonicalSnapshot)).digest('hex');
+function revisionSnapshotHash(snapshot: StoryDocumentSnapshot | null): string | null {
+  if (!snapshot) return null;
+  const links = snapshot.links
+    .map((link) => ({
+      targetDocumentId: link.targetDocumentId,
+      relation: link.relation,
+    }))
+    .sort((left, right) => {
+      const leftKey = JSON.stringify(left);
+      const rightKey = JSON.stringify(right);
+      return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
+    });
+  return createHash('sha256')
+    .update(
+      JSON.stringify({
+        kind: snapshot.kind,
+        title: snapshot.title,
+        content: snapshot.content,
+        links,
+      }),
+    )
+    .digest('hex');
 }
 
 @Injectable()
@@ -227,7 +216,6 @@ export class StoryCollaborationService {
     @InjectModel(StoryDiscussion.name) private readonly discussionModel: Model<StoryDiscussion>,
     @InjectModel(StoryDiscussionMessage.name)
     private readonly discussionMessageModel: Model<StoryDiscussionMessage>,
-    @InjectModel(Notification.name) private readonly notificationModel: Model<Notification>,
     @InjectModel(StoryEditConflict.name)
     private readonly editConflictModel: Model<StoryEditConflict>,
     @InjectModel(StoryCollaborationCase.name)
@@ -237,6 +225,7 @@ export class StoryCollaborationService {
     @InjectModel(StoryEnforcementEvent.name)
     private readonly enforcementEventModel: Model<StoryEnforcementEvent>,
     private readonly databaseService: DatabaseService,
+    private readonly activityService: StoryActivityService,
   ) {}
 
   async listConflicts(storyId: string, dto: CursorPaginationDto) {
@@ -245,7 +234,7 @@ export class StoryCollaborationService {
     const position = dto.cursor
       ? decodeTimestampCursor(dto.cursor, RESOURCE_CURSOR_KINDS.STORY_CONFLICTS, context)
       : null;
-    const filter: Record<string, unknown> = { storyId };
+    const filter: FilterQuery<StoryEditConflict> = { storyId };
     if (position) {
       filter['$or'] = [
         { createdAt: { $lt: position.timestamp } },
@@ -281,7 +270,7 @@ export class StoryCollaborationService {
     const position = dto.cursor
       ? decodeTimestampCursor(dto.cursor, RESOURCE_CURSOR_KINDS.STORY_COLLABORATION_CASES, context)
       : null;
-    const filter: Record<string, unknown> = { storyId };
+    const filter: FilterQuery<StoryCollaborationCase> = { storyId };
     if (position) {
       filter['$or'] = [
         { createdAt: { $lt: position.timestamp } },
@@ -325,6 +314,16 @@ export class StoryCollaborationService {
     };
   }
 
+  async getCase(storyId: string, caseId: string): Promise<StoryCollaborationCaseView> {
+    const caseRecord = await this.requireCase(storyId, caseId);
+    const votes = await this.collaborationVoteModel
+      .find({ storyId, caseId })
+      .sort({ createdAt: 1, _id: 1 })
+      .limit(STORY_COLLABORATION_MAX_VOTES)
+      .exec();
+    return this.toCaseView(caseRecord, votes);
+  }
+
   async createCase(
     storyId: string,
     actor: StoryCollaborationActor,
@@ -340,6 +339,12 @@ export class StoryCollaborationService {
           dto.caseType === STORY_COLLABORATION_CASE_TYPES.REVISION_REVIEW
             ? await this.createRevisionReviewCase(storyId, actor, dto, session)
             : await this.createWriteRestrictionCase(storyId, actor, dto, session);
+        await this.recordCaseActivity(
+          caseRecord,
+          actor,
+          STORY_ACTIVITY_KINDS.CASE_CREATED,
+          session,
+        );
         return this.toCaseView(caseRecord, []);
       });
     } catch (error) {
@@ -425,6 +430,14 @@ export class StoryCollaborationService {
         if (resolution?.status === STORY_COLLABORATION_CASE_STATUSES.UPHELD) {
           await this.applyUpheldCase(updated, session);
         }
+        if (resolution) {
+          await this.recordCaseActivity(
+            updated,
+            actor,
+            STORY_ACTIVITY_KINDS.CASE_RESOLVED,
+            session,
+          );
+        }
         return this.toCaseView(updated, votes);
       });
     } catch (error) {
@@ -469,7 +482,7 @@ export class StoryCollaborationService {
               documentId: parentCase.documentId,
               revisionNumber: null,
               targetAgentId: parentCase.targetAgentId,
-              noticeDiscussionId: null,
+              addressedDiscussionId: null,
               laterConflictId: null,
               targetOwnerUserIdSnapshot: parentCase.targetOwnerUserIdSnapshot,
               evidence: [],
@@ -488,6 +501,12 @@ export class StoryCollaborationService {
         );
         const [caseRecord] = appeal;
         if (!caseRecord) throw new Error('Story restriction appeal creation returned no record');
+        await this.recordCaseActivity(
+          caseRecord,
+          actor,
+          STORY_ACTIVITY_KINDS.APPEAL_CREATED,
+          session,
+        );
         return this.toCaseView(caseRecord, []);
       });
     } catch (error) {
@@ -500,10 +519,9 @@ export class StoryCollaborationService {
     storyId: string,
     agentId: string,
     session?: ClientSession,
-    branchId: string | null = null,
     documentId: string | null = null,
   ): Promise<void> {
-    if (branchId !== null || documentId === null) return;
+    if (documentId === null) return;
     await this.requireStory(storyId, session);
     const expiresAt = await this.findActiveRestrictionExpiry(storyId, agentId, documentId, session);
     if (expiresAt) throw storyEditRestrictedError(expiresAt);
@@ -516,18 +534,24 @@ export class StoryCollaborationService {
     session?: ClientSession,
   ): Promise<Date | null> {
     const now = new Date();
-    const eventsQuery = this.enforcementEventModel
-      .find({ storyId, targetAgentId: agentId, documentId })
-      .sort({ createdAt: -1, _id: -1 })
-      .limit(1);
-    if (session) eventsQuery.session(session);
-    const latestEvent = await eventsQuery.exec();
-    const event = latestEvent[0];
-    return event?.action === STORY_ENFORCEMENT_EVENT_ACTIONS.RESTRICT &&
-      event.expiresAt !== null &&
-      event.expiresAt.getTime() > now.getTime()
-      ? event.expiresAt
-      : null;
+    const restrictionQuery = this.enforcementEventModel
+      .findOne({
+        storyId,
+        targetAgentId: agentId,
+        documentId,
+        action: STORY_ENFORCEMENT_EVENT_ACTIONS.RESTRICT,
+        expiresAt: { $gt: now },
+      })
+      .sort({ expiresAt: -1, _id: -1 });
+    if (session) restrictionQuery.session(session);
+    const restriction = await restrictionQuery.exec();
+    if (!restriction) return null;
+    const revokeQuery = this.enforcementEventModel.exists({
+      sourceCaseId: restriction.sourceCaseId,
+      action: STORY_ENFORCEMENT_EVENT_ACTIONS.REVOKE,
+    });
+    if (session) revokeQuery.session(session);
+    return (await revokeQuery.exec()) ? null : restriction.expiresAt;
   }
 
   async detectAndRecordEditConflict(
@@ -541,7 +565,7 @@ export class StoryCollaborationService {
         .findOne({ _id: documentId, storyId })
         .session(activeSession)
         .exec();
-      if (!document || document.branchId !== null) return null;
+      if (!document) return null;
       const now = new Date();
       const cutoff = new Date(now.getTime() - STORY_EDIT_CONFLICT_WINDOW_MS);
       const revisions = await this.revisionModel
@@ -557,7 +581,6 @@ export class StoryCollaborationService {
         .exec();
       if (revisions.length !== STORY_EDIT_CONFLICT_REVISION_COUNT) return null;
       revisions.reverse();
-      if (revisions.some((revision) => revision.diff.afterDocument?.branchId !== null)) return null;
       const identities = revisions.map((revision) => ({
         agentId: revision.authorAgentId,
         ownerUserId: revision.authorOwnerUserIdSnapshot,
@@ -640,7 +663,7 @@ export class StoryCollaborationService {
           documentId: dto.documentId,
           revisionNumber: dto.revisionNumber,
           targetAgentId: revision.authorAgentId,
-          noticeDiscussionId: null,
+          addressedDiscussionId: null,
           laterConflictId: null,
           targetOwnerUserIdSnapshot: revision.authorOwnerUserIdSnapshot,
           evidence: [this.toEvidenceSnapshot(revision)],
@@ -700,10 +723,10 @@ export class StoryCollaborationService {
       .session(session)
       .exec();
     if (!target) throw storyCaseTargetInvalidError();
-    const discussionId = this.objectId(dto.noticeDiscussionId);
+    const discussionId = this.objectId(dto.addressedDiscussionId);
     const conflictId = this.objectId(dto.laterConflictId);
     if (!discussionId || !conflictId) throw storyCaseTargetInvalidError();
-    const notice = await this.discussionModel
+    const addressedDiscussion = await this.discussionModel
       .findOne({
         _id: discussionId,
         storyId,
@@ -711,34 +734,20 @@ export class StoryCollaborationService {
       })
       .session(session)
       .exec();
-    const noticeTargetAgentId = notice
-      ? (notice as StoryDiscussion & { noticeTargetAgentId: string | null }).noticeTargetAgentId
-      : null;
-    if (!notice || noticeTargetAgentId !== dto.targetAgentId) throw storyCaseTargetInvalidError();
-    const notification = await this.notificationModel
-      .findOne({
-        recipientAgentId: dto.targetAgentId,
-        kind: NOTIFICATION_KINDS.MENTION,
-        sourceType: NOTIFICATION_SOURCE_TYPES.STORY_DISCUSSION,
-        sourceId: dto.noticeDiscussionId,
-        storyId,
-        documentId: dto.documentId,
-        discussionId: dto.noticeDiscussionId,
-      })
-      .session(session)
-      .exec();
-    if (!notification) throw storyCaseTargetInvalidError();
+    const addressedAgentId = addressedDiscussion?.addressedAgentId ?? null;
+    if (!addressedDiscussion || addressedAgentId !== dto.targetAgentId)
+      throw storyCaseTargetInvalidError();
     const targetResponse = await this.discussionMessageModel
       .findOne({
         storyId,
-        discussionId: dto.noticeDiscussionId,
+        discussionId: dto.addressedDiscussionId,
         authorAgentId: dto.targetAgentId,
-        createdAt: { $gt: notification.createdAt },
+        createdAt: { $gt: addressedDiscussion.createdAt },
       })
       .session(session)
       .exec();
     const responseWindowEnded =
-      notification.createdAt.getTime() + STORY_NOTICE_RESPONSE_WINDOW_MS <= Date.now();
+      addressedDiscussion.createdAt.getTime() + STORY_DISCUSSION_RESPONSE_WINDOW_MS <= Date.now();
     if (!targetResponse && !responseWindowEnded) throw storyCaseTargetInvalidError();
 
     const conflict = await this.editConflictModel
@@ -746,7 +755,7 @@ export class StoryCollaborationService {
         _id: conflictId,
         storyId,
         documentId: dto.documentId,
-        createdAt: { $gt: notice.createdAt },
+        createdAt: { $gt: addressedDiscussion.createdAt },
         actorAgentIds: dto.targetAgentId,
       })
       .select('+participantIdentitySnapshots')
@@ -762,8 +771,10 @@ export class StoryCollaborationService {
     const evidence = await this.findEvidenceRevisions(storyId, evidenceReferences, session);
     if (
       evidence.length !== STORY_EDIT_CONFLICT_REVISION_COUNT ||
-      !evidence.some((revision) => revision.authorAgentId === dto.targetAgentId) ||
-      evidence.some((revision) => revision.createdAt.getTime() <= notification.createdAt.getTime())
+      !this.targetRepeatedOpposedEdit(evidence, dto.targetAgentId) ||
+      evidence.some(
+        (revision) => revision.createdAt.getTime() <= addressedDiscussion.createdAt.getTime(),
+      )
     ) {
       throw storyCaseTargetInvalidError();
     }
@@ -788,10 +799,13 @@ export class StoryCollaborationService {
       });
     }
     recusalIdentities.set(
-      JSON.stringify([notice.createdByAgentId, notice.createdByOwnerUserIdSnapshot]),
+      JSON.stringify([
+        addressedDiscussion.createdByAgentId,
+        addressedDiscussion.createdByOwnerUserIdSnapshot,
+      ]),
       {
-        agentId: notice.createdByAgentId,
-        ownerUserIdSnapshot: notice.createdByOwnerUserIdSnapshot,
+        agentId: addressedDiscussion.createdByAgentId,
+        ownerUserIdSnapshot: addressedDiscussion.createdByOwnerUserIdSnapshot,
       },
     );
     const recusalIdentitySnapshots = [...recusalIdentities.values()];
@@ -804,7 +818,7 @@ export class StoryCollaborationService {
           documentId: dto.documentId,
           revisionNumber: null,
           targetAgentId: dto.targetAgentId,
-          noticeDiscussionId: dto.noticeDiscussionId,
+          addressedDiscussionId: dto.addressedDiscussionId,
           laterConflictId: dto.laterConflictId,
           targetOwnerUserIdSnapshot: target.userId,
           evidence: evidenceSnapshots,
@@ -853,6 +867,24 @@ export class StoryCollaborationService {
       authorOwnerUserIdSnapshot: revision.authorOwnerUserIdSnapshot,
       createdAt: revision.createdAt,
     }));
+  }
+
+  private targetRepeatedOpposedEdit(
+    evidence: readonly RevisionReference[],
+    targetAgentId: string,
+  ): boolean {
+    const ordered = [...evidence].sort((left, right) => left.revisionNumber - right.revisionNumber);
+    let targetEdited = false;
+    let anotherAgentEditedAfterTarget = false;
+    for (const revision of ordered) {
+      if (revision.authorAgentId === targetAgentId) {
+        if (anotherAgentEditedAfterTarget) return true;
+        targetEdited = true;
+      } else if (targetEdited) {
+        anotherAgentEditedAfterTarget = true;
+      }
+    }
+    return false;
   }
 
   private evidenceKey(reference: StoryCollaborationEvidenceInput): string {
@@ -1026,6 +1058,40 @@ export class StoryCollaborationService {
     }
   }
 
+  private async recordCaseActivity(
+    caseRecord: StoryCollaborationCase,
+    actor: StoryCollaborationActor,
+    kind: StoryActivityKind,
+    session: ClientSession,
+  ): Promise<void> {
+    const target = caseRecord.documentId
+      ? await this.documentModel
+          .findOne({ _id: this.objectId(caseRecord.documentId), storyId: caseRecord.storyId })
+          .select('title')
+          .session(session)
+          .exec()
+      : await this.requireStory(caseRecord.storyId, session);
+    if (!target) throw storyCaseTargetInvalidError();
+    const title = target.title;
+    await this.activityService.append(
+      {
+        storyId: caseRecord.storyId,
+        kind,
+        targetType: caseRecord.documentId ? 'document' : 'story',
+        documentId: caseRecord.documentId,
+        revisionNumber: caseRecord.revisionNumber,
+        caseId: caseRecord.id,
+        authorAgentId: actor.agentId,
+        title,
+        summary: (caseRecord.status + ': ' + caseRecord.reason).slice(
+          0,
+          CASE_ACTIVITY_SUMMARY_MAX_LENGTH,
+        ),
+      },
+      session,
+    );
+  }
+
   private async requireStory(storyId: string, session?: ClientSession): Promise<Story> {
     const objectId = this.objectId(storyId);
     if (!objectId) throw storyErrors.storyNotFound();
@@ -1076,7 +1142,7 @@ export class StoryCollaborationService {
       documentId: caseRecord.documentId,
       revisionNumber: caseRecord.revisionNumber,
       targetAgentId: caseRecord.targetAgentId,
-      noticeDiscussionId: caseRecord.noticeDiscussionId,
+      addressedDiscussionId: caseRecord.addressedDiscussionId,
       laterConflictId: caseRecord.laterConflictId,
       evidence: caseRecord.evidence.map(({ documentId, revisionNumber, authorAgentId }) => ({
         documentId,

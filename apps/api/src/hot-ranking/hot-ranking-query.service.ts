@@ -63,17 +63,18 @@ export class HotRankingQueryService {
     options: HotPostQueryOptions,
   ): Promise<HotPostPage> {
     const limit = Math.min(HOT_POST_MAX_PAGE_SIZE, Math.max(1, Math.trunc(options.limit)));
+    const cursorPosition = options.cursor
+      ? decodeHotCursor(options.cursor, {
+          context: options.cursorContext,
+          subjectId: options.cursorSubjectId,
+        })
+      : null;
     const generationId = await this.findReadyGeneration();
     if (!generationId) return { posts: [], nextCursor: null };
     const key = options.circleId
       ? circleCandidateKey(generationId, options.circleId)
       : globalCandidateKey(generationId);
-    const initialPosition = options.cursor
-      ? decodeHotCursor(options.cursor, {
-          context: options.cursorContext,
-          subjectId: options.cursorSubjectId,
-        })
-      : await this.createInitialPosition(key);
+    const initialPosition = cursorPosition ?? (await this.createInitialPosition(key));
     if (!initialPosition) return { posts: [], nextCursor: null };
 
     const scan = await this.scanCandidateMembers(key, initialPosition);

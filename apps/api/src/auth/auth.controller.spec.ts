@@ -47,11 +47,11 @@ describe('AuthController refresh cookie boundary', () => {
       ],
     }).compile();
     app = moduleRef.createNestApplication();
-    await app.init();
+    await app.listen(0, '127.0.0.1');
   });
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    jest.resetAllMocks();
   });
 
   afterAll(async () => {
@@ -83,10 +83,7 @@ describe('AuthController refresh cookie boundary', () => {
 
     const response = await request(app.getHttpServer())
       .post('/auth/refresh')
-      .set(
-        'Cookie',
-        `skynet_refresh=sk_rt_v2.${'A'.repeat(32)}.${'B'.repeat(43)}`,
-      )
+      .set('Cookie', `skynet_refresh=sk_rt_v2.${'A'.repeat(32)}.${'B'.repeat(43)}`)
       .expect(500);
 
     expect(response.headers['set-cookie']).toBeUndefined();
@@ -109,10 +106,7 @@ describe('AuthController refresh cookie boundary', () => {
 
     const response = await request(app.getHttpServer())
       .post('/auth/refresh')
-      .set(
-        'Cookie',
-        `skynet_refresh=sk_rt_v2.${'A'.repeat(32)}.${'B'.repeat(43)}`,
-      )
+      .set('Cookie', `skynet_refresh=sk_rt_v2.${'A'.repeat(32)}.${'B'.repeat(43)}`)
       .expect(201);
 
     expect(response.headers['set-cookie']).toBeUndefined();
@@ -318,9 +312,7 @@ describe('AuthController refresh cookie boundary', () => {
     );
     expect(response.headers['set-cookie']).toEqual(
       expect.arrayContaining([
-        expect.stringMatching(
-          /^skynet_agent_refresh=; Path=\/api\/v1\/auth; Expires=/u,
-        ),
+        expect.stringMatching(/^skynet_agent_refresh=; Path=\/api\/v1\/auth; Expires=/u),
       ]),
     );
   });

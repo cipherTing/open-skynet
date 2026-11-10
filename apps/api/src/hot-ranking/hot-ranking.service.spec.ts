@@ -55,6 +55,8 @@ import { HotRankingQueryService } from '@/hot-ranking/hot-ranking-query.service'
 import { HotRankingWorkService } from '@/hot-ranking/hot-ranking-work.service';
 import { HotRankingScheduler } from '@/hot-ranking/hot-ranking.processor';
 import { HotRankingService } from '@/hot-ranking/hot-ranking.service';
+import { buildPostSearchPhrase } from '@/forum/post-search-query';
+import { encodeHotCursor } from '@/common/pagination/pagination-cursor';
 
 type RedisSetStore = Map<string, Set<string>>;
 
@@ -981,6 +983,74 @@ describe('Hot ranking projection and candidates', () => {
       ).resolves.toEqual({ posts: [], nextCursor: null });
     }
     expect(redis.client.zrange).toHaveBeenCalledTimes(1);
+  });
+
+  it('filters and paginates hot candidates by the same complete search phrase', async () => {
+    const author = await createAgent('phrase-hot-author');
+    const first = await createPost(author, 'Linux kernel');
+    const second = await createPost(author, 'Notes on Linux kernel');
+    const scattered = await createPost(author, 'Linux field kernel');
+    const split = await createPost(author, 'Linux');
+    const splitDocument = await postModel.findById(split.id);
+    if (!splitDocument) throw new Error('Expected a split-field fixture');
+    splitDocument.content = 'kernel';
+    await splitDocument.save();
+    const allPosts = [first, second, scattered, split];
+    const generationId = 'phrase-hot-generation';
+    await createReadyGeneration(generationId);
+    await stateModel.updateMany(
+      { postId: { $in: allPosts.map((post) => post.id) } },
+      {
+        $set: { eligible: true, expiresAt: new Date(Date.now() + 60_000), projectionDirty: false },
+      },
+    );
+    redis.sets.set(
+      `skynet:v3:hot-posts:generation:${generationId}:all`,
+      new Set(allPosts.map((post) => candidateMember(post.id))),
+    );
+    const where = {
+      deletedAt: null,
+      circleVisible: true,
+      $text: { $search: buildPostSearchPhrase('Linux kernel') },
+    };
+    const cursorContext = {
+      sortBy: 'hot',
+      search: buildPostSearchPhrase('Linux kernel'),
+    };
+    const found = [];
+    let cursor: string | undefined;
+    for (let pageNumber = 0; pageNumber < 6; pageNumber += 1) {
+      const page = await service.listRandomHotPosts(where, {
+        cursorContext,
+        candidateFilter: where,
+        limit: 1,
+        cursor,
+      });
+      found.push(...page.posts.map((post) => post.id));
+      if (!page.nextCursor) break;
+      cursor = page.nextCursor;
+    }
+    expect(new Set(found)).toEqual(new Set([first.id, second.id]));
+    expect(found).toHaveLength(2);
+  });
+
+  it('rejects a cursor for another search even when there is no ready hot generation', async () => {
+    const cursor = encodeHotCursor(
+      { start: '000000000000000000000000', current: null, wrapped: false },
+      {
+        context: { sortBy: 'hot', search: '"linux kernel"' },
+      },
+    );
+    await expect(
+      service.listRandomHotPosts(
+        { deletedAt: null },
+        {
+          cursorContext: { sortBy: 'hot', search: '"other phrase"' },
+          limit: 1,
+          cursor,
+        },
+      ),
+    ).rejects.toMatchObject({ response: { code: 'PAGINATION_CURSOR_INVALID' } });
   });
 
   it('paginates within one traversal and creates a new sample for a fresh first page', async () => {

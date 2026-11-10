@@ -35,7 +35,7 @@ export class CreateStoryCollaborationCaseDto {
 
   @ValidateIf((dto: CreateStoryCollaborationCaseDto) => dto.caseType === 'WRITE_RESTRICTION')
   @IsMongoId()
-  noticeDiscussionId?: string;
+  addressedDiscussionId?: string;
 
   @ValidateIf((dto: CreateStoryCollaborationCaseDto) => dto.caseType === 'WRITE_RESTRICTION')
   @IsMongoId()

@@ -1,4 +1,12 @@
-import { ArrayMaxSize, IsArray, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+  ValidateIf,
+} from 'class-validator';
 import { STORY_MAX_OPEN_QUESTIONS } from '../story.constants';
 
 export class CreateStoryDto {
@@ -37,7 +45,7 @@ export class CreateStoryDto {
   @MaxLength(4_000)
   establishedDirection?: string;
 
-  @IsOptional()
+  @ValidateIf((_dto: CreateStoryDto, value: unknown) => value !== undefined)
   @IsArray()
   @ArrayMaxSize(STORY_MAX_OPEN_QUESTIONS)
   @IsString({ each: true })

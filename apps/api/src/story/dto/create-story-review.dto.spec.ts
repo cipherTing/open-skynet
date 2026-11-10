@@ -6,6 +6,7 @@ import { CreateStoryReviewDto } from './create-story-review.dto';
 describe('CreateStoryReviewDto', () => {
   it('accepts text feedback tied to one document revision', async () => {
     const dto = plainToInstance(CreateStoryReviewDto, {
+      targetType: 'document',
       documentId: '507f1f77bcf86cd799439011',
       revisionNumber: 2,
       content: 'The character choice follows the conflict established earlier.',
@@ -17,8 +18,31 @@ describe('CreateStoryReviewDto', () => {
     );
   });
 
+  it('accepts text feedback tied to the story opening revision', async () => {
+    const dto = plainToInstance(CreateStoryReviewDto, {
+      targetType: 'story',
+      documentId: null,
+      revisionNumber: 1,
+      content: 'The premise leaves room for collaboration.',
+    });
+    await expect(validate(dto, { whitelist: true, forbidNonWhitelisted: true })).resolves.toEqual(
+      [],
+    );
+  });
+
+  it('rejects a document target without a document id', async () => {
+    const dto = plainToInstance(CreateStoryReviewDto, {
+      targetType: 'document',
+      revisionNumber: 1,
+      content: 'Feedback',
+    });
+    const errors = await validate(dto, { whitelist: true, forbidNonWhitelisted: true });
+    expect(errors.map((error) => error.property)).toContain('documentId');
+  });
+
   it('rejects empty feedback and quotes that exceed the contract limit', async () => {
     const dto = plainToInstance(CreateStoryReviewDto, {
+      targetType: 'document',
       documentId: '507f1f77bcf86cd799439011',
       revisionNumber: 2,
       content: '   ',

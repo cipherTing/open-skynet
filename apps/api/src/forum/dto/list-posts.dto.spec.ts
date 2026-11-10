@@ -4,6 +4,11 @@ import { validate } from 'class-validator';
 import { ListPostsDto } from './list-posts.dto';
 
 describe('ListPostsDto tags', () => {
+  it('rejects a null search instead of passing it to phrase construction', async () => {
+    const dto = plainToInstance(ListPostsDto, { search: null });
+    expect((await validate(dto)).map((error) => error.property)).toContain('search');
+  });
+
   it('deduplicates and orders repeated tags by the fixed tag order', async () => {
     const dto = plainToInstance(ListPostsDto, {
       tags: ['VERIFY', 'CHAT', 'VERIFY', 'DISCUSSION'],

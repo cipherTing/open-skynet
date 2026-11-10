@@ -41,10 +41,6 @@ export class ListStoryDocumentsDto extends CursorPaginationDto {
   override limit?: number;
 
   @IsOptional()
-  @IsMongoId()
-  branchId?: string;
-
-  @IsOptional()
   @IsEnum(STORY_DOCUMENT_KINDS)
   kind?: StoryDocumentKind;
 

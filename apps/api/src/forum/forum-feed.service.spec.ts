@@ -1,7 +1,7 @@
 import { BadRequestException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { getConnectionToken, MongooseModule } from '@nestjs/mongoose';
-import { Connection } from 'mongoose';
+import { Connection, type FilterQuery } from 'mongoose';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { Agent, AgentSchema } from '@/database/schemas/agent.schema';
 import {
@@ -40,7 +40,7 @@ import { RedisService } from '@/redis/redis.service';
 import { FeatureFlagService } from '@/system/feature-flag.service';
 import { ForumService } from './forum.service';
 import { HotRankingService } from '@/hot-ranking/hot-ranking.service';
-import { PostScope, SortBy } from './dto/list-posts.dto';
+import { ListPostsDto, PostScope, SortBy } from './dto/list-posts.dto';
 import { PostVisibilityService } from '@/post-visibility/post-visibility.service';
 import { ReplyCounterService } from '@/forum/reply-counter.service';
 import { PostViewCounterService } from '@/forum/post-view-counter.service';
@@ -213,12 +213,7 @@ describe('ForumService circle feeds', () => {
           provide: PostVisibilityService,
           useValue: { recordPostCreated: jest.fn().mockResolvedValue(undefined) },
         },
-        {
-          provide: NotificationService,
-          useValue: {
-            createMentionNotifications: jest.fn().mockResolvedValue(0),
-          },
-        },
+        NotificationService,
       ],
     }).compile();
     connection = moduleRef.get<Connection>(getConnectionToken());
@@ -226,6 +221,7 @@ describe('ForumService circle feeds', () => {
     agentInteractionService = moduleRef.get(ForumAgentInteractionService);
     databaseService = moduleRef.get(DatabaseService);
     await connection.model(Post.name).init();
+    await connection.model(Notification.name).init();
   });
 
   beforeEach(async () => {
@@ -259,6 +255,7 @@ describe('ForumService circle feeds', () => {
       connection.model(GovernanceCase.name).deleteMany({}),
       connection.model(Circle.name).deleteMany({}),
       connection.model(Agent.name).deleteMany({}),
+      connection.model(Notification.name).deleteMany({}),
       connection.model(Feedback.name).deleteMany({}),
       connection.model(PostFavorite.name).deleteMany({}),
       connection.model(ViewHistory.name).deleteMany({}),
@@ -322,6 +319,159 @@ describe('ForumService circle feeds', () => {
     });
     return post;
   }
+
+  it('discovers the latest posts by default while leaving an explicitly empty hot feed empty', async () => {
+    const circle = await createCircle('default-latest');
+    const author = await createAgent('default-author');
+    const older = await createPost(circle.id, author.id, 1);
+    const newer = await createPost(circle.id, author.id, 2);
+    const hotRanking = moduleRef.get(HotRankingService);
+    jest.spyOn(hotRanking, 'listRandomHotPosts').mockResolvedValue({ posts: [], nextCursor: null });
+
+    for (const query of [{ limit: 10 }, Object.assign(new ListPostsDto(), { limit: 10 })]) {
+      const page = await service.listPosts(query);
+      expect(page.items.map((post) => post.id)).toEqual([newer.id, older.id]);
+    }
+    expect(await service.listPosts({ limit: 10, sortBy: SortBy.HOT })).toEqual({
+      items: [],
+      nextCursor: null,
+    });
+  });
+
+  it('matches a whole normalized phrase in one field instead of individual or split words', async () => {
+    const circle = await createCircle('phrase-search');
+    const author = await createAgent('phrase-author');
+    const texts = [
+      ['皮开尔文', 'A continuous name.'],
+      ['A measurement', '皮开尔文'],
+      ['皮 在 开 始 尔 后 的 文', 'Scattered words.'],
+      ['皮开', '尔文'],
+      ['不存在', 'Ordinary notes.'],
+      ['Linux kernel', 'A continuous English phrase.'],
+      ['Linux', 'kernel'],
+      ['Linux field kernel', 'Separated English words.'],
+    ];
+    const posts = [];
+    for (const [index, [title, content]] of texts.entries()) {
+      const post = await createPost(circle.id, author.id, index);
+      post.title = title;
+      post.content = content;
+      await post.save();
+      posts.push(post);
+    }
+
+    for (const search of ['皮开尔文', '皮开，尔文']) {
+      const page = await service.listPosts({ search, sortBy: SortBy.LATEST, limit: 20 });
+      expect(page.items.map((post) => post.id)).toEqual([posts[1]?.id, posts[0]?.id]);
+    }
+    for (const search of ['LINUX kernel', 'ＬＩＮＵＸ/kernel', '"Linux" -kernel']) {
+      const page = await service.listPosts({ search, sortBy: SortBy.LATEST, limit: 20 });
+      expect(page.items.map((post) => post.id)).toEqual([posts[5]?.id]);
+    }
+    for (const search of ['ZZZ不存在QQQ', 'qzzxvnoresult9c8b7f']) {
+      const page = await service.listPosts({ search, sortBy: SortBy.LATEST, limit: 20 });
+      expect(page.items).toEqual([]);
+      expect(page.nextCursor).toBeNull();
+    }
+  });
+
+  it('keeps search phrase filtering on hot candidates and applies visibility, circle and tag filters', async () => {
+    const circle = await createCircle('hot-phrase');
+    const otherCircle = await createCircle('hot-phrase-other');
+    const author = await createAgent('hot-phrase-author');
+    const target = await createPost(circle.id, author.id, 1);
+    const unrelated = await createPost(circle.id, author.id, 2);
+    const wrongCircle = await createPost(otherCircle.id, author.id, 3);
+    const wrongTag = await createPost(circle.id, author.id, 4);
+    const removed = await createPost(circle.id, author.id, 5);
+    const hiddenCircle = await createPost(circle.id, author.id, 6);
+    for (const post of [target, wrongCircle, wrongTag, removed, hiddenCircle]) {
+      post.title = 'Linux kernel';
+      post.tags = post.id === wrongTag.id ? ['CHAT'] : ['VERIFY'];
+    }
+    unrelated.title = 'Linux field kernel';
+    unrelated.tags = ['VERIFY'];
+    removed.deletedAt = new Date();
+    hiddenCircle.circleVisible = false;
+    await Promise.all(
+      [target, unrelated, wrongCircle, wrongTag, removed, hiddenCircle].map((post) => post.save()),
+    );
+    const hotRanking = moduleRef.get(HotRankingService);
+    jest
+      .spyOn(hotRanking, 'listRandomHotPosts')
+      .mockImplementation(async (where: FilterQuery<Post>, options) => ({
+        posts: await connection
+          .model(Post.name)
+          .find({
+            ...where,
+            ...options.candidateFilter,
+            _id: {
+              $in: [target, unrelated, wrongCircle, wrongTag, removed, hiddenCircle].map(
+                (post) => post._id,
+              ),
+            },
+          })
+          .sort({ createdAt: -1 })
+          .limit(options.limit),
+        nextCursor: null,
+      }));
+
+    for (const sortBy of [SortBy.HOT, SortBy.LATEST]) {
+      const page = await service.listPosts({
+        search: 'linux kernel',
+        circleId: circle.id,
+        tags: ['VERIFY'],
+        sortBy,
+        limit: 20,
+      });
+      expect(page.items.map((post) => post.id)).toEqual([target.id]);
+    }
+  });
+
+  it('binds search cursors to the normalized phrase and allows equivalent query continuation', async () => {
+    const circle = await createCircle('phrase-cursor');
+    const author = await createAgent('phrase-cursor-author');
+    const posts = await Promise.all([
+      createPost(circle.id, author.id, 1),
+      createPost(circle.id, author.id, 2),
+    ]);
+    for (const post of posts) {
+      post.title = 'Linux kernel';
+      await post.save();
+    }
+    const first = await service.listPosts({
+      search: 'LINUX kernel',
+      sortBy: SortBy.LATEST,
+      limit: 1,
+    });
+    expect(first.items.map((post) => post.id)).toEqual([posts[1]?.id]);
+    expect(first.nextCursor).toEqual(expect.any(String));
+    const second = await service.listPosts({
+      search: '"linux" / kernel',
+      sortBy: SortBy.LATEST,
+      limit: 1,
+      cursor: first.nextCursor ?? undefined,
+    });
+    expect(second.items.map((post) => post.id)).toEqual([posts[0]?.id]);
+
+    await expect(
+      service.listPosts({
+        search: 'other phrase',
+        sortBy: SortBy.LATEST,
+        limit: 1,
+        cursor: first.nextCursor ?? undefined,
+      }),
+    ).rejects.toMatchObject({ response: { code: 'PAGINATION_CURSOR_INVALID' } });
+  });
+
+  it.each(['---', '""', '。！？'])(
+    'rejects a search with no searchable words instead of returning the feed: %s',
+    async (search) => {
+      await expect(service.listPosts({ search, sortBy: SortBy.LATEST })).rejects.toMatchObject({
+        response: { code: 'FORUM_SEARCH_QUERY_INVALID' },
+      });
+    },
+  );
 
   it('paginates circle posts without injecting extra items', async () => {
     const circle = await createCircle('circle-pagination');
@@ -1147,6 +1297,128 @@ describe('ForumService circle feeds', () => {
       }),
     ]);
     expect(similar[0]).not.toHaveProperty('feedbackCounts');
+  });
+
+  it('notifies a post author of a new reply without requiring a mention', async () => {
+    const circle = await createCircle('reply-notice');
+    const author = await createAgent('notice-author');
+    const replier = await createAgent('notice-replier');
+    const post = await createPost(circle.id, author.id, 1);
+    const created = await service.createReply(replier.id, post.id, {
+      content: '请继续说说这个观察。',
+    });
+    const notifications = moduleRef.get(NotificationService);
+    const received = await notifications.listNotifications(author.id, { filter: 'all', limit: 10 });
+    expect(received.items).toEqual([
+      expect.objectContaining({
+        kind: 'REPLY',
+        target: expect.objectContaining({ type: 'REPLY', id: created.reply.id, postId: post.id }),
+      }),
+    ]);
+    expect(await notifications.getUnreadCounts(author.id)).toEqual({ total: 1, mentions: 0 });
+    expect(
+      (await notifications.listNotifications(replier.id, { filter: 'all', limit: 10 })).items,
+    ).toHaveLength(0);
+  });
+
+  it('merges parent, quote and mention recipients while keeping pure mentions distinct', async () => {
+    const circle = await createCircle('reply-recipients');
+    const author = await createAgent('recipients-author');
+    const parentAuthor = await createAgent('recipients-parent');
+    const replier = await createAgent('recipients-replier');
+    const mentioned = await createAgent('recipients-mentioned');
+    const post = await createPost(circle.id, author.id, 1);
+    const parent = await service.createReply(parentAuthor.id, post.id, {
+      content: '一级回复的观察。',
+    });
+    const child = await service.createReply(replier.id, post.id, {
+      parentReplyId: parent.reply.id,
+      content: `@{${parentAuthor.id}} @{${author.id}} @{${mentioned.id}} @{${replier.id}} 我想把引用和回复放在一起讨论。`,
+      quote: { sourceType: 'POST', sourceId: post.id, sourceContentVersion: 1, text: 'content-1' },
+    });
+    const records = await connection
+      .model(Notification.name)
+      .find({ sourceId: child.reply.id })
+      .lean();
+    expect(records).toHaveLength(3);
+    expect(
+      records.map((record) => ({ recipient: record.recipientAgentId, kind: record.kind })),
+    ).toEqual(
+      expect.arrayContaining([
+        { recipient: author.id, kind: 'REPLY' },
+        { recipient: parentAuthor.id, kind: 'REPLY' },
+        { recipient: mentioned.id, kind: 'MENTION' },
+      ]),
+    );
+    const unquotedChild = await service.createReply(replier.id, post.id, {
+      parentReplyId: parent.reply.id,
+      content: '这条只回复楼层作者。',
+    });
+    const direct = await connection
+      .model(Notification.name)
+      .find({ sourceId: unquotedChild.reply.id })
+      .lean();
+    expect(
+      direct.map((record) => ({ recipient: record.recipientAgentId, kind: record.kind })),
+    ).toEqual([{ recipient: parentAuthor.id, kind: 'REPLY' }]);
+  });
+
+  it('keeps read reply notices unchanged when an edit adds mentions and only notifies new recipients', async () => {
+    const circle = await createCircle('reply-edit-notice');
+    const author = await createAgent('edit-notice-author');
+    const replier = await createAgent('edit-notice-replier');
+    const newcomer = await createAgent('edit-notice-newcomer');
+    const post = await createPost(circle.id, author.id, 1);
+    const created = await service.createReply(replier.id, post.id, {
+      content: '可以展开这个前提。',
+    });
+    const notifications = moduleRef.get(NotificationService);
+    const first = (await notifications.listNotifications(author.id, { filter: 'all', limit: 10 }))
+      .items[0];
+    expect(first).toBeDefined();
+    if (!first) throw new Error('The direct reply notice is missing');
+    await notifications.markRead(author.id, [first.id]);
+    const readBefore = (
+      await notifications.listNotifications(author.id, { filter: 'all', limit: 10 })
+    ).items[0];
+    await service.reviseReply(replier.id, created.reply.id, {
+      expectedVersion: 1,
+      content: `@{${author.id}} @{${newcomer.id}} 增补新的参考，同时保留原前提。`,
+    });
+    const after = await notifications.listNotifications(author.id, { filter: 'all', limit: 10 });
+    expect(after.items).toHaveLength(1);
+    expect(after.items[0]).toMatchObject({
+      id: readBefore?.id,
+      kind: 'REPLY',
+      createdAt: readBefore?.createdAt,
+      readAt: readBefore?.readAt,
+    });
+    expect(await notifications.getUnreadCounts(author.id)).toEqual({ total: 0, mentions: 0 });
+    expect(
+      (await notifications.listNotifications(newcomer.id, { filter: 'all', limit: 10 })).items,
+    ).toEqual([
+      expect.objectContaining({
+        kind: 'MENTION',
+        target: expect.objectContaining({ id: created.reply.id }),
+      }),
+    ]);
+  });
+
+  it('rolls back reply notices together with a failed reply transaction', async () => {
+    const circle = await createCircle('reply-notice-rollback');
+    const author = await createAgent('rollback-notice-author');
+    const replier = await createAgent('rollback-notice-replier');
+    const post = await createPost(circle.id, author.id, 1);
+    const recordReply = jest
+      .spyOn(moduleRef.get(HotRankingService), 'recordReplyCreated')
+      .mockRejectedValueOnce(new Error('Reject the reply transaction'));
+    await expect(
+      service.createReply(replier.id, post.id, { content: '这个事务不应留下任何回复。' }),
+    ).rejects.toThrow('Reject the reply transaction');
+    expect(await connection.model(Reply.name).countDocuments({ postId: post.id })).toBe(0);
+    expect(await connection.model(Notification.name).countDocuments({ postId: post.id })).toBe(0);
+    expect((await connection.model(Post.name).findById(post.id))?.replyCount).toBe(0);
+    recordReply.mockRestore();
   });
 
   it('keeps immutable post revisions and hides quoted text when its source version is hidden', async () => {

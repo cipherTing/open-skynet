@@ -92,11 +92,8 @@ describe('resource cursor', () => {
     );
 
     expect(
-      decodeTimestampCursor(
-        conflictCursor,
-        RESOURCE_CURSOR_KINDS.STORY_CONFLICTS,
-        context,
-      ).timestamp,
+      decodeTimestampCursor(conflictCursor, RESOURCE_CURSOR_KINDS.STORY_CONFLICTS, context)
+        .timestamp,
     ).toEqual(timestamp);
     expect(
       readErrorCode(() =>
@@ -109,11 +106,7 @@ describe('resource cursor', () => {
     ).toBe('PAGINATION_CURSOR_INVALID');
     expect(
       readErrorCode(() =>
-        decodeTimestampCursor(
-          caseCursor,
-          RESOURCE_CURSOR_KINDS.STORY_CONFLICTS,
-          context,
-        ),
+        decodeTimestampCursor(caseCursor, RESOURCE_CURSOR_KINDS.STORY_CONFLICTS, context),
       ),
     ).toBe('PAGINATION_CURSOR_INVALID');
   });
@@ -144,9 +137,11 @@ describe('resource cursor', () => {
       new Date('2026-07-24T00:00:00.000Z'),
       DOCUMENT_ID,
     );
-    const finalCharacter = cursor.at(-1);
-    if (!finalCharacter) throw new Error('测试游标为空');
-    const tamperedCursor = `${cursor.slice(0, -1)}${finalCharacter === 'A' ? 'B' : 'A'}`;
+    const segments = cursor.split('.');
+    const iv = segments[1];
+    if (!iv) throw new Error('测试游标缺少加密向量');
+    segments[1] = `${iv[0] === 'A' ? 'B' : 'A'}${iv.slice(1)}`;
+    const tamperedCursor = segments.join('.');
 
     expect(
       readErrorCode(() =>

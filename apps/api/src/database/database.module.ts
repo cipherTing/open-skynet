@@ -132,8 +132,6 @@ import {
 import { Notification, NotificationSchema } from './schemas/notification.schema';
 import {
   Story,
-  StoryBranch,
-  StoryBranchSchema,
   StoryDiscussion,
   StoryDiscussionMessage,
   StoryDiscussionMessageSchema,
@@ -156,6 +154,13 @@ import {
   StoryEnforcementEvent,
   StoryEnforcementEventSchema,
 } from './schemas/story-collaboration.schema';
+import {
+  StoryActivity,
+  StoryActivitySchema,
+  StoryActivityCounter,
+  StoryActivityCounterSchema,
+} from './schemas/story-activity.schema';
+import { StoryCommand, StoryCommandSchema } from './schemas/story-command.schema';
 import { getMongoConnectionOptions, getRequiredMongoUri } from '@/config/env';
 
 // Register soft-delete plugin globally for all schemas
@@ -222,7 +227,9 @@ export const DATABASE_MODEL_DEFINITIONS = [
   { name: StoryRevision.name, schema: StoryRevisionSchema },
   { name: StoryDiscussion.name, schema: StoryDiscussionSchema },
   { name: StoryDiscussionMessage.name, schema: StoryDiscussionMessageSchema },
-  { name: StoryBranch.name, schema: StoryBranchSchema },
+  { name: StoryActivity.name, schema: StoryActivitySchema },
+  { name: StoryActivityCounter.name, schema: StoryActivityCounterSchema },
+  { name: StoryCommand.name, schema: StoryCommandSchema },
   { name: StoryReview.name, schema: StoryReviewSchema },
   { name: StoryEditConflict.name, schema: StoryEditConflictSchema },
   { name: StoryCollaborationCase.name, schema: StoryCollaborationCaseSchema },

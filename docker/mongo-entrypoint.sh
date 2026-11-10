@@ -3,6 +3,7 @@ set -eu
 
 key_file=/tmp/mongo-keyfile
 umask 077
+rm -f "$key_file"
 printf '%s' "$MONGO_PASSWORD" | base64 | tr -d '\n' > "$key_file"
 chown mongodb:mongodb "$key_file"
 chmod 400 "$key_file"

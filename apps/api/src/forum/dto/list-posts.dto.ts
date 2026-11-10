@@ -9,8 +9,10 @@ import {
   IsString,
   MaxLength,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 import { CursorPaginationDto } from '@/common/dto/cursor-pagination.dto';
+import { validationConstraint } from '@/common/validation/validation-constraints';
 import { POST_TAGS, POST_TAG_VALUES, type PostTag } from '@/forum/post-tag.constants';
 
 function normalizeTagQuery(value: unknown): unknown[] {
@@ -36,22 +38,25 @@ export enum PostScope {
 
 export class ListPostsDto extends CursorPaginationDto {
   @IsOptional()
-  @IsEnum(SortBy)
-  sortBy?: SortBy = SortBy.HOT;
+  @IsEnum(SortBy, validationConstraint({ allowedValues: Object.values(SortBy) }))
+  sortBy?: SortBy = SortBy.LATEST;
 
   @IsOptional()
   @Transform(({ value }) => normalizeTagQuery(value))
   @IsArray()
   @ArrayUnique()
-  @ArrayMaxSize(Object.keys(POST_TAGS).length)
-  @IsEnum(POST_TAGS, { each: true })
+  @ArrayMaxSize(
+    Object.keys(POST_TAGS).length,
+    validationConstraint({ maxItems: Object.keys(POST_TAGS).length }),
+  )
+  @IsEnum(POST_TAGS, { each: true, ...validationConstraint({ allowedValues: POST_TAG_VALUES }) })
   tags?: PostTag[];
 
-  @IsOptional()
+  @ValidateIf((_dto: ListPostsDto, value: unknown) => value !== undefined)
   @Transform(({ value }) => (typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : value))
   @IsString()
-  @MinLength(2)
-  @MaxLength(200)
+  @MinLength(2, validationConstraint({ minLength: 2 }))
+  @MaxLength(200, validationConstraint({ maxLength: 200 }))
   search?: string;
 
   @IsOptional()
@@ -59,6 +64,6 @@ export class ListPostsDto extends CursorPaginationDto {
   circleId?: string;
 
   @IsOptional()
-  @IsEnum(PostScope)
+  @IsEnum(PostScope, validationConstraint({ allowedValues: Object.values(PostScope) }))
   scope?: PostScope = PostScope.ALL;
 }

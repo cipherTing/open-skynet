@@ -1,5 +1,7 @@
 'use client';
 
+import { notificationTargetHref } from '@/lib/notification-navigation';
+
 import Link from 'next/link';
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Bell, MessageCircle, Megaphone } from 'lucide-react';
@@ -91,26 +93,30 @@ export function NotificationCenter() {
     <div className="flex h-[min(70vh,520px)] w-[min(92vw,420px)] min-w-0 flex-col bg-black">
       <div className="flex flex-none items-center gap-1 border-b border-[var(--t-noise)] p-2">
         <Bell className="mr-1 h-3.5 w-3.5 text-[var(--t-accent)]" />
-        {(['all', 'mention', 'announcement', 'unread'] as NotificationFilter[]).map((value) => (
-          <button
-            key={value}
-            type="button"
-            onClick={() => setFilter(value)}
-            className={`border px-2 py-1 font-sans text-[11px] tracking-normal transition-colors ${
-              filter === value
-                ? 'border-[var(--t-accent)]/60 bg-[var(--t-accent)]/10 text-[var(--t-accent)]'
-                : 'border-transparent text-[var(--t-sub)] hover:border-[var(--t-noise)] hover:text-white'
-            }`}
-          >
-            {value === 'all'
-              ? t('inbox.all')
-              : value === 'mention'
-                ? t('inbox.reasons.mention')
-                : value === 'announcement'
-                  ? t('inbox.systemSource')
-                  : t('inbox.unread')}
-          </button>
-        ))}
+        {(['all', 'reply', 'mention', 'announcement', 'unread'] as NotificationFilter[]).map(
+          (value) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setFilter(value)}
+              className={`border px-2 py-1 font-sans text-[11px] tracking-normal transition-colors ${
+                filter === value
+                  ? 'border-[var(--t-accent)]/60 bg-[var(--t-accent)]/10 text-[var(--t-accent)]'
+                  : 'border-transparent text-[var(--t-sub)] hover:border-[var(--t-noise)] hover:text-white'
+              }`}
+            >
+              {value === 'all'
+                ? t('inbox.all')
+                : value === 'reply'
+                  ? t('inbox.reply')
+                  : value === 'mention'
+                    ? t('inbox.reasons.mention')
+                    : value === 'announcement'
+                      ? t('inbox.systemSource')
+                      : t('inbox.unread')}
+            </button>
+          ),
+        )}
       </div>
       {readFailureIds.length > 0 ? (
         <div className="flex flex-none items-center justify-between gap-3 border-b border-danger/40 bg-danger/10 px-3 py-2 font-sans text-[11px] leading-5 text-danger">
@@ -150,11 +156,7 @@ export function NotificationCenter() {
           className="skynet-auto-hide-scrollbar"
           increaseViewportBy={300}
           endReached={() => {
-            if (
-              query.hasNextPage &&
-              !query.isFetchingNextPage &&
-              !query.isFetchNextPageError
-            ) {
+            if (query.hasNextPage && !query.isFetchingNextPage && !query.isFetchNextPageError) {
               void query.fetchNextPage({ cancelRefetch: false });
             }
           }}
@@ -186,16 +188,7 @@ export function NotificationCenter() {
 
 function NotificationRow({ item }: { item: NotificationItem }) {
   const { t } = useTranslation();
-  const targetHref = item.target.postId
-    ? item.target.type === 'REPLY'
-      ? `/post/${encodeURIComponent(item.target.postId)}?replyId=${encodeURIComponent(item.target.id)}`
-      : `/post/${encodeURIComponent(item.target.postId)}`
-    : item.target.type === 'STORY_DISCUSSION' && item.target.storyId
-      ? `/stories/${encodeURIComponent(item.target.storyId)}?${new URLSearchParams({
-          ...(item.target.documentId ? { documentId: item.target.documentId } : {}),
-          ...(item.target.discussionId ? { discussionId: item.target.discussionId } : {}),
-        }).toString()}`
-    : null;
+  const targetHref = notificationTargetHref(item.target);
   const content = (
     <div
       className={`flex gap-2 border-b border-[var(--t-noise2)] px-3 py-3 ${
@@ -203,7 +196,11 @@ function NotificationRow({ item }: { item: NotificationItem }) {
       }`}
     >
       {item.actor ? (
-        <AgentAvatar agentId={item.actor.avatarSeed || item.actor.id} agentName={item.actor.name} size={28} />
+        <AgentAvatar
+          agentId={item.actor.avatarSeed || item.actor.id}
+          agentName={item.actor.name}
+          size={28}
+        />
       ) : item.kind === 'ANNOUNCEMENT' ? (
         <Megaphone className="mt-1 h-4 w-4 shrink-0 text-[var(--t-accent)]" />
       ) : (
@@ -213,13 +210,20 @@ function NotificationRow({ item }: { item: NotificationItem }) {
         <div className="flex items-center justify-between gap-2">
           <span className="truncate text-xs font-semibold text-white">
             {item.kind === 'ANNOUNCEMENT'
-              ? item.announcement?.title ?? t('inbox.systemSource')
-              : item.actor?.name ?? t('inbox.sourceUnavailable')}
+              ? (item.announcement?.title ?? t('inbox.systemSource'))
+              : (item.actor?.name ?? t('inbox.sourceUnavailable'))}
           </span>
           <RelativeTime date={item.createdAt} className="shrink-0" />
         </div>
+        {item.kind === 'REPLY' ? (
+          <span className="mt-1 block text-[11px] text-[var(--t-faint)]">
+            {t('inbox.reasons.reply')}
+          </span>
+        ) : null}
         {item.target.title ? (
-          <span className="mt-1 block truncate text-xs text-[var(--t-sub)]">{item.target.title}</span>
+          <span className="mt-1 block truncate text-xs text-[var(--t-sub)]">
+            {item.target.title}
+          </span>
         ) : null}
         {item.target.excerpt ? (
           <span className="mt-1 line-clamp-2 block whitespace-pre-wrap text-xs leading-5 text-[var(--t-text)]/75">

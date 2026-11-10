@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument, Schema as MongooseSchema } from 'mongoose';
+import { HydratedDocument, Schema as MongooseSchema, Types } from 'mongoose';
 import { transformDocumentId } from '@/database/schema-transform';
 import {
   STORY_DOCUMENT_KINDS,
@@ -21,7 +21,6 @@ export type StoryContentDocument = HydratedDocument<StoryDocument>;
 export type StoryRevisionDocument = HydratedDocument<StoryRevision>;
 export type StoryDiscussionDocument = HydratedDocument<StoryDiscussion>;
 export type StoryDiscussionMessageDocument = HydratedDocument<StoryDiscussionMessage>;
-export type StoryBranchDocument = HydratedDocument<StoryBranch>;
 export type StoryReviewDocument = HydratedDocument<StoryReview>;
 
 function transformStoryRecordId<TDocument extends object>(
@@ -34,7 +33,11 @@ function transformStoryRecordId<TDocument extends object>(
   return transformed;
 }
 
-@Schema({ _id: false, strict: 'throw' })
+function requiresStoryContent(this: { get(path: 'content'): string | null | undefined }): boolean {
+  return this.get('content') !== '';
+}
+
+@Schema({ _id: false, strict: 'throw', versionKey: false })
 export class StoryDocumentLink {
   @Prop({ type: String, required: true })
   targetDocumentId!: string;
@@ -45,7 +48,7 @@ export class StoryDocumentLink {
 
 export const StoryDocumentLinkSchema = SchemaFactory.createForClass(StoryDocumentLink);
 
-@Schema({ _id: false, strict: 'throw' })
+@Schema({ _id: false, strict: 'throw', versionKey: false })
 export class StoryMetadataSnapshot {
   @Prop({ type: String, required: true, maxlength: 120 })
   title!: string;
@@ -84,7 +87,7 @@ export class StoryMetadataSnapshot {
 
 export const StoryMetadataSnapshotSchema = SchemaFactory.createForClass(StoryMetadataSnapshot);
 
-@Schema({ _id: false, strict: 'throw' })
+@Schema({ _id: false, strict: 'throw', versionKey: false })
 export class StoryDocumentSnapshot {
   @Prop({ type: String, required: true, enum: Object.values(STORY_DOCUMENT_KINDS) })
   kind!: StoryDocumentKind;
@@ -92,11 +95,14 @@ export class StoryDocumentSnapshot {
   @Prop({ type: String, required: true, maxlength: 200 })
   title!: string;
 
-  @Prop({ type: String, required: true, maxlength: 100_000 })
+  @Prop({
+    type: String,
+    required: requiresStoryContent,
+  })
   content!: string;
 
-  @Prop({ type: String, default: null })
-  branchId!: string | null;
+  @Prop({ type: Boolean, required: true, default: false })
+  archived!: boolean;
 
   @Prop({
     type: [StoryDocumentLinkSchema],
@@ -111,7 +117,7 @@ export class StoryDocumentSnapshot {
 
 export const StoryDocumentSnapshotSchema = SchemaFactory.createForClass(StoryDocumentSnapshot);
 
-@Schema({ _id: false, strict: 'throw' })
+@Schema({ _id: false, strict: 'throw', versionKey: false })
 export class StoryRevisionDiff {
   @Prop({ type: StoryMetadataSnapshotSchema, default: null })
   beforeStory!: StoryMetadataSnapshot | null;
@@ -181,6 +187,9 @@ export class Story {
   @Prop({ type: Number, required: true, min: 1, default: 1 })
   currentVersion!: number;
 
+  @Prop({ type: Number, required: true, min: 1, default: 1 })
+  structureVersion!: number;
+
   @Prop({ type: String, required: true, immutable: true })
   createdByAgentId!: string;
 
@@ -210,8 +219,14 @@ export class StoryDocument {
   @Prop({ type: String, required: true, immutable: true })
   storyId!: string;
 
-  @Prop({ type: String, default: null, immutable: true })
-  branchId!: string | null;
+  @Prop({ type: Boolean, required: true, default: false })
+  archived!: boolean;
+
+  @Prop({ type: MongooseSchema.Types.ObjectId, default: null })
+  parentDocumentId!: Types.ObjectId | null;
+
+  @Prop({ type: MongooseSchema.Types.ObjectId, default: null })
+  previousDocumentId!: Types.ObjectId | null;
 
   @Prop({ type: String, required: true, enum: Object.values(STORY_DOCUMENT_KINDS) })
   kind!: StoryDocumentKind;
@@ -219,7 +234,10 @@ export class StoryDocument {
   @Prop({ type: String, required: true, maxlength: 200 })
   title!: string;
 
-  @Prop({ type: String, required: true, maxlength: 100_000 })
+  @Prop({
+    type: String,
+    required: requiresStoryContent,
+  })
   content!: string;
 
   @Prop({
@@ -246,14 +264,58 @@ export class StoryDocument {
 }
 
 export const StoryDocumentSchema = SchemaFactory.createForClass(StoryDocument);
-StoryDocumentSchema.index({ storyId: 1, branchId: 1, createdAt: -1, _id: -1 });
-StoryDocumentSchema.index({ storyId: 1, kind: 1, createdAt: -1, _id: -1 });
+StoryDocumentSchema.index({ storyId: 1, archived: 1, createdAt: -1, _id: -1 });
+StoryDocumentSchema.index({ storyId: 1, archived: 1, kind: 1, createdAt: -1, _id: -1 });
 StoryDocumentSchema.index(STORY_DOCUMENT_TITLE_PREFIX_INDEX, {
   name: 'story_document_title_prefix',
 });
 StoryDocumentSchema.index(STORY_DOCUMENT_KIND_TITLE_PREFIX_INDEX, {
   name: 'story_document_kind_title_prefix',
 });
+
+StoryDocumentSchema.index({
+  storyId: 1,
+  archived: 1,
+  'links.targetDocumentId': 1,
+  createdAt: -1,
+  _id: -1,
+});
+StoryDocumentSchema.index(
+  { storyId: 1, parentDocumentId: 1, previousDocumentId: 1 },
+  {
+    name: 'story_directory_previous',
+    unique: true,
+    partialFilterExpression: { archived: false, kind: { $in: ['volume', 'chapter', 'scene'] } },
+  },
+);
+StoryDocumentSchema.index({ storyId: 1, parentDocumentId: 1, archived: 1, _id: 1 });
+
+@Schema({ _id: false, strict: 'throw', versionKey: false })
+export class StoryDirectoryRevisionPosition {
+  @Prop({ type: String, default: null })
+  parentDocumentId!: string | null;
+
+  @Prop({ type: String, default: null })
+  afterDocumentId!: string | null;
+}
+const StoryDirectoryRevisionPositionSchema = SchemaFactory.createForClass(
+  StoryDirectoryRevisionPosition,
+);
+
+@Schema({ _id: false, strict: 'throw', versionKey: false })
+export class StoryDirectoryRevisionChange {
+  @Prop({ type: Number, required: true, min: 1, validate: Number.isSafeInteger })
+  structureVersion!: number;
+
+  @Prop({ type: StoryDirectoryRevisionPositionSchema, default: null })
+  before!: StoryDirectoryRevisionPosition | null;
+
+  @Prop({ type: StoryDirectoryRevisionPositionSchema, default: null })
+  after!: StoryDirectoryRevisionPosition | null;
+}
+const StoryDirectoryRevisionChangeSchema = SchemaFactory.createForClass(
+  StoryDirectoryRevisionChange,
+);
 
 @Schema({
   timestamps: { createdAt: true, updatedAt: false },
@@ -293,6 +355,9 @@ export class StoryRevision {
   @Prop({ type: StoryRevisionDiffSchema, required: true, immutable: true })
   diff!: StoryRevisionDiff;
 
+  @Prop({ type: StoryDirectoryRevisionChangeSchema, default: null, immutable: true })
+  directoryChange!: StoryDirectoryRevisionChange | null;
+
   createdAt!: Date;
 }
 
@@ -318,8 +383,11 @@ export class StoryDiscussion {
   @Prop({ type: String, required: true, immutable: true })
   storyId!: string;
 
-  @Prop({ type: String, required: true, immutable: true })
-  documentId!: string;
+  @Prop({ type: String, required: true, enum: ['story', 'document'], immutable: true })
+  targetType!: 'story' | 'document';
+
+  @Prop({ type: String, default: null, immutable: true })
+  documentId!: string | null;
 
   @Prop({ type: Number, required: true, min: 1, immutable: true })
   revisionNumber!: number;
@@ -331,7 +399,7 @@ export class StoryDiscussion {
   title!: string;
 
   @Prop({ type: String, default: null, immutable: true })
-  noticeTargetAgentId!: string | null;
+  addressedAgentId!: string | null;
 
   @Prop({ type: String, required: true, immutable: true })
   createdByAgentId!: string;
@@ -344,7 +412,14 @@ export class StoryDiscussion {
 
 export const StoryDiscussionSchema = SchemaFactory.createForClass(StoryDiscussion);
 StoryDiscussionSchema.index({ storyId: 1, createdAt: -1, _id: -1 });
-StoryDiscussionSchema.index({ documentId: 1, revisionNumber: 1, createdAt: -1 });
+StoryDiscussionSchema.index({
+  storyId: 1,
+  targetType: 1,
+  documentId: 1,
+  revisionNumber: 1,
+  createdAt: -1,
+  _id: -1,
+});
 
 @Schema({
   timestamps: { createdAt: true, updatedAt: false },
@@ -382,45 +457,6 @@ export const StoryDiscussionMessageSchema = SchemaFactory.createForClass(StoryDi
 StoryDiscussionMessageSchema.index({ discussionId: 1, createdAt: 1, _id: 1 });
 
 @Schema({
-  timestamps: true,
-  collection: 'story_branches',
-  strict: 'throw',
-  versionKey: false,
-  toJSON: { virtuals: true, transform: transformStoryRecordId },
-  toObject: { virtuals: true, transform: transformStoryRecordId },
-})
-export class StoryBranch {
-  id!: string;
-
-  @Prop({ type: String, required: true, immutable: true })
-  storyId!: string;
-
-  @Prop({ type: String, required: true, maxlength: 120 })
-  title!: string;
-
-  @Prop({ type: String, required: true, maxlength: 4_000 })
-  premise!: string;
-
-  @Prop({ type: String, required: true, immutable: true })
-  sourceDocumentId!: string;
-
-  @Prop({ type: Number, required: true, min: 1, immutable: true })
-  sourceRevisionNumber!: number;
-
-  @Prop({ type: String, required: true, immutable: true })
-  createdByAgentId!: string;
-
-  @Prop({ type: String, required: true, immutable: true })
-  createdByOwnerUserIdSnapshot!: string;
-
-  createdAt!: Date;
-  updatedAt!: Date;
-}
-
-export const StoryBranchSchema = SchemaFactory.createForClass(StoryBranch);
-StoryBranchSchema.index({ storyId: 1, createdAt: -1, _id: -1 });
-
-@Schema({
   timestamps: { createdAt: true, updatedAt: false },
   collection: 'story_reviews',
   strict: 'throw',
@@ -434,8 +470,11 @@ export class StoryReview {
   @Prop({ type: String, required: true, immutable: true })
   storyId!: string;
 
-  @Prop({ type: String, required: true, immutable: true })
-  documentId!: string;
+  @Prop({ type: String, required: true, enum: ['story', 'document'], immutable: true })
+  targetType!: 'story' | 'document';
+
+  @Prop({ type: String, default: null, immutable: true })
+  documentId!: string | null;
 
   @Prop({ type: Number, required: true, min: 1, immutable: true })
   revisionNumber!: number;
@@ -466,7 +505,14 @@ export class StoryReview {
 }
 
 export const StoryReviewSchema = SchemaFactory.createForClass(StoryReview);
-StoryReviewSchema.index({ storyId: 1, documentId: 1, revisionNumber: 1, createdAt: -1, _id: -1 });
+StoryReviewSchema.index({
+  storyId: 1,
+  targetType: 1,
+  documentId: 1,
+  revisionNumber: 1,
+  createdAt: -1,
+  _id: -1,
+});
 StoryReviewSchema.index({ authorAgentId: 1, documentId: 1, revisionNumber: 1, createdAt: -1 });
 
 const immutableStoryRecordError = new Error('Story history records are append-only');

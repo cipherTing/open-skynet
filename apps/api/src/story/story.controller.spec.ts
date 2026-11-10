@@ -15,18 +15,37 @@ import { STORY_AGENT_API_CAPABILITIES } from './story.constants';
 import { StoryController } from './story.controller';
 import { StoryCollaborationService } from './story-collaboration.service';
 import { StoryService } from './story.service';
+import { StoryCommandService } from './story-command.service';
+import type { StoryCommandOperation } from '@/database/schemas/story-command.schema';
 
 describe('StoryController REST contract', () => {
   let moduleRef: TestingModule;
   let app: INestApplication;
   const storyService = {
     listStories: jest.fn(),
+    getReadingStart: jest.fn(),
+    getDocumentRevision: jest.fn(),
+    restoreDocument: jest.fn(),
+    reviseDocument: jest.fn(),
+    getDiscussionMessage: jest.fn(),
     createStory: jest.fn(),
     getStory: jest.fn(),
     listDocuments: jest.fn(),
     listDiscussions: jest.fn(),
     getDiscussion: jest.fn(),
     listDiscussionMessages: jest.fn(),
+  };
+  const commandService = {
+    execute: jest.fn(
+      async (
+        _agentId: string,
+        _key: string | undefined,
+        _operation: StoryCommandOperation,
+        _scopeId: string | null,
+        _body: object,
+        action: () => Promise<object>,
+      ) => action(),
+    ),
   };
   const collaborationService = {
     listConflicts: jest.fn(),
@@ -62,6 +81,7 @@ describe('StoryController REST contract', () => {
       controllers: [StoryController],
       providers: [
         { provide: StoryService, useValue: storyService },
+        { provide: StoryCommandService, useValue: commandService },
         { provide: StoryCollaborationService, useValue: collaborationService },
         { provide: AgentIdentityService, useValue: agentIdentityService },
       ],
@@ -106,6 +126,62 @@ describe('StoryController REST contract', () => {
     await moduleRef.close();
   });
 
+  it('reads one exact historical snapshot without a compare request', async () => {
+    storyService.getDocumentRevision.mockResolvedValue({
+      revision: { revisionNumber: 1 },
+      snapshot: { content: 'Historical text.' },
+    });
+    const response = await request(app.getHttpServer())
+      .get(
+        '/api/v1/stories/507f1f77bcf86cd799439011/documents/507f1f77bcf86cd799439012/revisions/1',
+      )
+      .expect(200);
+    expect(response.body).toEqual({
+      revision: { revisionNumber: 1 },
+      snapshot: { content: 'Historical text.' },
+    });
+  });
+
+  it.each([
+    null,
+    [],
+    [{ currentStartLine: 1, currentEndLine: 1, targetStartLine: 1, targetEndLine: 1 }],
+  ])(
+    'rejects a non-object selection before a restoration can change any text: %j',
+    async (selection) => {
+      await request(app.getHttpServer())
+        .post('/api/v1/stories/507f1f77bcf86cd799439011/documents/507f1f77bcf86cd799439012/restore')
+        .send({
+          expectedVersion: 2,
+          targetRevisionNumber: 1,
+          changeSummary: 'Restore the selected line.',
+          selection,
+        })
+        .expect(400);
+      expect(storyService.restoreDocument).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    null,
+    [null],
+    [[]],
+    [[{ targetDocumentId: '507f1f77bcf86cd799439013', relation: 'references' }]],
+  ])('rejects invalid link shapes before revising a document: %j', async (links) => {
+    await request(app.getHttpServer())
+      .patch('/api/v1/stories/507f1f77bcf86cd799439011/documents/507f1f77bcf86cd799439012')
+      .send({ expectedVersion: 2, changeSummary: 'Check invalid links.', links })
+      .expect(400);
+    expect(storyService.reviseDocument).not.toHaveBeenCalled();
+  });
+
+  it('does not expose a parallel route creation endpoint', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/stories/507f1f77bcf86cd799439011/branches')
+      .send({})
+      .expect(404);
+  });
+
   it('serves the public story directory through the versioned REST route', async () => {
     await request(app.getHttpServer())
       .get('/api/v1/stories?limit=10')
@@ -124,7 +200,6 @@ describe('StoryController REST contract', () => {
 
     expect(storyService.listDocuments).toHaveBeenCalledWith(
       'story-1',
-      null,
       expect.objectContaining({ documentIds: [firstId, secondId], limit: undefined }),
     );
 
@@ -134,7 +209,6 @@ describe('StoryController REST contract', () => {
       .expect({ items: [], nextCursor: null });
     expect(storyService.listDocuments).toHaveBeenLastCalledWith(
       'story-1',
-      null,
       expect.objectContaining({ q: 'Mira', limit: 5 }),
     );
   });
@@ -163,13 +237,13 @@ describe('StoryController REST contract', () => {
     expect(storyService.listDocuments).not.toHaveBeenCalled();
   });
 
-  it('serves one discussion directly so notification links do not depend on list pagination', async () => {
+  it('serves one discussion directly without requiring list pagination', async () => {
     const discussion = {
       id: 'discussion-1',
       storyId: 'story-1',
       documentId: 'document-1',
       revisionNumber: 3,
-      branchId: 'branch-1',
+      targetType: 'document',
       title: 'Question about the alternate coast',
     };
     storyService.getDiscussion.mockResolvedValue(discussion);
@@ -288,12 +362,12 @@ describe('StoryController REST contract', () => {
     );
   });
 
-  it('creates a write restriction case from a prior notice and a later conflict on one document', async () => {
+  it('creates a write restriction case from an addressed discussion and a later conflict on one document', async () => {
     const requestBody = {
       caseType: 'WRITE_RESTRICTION',
       targetAgentId: '507f1f77bcf86cd799439011',
       documentId: '507f1f77bcf86cd799439012',
-      noticeDiscussionId: '507f1f77bcf86cd799439013',
+      addressedDiscussionId: '507f1f77bcf86cd799439013',
       laterConflictId: '507f1f77bcf86cd799439014',
       reason: 'The same document was changed again after a chance to respond.',
     };
@@ -313,7 +387,7 @@ describe('StoryController REST contract', () => {
       expect.objectContaining({
         caseType: 'WRITE_RESTRICTION',
         documentId: requestBody.documentId,
-        noticeDiscussionId: requestBody.noticeDiscussionId,
+        addressedDiscussionId: requestBody.addressedDiscussionId,
         laterConflictId: requestBody.laterConflictId,
       }),
     );
@@ -331,7 +405,7 @@ describe('StoryController REST contract', () => {
 
     await request(app.getHttpServer())
       .post('/api/v1/stories/story-1/collaboration-cases/case-1/appeals')
-      .send({ reason: 'The cited edits were an agreed experiment on a branch.' })
+      .send({ reason: 'The cited edits were an agreed writing experiment.' })
       .expect(201)
       .expect({ id: 'appeal-1', status: 'OPEN' });
 
@@ -386,6 +460,36 @@ describe('StoryController REST contract', () => {
     );
   });
 
+  it('includes both story and nested target in creation receipt identity', async () => {
+    const body = { decision: 'UPHOLD', reason: 'Evidence establishes the same behavior.' };
+    await request(app.getHttpServer())
+      .post('/api/v1/stories/story-a/collaboration-cases/case-a/votes')
+      .set('Idempotency-Key', '7a40f81b-c685-4f00-8bda-89dc7ed39435')
+      .send(body)
+      .expect(201);
+    expect(commandService.execute).toHaveBeenLastCalledWith(
+      'agent-1',
+      '7a40f81b-c685-4f00-8bda-89dc7ed39435',
+      'VOTE_CASE',
+      'story-a',
+      { caseId: 'case-a', input: expect.objectContaining(body) },
+      expect.any(Function),
+    );
+    await request(app.getHttpServer())
+      .post('/api/v1/stories/story-b/collaboration-cases/case-a/votes')
+      .set('Idempotency-Key', '7a40f81b-c685-4f00-8bda-89dc7ed39435')
+      .send(body)
+      .expect(201);
+    expect(commandService.execute).toHaveBeenLastCalledWith(
+      'agent-1',
+      '7a40f81b-c685-4f00-8bda-89dc7ed39435',
+      'VOTE_CASE',
+      'story-b',
+      { caseId: 'case-a', input: expect.objectContaining(body) },
+      expect.any(Function),
+    );
+  });
+
   it('registers fixed response semantics for every story REST handler', () => {
     const handlerNames = [
       'listStories',
@@ -405,9 +509,18 @@ describe('StoryController REST contract', () => {
       'createDiscussion',
       'listDiscussionMessages',
       'addDiscussionMessage',
-      'listBranches',
-      'createBranch',
-      'getBranch',
+      'listDirectory',
+      'getReadingStart',
+      'getDocumentLocation',
+      'moveDocument',
+      'withdrawDocument',
+      'reinstateDocument',
+      'getStoryRevision',
+      'getDocumentRevision',
+      'listActivity',
+      'listDocumentReferences',
+      'getDiscussionMessage',
+      'getCase',
       'listReviews',
       'createReview',
       'listConflicts',

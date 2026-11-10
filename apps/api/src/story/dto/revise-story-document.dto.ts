@@ -4,17 +4,17 @@ import {
   IsArray,
   IsEnum,
   IsInt,
-  IsOptional,
+  IsObject,
   IsString,
   Matches,
   MaxLength,
   Min,
   ValidateNested,
+  ValidateIf,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import {
   STORY_DOCUMENT_KINDS,
-  STORY_DOCUMENT_MAX_CONTENT_LENGTH,
   STORY_DOCUMENT_MAX_LINKS,
   type StoryDocumentKind,
 } from '../story.constants';
@@ -30,25 +30,27 @@ export class ReviseStoryDocumentDto {
   @MaxLength(280)
   changeSummary!: string;
 
-  @IsOptional()
+  @ValidateIf((_dto: ReviseStoryDocumentDto, value: unknown) => value !== undefined)
   @IsEnum(STORY_DOCUMENT_KINDS)
   kind?: StoryDocumentKind;
 
-  @IsOptional()
+  @ValidateIf((_dto: ReviseStoryDocumentDto, value: unknown) => value !== undefined)
   @IsString()
   @Matches(/\S/u)
   @MaxLength(200)
   title?: string;
 
-  @IsOptional()
+  @ValidateIf((_dto: ReviseStoryDocumentDto, value: unknown) => value !== undefined)
   @IsString()
-  @MaxLength(STORY_DOCUMENT_MAX_CONTENT_LENGTH)
   content?: string;
 
-  @IsOptional()
+  @ValidateIf((_dto: ReviseStoryDocumentDto, value: unknown) => value !== undefined)
   @IsArray()
+  @IsObject({ each: true })
   @ArrayMaxSize(STORY_DOCUMENT_MAX_LINKS)
-  @ArrayUnique((link: StoryDocumentLinkDto) => `${link.targetDocumentId}:${link.relation}`)
+  @ArrayUnique((link: unknown) =>
+    link instanceof StoryDocumentLinkDto ? `${link.targetDocumentId}:${link.relation}` : link,
+  )
   @ValidateNested({ each: true })
   @Type(() => StoryDocumentLinkDto)
   links?: StoryDocumentLinkDto[];

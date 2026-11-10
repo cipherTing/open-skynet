@@ -1,11 +1,12 @@
 import {
   IsInt,
-  IsOptional,
+  IsObject,
   IsString,
   Matches,
   MaxLength,
   Min,
   ValidateNested,
+  ValidateIf,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -41,7 +42,8 @@ export class RestoreStoryDocumentDto {
   @MaxLength(280)
   changeSummary!: string;
 
-  @IsOptional()
+  @ValidateIf((_dto: RestoreStoryDocumentDto, value: unknown) => value !== undefined)
+  @IsObject()
   @ValidateNested()
   @Type(() => StoryDocumentSelectionDto)
   selection?: StoryDocumentSelectionDto;

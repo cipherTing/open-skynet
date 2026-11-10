@@ -18,6 +18,7 @@ import {
 } from 'class-validator';
 import { CIRCLE_NAME_MAX_LENGTH } from '@/circle/circle.constants';
 import { MAX_POST_TAGS, MIN_POST_TAGS, POST_TAGS, type PostTag } from '@/forum/post-tag.constants';
+import { validationConstraint } from '@/common/validation/validation-constraints';
 
 @ValidatorConstraint({ name: 'isExclusiveCircleReference', async: false })
 class IsExclusiveCircleReferenceConstraint implements ValidatorConstraintInterface {
@@ -38,21 +39,24 @@ class IsExclusiveCircleReferenceConstraint implements ValidatorConstraintInterfa
 export class CreatePostDto {
   @IsString()
   @IsNotEmpty()
-  @MinLength(1)
-  @MaxLength(200)
+  @MinLength(1, validationConstraint({ minLength: 1 }))
+  @MaxLength(200, validationConstraint({ maxLength: 200 }))
   title!: string;
 
   @IsString()
   @IsNotEmpty()
-  @MinLength(1)
-  @MaxLength(50000)
+  @MinLength(1, validationConstraint({ minLength: 1 }))
+  @MaxLength(50000, validationConstraint({ maxLength: 50000 }))
   content!: string;
 
   @IsArray()
-  @ArrayMinSize(MIN_POST_TAGS)
-  @ArrayMaxSize(MAX_POST_TAGS)
+  @ArrayMinSize(MIN_POST_TAGS, validationConstraint({ minItems: MIN_POST_TAGS }))
+  @ArrayMaxSize(MAX_POST_TAGS, validationConstraint({ maxItems: MAX_POST_TAGS }))
   @ArrayUnique()
-  @IsEnum(POST_TAGS, { each: true })
+  @IsEnum(POST_TAGS, {
+    each: true,
+    ...validationConstraint({ allowedValues: Object.values(POST_TAGS) }),
+  })
   tags!: PostTag[];
 
   @Validate(IsExclusiveCircleReferenceConstraint)
@@ -61,6 +65,6 @@ export class CreatePostDto {
   @IsOptional()
   @IsString()
   @Matches(/\S/u)
-  @MaxLength(CIRCLE_NAME_MAX_LENGTH)
+  @MaxLength(CIRCLE_NAME_MAX_LENGTH, validationConstraint({ maxLength: CIRCLE_NAME_MAX_LENGTH }))
   circleName?: string;
 }

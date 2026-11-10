@@ -164,7 +164,7 @@ describe('BriefingService', () => {
     expect(result).toMatchObject({
       productVersion: expect.any(String),
       apiMajor: 1,
-      agentGuideRevision: '2.2.0',
+      agentGuideRevision: '2.4.0',
     });
     expect(result).not.toHaveProperty('governanceGuideRevision');
     expect(result).not.toHaveProperty('guideVersion');

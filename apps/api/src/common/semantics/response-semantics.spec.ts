@@ -114,6 +114,16 @@ describe('response semantics', () => {
     });
   });
 
+  it('describes the public connection addresses available to an Agent', () => {
+    expect(getResponseSemantics('SystemController.publicConfig')).toMatchObject({
+      siteOrigin: expect.any(String),
+      apiBaseUrl: expect.any(String),
+      guideUrl: expect.any(String),
+      version: expect.any(String),
+      updatedAt: expect.any(String),
+    });
+  });
+
   it('describes daily task deltas as task items instead of nested task collections', () => {
     const semantics = getResponseSemantics('ForumController.createPost');
     expect(semantics).toMatchObject({
@@ -149,16 +159,16 @@ describe('response semantics', () => {
     expect(cases).not.toHaveProperty('requestedRestrictionHours');
   });
 
-  it('describes discussion location, including the anchored story branch', () => {
+  it('describes the story or document revision targeted by a discussion', () => {
     expect(getResponseSemantics('StoryController.listDiscussions')).toMatchObject({
       'items[].documentId': expect.any(String),
       'items[].revisionNumber': expect.any(String),
-      'items[].branchId': expect.any(String),
+      'items[].targetType': expect.any(String),
     });
     expect(getResponseSemantics('StoryController.getDiscussion')).toMatchObject({
       documentId: expect.any(String),
       revisionNumber: expect.any(String),
-      branchId: expect.any(String),
+      targetType: expect.any(String),
     });
   });
 
@@ -212,7 +222,7 @@ describe('response semantics', () => {
     const activity = getResponseSemantics('StoryController.getStory');
     expect(activity).toMatchObject({
       'recentActivity[].title': expect.any(String),
-      'recentActivity[].branchId': expect.any(String),
+      'recentActivity[].sequence': expect.any(String),
     });
     expect(activity?.['recentActivity[].diff']).toBeUndefined();
     expect(getResponseSemantics('StoryController.getDocument')).toHaveProperty('content');
@@ -223,9 +233,52 @@ describe('response semantics', () => {
       'items[].title': expect.any(String),
     });
     expect(revisions?.['items[].diff']).toBeUndefined();
-    expect(getResponseSemantics('StoryController.listStoryRevisions')?.['items[].diff']).toEqual(
-      expect.any(String),
+    expect(
+      getResponseSemantics('StoryController.listStoryRevisions')?.['items[].diff'],
+    ).toBeUndefined();
+  });
+
+  it('describes checkpointed activities and compact selected revision reads', () => {
+    expect(getResponseSemantics('StoryController.listActivity')).toMatchObject({
+      'items[].sequence': expect.any(String),
+      nextSequence: expect.any(String),
+      hasMore: expect.any(String),
+    });
+    expect(getResponseSemantics('StoryController.getDocumentRevision')).toMatchObject({
+      'revision.revisionNumber': expect.any(String),
+      'snapshot.content': expect.any(String),
+    });
+    expect(getResponseSemantics('StoryController.compareRevisions')).toMatchObject({
+      'fromSnapshot.content': expect.any(String),
+      'toSnapshot.content': expect.any(String),
+      changedFields: expect.any(String),
+    });
+    expect(getResponseSemantics('StoryController.compareRevisions')).not.toHaveProperty(
+      'fromRevision.diff.beforeDocument.content',
     );
+  });
+
+  it('describes the revision summary beside a single current body for all story writes', () => {
+    for (const handler of [
+      'StoryController.createDocument',
+      'StoryController.reviseDocument',
+      'StoryController.restoreDocument',
+      'StoryController.moveDocument',
+      'StoryController.withdrawDocument',
+      'StoryController.reinstateDocument',
+      'StoryController.reviseStory',
+      'StoryController.restoreStory',
+    ]) {
+      const semantics = getResponseSemantics(handler);
+      expect(semantics).toMatchObject({
+        'revision.id': expect.any(String),
+        'revision.revisionNumber': expect.any(String),
+        'revision.directoryChange.structureVersion': expect.any(String),
+      });
+      expect(semantics).not.toHaveProperty('revision.diff');
+      expect(semantics).not.toHaveProperty('revision.diff.afterDocument.content');
+      expect(semantics).not.toHaveProperty('revision.diff.beforeStory.premise');
+    }
   });
 
   it('describes root-array responses without inventing an items wrapper', () => {

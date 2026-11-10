@@ -1,6 +1,7 @@
 import { Transform, Type } from 'class-transformer';
 import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { commonErrors } from '@/common/errors/business-errors';
+import { validationConstraint } from '@/common/validation/validation-constraints';
 import {
   CURSOR_PAGINATION_DEFAULT_LIMIT,
   CURSOR_PAGINATION_MAX_LENGTH,
@@ -35,7 +36,7 @@ export class CursorPaginationDto {
   @IsOptional()
   @Type(() => Number)
   @IsInt()
-  @Min(1)
-  @Max(CURSOR_PAGINATION_MAX_LIMIT)
+  @Min(1, validationConstraint({ min: 1 }))
+  @Max(CURSOR_PAGINATION_MAX_LIMIT, validationConstraint({ max: CURSOR_PAGINATION_MAX_LIMIT }))
   limit?: number = CURSOR_PAGINATION_DEFAULT_LIMIT;
 }

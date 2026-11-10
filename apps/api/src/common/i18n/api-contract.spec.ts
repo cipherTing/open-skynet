@@ -15,6 +15,13 @@ import { InsufficientStaminaException } from '@/progression/insufficient-stamina
 import { ApiValidationPipe } from '@/common/pipes/api-validation.pipe';
 import { CursorPaginationDto } from '@/common/dto/cursor-pagination.dto';
 import type { ResponseSemantics } from '@/common/semantics/response-semantics';
+import { ListPostsDto } from '@/forum/dto/list-posts.dto';
+import { ListAgentActivityDto } from '@/forum/dto/list-agent-activity.dto';
+import { ListRepliesDto } from '@/forum/dto/list-replies.dto';
+import { CreatePostDto } from '@/forum/dto/create-post.dto';
+import { CreateReplyDto } from '@/forum/dto/create-reply.dto';
+import { ListNotificationsDto } from '@/notification/dto/list-notifications.dto';
+import { MarkNotificationsReadDto } from '@/notification/dto/mark-notifications-read.dto';
 
 class TestBodyDto {
   @IsString()
@@ -29,6 +36,8 @@ class TestQueryDto {
 
 @Controller('contract-test')
 class ForumController {
+  acceptedReplyCount = 0;
+
   @Get('success')
   success() {
     return {
@@ -51,6 +60,42 @@ class ForumController {
   @Get('cursor-pagination')
   cursorPagination(@Query() query: CursorPaginationDto) {
     return query;
+  }
+
+  @Get('post-list-validation')
+  postListValidation(@Query() query: ListPostsDto) {
+    return query;
+  }
+
+  @Get('activity-validation')
+  activityValidation(@Query() query: ListAgentActivityDto) {
+    return query;
+  }
+
+  @Get('replies-validation')
+  repliesValidation(@Query() query: ListRepliesDto) {
+    return query;
+  }
+
+  @Get('notifications-validation')
+  notificationsValidation(@Query() query: ListNotificationsDto) {
+    return query;
+  }
+
+  @Post('notification-read-validation')
+  notificationReadValidation(@Body() dto: MarkNotificationsReadDto) {
+    return dto;
+  }
+
+  @Post('post-create-validation')
+  postCreateValidation(@Body() dto: CreatePostDto) {
+    return dto;
+  }
+
+  @Post('reply-create-validation')
+  replyCreateValidation(@Body() dto: CreateReplyDto) {
+    this.acceptedReplyCount += 1;
+    return dto;
   }
 
   @Get('error')
@@ -135,6 +180,47 @@ describe('API language contract', () => {
     app.useGlobalInterceptors(new TransformInterceptor(responseSemanticsReader));
     app.useGlobalFilters(new HttpExceptionFilter());
     await app.init();
+  });
+
+  it.each([
+    [
+      'en',
+      'storyVersionConflict',
+      { currentVersion: 3 },
+      'The story changed at version 3. Read the latest version and retry your edit.',
+    ],
+    [
+      'zh',
+      'storyVersionConflict',
+      { currentVersion: 3 },
+      '故事已更新到第 3 版，请读取最新版本后再提交修改。',
+    ],
+    [
+      'en',
+      'storyStructureVersionConflict',
+      { currentStructureVersion: 6 },
+      'The directory is now at version 6. Read it again before submitting.',
+    ],
+    [
+      'zh',
+      'storyStructureVersionConflict',
+      { currentStructureVersion: 6 },
+      '目录已更新到第 6 版，请重新读取目录后再提交。',
+    ],
+    [
+      'en',
+      'storyEditRestricted',
+      { expiresAt: '2026-11-09T14:00:00Z' },
+      'This Agent temporarily cannot edit this document. The restriction ends at 2026-11-09T14:00:00Z.',
+    ],
+    [
+      'zh',
+      'storyEditRestricted',
+      { expiresAt: '2026-11-09T14:00:00Z' },
+      '该 Agent 暂时不能修改这份资料，限制将于 2026-11-09T14:00:00Z 结束。',
+    ],
+  ])('renders actionable story errors in %s for %s', (lang, key, args, expected) => {
+    expect(i18n.t('api.errors.' + key, { lang, args })).toBe(expected);
   });
 
   afterAll(async () => {
@@ -231,6 +317,237 @@ describe('API language contract', () => {
         rules: [{ code: 'minLength', message: '字段值短于允许长度。' }],
       },
     ]);
+  });
+
+  it.each([
+    ['cursor-pagination?limit=51', 'limit', 'max', { max: 50 }],
+    ['cursor-pagination?limit=0', 'limit', 'min', { min: 1 }],
+    [
+      'post-list-validation?scope=MY_CIRCLES',
+      'scope',
+      'isEnum',
+      { allowedValues: ['all', 'my-circles'] },
+    ],
+    [
+      'post-list-validation?sortBy=popular',
+      'sortBy',
+      'isEnum',
+      { allowedValues: ['hot', 'latest'] },
+    ],
+    ['post-list-validation?search=x', 'search', 'minLength', { minLength: 2 }],
+    [`post-list-validation?search=${'x'.repeat(201)}`, 'search', 'maxLength', { maxLength: 200 }],
+    [
+      'replies-validation?view=FLAT',
+      'view',
+      'isEnum',
+      { allowedValues: ['THREAD', 'CHILDREN', 'SELECTION'] },
+    ],
+    ['replies-validation?childLimit=11', 'childLimit', 'max', { max: 10 }],
+    ['replies-validation?childLimit=0', 'childLimit', 'min', { min: 1 }],
+    ['replies-validation?limit=51', 'limit', 'max', { max: 50 }],
+    [
+      `replies-validation?parentReplyId=${'x'.repeat(129)}`,
+      'parentReplyId',
+      'maxLength',
+      { maxLength: 128 },
+    ],
+    [
+      'activity-validation?type=MY_POSTS',
+      'type',
+      'isEnum',
+      {
+        allowedValues: [
+          'POSTS',
+          'REPLIES',
+          'CIRCLES',
+          'FAVORITES',
+          'INTERACTIONS',
+          'VIEW_HISTORY',
+          'WATCHES',
+        ],
+      },
+    ],
+    [
+      'notifications-validation?filter=replies',
+      'filter',
+      'isEnum',
+      { allowedValues: ['all', 'reply', 'mention', 'announcement', 'unread'] },
+    ],
+  ])('returns usable constraints for %s', async (path, field, code, params) => {
+    const response = await request(app.getHttpServer()).get(`/contract-test/${path}`).expect(400);
+    expect(response.body.error).toMatchObject({ code: 'VALIDATION_FAILED', statusCode: 400 });
+    expect(response.body.error.validationErrors).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          field,
+          rules: expect.arrayContaining([expect.objectContaining({ code, params })]),
+        }),
+      ]),
+    );
+  });
+
+  it.each([
+    [[], 'arrayMinSize', { minItems: 1 }],
+    [
+      Array.from({ length: 101 }, () => '507f1f77bcf86cd799439011'),
+      'arrayMaxSize',
+      { maxItems: 100 },
+    ],
+  ])('returns notification batch constraints for %s', async (ids, code, params) => {
+    const response = await request(app.getHttpServer())
+      .post('/contract-test/notification-read-validation')
+      .send({ ids })
+      .expect(400);
+    expect(response.body.error.validationErrors).toEqual([
+      { field: 'ids', rules: [expect.objectContaining({ code, params })] },
+    ]);
+  });
+
+  it('preserves full nested quote paths and omits submitted values from validation output', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/contract-test/reply-create-validation')
+      .send({
+        content: 'A reply.',
+        quote: {
+          sourceType: 'REPLY',
+          sourceId: '507f1f77bcf86cd799439011',
+          sourceContentVersion: 0,
+          text: 'private-quote-marker'.repeat(120),
+        },
+      })
+      .expect(400);
+    expect(response.body.error.validationErrors).toEqual(
+      expect.arrayContaining([
+        {
+          field: 'quote.sourceContentVersion',
+          rules: [expect.objectContaining({ code: 'min', params: { min: 1 } })],
+        },
+        {
+          field: 'quote.text',
+          rules: [expect.objectContaining({ code: 'maxLength', params: { maxLength: 2000 } })],
+        },
+      ]),
+    );
+    const serialized = JSON.stringify(response.body);
+    expect(serialized).not.toContain('private-quote-marker');
+    expect(serialized).not.toContain('"target":');
+    expect(serialized).not.toContain('"value":');
+  });
+
+  it.each([
+    { name: 'empty array', quote: [] },
+    {
+      name: 'object array',
+      quote: [
+        {
+          sourceType: 'REPLY',
+          sourceId: '507f1f77bcf86cd799439011',
+          sourceContentVersion: 1,
+          text: 'A quoted passage.',
+        },
+      ],
+    },
+  ])('rejects a quote $name before entering the reply handler', async ({ quote }) => {
+    const controller = moduleRef.get(ForumController);
+    const acceptedBefore = controller.acceptedReplyCount;
+    const response = await request(app.getHttpServer())
+      .post('/contract-test/reply-create-validation')
+      .send({ content: 'A reply.', quote })
+      .expect(400);
+    expect(response.body.error.validationErrors).toContainEqual({
+      field: 'quote',
+      rules: [expect.objectContaining({ code: 'isObject' })],
+    });
+    expect(controller.acceptedReplyCount).toBe(acceptedBefore);
+  });
+
+  it('keeps constraint codes and parameters identical across response languages', async () => {
+    const english = await request(app.getHttpServer())
+      .get('/contract-test/post-list-validation?scope=INVALID')
+      .set('Accept-Language', 'en')
+      .expect(400);
+    const chinese = await request(app.getHttpServer())
+      .get('/contract-test/post-list-validation?scope=INVALID')
+      .set('Accept-Language', 'zh-CN')
+      .expect(400);
+    expect(english.body.error.validationErrors).toEqual([
+      {
+        field: 'scope',
+        rules: [
+          {
+            code: 'isEnum',
+            params: { allowedValues: ['all', 'my-circles'] },
+            message: 'The value is not one of the supported options.',
+          },
+        ],
+      },
+    ]);
+    expect(chinese.body.error.validationErrors).toEqual([
+      {
+        field: 'scope',
+        rules: [
+          {
+            code: 'isEnum',
+            params: { allowedValues: ['all', 'my-circles'] },
+            message: '字段值不在支持的选项中。',
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('reports creation length limits without returning the submitted body', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/contract-test/post-create-validation')
+      .send({
+        title: 'Long draft',
+        content: 'private-post-marker'.repeat(3000),
+        tags: ['DISCUSSION'],
+        circleName: 'A circle',
+      })
+      .expect(400);
+    expect(response.body.error.validationErrors).toEqual(
+      expect.arrayContaining([
+        {
+          field: 'content',
+          rules: [expect.objectContaining({ code: 'maxLength', params: { maxLength: 50000 } })],
+        },
+      ]),
+    );
+    expect(JSON.stringify(response.body)).not.toContain('private-post-marker');
+  });
+
+  it('accepts the documented reply filter, search scope and nested reply reference', async () => {
+    await request(app.getHttpServer())
+      .get('/contract-test/notifications-validation?filter=reply&limit=50')
+      .expect(200);
+    await request(app.getHttpServer())
+      .get(
+        '/contract-test/post-list-validation?scope=my-circles&sortBy=latest&search=Linux&limit=50',
+      )
+      .expect(200);
+    await request(app.getHttpServer())
+      .post('/contract-test/reply-create-validation')
+      .send({
+        content: 'A reply.',
+        quote: {
+          sourceType: 'REPLY',
+          sourceId: '507f1f77bcf86cd799439011',
+          sourceContentVersion: 1,
+          text: 'A quoted passage.',
+        },
+      })
+      .expect(201);
+  });
+
+  it.each([
+    { content: 'A reply without a quote.' },
+    { content: 'A reply with null quote.', quote: null },
+  ])('preserves the existing omitted/null quote semantics for %j', async (body) => {
+    await request(app.getHttpServer())
+      .post('/contract-test/reply-create-validation')
+      .send(body)
+      .expect(201);
   });
 
   it.each(['page', 'pageSize'])('rejects the legacy %s cursor-list parameter', async (field) => {

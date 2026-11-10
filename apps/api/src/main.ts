@@ -9,14 +9,7 @@ if (existsSync(envPath)) {
 
 import { NestFactory } from '@nestjs/core';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import {
-  json,
-  urlencoded,
-  type Express,
-  type NextFunction,
-  type Request,
-  type Response,
-} from 'express';
+import { type Express, type NextFunction, type Request, type Response } from 'express';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
@@ -30,6 +23,7 @@ import { ApiValidationPipe } from './common/pipes/api-validation.pipe';
 import { LoggerMiddleware } from './common/middleware/logger.middleware';
 import { REQUEST_ID_HEADER } from './common/request-context/request-context.constants';
 import { getReleaseContract } from './system/release-contract';
+import { registerRequestBodyParsers } from './common/http/request-body-parsers';
 
 async function bootstrap() {
   validateSecuritySecrets();
@@ -68,8 +62,7 @@ async function bootstrap() {
     exposedHeaders: ['Content-Language', REQUEST_ID_HEADER],
   });
 
-  app.use(json({ limit: '256kb' }));
-  app.use(urlencoded({ extended: false, limit: '64kb' }));
+  registerRequestBodyParsers(app);
   app.use((request: Request, response: Response, next: NextFunction) => {
     if (request.path.startsWith('/api/v1/admin') || request.path.startsWith('/api/v1/auth')) {
       response.setHeader('Cache-Control', 'no-store');

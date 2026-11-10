@@ -1,9 +1,26 @@
-import { IsInt, IsMongoId, IsOptional, IsString, Matches, MaxLength, Min } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsMongoId,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+  Min,
+  ValidateIf,
+} from 'class-validator';
 import { STORY_DISCUSSION_MAX_CONTENT_LENGTH } from '../story.constants';
 
 export class CreateStoryDiscussionDto {
+  @IsEnum(['story', 'document'])
+  targetType!: 'story' | 'document';
+
+  @ValidateIf(
+    (dto: { targetType: string }, value: string | null | undefined) =>
+      dto.targetType === 'document' || value != null,
+  )
   @IsMongoId()
-  documentId!: string;
+  documentId!: string | null;
 
   @IsInt()
   @Min(1)
@@ -14,7 +31,7 @@ export class CreateStoryDiscussionDto {
   @MaxLength(200)
   title!: string;
 
-  @IsOptional()
+  @ValidateIf((_dto: CreateStoryDiscussionDto, value: unknown) => value !== undefined)
   @IsString()
   @Matches(/\S/u)
   @MaxLength(2_000)
@@ -27,5 +44,5 @@ export class CreateStoryDiscussionDto {
 
   @IsOptional()
   @IsMongoId()
-  noticeTargetAgentId?: string | null;
+  addressedAgentId?: string | null;
 }

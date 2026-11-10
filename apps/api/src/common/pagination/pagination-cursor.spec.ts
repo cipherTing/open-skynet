@@ -6,7 +6,6 @@ import {
   encodeHotCursor,
   encodeTimestampCursor,
   PAGINATION_CURSOR_KINDS,
-  PAGINATION_CURSOR_TTL_SECONDS,
 } from '@/common/pagination/pagination-cursor';
 
 const DOCUMENT_ID = '507f1f77bcf86cd799439012';
@@ -33,41 +32,74 @@ function readErrorCode(action: () => void): string {
 }
 
 describe('pagination cursor', () => {
-  it('expires after the shared 72-hour lifetime', () => {
-    const cursor = encodeTimestampCursor(
-      PAGINATION_CURSOR_KINDS.POSTS,
+  it('invalidates a prior server run cursor while keeping the active run pageable', () => {
+    let firstRun: typeof import('./pagination-cursor') | undefined;
+    let secondRun: typeof import('./pagination-cursor') | undefined;
+    jest.isolateModules(() => {
+      firstRun = jest.requireActual<typeof import('./pagination-cursor')>('./pagination-cursor');
+    });
+    jest.isolateModules(() => {
+      secondRun = jest.requireActual<typeof import('./pagination-cursor')>('./pagination-cursor');
+    });
+    if (!firstRun || !secondRun) throw new Error('Cursor server runs were not initialized');
+    const activeRun = secondRun;
+    const options = { context: { sortBy: 'latest' } };
+    const firstCursor = firstRun.encodeTimestampCursor(
+      firstRun.PAGINATION_CURSOR_KINDS.POSTS,
       ISSUED_AT,
       DOCUMENT_ID,
-      { context: { sortBy: 'latest' }, subjectId: SUBJECT_ID, now: ISSUED_AT },
-    );
-    const beforeExpiry = new Date(
-      ISSUED_AT.getTime() + PAGINATION_CURSOR_TTL_SECONDS * 1000 - 1,
+      options,
     );
     expect(
-      decodeTimestampCursor(cursor, PAGINATION_CURSOR_KINDS.POSTS, {
+      firstRun
+        .decodeTimestampCursor(firstCursor, firstRun.PAGINATION_CURSOR_KINDS.POSTS, options)
+        .id.toString(),
+    ).toBe(DOCUMENT_ID);
+    expect(() =>
+      activeRun.decodeTimestampCursor(
+        firstCursor,
+        activeRun.PAGINATION_CURSOR_KINDS.POSTS,
+        options,
+      ),
+    ).toThrow();
+    const activeCursor = activeRun.encodeTimestampCursor(
+      activeRun.PAGINATION_CURSOR_KINDS.POSTS,
+      ISSUED_AT,
+      DOCUMENT_ID,
+      options,
+    );
+    expect(
+      activeRun
+        .decodeTimestampCursor(activeCursor, activeRun.PAGINATION_CURSOR_KINDS.POSTS, options)
+        .id.toString(),
+    ).toBe(DOCUMENT_ID);
+  });
+
+  it('keeps a cursor valid for the current server run beyond 72 hours', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(ISSUED_AT);
+    try {
+      const cursor = encodeTimestampCursor(PAGINATION_CURSOR_KINDS.POSTS, ISSUED_AT, DOCUMENT_ID, {
         context: { sortBy: 'latest' },
         subjectId: SUBJECT_ID,
-        now: beforeExpiry,
-      }).id.toString(),
-    ).toBe(DOCUMENT_ID);
-    expect(
-      readErrorCode(() =>
+      });
+      jest.setSystemTime(new Date(ISSUED_AT.getTime() + 73 * 60 * 60 * 1000));
+      expect(
         decodeTimestampCursor(cursor, PAGINATION_CURSOR_KINDS.POSTS, {
           context: { sortBy: 'latest' },
           subjectId: SUBJECT_ID,
-          now: new Date(beforeExpiry.getTime() + 1),
-        }),
-      ),
-    ).toBe('PAGINATION_CURSOR_EXPIRED');
+        }).id.toString(),
+      ).toBe(DOCUMENT_ID);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('returns the generic invalid code for context and subject mismatches', () => {
-    const cursor = encodeTimestampCursor(
-      PAGINATION_CURSOR_KINDS.POSTS,
-      ISSUED_AT,
-      DOCUMENT_ID,
-      { context: { sortBy: 'latest' }, subjectId: SUBJECT_ID },
-    );
+    const cursor = encodeTimestampCursor(PAGINATION_CURSOR_KINDS.POSTS, ISSUED_AT, DOCUMENT_ID, {
+      context: { sortBy: 'latest' },
+      subjectId: SUBJECT_ID,
+    });
     expect(
       readErrorCode(() =>
         decodeTimestampCursor(cursor, PAGINATION_CURSOR_KINDS.POSTS, {

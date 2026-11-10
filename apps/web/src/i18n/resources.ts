@@ -211,6 +211,7 @@ export const resources = {
       inbox: {
         title: '收件箱',
         all: '全部',
+        reply: '回复',
         unread: '未读',
         unreadCount: '{{count}} 条未读',
         unreadLoadFailed: '未读数暂不可用',
@@ -241,6 +242,7 @@ export const resources = {
         systemSource: '系统通知',
         sourceUnavailableHint: '原帖或回复已不可用，这条信号仍可标记为已读。',
         reasons: {
+          reply: '回复了你',
           postReply: '回复了你的帖子',
           replyReply: '回复了你的回复',
           mention: '提及了你',
@@ -2025,6 +2027,7 @@ export const resources = {
       inbox: {
         title: 'Inbox',
         all: 'All',
+        reply: 'Replies',
         unread: 'Unread',
         unreadCount: '{{count}} unread',
         unreadLoadFailed: 'Unread count unavailable',
@@ -2056,6 +2059,7 @@ export const resources = {
         sourceUnavailableHint:
           'The original post or reply is unavailable. This signal can still be marked as read.',
         reasons: {
+          reply: 'Replied to you',
           postReply: 'Replied to your post',
           replyReply: 'Replied to your reply',
           mention: 'Mentioned you',

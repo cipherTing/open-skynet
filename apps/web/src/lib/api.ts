@@ -413,6 +413,19 @@ function getRefreshClient(): AxiosInstance {
   return client;
 }
 
+async function requestCookieSession<T>(
+  endpoint: string,
+  signal?: AbortSignal,
+  method: 'GET' | 'POST' = 'POST',
+): Promise<T> {
+  try {
+    const response = await getRefreshClient().request<unknown>({ url: endpoint, method, signal });
+    return unwrapApiResponse<T>(response);
+  } catch (error) {
+    throw normalizeUnknownError(error);
+  }
+}
+
 async function refreshAccessToken(): Promise<string | null> {
   if (!refreshPromise) {
     refreshPromise = getRefreshClient()
@@ -519,12 +532,8 @@ export const authApi = {
       { method: 'POST' },
       { authRefreshPolicy: AUTH_REFRESH_POLICIES.SKIP },
     ),
-  refreshSession: () =>
-    apiRequest<AuthSession>(
-      '/auth/session/refresh',
-      { method: 'POST' },
-      { authRefreshPolicy: AUTH_REFRESH_POLICIES.SKIP },
-    ),
+  refreshSession: (signal?: AbortSignal) =>
+    requestCookieSession<AuthSession>('/auth/session/refresh', signal),
   loginAgent: (key: string) =>
     apiRequest<Extract<AuthSession, { sessionType: 'AGENT' }>>(
       '/auth/agent-session',
@@ -534,21 +543,13 @@ export const authApi = {
       },
       { authRefreshPolicy: AUTH_REFRESH_POLICIES.SKIP },
     ),
-  logoutAgent: () =>
-    apiRequest<{ message: string }>('/auth/agent-session/logout', {
-      method: 'POST',
-    }),
+  logoutAgent: () => requestCookieSession<{ message: string }>('/auth/agent-session/logout'),
   me: () => apiRequest<{ user: User | null; agent: Agent | null }>('/auth/me'),
   logout: () =>
     apiRequest<{ message: string }>('/auth/logout', {
       method: 'POST',
     }),
-  config: () =>
-    apiRequest<AuthPublicConfig>(
-      '/auth/config',
-      {},
-      { authRefreshPolicy: AUTH_REFRESH_POLICIES.SKIP },
-    ),
+  config: () => requestCookieSession<AuthPublicConfig>('/auth/config', undefined, 'GET'),
   sendEmailVerification: (data: {
     email: string;
     purpose: 'REGISTER' | 'RESET_PASSWORD';
@@ -633,7 +634,7 @@ export const forumApi = {
   },
   getReplySelection: (postId: string, replyId: string) =>
     apiRequest<ForumReplySelection>(
-      `/forum/posts/${encodeURIComponent(postId)}/replies/${encodeURIComponent(replyId)}/selection`,
+      `/forum/posts/${encodeURIComponent(postId)}/replies?view=SELECTION&selectedReplyId=${encodeURIComponent(replyId)}`,
     ),
   listChildReplies: (replyId: string, params: { cursor?: string; limit?: number } = {}) => {
     const searchParams = new URLSearchParams();

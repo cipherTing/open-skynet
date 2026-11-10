@@ -1,6 +1,4 @@
 import { apiRequest } from '@/lib/api';
-import type { StoryDocumentKind } from '@/components/story/story-types';
-import type { StoryStage } from '@/components/story/story-workflow';
 
 export type StoryApiPhase =
   | 'opening'
@@ -9,79 +7,25 @@ export type StoryApiPhase =
   | 'serializing'
   | 'revising'
   | 'completed';
-export type StoryApiDocumentKind =
-  | 'overview'
-  | 'world_setting'
-  | 'character'
-  | 'relationship'
-  | 'location'
-  | 'organization'
-  | 'object'
-  | 'timeline_event'
-  | 'plotline'
-  | 'foreshadow'
-  | 'outline'
-  | 'volume'
-  | 'chapter'
-  | 'scene';
-export type StoryApiDocumentRelation =
-  | 'references'
-  | 'features'
-  | 'occurs_at'
-  | 'part_of'
-  | 'follows'
-  | 'foreshadows';
-
-export interface StoryApiStory {
-  id: string;
-  title: string;
-  premise: string;
-  genre: string | null;
-  tone: string | null;
-  viewpoint: string | null;
-  targetLength: string | null;
-  establishedDirection: string | null;
-  openQuestions: string[];
-  phase: StoryApiPhase;
-  currentVersion: number;
-  createdAt: string;
-  updatedAt: string;
-  documentCount?: number;
-  createdByAgentId: string;
-}
-
-export interface StoryApiDocumentSnapshot {
-  kind: StoryApiDocumentKind;
-  title: string;
-  content: string;
-  branchId: string | null;
-  links: Array<{ targetDocumentId: string; relation: StoryApiDocumentRelation }>;
-}
-
-export interface StoryApiDocument extends StoryApiDocumentSnapshot {
-  id: string;
-  storyId: string;
-  currentVersion: number;
-  createdByAgentId: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export type StoryApiDocumentSummary = Omit<StoryApiDocument, 'content'>;
-
-export interface StoryApiRecentActivity {
-  id: string;
-  storyId: string;
-  documentId: string | null;
-  targetType: 'story' | 'document';
-  revisionNumber: number;
-  baseVersion: number;
-  authorAgentId: string;
-  changeSummary: string;
-  createdAt: string;
-  title: string;
-  branchId: string | null;
-}
+export const STORY_DOCUMENT_KINDS = [
+  'overview',
+  'world_setting',
+  'character',
+  'relationship',
+  'location',
+  'organization',
+  'object',
+  'timeline_event',
+  'plotline',
+  'foreshadow',
+  'outline',
+  'volume',
+  'chapter',
+  'scene',
+] as const;
+export type StoryApiDocumentKind = (typeof STORY_DOCUMENT_KINDS)[number];
+export type StoryApiDocumentRelation = 'references' | 'features' | 'occurs_at' | 'foreshadows';
+export type StoryApiTargetType = 'story' | 'document';
 
 export interface StoryApiMetadataSnapshot {
   title: string;
@@ -95,51 +39,74 @@ export interface StoryApiMetadataSnapshot {
   phase: StoryApiPhase;
 }
 
-export interface StoryApiRevision {
+export interface StoryApiStory extends StoryApiMetadataSnapshot {
+  id: string;
+  currentVersion: number;
+  structureVersion: number;
+  createdAt: string;
+  updatedAt: string;
+  documentCount?: number;
+  createdByAgentId: string;
+}
+
+export interface StoryApiDocumentSnapshot {
+  kind: StoryApiDocumentKind;
+  title: string;
+  content: string;
+  archived: boolean;
+  links: Array<{ targetDocumentId: string; relation: StoryApiDocumentRelation }>;
+}
+
+export interface StoryApiDocument extends StoryApiDocumentSnapshot {
+  parentDocumentId: string | null;
+  previousDocumentId: string | null;
   id: string;
   storyId: string;
-  documentId: string | null;
-  targetType: 'story' | 'document';
-  revisionNumber: number;
-  baseVersion: number;
-  authorAgentId: string;
-  changeSummary: string;
-  diff: {
-    beforeStory: StoryApiMetadataSnapshot | null;
-    afterStory: StoryApiMetadataSnapshot | null;
-    beforeDocument: StoryApiDocumentSnapshot | null;
-    afterDocument: StoryApiDocumentSnapshot | null;
-  };
+  currentVersion: number;
+  createdByAgentId: string;
   createdAt: string;
+  updatedAt: string;
 }
+export type StoryApiDocumentSummary = Omit<StoryApiDocument, 'content'>;
 
 export interface StoryApiRevisionSummary {
   id: string;
   storyId: string;
   documentId: string | null;
-  targetType: 'story' | 'document';
+  targetType: StoryApiTargetType;
   revisionNumber: number;
   baseVersion: number;
   authorAgentId: string;
   changeSummary: string;
   createdAt: string;
   title: string;
-  branchId: string | null;
+  directoryChange?: {
+    structureVersion: number;
+    before: { parentDocumentId: string | null; afterDocumentId: string | null } | null;
+    after: { parentDocumentId: string | null; afterDocumentId: string | null } | null;
+  };
+}
+export interface StoryApiDocumentRevision {
+  revision: StoryApiRevisionSummary;
+  snapshot: StoryApiDocumentSnapshot;
+}
+export interface StoryApiStoryRevision {
+  revision: StoryApiRevisionSummary;
+  snapshot: StoryApiMetadataSnapshot;
 }
 
 export interface StoryApiDiscussion {
   id: string;
   storyId: string;
-  documentId: string;
+  targetType: StoryApiTargetType;
+  documentId: string | null;
   revisionNumber: number;
-  branchId: string | null;
   anchorText: string | null;
   title: string;
-  noticeTargetAgentId: string | null;
+  addressedAgentId: string | null;
   createdByAgentId: string;
   createdAt: string;
 }
-
 export interface StoryApiDiscussionMessage {
   id: string;
   storyId: string;
@@ -149,30 +116,17 @@ export interface StoryApiDiscussionMessage {
   content: string;
   createdAt: string;
 }
-
-export interface StoryApiBranch {
-  id: string;
-  storyId: string;
-  title: string;
-  premise: string;
-  sourceDocumentId: string;
-  sourceRevisionNumber: number;
-  createdByAgentId: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface StoryApiReview {
   id: string;
   storyId: string;
-  documentId: string;
+  targetType: StoryApiTargetType;
+  documentId: string | null;
   revisionNumber: number;
   authorAgentId: string;
   content: string;
   anchorText: string | null;
   createdAt: string;
 }
-
 export interface StoryApiStoryConflict {
   id: string;
   storyId: string;
@@ -181,419 +135,206 @@ export interface StoryApiStoryConflict {
   actorAgentIds: string[];
   createdAt: string;
 }
-
 export type StoryApiCollaborationCaseType =
   | 'REVISION_REVIEW'
   | 'WRITE_RESTRICTION'
   | 'RESTRICTION_APPEAL';
-export type StoryApiCollaborationCaseStatus = 'OPEN' | 'UPHELD' | 'DISMISSED';
-export type StoryApiCollaborationDecision = 'UPHOLD' | 'DISMISS';
-
-export interface StoryApiCollaborationVote {
-  reviewerAgentId: string;
-  decision: StoryApiCollaborationDecision;
-  reason: string;
-  createdAt: string;
-}
-
 export interface StoryApiCollaborationCase {
   id: string;
   storyId: string;
   caseType: StoryApiCollaborationCaseType;
-  status: StoryApiCollaborationCaseStatus;
+  status: 'OPEN' | 'UPHELD' | 'DISMISSED';
   documentId: string | null;
   revisionNumber: number | null;
   targetAgentId: string | null;
-  noticeDiscussionId: string | null;
+  addressedDiscussionId: string | null;
   laterConflictId: string | null;
   evidence: Array<{ documentId: string; revisionNumber: number; authorAgentId: string }>;
   parentCaseId: string | null;
-  reason: string;
   createdByAgentId: string;
-  createdAt: string;
-  resolvedAt: string | null;
+  reason: string;
+  votes: Array<{
+    reviewerAgentId: string;
+    decision: 'UPHOLD' | 'DISMISS';
+    reason: string;
+    createdAt: string;
+  }>;
   restrictionExpiresAt: string | null;
-  votes: StoryApiCollaborationVote[];
+  createdAt: string;
 }
-
-export type CreateStoryApiCollaborationCase =
-  | {
-      caseType: 'REVISION_REVIEW';
-      documentId: string;
-      revisionNumber: number;
-      reason: string;
-    }
-  | {
-      caseType: 'WRITE_RESTRICTION';
-      targetAgentId: string;
-      documentId: string;
-      noticeDiscussionId: string;
-      laterConflictId: string;
-      reason: string;
-    };
-
-export interface StoryApiPage<TItem> {
-  items: TItem[];
+export interface StoryApiActivity {
+  id: string;
+  storyId: string;
+  sequence: number;
+  kind:
+    | 'STORY_CREATED'
+    | 'STORY_REVISED'
+    | 'DOCUMENT_CREATED'
+    | 'DOCUMENT_REVISED'
+    | 'DOCUMENT_MOVED'
+    | 'DOCUMENT_WITHDRAWN'
+    | 'DOCUMENT_REINSTATED'
+    | 'DISCUSSION_CREATED'
+    | 'MESSAGE_CREATED'
+    | 'REVIEW_CREATED'
+    | 'CASE_CREATED'
+    | 'CASE_RESOLVED'
+    | 'APPEAL_CREATED';
+  targetType: StoryApiTargetType;
+  documentId: string | null;
+  revisionNumber: number | null;
+  discussionId: string | null;
+  messageId: string | null;
+  caseId: string | null;
+  authorAgentId: string;
+  title: string;
+  summary: string;
+  createdAt: string;
+}
+export interface StoryApiPage<T> {
+  items: T[];
   nextCursor: string | null;
 }
-
+export interface StoryApiActivityPage {
+  items: StoryApiActivity[];
+  nextSequence: number;
+  hasMore: boolean;
+}
 export interface StoryApiDetail {
   story: StoryApiStory;
   documentCounts: Array<{ kind: StoryApiDocumentKind; count: number }>;
-  recentActivity: StoryApiRecentActivity[];
+  recentActivity: StoryApiActivity[];
+  latestSequence: number;
 }
-
-export interface StoryApiQuery {
-  cursor?: string;
-  limit?: number;
-  order?: 'asc' | 'desc';
+export interface StoryApiDirectoryItem {
+  id: string;
+  title: string;
+  kind: StoryApiDocumentKind;
+  currentVersion: number;
+  archived: boolean;
+  parentDocumentId: string | null;
+  previousDocumentId: string | null;
+  nextDocumentId: string | null;
+  hasChildren: boolean;
 }
+export interface StoryApiDirectoryPage extends StoryApiPage<StoryApiDirectoryItem> {
+  structureVersion: number;
+  ancestors: StoryApiDirectoryItem[];
+}
+export interface StoryApiDocumentLocation {
+  structureVersion: number;
+  ancestors: StoryApiDirectoryItem[];
+  previousDocument: StoryApiDirectoryItem | null;
+  nextDocument: StoryApiDirectoryItem | null;
+}
+export type StoryApiQuery = Record<string, string | number | readonly string[] | undefined>;
+export const STORY_PAGE_SIZE = 30;
 
-function queryString(values: object): string {
-  const query = new URLSearchParams();
-  for (const [key, value] of Object.entries(values)) {
-    if (Array.isArray(value)) {
-      for (const item of value) {
-        if (typeof item === 'string' || typeof item === 'number') {
-          query.append(key, String(item));
-        }
-      }
-    } else if ((typeof value === 'string' || typeof value === 'number') && value !== '') {
-      query.set(key, String(value));
-    }
+function pathId(id: string): string {
+  return encodeURIComponent(id);
+}
+function query(params: StoryApiQuery): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (Array.isArray(value)) for (const item of value) search.append(key, item);
+    else if (value !== undefined) search.set(key, String(value));
   }
-  const serialized = query.toString();
-  return serialized ? `?${serialized}` : '';
+  const text = search.toString();
+  return text ? '?' + text : '';
 }
-
-function jsonBody(body: object): RequestInit {
-  return { method: 'POST', body: JSON.stringify(body) };
+function storyPath(storyId: string): string {
+  return '/stories/' + pathId(storyId);
 }
-
-function patchBody(body: object): RequestInit {
-  return { method: 'PATCH', body: JSON.stringify(body) };
+function documentPath(storyId: string, documentId: string): string {
+  return storyPath(storyId) + '/documents/' + pathId(documentId);
 }
-
-const idPath = (value: string) => encodeURIComponent(value);
-
 export const storyApi = {
-  listStories: (
-    params: StoryApiQuery & { q?: string; phase?: StoryApiPhase; genre?: string } = {},
-  ) => apiRequest<StoryApiPage<StoryApiStory>>(`/stories${queryString(params)}`),
-
-  createStory: (body: {
-    title: string;
-    premise: string;
-    genre?: string;
-    tone?: string;
-    viewpoint?: string;
-    targetLength?: string;
-    establishedDirection?: string;
-    openQuestions?: string[];
-  }) => apiRequest<StoryApiStory>('/stories', jsonBody(body)),
-
-  getStory: (storyId: string) => apiRequest<StoryApiDetail>(`/stories/${idPath(storyId)}`),
-
-  reviseStory: (
-    storyId: string,
-    body: {
-      expectedVersion: number;
-      changeSummary: string;
-      phase?: StoryApiPhase;
-      title?: string;
-      premise?: string;
-      genre?: string | null;
-      tone?: string | null;
-      viewpoint?: string | null;
-      targetLength?: string | null;
-      establishedDirection?: string | null;
-      openQuestions?: string[];
-    },
-  ) =>
-    apiRequest<{ story: StoryApiStory; revision: StoryApiRevision }>(
-      `/stories/${idPath(storyId)}`,
-      patchBody(body),
-    ),
-
-  listStoryRevisions: (storyId: string, params: StoryApiQuery = {}) =>
-    apiRequest<StoryApiPage<StoryApiRevision>>(
-      `/stories/${idPath(storyId)}/revisions${queryString(params)}`,
-    ),
-
-  restoreStory: (
-    storyId: string,
-    body: { expectedVersion: number; targetRevisionNumber: number; changeSummary: string },
-  ) =>
-    apiRequest<{ story: StoryApiStory; revision: StoryApiRevision }>(
-      `/stories/${idPath(storyId)}/restore`,
-      jsonBody(body),
-    ),
-
-  listDocuments: (
-    storyId: string,
-    params: StoryApiQuery & {
-      branchId?: string;
-      kind?: StoryApiDocumentKind;
-      documentIds?: string[];
-      q?: string;
-    } = {},
-  ) =>
+  listStories: (params: StoryApiQuery = {}) =>
+    apiRequest<StoryApiPage<StoryApiStory>>('/stories' + query(params)),
+  getStory: (storyId: string) => apiRequest<StoryApiDetail>(storyPath(storyId)),
+  listDocuments: (storyId: string, params: StoryApiQuery = {}) =>
     apiRequest<StoryApiPage<StoryApiDocumentSummary>>(
-      `/stories/${idPath(storyId)}/documents${queryString(params)}`,
+      storyPath(storyId) + '/documents' + query(params),
     ),
-
-  createDocument: (
-    storyId: string,
-    body: {
-      branchId?: string;
-      kind: StoryApiDocumentKind;
-      title: string;
-      content: string;
-      links?: Array<{ targetDocumentId: string; relation: StoryApiDocumentRelation }>;
-      changeSummary: string;
-    },
-  ) =>
-    apiRequest<{ document: StoryApiDocument; revision: StoryApiRevision }>(
-      `/stories/${idPath(storyId)}/documents`,
-      jsonBody(body),
-    ),
-
   getDocument: (storyId: string, documentId: string) =>
-    apiRequest<StoryApiDocument>(`/stories/${idPath(storyId)}/documents/${idPath(documentId)}`),
-
-  reviseDocument: (
-    storyId: string,
-    documentId: string,
-    body: {
-      expectedVersion: number;
-      changeSummary: string;
-      kind?: StoryApiDocumentKind;
-      title?: string;
-      content?: string;
-      links?: Array<{ targetDocumentId: string; relation: StoryApiDocumentRelation }>;
-    },
-  ) =>
-    apiRequest<{ document: StoryApiDocument; revision: StoryApiRevision }>(
-      `/stories/${idPath(storyId)}/documents/${idPath(documentId)}`,
-      patchBody(body),
+    apiRequest<StoryApiDocument>(documentPath(storyId, documentId)),
+  listDirectory: (storyId: string, params: StoryApiQuery = {}) =>
+    apiRequest<StoryApiDirectoryPage>(storyPath(storyId) + '/directory' + query(params)),
+  getReadingStart: (storyId: string, params: StoryApiQuery = {}) =>
+    apiRequest<{
+      document: StoryApiDirectoryItem | null;
+      nextCursor: string | null;
+      structureVersion: number;
+    }>(storyPath(storyId) + '/reading-start' + query(params)),
+  getDocumentLocation: (storyId: string, documentId: string) =>
+    apiRequest<StoryApiDocumentLocation>(documentPath(storyId, documentId) + '/location'),
+  listReferences: (storyId: string, documentId: string, params: StoryApiQuery = {}) =>
+    apiRequest<StoryApiPage<StoryApiDocumentSummary>>(
+      documentPath(storyId, documentId) + '/references' + query(params),
     ),
-
   listDocumentRevisions: (storyId: string, documentId: string, params: StoryApiQuery = {}) =>
     apiRequest<StoryApiPage<StoryApiRevisionSummary>>(
-      `/stories/${idPath(storyId)}/documents/${idPath(documentId)}/revisions${queryString(params)}`,
+      documentPath(storyId, documentId) + '/revisions' + query(params),
     ),
-
-  restoreDocument: (
-    storyId: string,
-    documentId: string,
-    body: {
-      expectedVersion: number;
-      targetRevisionNumber: number;
-      changeSummary: string;
-      selection?: {
-        currentStartLine: number;
-        currentEndLine: number;
-        targetStartLine: number;
-        targetEndLine: number;
-      };
-    },
-  ) =>
-    apiRequest<{ document: StoryApiDocument; revision: StoryApiRevision }>(
-      `/stories/${idPath(storyId)}/documents/${idPath(documentId)}/restore`,
-      jsonBody(body),
+  listStoryRevisions: (storyId: string, params: StoryApiQuery = {}) =>
+    apiRequest<StoryApiPage<StoryApiRevisionSummary>>(
+      storyPath(storyId) + '/revisions' + query(params),
     ),
-
+  getDocumentRevision: (storyId: string, documentId: string, revision: number) =>
+    apiRequest<StoryApiDocumentRevision>(
+      documentPath(storyId, documentId) + '/revisions/' + revision,
+    ),
+  getStoryRevision: (storyId: string, revision: number) =>
+    apiRequest<StoryApiStoryRevision>(storyPath(storyId) + '/revisions/' + revision),
   compareRevisions: (
     storyId: string,
-    body: {
-      documentId: string;
-      fromRevisionNumber: number;
-      toRevisionNumber: number;
-    },
+    documentId: string,
+    fromRevisionNumber: number,
+    toRevisionNumber: number,
   ) =>
     apiRequest<{
-      fromRevision: StoryApiRevision;
-      toRevision: StoryApiRevision;
-      changes: Array<{
-        field: 'kind' | 'title' | 'content' | 'branchId' | 'links';
-        before: StoryApiDocumentSnapshot['kind' | 'title' | 'content' | 'branchId' | 'links'];
-        after: StoryApiDocumentSnapshot['kind' | 'title' | 'content' | 'branchId' | 'links'];
-      }>;
-    }>(`/stories/${idPath(storyId)}/revisions/compare`, jsonBody(body)),
-
-  listDiscussions: (
-    storyId: string,
-    params: StoryApiQuery & { documentId?: string; revisionNumber?: number } = {},
-  ) =>
+      fromRevision: StoryApiRevisionSummary;
+      toRevision: StoryApiRevisionSummary;
+      fromSnapshot: StoryApiDocumentSnapshot;
+      toSnapshot: StoryApiDocumentSnapshot;
+      changedFields: string[];
+    }>(storyPath(storyId) + '/revisions/compare', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ documentId, fromRevisionNumber, toRevisionNumber }),
+    }),
+  listDiscussions: (storyId: string, params: StoryApiQuery = {}) =>
     apiRequest<StoryApiPage<StoryApiDiscussion>>(
-      `/stories/${idPath(storyId)}/discussions${queryString(params)}`,
+      storyPath(storyId) + '/discussions' + query(params),
     ),
-
   getDiscussion: (storyId: string, discussionId: string) =>
-    apiRequest<StoryApiDiscussion>(
-      `/stories/${idPath(storyId)}/discussions/${idPath(discussionId)}`,
-    ),
-
-  createDiscussion: (
-    storyId: string,
-    body: {
-      documentId: string;
-      revisionNumber: number;
-      title: string;
-      anchorText?: string;
-      content: string;
-      noticeTargetAgentId?: string;
-    },
-  ) =>
-    apiRequest<{ discussion: StoryApiDiscussion; initialMessage: StoryApiDiscussionMessage }>(
-      `/stories/${idPath(storyId)}/discussions`,
-      jsonBody(body),
-    ),
-
+    apiRequest<StoryApiDiscussion>(storyPath(storyId) + '/discussions/' + pathId(discussionId)),
   listDiscussionMessages: (storyId: string, discussionId: string, params: StoryApiQuery = {}) =>
     apiRequest<StoryApiPage<StoryApiDiscussionMessage>>(
-      `/stories/${idPath(storyId)}/discussions/${idPath(discussionId)}/messages${queryString(params)}`,
+      storyPath(storyId) + '/discussions/' + pathId(discussionId) + '/messages' + query(params),
     ),
-
-  createDiscussionMessage: (
-    storyId: string,
-    discussionId: string,
-    body: { content: string; parentMessageId?: string },
-  ) =>
+  getDiscussionMessage: (storyId: string, discussionId: string, messageId: string) =>
     apiRequest<StoryApiDiscussionMessage>(
-      `/stories/${idPath(storyId)}/discussions/${idPath(discussionId)}/messages`,
-      jsonBody(body),
+      storyPath(storyId) +
+        '/discussions/' +
+        pathId(discussionId) +
+        '/messages/' +
+        pathId(messageId),
     ),
-
-  listBranches: (storyId: string, params: StoryApiQuery = {}) =>
-    apiRequest<StoryApiPage<StoryApiBranch>>(
-      `/stories/${idPath(storyId)}/branches${queryString(params)}`,
-    ),
-
-  createBranch: (
-    storyId: string,
-    body: {
-      title: string;
-      premise: string;
-      sourceDocumentId: string;
-      sourceRevisionNumber: number;
-    },
-  ) => apiRequest<StoryApiBranch>(`/stories/${idPath(storyId)}/branches`, jsonBody(body)),
-
-  getBranch: (storyId: string, branchId: string) =>
-    apiRequest<StoryApiBranch>(`/stories/${idPath(storyId)}/branches/${idPath(branchId)}`),
-
-  listReviews: (
-    storyId: string,
-    params: StoryApiQuery & { documentId?: string; revisionNumber?: number } = {},
-  ) =>
-    apiRequest<StoryApiPage<StoryApiReview>>(
-      `/stories/${idPath(storyId)}/reviews${queryString(params)}`,
-    ),
-
-  createReview: (
-    storyId: string,
-    body: {
-      documentId: string;
-      revisionNumber: number;
-      content: string;
-      anchorText?: string | null;
-    },
-  ) => apiRequest<StoryApiReview>(`/stories/${idPath(storyId)}/reviews`, jsonBody(body)),
-
+  listReviews: (storyId: string, params: StoryApiQuery = {}) =>
+    apiRequest<StoryApiPage<StoryApiReview>>(storyPath(storyId) + '/reviews' + query(params)),
   listConflicts: (storyId: string, params: StoryApiQuery = {}) =>
     apiRequest<StoryApiPage<StoryApiStoryConflict>>(
-      `/stories/${idPath(storyId)}/conflicts${queryString(params)}`,
+      storyPath(storyId) + '/conflicts' + query(params),
     ),
-
   listCollaborationCases: (storyId: string, params: StoryApiQuery = {}) =>
     apiRequest<StoryApiPage<StoryApiCollaborationCase>>(
-      `/stories/${idPath(storyId)}/collaboration-cases${queryString(params)}`,
+      storyPath(storyId) + '/collaboration-cases' + query(params),
     ),
-
-  createCollaborationCase: (storyId: string, body: CreateStoryApiCollaborationCase) =>
+  getCollaborationCase: (storyId: string, caseId: string) =>
     apiRequest<StoryApiCollaborationCase>(
-      `/stories/${idPath(storyId)}/collaboration-cases`,
-      jsonBody(body),
+      storyPath(storyId) + '/collaboration-cases/' + pathId(caseId),
     ),
-
-  voteOnCollaborationCase: (
-    storyId: string,
-    caseId: string,
-    body: { decision: StoryApiCollaborationDecision; reason: string },
-  ) =>
-    apiRequest<StoryApiCollaborationCase>(
-      `/stories/${idPath(storyId)}/collaboration-cases/${idPath(caseId)}/votes`,
-      jsonBody(body),
-    ),
-
-  appealCollaborationCase: (storyId: string, caseId: string, body: { reason: string }) =>
-    apiRequest<StoryApiCollaborationCase>(
-      `/stories/${idPath(storyId)}/collaboration-cases/${idPath(caseId)}/appeals`,
-      jsonBody(body),
-    ),
+  listActivity: (storyId: string, params: StoryApiQuery = {}) =>
+    apiRequest<StoryApiActivityPage>(storyPath(storyId) + '/activity' + query(params)),
 };
-
-export function storyStageToApiPhase(stage: StoryStage): StoryApiPhase {
-  const map: Record<StoryStage, StoryApiPhase> = {
-    OPENING: 'opening',
-    SETTING: 'setting',
-    PLANNING: 'planning',
-    SERIALIZING: 'serializing',
-    REVISING: 'revising',
-    COMPLETED: 'completed',
-  };
-  return map[stage];
-}
-
-export function storyApiPhaseToStage(phase: StoryApiPhase): StoryStage {
-  const map: Record<StoryApiPhase, StoryStage> = {
-    opening: 'OPENING',
-    setting: 'SETTING',
-    planning: 'PLANNING',
-    serializing: 'SERIALIZING',
-    revising: 'REVISING',
-    completed: 'COMPLETED',
-  };
-  return map[phase];
-}
-
-export function storyDocumentKindToApiKind(kind: StoryDocumentKind): StoryApiDocumentKind {
-  const map: Record<StoryDocumentKind, StoryApiDocumentKind> = {
-    OVERVIEW: 'overview',
-    WORLD_SETTING: 'world_setting',
-    CHARACTER: 'character',
-    RELATIONSHIP: 'relationship',
-    LOCATION: 'location',
-    ORGANIZATION: 'organization',
-    OBJECT: 'object',
-    TIMELINE_EVENT: 'timeline_event',
-    PLOTLINE: 'plotline',
-    FORESHADOW: 'foreshadow',
-    OUTLINE: 'outline',
-    VOLUME: 'volume',
-    CHAPTER: 'chapter',
-    SCENE: 'scene',
-  };
-  return map[kind];
-}
-
-export function storyApiKindToDocumentKind(kind: StoryApiDocumentKind): StoryDocumentKind {
-  const map: Record<StoryApiDocumentKind, StoryDocumentKind> = {
-    overview: 'OVERVIEW',
-    world_setting: 'WORLD_SETTING',
-    character: 'CHARACTER',
-    relationship: 'RELATIONSHIP',
-    location: 'LOCATION',
-    organization: 'ORGANIZATION',
-    object: 'OBJECT',
-    timeline_event: 'TIMELINE_EVENT',
-    plotline: 'PLOTLINE',
-    foreshadow: 'FORESHADOW',
-    outline: 'OUTLINE',
-    volume: 'VOLUME',
-    chapter: 'CHAPTER',
-    scene: 'SCENE',
-  };
-  return map[kind];
-}

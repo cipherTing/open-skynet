@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Headers,
+  ParseIntPipe,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Public } from '@/auth/decorators/public.decorator';
 import { CurrentUser } from '@/auth/decorators/current-user.decorator';
@@ -21,7 +31,6 @@ import { CreateStoryDiscussionDto } from './dto/create-story-discussion.dto';
 import { ListStoryDiscussionsDto } from './dto/list-story-discussions.dto';
 import { CreateStoryDiscussionMessageDto } from './dto/create-story-discussion-message.dto';
 import { ListStoryDiscussionMessagesDto } from './dto/list-story-discussion-messages.dto';
-import { CreateStoryBranchDto } from './dto/create-story-branch.dto';
 import { CreateStoryReviewDto } from './dto/create-story-review.dto';
 import { ListStoryReviewsDto } from './dto/list-story-reviews.dto';
 import { CursorPaginationDto } from '@/common/dto/cursor-pagination.dto';
@@ -31,6 +40,13 @@ import { AppealStoryCollaborationCaseDto } from './dto/appeal-story-collaboratio
 import { StoryCollaborationService } from './story-collaboration.service';
 import type { CreateStoryCollaborationCaseDto as StoryCollaborationCaseInput } from './story-collaboration.service';
 import { storyErrors } from './story.errors';
+import { StoryCommandService } from './story-command.service';
+import { ListStoryDirectoryDto } from './dto/list-story-directory.dto';
+import { ListStoryActivityDto } from './dto/list-story-activity.dto';
+import {
+  ChangeStoryDocumentStateDto,
+  MoveStoryDocumentDto,
+} from './dto/change-story-document-state.dto';
 
 @ApiTags('stories')
 @Controller('stories')
@@ -39,6 +55,7 @@ export class StoryController {
     private readonly storyService: StoryService,
     private readonly collaborationService: StoryCollaborationService,
     private readonly agentIdentityService: AgentIdentityService,
+    private readonly commandService: StoryCommandService,
   ) {}
 
   @Public()
@@ -50,8 +67,15 @@ export class StoryController {
 
   @Post()
   @StoryAgentApi(STORY_AGENT_API_CAPABILITIES.CREATE_STORY)
-  async createStory(@CurrentUser() user: JwtAuthUser, @Body() dto: CreateStoryDto) {
-    return this.storyService.createStory(await this.actor(user), dto);
+  async createStory(
+    @CurrentUser() user: JwtAuthUser,
+    @Body() dto: CreateStoryDto,
+    @Headers('idempotency-key') key?: string,
+  ) {
+    const actor = await this.actor(user);
+    return this.commandService.execute(actor.agentId, key, 'CREATE_STORY', null, dto, () =>
+      this.storyService.createStory(actor, dto),
+    );
   }
 
   @Public()
@@ -92,7 +116,7 @@ export class StoryController {
   @Public()
   @StoryAgentApi(STORY_AGENT_API_CAPABILITIES.LIST_STORY_DOCUMENTS)
   listDocuments(@Param('storyId') storyId: string, @Query() dto: ListStoryDocumentsDto) {
-    return this.storyService.listDocuments(storyId, dto.branchId ?? null, dto);
+    return this.storyService.listDocuments(storyId, dto);
   }
 
   @Post(':storyId/documents')
@@ -101,8 +125,12 @@ export class StoryController {
     @Param('storyId') storyId: string,
     @CurrentUser() user: JwtAuthUser,
     @Body() dto: CreateStoryDocumentDto,
+    @Headers('idempotency-key') key?: string,
   ) {
-    return this.storyService.createDocument(storyId, await this.actor(user), dto);
+    const actor = await this.actor(user);
+    return this.commandService.execute(actor.agentId, key, 'CREATE_DOCUMENT', storyId, dto, () =>
+      this.storyService.createDocument(storyId, actor, dto),
+    );
   }
 
   @Public()
@@ -172,8 +200,12 @@ export class StoryController {
     @Param('storyId') storyId: string,
     @CurrentUser() user: JwtAuthUser,
     @Body() dto: CreateStoryDiscussionDto,
+    @Headers('idempotency-key') key?: string,
   ) {
-    return this.storyService.createDiscussion(storyId, await this.actor(user), dto);
+    const actor = await this.actor(user);
+    return this.commandService.execute(actor.agentId, key, 'CREATE_DISCUSSION', storyId, dto, () =>
+      this.storyService.createDiscussion(storyId, actor, dto),
+    );
   }
 
   @Get(':storyId/discussions/:discussionId/messages')
@@ -194,37 +226,17 @@ export class StoryController {
     @Param('discussionId') discussionId: string,
     @CurrentUser() user: JwtAuthUser,
     @Body() dto: CreateStoryDiscussionMessageDto,
+    @Headers('idempotency-key') key?: string,
   ) {
-    return this.storyService.addDiscussionMessage(
+    const actor = await this.actor(user);
+    return this.commandService.execute(
+      actor.agentId,
+      key,
+      'CREATE_MESSAGE',
       storyId,
-      discussionId,
-      await this.actor(user),
-      dto,
+      { discussionId, input: dto },
+      () => this.storyService.addDiscussionMessage(storyId, discussionId, actor, dto),
     );
-  }
-
-  @Get(':storyId/branches')
-  @Public()
-  @StoryAgentApi(STORY_AGENT_API_CAPABILITIES.LIST_STORY_BRANCHES)
-  listBranches(@Param('storyId') storyId: string, @Query() dto: CursorPaginationDto) {
-    return this.storyService.listBranches(storyId, dto);
-  }
-
-  @Post(':storyId/branches')
-  @StoryAgentApi(STORY_AGENT_API_CAPABILITIES.CREATE_STORY_BRANCH)
-  async createBranch(
-    @Param('storyId') storyId: string,
-    @CurrentUser() user: JwtAuthUser,
-    @Body() dto: CreateStoryBranchDto,
-  ) {
-    return this.storyService.createBranch(storyId, await this.actor(user), dto);
-  }
-
-  @Public()
-  @StoryAgentApi(STORY_AGENT_API_CAPABILITIES.GET_STORY_BRANCH)
-  @Get(':storyId/branches/:branchId')
-  getBranch(@Param('storyId') storyId: string, @Param('branchId') branchId: string) {
-    return this.storyService.getBranch(storyId, branchId);
   }
 
   @Get(':storyId/reviews')
@@ -240,8 +252,12 @@ export class StoryController {
     @Param('storyId') storyId: string,
     @CurrentUser() user: JwtAuthUser,
     @Body() dto: CreateStoryReviewDto,
+    @Headers('idempotency-key') key?: string,
   ) {
-    return this.storyService.createReview(storyId, await this.actor(user), dto);
+    const actor = await this.actor(user);
+    return this.commandService.execute(actor.agentId, key, 'CREATE_REVIEW', storyId, dto, () =>
+      this.storyService.createReview(storyId, actor, dto),
+    );
   }
 
   @Get(':storyId/conflicts')
@@ -264,11 +280,11 @@ export class StoryController {
     @Param('storyId') storyId: string,
     @CurrentUser() user: JwtAuthUser,
     @Body() dto: CreateStoryCollaborationCaseDto,
+    @Headers('idempotency-key') key?: string,
   ) {
-    return this.collaborationService.createCase(
-      storyId,
-      await this.actor(user),
-      this.toCollaborationCaseInput(dto),
+    const actor = await this.actor(user);
+    return this.commandService.execute(actor.agentId, key, 'CREATE_CASE', storyId, dto, () =>
+      this.collaborationService.createCase(storyId, actor, this.toCollaborationCaseInput(dto)),
     );
   }
 
@@ -279,8 +295,17 @@ export class StoryController {
     @Param('caseId') caseId: string,
     @CurrentUser() user: JwtAuthUser,
     @Body() dto: VoteStoryCollaborationCaseDto,
+    @Headers('idempotency-key') key?: string,
   ) {
-    return this.collaborationService.voteCase(storyId, caseId, await this.actor(user), dto);
+    const actor = await this.actor(user);
+    return this.commandService.execute(
+      actor.agentId,
+      key,
+      'VOTE_CASE',
+      storyId,
+      { caseId, input: dto },
+      () => this.collaborationService.voteCase(storyId, caseId, actor, dto),
+    );
   }
 
   @Post(':storyId/collaboration-cases/:caseId/appeals')
@@ -290,8 +315,128 @@ export class StoryController {
     @Param('caseId') caseId: string,
     @CurrentUser() user: JwtAuthUser,
     @Body() dto: AppealStoryCollaborationCaseDto,
+    @Headers('idempotency-key') key?: string,
   ) {
-    return this.collaborationService.appealCase(storyId, caseId, await this.actor(user), dto);
+    const actor = await this.actor(user);
+    return this.commandService.execute(
+      actor.agentId,
+      key,
+      'APPEAL_CASE',
+      storyId,
+      { caseId, input: dto },
+      () => this.collaborationService.appealCase(storyId, caseId, actor, dto),
+    );
+  }
+
+  @Get(':storyId/directory')
+  @Public()
+  @StoryAgentApi(STORY_AGENT_API_CAPABILITIES.LIST_STORY_DIRECTORY)
+  listDirectory(@Param('storyId') storyId: string, @Query() dto: ListStoryDirectoryDto) {
+    return this.storyService.listDirectory(storyId, dto);
+  }
+
+  @Get(':storyId/reading-start')
+  @Public()
+  @StoryAgentApi(STORY_AGENT_API_CAPABILITIES.GET_STORY_READING_START)
+  getReadingStart(@Param('storyId') storyId: string, @Query() dto: CursorPaginationDto) {
+    return this.storyService.getReadingStart(storyId, dto);
+  }
+
+  @Get(':storyId/documents/:documentId/location')
+  @Public()
+  @StoryAgentApi(STORY_AGENT_API_CAPABILITIES.GET_STORY_DOCUMENT_LOCATION)
+  getDocumentLocation(@Param('storyId') storyId: string, @Param('documentId') documentId: string) {
+    return this.storyService.getDocumentLocation(storyId, documentId);
+  }
+
+  @Get(':storyId/documents/:documentId/references')
+  @Public()
+  @StoryAgentApi(STORY_AGENT_API_CAPABILITIES.LIST_STORY_DOCUMENT_REFERENCES)
+  listDocumentReferences(
+    @Param('storyId') storyId: string,
+    @Param('documentId') documentId: string,
+    @Query() dto: CursorPaginationDto,
+  ) {
+    return this.storyService.listDocumentReferences(storyId, documentId, dto);
+  }
+
+  @Get(':storyId/revisions/:revisionNumber')
+  @Public()
+  @StoryAgentApi(STORY_AGENT_API_CAPABILITIES.GET_STORY_REVISION)
+  getStoryRevision(
+    @Param('storyId') storyId: string,
+    @Param('revisionNumber', ParseIntPipe) revisionNumber: number,
+  ) {
+    return this.storyService.getStoryRevision(storyId, revisionNumber);
+  }
+
+  @Get(':storyId/documents/:documentId/revisions/:revisionNumber')
+  @Public()
+  @StoryAgentApi(STORY_AGENT_API_CAPABILITIES.GET_STORY_DOCUMENT_REVISION)
+  getDocumentRevision(
+    @Param('storyId') storyId: string,
+    @Param('documentId') documentId: string,
+    @Param('revisionNumber', ParseIntPipe) revisionNumber: number,
+  ) {
+    return this.storyService.getDocumentRevision(storyId, documentId, revisionNumber);
+  }
+
+  @Get(':storyId/activity')
+  @Public()
+  @StoryAgentApi(STORY_AGENT_API_CAPABILITIES.LIST_STORY_ACTIVITY)
+  listActivity(@Param('storyId') storyId: string, @Query() dto: ListStoryActivityDto) {
+    return this.storyService.listActivity(storyId, dto);
+  }
+
+  @Get(':storyId/discussions/:discussionId/messages/:messageId')
+  @Public()
+  @StoryAgentApi(STORY_AGENT_API_CAPABILITIES.GET_STORY_DISCUSSION_MESSAGE)
+  getDiscussionMessage(
+    @Param('storyId') storyId: string,
+    @Param('discussionId') discussionId: string,
+    @Param('messageId') messageId: string,
+  ) {
+    return this.storyService.getDiscussionMessage(storyId, discussionId, messageId);
+  }
+
+  @Get(':storyId/collaboration-cases/:caseId')
+  @Public()
+  @StoryAgentApi(STORY_AGENT_API_CAPABILITIES.GET_STORY_COLLABORATION_CASE)
+  getCase(@Param('storyId') storyId: string, @Param('caseId') caseId: string) {
+    return this.collaborationService.getCase(storyId, caseId);
+  }
+
+  @Patch(':storyId/documents/:documentId/position')
+  @StoryAgentApi(STORY_AGENT_API_CAPABILITIES.MOVE_STORY_DOCUMENT)
+  async moveDocument(
+    @Param('storyId') storyId: string,
+    @Param('documentId') documentId: string,
+    @CurrentUser() user: JwtAuthUser,
+    @Body() dto: MoveStoryDocumentDto,
+  ) {
+    return this.storyService.moveDocument(storyId, documentId, await this.actor(user), dto);
+  }
+
+  @Post(':storyId/documents/:documentId/withdraw')
+  @StoryAgentApi(STORY_AGENT_API_CAPABILITIES.WITHDRAW_STORY_DOCUMENT)
+  async withdrawDocument(
+    @Param('storyId') storyId: string,
+    @Param('documentId') documentId: string,
+    @CurrentUser() user: JwtAuthUser,
+    @Body() dto: ChangeStoryDocumentStateDto,
+  ) {
+    return this.storyService.withdrawDocument(storyId, documentId, await this.actor(user), dto);
+  }
+
+  @Post(':storyId/documents/:documentId/reinstate')
+  @StoryAgentApi(STORY_AGENT_API_CAPABILITIES.REINSTATE_STORY_DOCUMENT)
+  async reinstateDocument(
+    @Param('storyId') storyId: string,
+    @Param('documentId') documentId: string,
+    @CurrentUser() user: JwtAuthUser,
+    @Body() dto: MoveStoryDocumentDto,
+  ) {
+    return this.storyService.reinstateDocument(storyId, documentId, await this.actor(user), dto);
   }
 
   private async actor(user: JwtAuthUser) {
@@ -317,14 +462,19 @@ export class StoryController {
         reason: dto.reason,
       };
     }
-    if (!dto.targetAgentId || !dto.documentId || !dto.noticeDiscussionId || !dto.laterConflictId) {
+    if (
+      !dto.targetAgentId ||
+      !dto.documentId ||
+      !dto.addressedDiscussionId ||
+      !dto.laterConflictId
+    ) {
       throw storyErrors.collaborationCasePayloadInvalid();
     }
     return {
       caseType: 'WRITE_RESTRICTION',
       targetAgentId: dto.targetAgentId,
       documentId: dto.documentId,
-      noticeDiscussionId: dto.noticeDiscussionId,
+      addressedDiscussionId: dto.addressedDiscussionId,
       laterConflictId: dto.laterConflictId,
       reason: dto.reason,
     };

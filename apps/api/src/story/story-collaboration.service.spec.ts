@@ -22,7 +22,6 @@ import {
   StoryEnforcementEvent,
   StoryEnforcementEventSchema,
 } from '@/database/schemas/story-collaboration.schema';
-import { Notification, NotificationSchema } from '@/database/schemas/notification.schema';
 import {
   StoryDiscussion,
   StoryDiscussionSchema,
@@ -30,6 +29,13 @@ import {
   StoryDiscussionMessageSchema,
 } from '@/database/schemas/story.schema';
 import { StoryCollaborationService } from './story-collaboration.service';
+import { StoryActivityService } from './story-activity.service';
+import {
+  StoryActivity,
+  StoryActivitySchema,
+  StoryActivityCounter,
+  StoryActivityCounterSchema,
+} from '@/database/schemas/story-activity.schema';
 
 describe('StoryCollaborationService', () => {
   jest.setTimeout(60_000);
@@ -52,11 +58,11 @@ describe('StoryCollaborationService', () => {
       caseType: 'WRITE_RESTRICTION';
       targetAgentId: string;
       documentId: string;
-      noticeDiscussionId: string;
+      addressedDiscussionId: string;
       laterConflictId: string;
       reason: string;
     },
-  ) => service.createCase(storyId, requester, input as never);
+  ) => service.createCase(storyId, requester, input);
 
   const seedAgent = async (suffix: string, ownerUserId = `owner-${suffix}`) =>
     connection.model(Agent.name).create({
@@ -70,7 +76,6 @@ describe('StoryCollaborationService', () => {
     content: string,
     author: ReturnType<typeof actor>,
     createdAt = new Date(),
-    branchId: string | null = null,
   ) => {
     await connection.collection('story_revisions').insertOne({
       _id: new Types.ObjectId(),
@@ -90,7 +95,6 @@ describe('StoryCollaborationService', () => {
           kind: 'chapter',
           title: 'Opening',
           content,
-          branchId,
           links: [],
         },
       },
@@ -98,7 +102,7 @@ describe('StoryCollaborationService', () => {
     });
   };
 
-  const seedNotice = async (
+  const seedAddressedDiscussion = async (
     targetAgentId: string,
     createdAt = new Date(),
     targetDocumentId = documentId,
@@ -115,7 +119,7 @@ describe('StoryCollaborationService', () => {
       title: 'Resolve repeated edits to this passage',
       createdByAgentId,
       createdByOwnerUserIdSnapshot: 'owner-origin',
-      noticeTargetAgentId: targetAgentId,
+      addressedAgentId: targetAgentId,
       createdAt,
     });
     await connection.collection('story_discussion_messages').insertOne({
@@ -128,21 +132,6 @@ describe('StoryCollaborationService', () => {
       content: 'Please discuss this passage before reverting it again.',
       createdAt,
     });
-    await connection.collection('notifications').insertOne({
-      _id: new Types.ObjectId(),
-      recipientAgentId: targetAgentId,
-      kind: 'MENTION',
-      sourceType: 'STORY_DISCUSSION',
-      sourceId: discussionId,
-      actorAgentId: createdByAgentId,
-      postId: null,
-      storyId,
-      documentId: targetDocumentId,
-      discussionId,
-      readAt: null,
-      createdAt,
-      updatedAt: createdAt,
-    });
     return discussionId;
   };
 
@@ -151,6 +140,7 @@ describe('StoryCollaborationService', () => {
     targetOwnerUserId: string,
     createdAt = new Date(),
     targetDocumentId = documentId,
+    firstRevisionNumber = 5,
   ): Promise<string> => {
     const conflictId = new Types.ObjectId().toString();
     const peer = actor('conflict-peer');
@@ -158,20 +148,20 @@ describe('StoryCollaborationService', () => {
       _id: new Types.ObjectId(conflictId),
       storyId,
       documentId: targetDocumentId,
-      revisionNumbers: [5, 6, 7, 8],
+      revisionNumbers: Array.from({ length: 4 }, (_, index) => firstRevisionNumber + index),
       actorAgentIds: [targetAgentId, peer.agentId],
       participantIdentitySnapshots: [
         { agentId: targetAgentId, ownerUserIdSnapshot: targetOwnerUserId },
         { agentId: peer.agentId, ownerUserIdSnapshot: peer.ownerUserId },
       ],
-      triggeringRevisionNumber: 8,
+      triggeringRevisionNumber: firstRevisionNumber + 3,
       createdAt,
     });
     const authors = [targetAgentId, peer.agentId, targetAgentId, peer.agentId];
     const owners = [targetOwnerUserId, peer.ownerUserId, targetOwnerUserId, peer.ownerUserId];
     const contents = ['A', 'B', 'A', 'B'];
     for (let index = 0; index < authors.length; index += 1) {
-      const revisionNumber = index + 5;
+      const revisionNumber = index + firstRevisionNumber;
       const authorAgentId = authors[index];
       const ownerUserId = owners[index];
       const content = contents[index];
@@ -195,6 +185,8 @@ describe('StoryCollaborationService', () => {
         MongooseModule.forRoot(replicaSet.getUri()),
         MongooseModule.forFeature([
           { name: Agent.name, schema: AgentSchema },
+          { name: StoryActivity.name, schema: StoryActivitySchema },
+          { name: StoryActivityCounter.name, schema: StoryActivityCounterSchema },
           { name: Story.name, schema: StorySchema },
           { name: StoryDocument.name, schema: StoryDocumentSchema },
           { name: StoryRevision.name, schema: StoryRevisionSchema },
@@ -202,12 +194,11 @@ describe('StoryCollaborationService', () => {
           { name: StoryCollaborationCase.name, schema: StoryCollaborationCaseSchema },
           { name: StoryCollaborationVote.name, schema: StoryCollaborationVoteSchema },
           { name: StoryEnforcementEvent.name, schema: StoryEnforcementEventSchema },
-          { name: Notification.name, schema: NotificationSchema },
           { name: StoryDiscussion.name, schema: StoryDiscussionSchema },
           { name: StoryDiscussionMessage.name, schema: StoryDiscussionMessageSchema },
         ]),
       ],
-      providers: [StoryCollaborationService, DatabaseService],
+      providers: [StoryCollaborationService, DatabaseService, StoryActivityService],
     }).compile();
     connection = moduleRef.get<Connection>(getConnectionToken());
     service = moduleRef.get(StoryCollaborationService);
@@ -219,7 +210,6 @@ describe('StoryCollaborationService', () => {
       connection.model(StoryCollaborationCase.name).init(),
       connection.model(StoryCollaborationVote.name).init(),
       connection.model(StoryEnforcementEvent.name).init(),
-      connection.model(Notification.name).init(),
       connection.model(StoryDiscussion.name).init(),
       connection.model(StoryDiscussionMessage.name).init(),
     ]);
@@ -228,6 +218,8 @@ describe('StoryCollaborationService', () => {
   beforeEach(async () => {
     await Promise.all([
       connection.collection('stories').deleteMany({}),
+      connection.collection('story_activities').deleteMany({}),
+      connection.collection('story_activity_counters').deleteMany({}),
       connection.collection('story_documents').deleteMany({}),
       connection.collection('story_revisions').deleteMany({}),
       connection.collection('story_edit_conflicts').deleteMany({}),
@@ -235,7 +227,6 @@ describe('StoryCollaborationService', () => {
       connection.collection('story_collaboration_votes').deleteMany({}),
       connection.collection('story_enforcement_events').deleteMany({}),
       connection.collection('agents').deleteMany({}),
-      connection.collection('notifications').deleteMany({}),
       connection.collection('story_discussions').deleteMany({}),
       connection.collection('story_discussion_messages').deleteMany({}),
     ]);
@@ -247,7 +238,6 @@ describe('StoryCollaborationService', () => {
     });
     const document = await connection.model(StoryDocument.name).create({
       storyId: story.id,
-      branchId: null,
       kind: 'chapter',
       title: 'Opening',
       content: 'The coast is quiet.',
@@ -304,7 +294,7 @@ describe('StoryCollaborationService', () => {
       nextCursor: null,
     });
     await expect(
-      service.assertAgentCanEdit(storyId, 'agent-d', undefined, null, documentId),
+      service.assertAgentCanEdit(storyId, 'agent-d', undefined, documentId),
     ).resolves.toBeUndefined();
   });
 
@@ -384,38 +374,38 @@ describe('StoryCollaborationService', () => {
     ).resolves.toBeNull();
   });
 
-  it('requires a target notice and a later conflict signal for a restriction request', async () => {
+  it('requires an addressed discussion and a later conflict signal for a restriction request', async () => {
     const targetAgent = await seedAgent('target');
-    await seedNotice(targetAgent.id);
+    await seedAddressedDiscussion(targetAgent.id);
 
     await expect(
       service.createCase(storyId, actor('creator'), {
         caseType: 'WRITE_RESTRICTION',
         targetAgentId: targetAgent.id,
         documentId,
-        noticeDiscussionId: new Types.ObjectId().toString(),
+        addressedDiscussionId: new Types.ObjectId().toString(),
         laterConflictId: new Types.ObjectId().toString(),
-        reason: 'The target continued alternating this passage after notice.',
+        reason: 'The target continued alternating this passage after the discussion.',
       }),
     ).rejects.toMatchObject({ response: { code: 'STORY_CASE_TARGET_INVALID' } });
   });
 
-  it('waits for a target response or the full notice window before opening a restriction case', async () => {
+  it('waits for a target response or the full discussion window before opening a restriction case', async () => {
     const targetAgent = await seedAgent('target');
-    const noticeTime = new Date(Date.now() - 15 * 60_000);
-    const noticeDiscussionId = await seedNotice(targetAgent.id, noticeTime);
+    const discussionTime = new Date(Date.now() - 15 * 60_000);
+    const addressedDiscussionId = await seedAddressedDiscussion(targetAgent.id, discussionTime);
     const laterConflictId = await seedConflictSignal(
       targetAgent.id,
       targetAgent.userId,
-      new Date(noticeTime.getTime() + 10 * 60_000),
+      new Date(discussionTime.getTime() + 10 * 60_000),
     );
     const input = {
       caseType: 'WRITE_RESTRICTION' as const,
       targetAgentId: targetAgent.id,
       documentId,
-      noticeDiscussionId,
+      addressedDiscussionId,
       laterConflictId,
-      reason: 'The same passage kept alternating after the direct notice.',
+      reason: 'The same passage kept alternating after the addressed discussion.',
     };
 
     await expect(createRestrictionCase(actor('creator'), input)).rejects.toMatchObject({
@@ -425,12 +415,12 @@ describe('StoryCollaborationService', () => {
     await connection.collection('story_discussion_messages').insertOne({
       _id: new Types.ObjectId(),
       storyId,
-      discussionId: noticeDiscussionId,
+      discussionId: addressedDiscussionId,
       parentMessageId: null,
       authorAgentId: targetAgent.id,
       authorOwnerUserIdSnapshot: targetAgent.userId,
       content: 'I will stop reverting this passage and discuss the alternative here.',
-      createdAt: new Date(noticeTime.getTime() + 5 * 60_000),
+      createdAt: new Date(discussionTime.getTime() + 5 * 60_000),
     });
     const caseView = await createRestrictionCase(actor('creator'), input);
     expect(caseView).toMatchObject({
@@ -441,6 +431,126 @@ describe('StoryCollaborationService', () => {
     expect(caseView).not.toHaveProperty('requestedRestrictionHours');
   });
 
+  it('rejects restriction evidence when the target edited only once and another author supplied the reversions', async () => {
+    const target = await seedAgent('target');
+    const addressedDiscussionId = await seedAddressedDiscussion(
+      target.id,
+      new Date(Date.now() - 25 * 60 * 60_000),
+    );
+    const now = Date.now();
+    const authors = [
+      { agentId: target.id, ownerUserId: target.userId },
+      actor('peer'),
+      actor('peer'),
+      actor('peer'),
+    ];
+    for (const [index, author] of authors.entries()) {
+      await seedRevision(
+        index + 2,
+        index % 2 === 0 ? 'X' : 'Y',
+        author,
+        new Date(now - (4 - index) * 1000),
+      );
+    }
+    await connection
+      .collection('story_documents')
+      .updateOne({ _id: new Types.ObjectId(documentId) }, { $set: { currentVersion: 5 } });
+    const signal = await service.detectAndRecordEditConflict(storyId, documentId, actor('peer'));
+    if (!signal) throw new Error('Alternating snapshots should remain a neutral signal');
+
+    await expect(
+      service.createCase(storyId, actor('creator'), {
+        caseType: 'WRITE_RESTRICTION',
+        targetAgentId: target.id,
+        documentId,
+        addressedDiscussionId,
+        laterConflictId: signal.id,
+        reason: 'Do not attribute the peer reverts to the target.',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'STORY_CASE_TARGET_INVALID' } });
+    expect(await connection.collection('story_collaboration_cases').countDocuments()).toBe(0);
+  });
+
+  it('keeps a newer restriction active when an older expired case appeal is upheld', async () => {
+    const target = await seedAgent('target');
+    const targetActor = { agentId: target.id, ownerUserId: target.userId };
+    const addressedDiscussionId = await seedAddressedDiscussion(
+      target.id,
+      new Date(Date.now() - 25 * 60 * 60_000),
+    );
+    const firstSignal = await seedConflictSignal(target.id, target.userId);
+    const createInput = {
+      caseType: 'WRITE_RESTRICTION' as const,
+      targetAgentId: target.id,
+      documentId,
+      addressedDiscussionId,
+      laterConflictId: firstSignal,
+      reason: 'Repeated post-discussion changes to this document.',
+    };
+    const firstCase = await service.createCase(storyId, actor('creator'), createInput);
+    for (const suffix of ['reviewer-a', 'reviewer-b', 'reviewer-c']) {
+      await service.voteCase(storyId, firstCase.id, actor(suffix), {
+        decision: 'UPHOLD',
+        reason: 'The cited behavior merits a narrow restriction.',
+      });
+    }
+    const appeal = await service.appealCase(storyId, firstCase.id, targetActor, {
+      reason: 'Review this first restriction.',
+    });
+    const expired = new Date(Date.now() - 1000);
+    await connection
+      .collection('story_collaboration_cases')
+      .updateOne(
+        { _id: new Types.ObjectId(firstCase.id) },
+        { $set: { restrictionExpiresAt: expired } },
+      );
+    await connection
+      .collection('story_enforcement_events')
+      .updateOne(
+        { sourceCaseId: firstCase.id, action: 'RESTRICT' },
+        { $set: { expiresAt: expired } },
+      );
+    const secondSignal = await seedConflictSignal(
+      target.id,
+      target.userId,
+      new Date(),
+      documentId,
+      9,
+    );
+    const secondCase = await service.createCase(storyId, actor('creator'), {
+      ...createInput,
+      laterConflictId: secondSignal,
+    });
+    for (const suffix of ['reviewer-d', 'reviewer-e', 'reviewer-f']) {
+      await service.voteCase(storyId, secondCase.id, actor(suffix), {
+        decision: 'UPHOLD',
+        reason: 'This new case has its own evidence and restriction.',
+      });
+    }
+    for (const suffix of ['appeal-a', 'appeal-b', 'appeal-c']) {
+      await service.voteCase(storyId, appeal.id, actor(suffix), {
+        decision: 'UPHOLD',
+        reason: 'Uphold the old appeal without affecting another case.',
+      });
+    }
+
+    await expect(
+      service.assertAgentCanEdit(storyId, target.id, undefined, documentId),
+    ).rejects.toMatchObject({ response: { code: 'STORY_EDIT_RESTRICTED' } });
+    expect(
+      await connection.collection('story_enforcement_events').countDocuments({
+        sourceCaseId: firstCase.id,
+        action: 'REVOKE',
+      }),
+    ).toBe(1);
+    expect(
+      await connection.collection('story_enforcement_events').countDocuments({
+        sourceCaseId: secondCase.id,
+        action: 'REVOKE',
+      }),
+    ).toBe(0);
+  });
+
   it('requires three unanimous independent reviewers before limiting one document for one hour', async () => {
     const targetAgent = await seedAgent('target');
     const reviewerAgents = await Promise.all([
@@ -449,20 +559,20 @@ describe('StoryCollaborationService', () => {
       seedAgent('reviewer-3'),
     ]);
     await seedAgent('unrelated-editor');
-    const noticeTime = new Date(Date.now() - 25 * 60 * 60_000);
-    const noticeDiscussionId = await seedNotice(targetAgent.id, noticeTime);
+    const discussionTime = new Date(Date.now() - 25 * 60 * 60_000);
+    const addressedDiscussionId = await seedAddressedDiscussion(targetAgent.id, discussionTime);
     const laterConflictId = await seedConflictSignal(
       targetAgent.id,
       targetAgent.userId,
-      new Date(noticeTime.getTime() + 10 * 60_000),
+      new Date(discussionTime.getTime() + 10 * 60_000),
     );
     const restriction = await service.createCase(storyId, actor('creator'), {
       caseType: 'WRITE_RESTRICTION',
       targetAgentId: targetAgent.id,
       documentId,
-      noticeDiscussionId,
+      addressedDiscussionId,
       laterConflictId,
-      reason: 'The target repeated the same alternating edits after a direct discussion notice.',
+      reason: 'The target repeated the same alternating edits after a direct addressed discussion.',
     });
 
     expect(restriction).toMatchObject({
@@ -480,7 +590,7 @@ describe('StoryCollaborationService', () => {
         },
         {
           decision: 'UPHOLD',
-          reason: 'The cited post-notice conflict involves the same passage and target.',
+          reason: 'The cited post-discussion conflict involves the same passage and target.',
         },
       );
       expect(open.status).toBe('OPEN');
@@ -503,22 +613,27 @@ describe('StoryCollaborationService', () => {
       },
       {
         decision: 'UPHOLD',
-        reason: 'The discussion notice preceded another edit conflict by the target.',
+        reason: 'The addressed discussion preceded another edit conflict by the target.',
       },
     );
     expect(upheld).toMatchObject({ status: 'UPHELD', restrictionExpiresAt: expect.any(Date) });
+    const activities = await moduleRef
+      .get(StoryActivityService)
+      .list(storyId, { afterSequence: 0, limit: 10 });
+    expect(activities.items.map((item) => ({ kind: item.kind, caseId: item.caseId }))).toEqual([
+      { kind: 'CASE_CREATED', caseId: restriction.id },
+      { kind: 'CASE_RESOLVED', caseId: restriction.id },
+    ]);
+
     expect(upheld.restrictionExpiresAt!.getTime()).toBeLessThanOrEqual(Date.now() + 60 * 60_000);
     await expect(
-      service.assertAgentCanEdit(storyId, targetAgent.id, undefined, null, documentId),
+      service.assertAgentCanEdit(storyId, targetAgent.id, undefined, documentId),
     ).rejects.toMatchObject({ response: { code: 'STORY_EDIT_RESTRICTED' } });
     await expect(
-      service.assertAgentCanEdit(storyId, targetAgent.id, undefined, null, 'other-document'),
+      service.assertAgentCanEdit(storyId, targetAgent.id, undefined, 'other-document'),
     ).resolves.toBeUndefined();
     await expect(
-      service.assertAgentCanEdit(storyId, 'agent-unrelated-editor', undefined, null, documentId),
-    ).resolves.toBeUndefined();
-    await expect(
-      service.assertAgentCanEdit(storyId, targetAgent.id, undefined, 'branch-1', documentId),
+      service.assertAgentCanEdit(storyId, 'agent-unrelated-editor', undefined, documentId),
     ).resolves.toBeUndefined();
   });
 
@@ -529,20 +644,20 @@ describe('StoryCollaborationService', () => {
       seedAgent('reviewer-2'),
       seedAgent('reviewer-3'),
     ]);
-    const noticeTime = new Date(Date.now() - 25 * 60 * 60_000);
-    const noticeDiscussionId = await seedNotice(targetAgent.id, noticeTime);
+    const discussionTime = new Date(Date.now() - 25 * 60 * 60_000);
+    const addressedDiscussionId = await seedAddressedDiscussion(targetAgent.id, discussionTime);
     const laterConflictId = await seedConflictSignal(
       targetAgent.id,
       targetAgent.userId,
-      new Date(noticeTime.getTime() + 10 * 60_000),
+      new Date(discussionTime.getTime() + 10 * 60_000),
     );
     const restriction = await service.createCase(storyId, actor('creator'), {
       caseType: 'WRITE_RESTRICTION',
       targetAgentId: targetAgent.id,
       documentId,
-      noticeDiscussionId,
+      addressedDiscussionId,
       laterConflictId,
-      reason: 'The target repeated the disputed edits after notice.',
+      reason: 'The target repeated the disputed edits after the discussion.',
     });
 
     const dismissed = await service.voteCase(
@@ -559,26 +674,26 @@ describe('StoryCollaborationService', () => {
     );
     expect(dismissed.status).toBe('DISMISSED');
     await expect(
-      service.assertAgentCanEdit(storyId, targetAgent.id, undefined, null, documentId),
+      service.assertAgentCanEdit(storyId, targetAgent.id, undefined, documentId),
     ).resolves.toBeUndefined();
   });
 
-  it('recuses every participant in the cited post-notice conflict', async () => {
+  it('recuses every participant in the cited post-discussion conflict', async () => {
     const targetAgent = await seedAgent('target');
-    const noticeTime = new Date(Date.now() - 25 * 60 * 60_000);
-    const noticeDiscussionId = await seedNotice(targetAgent.id, noticeTime);
+    const discussionTime = new Date(Date.now() - 25 * 60 * 60_000);
+    const addressedDiscussionId = await seedAddressedDiscussion(targetAgent.id, discussionTime);
     const laterConflictId = await seedConflictSignal(
       targetAgent.id,
       targetAgent.userId,
-      new Date(noticeTime.getTime() + 10 * 60_000),
+      new Date(discussionTime.getTime() + 10 * 60_000),
     );
     const restriction = await service.createCase(storyId, actor('creator'), {
       caseType: 'WRITE_RESTRICTION',
       targetAgentId: targetAgent.id,
       documentId,
-      noticeDiscussionId,
+      addressedDiscussionId,
       laterConflictId,
-      reason: 'The target repeated the same alternating edits after direct notice.',
+      reason: 'The target repeated the same alternating edits after addressed discussion.',
     });
 
     await expect(
@@ -656,20 +771,20 @@ describe('StoryCollaborationService', () => {
       seedAgent('appeal-reviewer-2'),
       seedAgent('appeal-reviewer-3'),
     ]);
-    const noticeTime = new Date(Date.now() - 25 * 60 * 60_000);
-    const noticeDiscussionId = await seedNotice(targetAgent.id, noticeTime);
+    const discussionTime = new Date(Date.now() - 25 * 60 * 60_000);
+    const addressedDiscussionId = await seedAddressedDiscussion(targetAgent.id, discussionTime);
     const laterConflictId = await seedConflictSignal(
       targetAgent.id,
       targetAgent.userId,
-      new Date(noticeTime.getTime() + 10 * 60_000),
+      new Date(discussionTime.getTime() + 10 * 60_000),
     );
     const caseRecord = await service.createCase(storyId, actor('creator'), {
       caseType: 'WRITE_RESTRICTION',
       targetAgentId: targetAgent.id,
       documentId,
-      noticeDiscussionId,
+      addressedDiscussionId,
       laterConflictId,
-      reason: 'The target continued alternating the same passage after direct notice.',
+      reason: 'The target continued alternating the same passage after addressed discussion.',
     });
     expect(caseRecord.evidence).toHaveLength(4);
 
@@ -682,7 +797,7 @@ describe('StoryCollaborationService', () => {
       },
       {
         decision: 'UPHOLD',
-        reason: 'The cited signal followed the direct discussion notice.',
+        reason: 'The cited signal followed the direct addressed discussion.',
       },
     );
     await service.voteCase(
@@ -694,7 +809,7 @@ describe('StoryCollaborationService', () => {
       },
       {
         decision: 'UPHOLD',
-        reason: 'The target participated in the post-notice alternating revisions.',
+        reason: 'The target participated in the post-discussion alternating revisions.',
       },
     );
     const upheld = await service.voteCase(
@@ -715,19 +830,16 @@ describe('StoryCollaborationService', () => {
         caseType: 'WRITE_RESTRICTION',
         targetAgentId: targetAgent.id,
         documentId,
-        noticeDiscussionId,
+        addressedDiscussionId,
         laterConflictId,
         reason: 'A duplicate restriction request while one is active.',
       }),
     ).rejects.toMatchObject({ response: { code: 'STORY_CASE_ALREADY_OPEN' } });
     await expect(
-      service.assertAgentCanEdit(storyId, targetAgent.id, undefined, null, documentId),
+      service.assertAgentCanEdit(storyId, targetAgent.id, undefined, documentId),
     ).rejects.toMatchObject({ response: { code: 'STORY_EDIT_RESTRICTED' } });
     await expect(
-      service.assertAgentCanEdit(storyId, targetAgent.id, undefined, null, 'another-document'),
-    ).resolves.toBeUndefined();
-    await expect(
-      service.assertAgentCanEdit(storyId, targetAgent.id, undefined, 'branch-1', documentId),
+      service.assertAgentCanEdit(storyId, targetAgent.id, undefined, 'another-document'),
     ).resolves.toBeUndefined();
 
     await expect(
@@ -771,7 +883,7 @@ describe('StoryCollaborationService', () => {
       },
       {
         decision: 'UPHOLD',
-        reason: 'The branch context supports the appeal.',
+        reason: 'The discussion context supports the appeal.',
       },
     );
     const appealUpheld = await service.voteCase(
@@ -788,13 +900,44 @@ describe('StoryCollaborationService', () => {
     );
     expect(appealUpheld).toMatchObject({ status: 'UPHELD', parentCaseId: caseRecord.id });
     await expect(
-      service.assertAgentCanEdit(storyId, targetAgent.id, undefined, null, documentId),
+      service.assertAgentCanEdit(storyId, targetAgent.id, undefined, documentId),
     ).resolves.toBeUndefined();
   });
 
+  it('loads an exact case with its recorded votes without exposing another story case', async () => {
+    const evidenceAuthor = await seedAgent('evidence');
+    await seedRevision(1, 'Reviewed revision', {
+      agentId: evidenceAuthor.id,
+      ownerUserId: evidenceAuthor.userId,
+    });
+    const revisionCase = await service.createCase(storyId, actor('creator'), {
+      caseType: 'REVISION_REVIEW',
+      documentId,
+      revisionNumber: 1,
+      reason: 'Review this exact revision.',
+    });
+    await service.voteCase(storyId, revisionCase.id, actor('reviewer'), {
+      decision: 'UPHOLD',
+      reason: 'This exact revision needs a review.',
+    });
+    expect(await service.getCase(storyId, revisionCase.id)).toMatchObject({
+      id: revisionCase.id,
+      documentId,
+      revisionNumber: 1,
+      votes: [{ reviewerAgentId: 'agent-reviewer', decision: 'UPHOLD' }],
+    });
+    await expect(
+      service.getCase(new Types.ObjectId().toString(), revisionCase.id),
+    ).rejects.toMatchObject({
+      response: { code: 'STORY_CASE_NOT_FOUND' },
+    });
+  });
+
   it('excludes the creator and evidence authors and prevents duplicate open cases and duplicate votes', async () => {
-    await Promise.all([seedAgent('reviewer'), seedAgent('evidence')]);
-    await seedRevision(1, 'Reviewed revision', actor('evidence'));
+    await seedAgent('reviewer');
+    const evidenceAuthor = await seedAgent('evidence');
+    const evidenceActor = { agentId: evidenceAuthor.id, ownerUserId: evidenceAuthor.userId };
+    await seedRevision(1, 'Reviewed revision', evidenceActor);
     const revisionCase = await service.createCase(storyId, actor('creator'), {
       caseType: 'REVISION_REVIEW',
       documentId,
@@ -816,7 +959,7 @@ describe('StoryCollaborationService', () => {
       }),
     ).rejects.toMatchObject({ response: { code: 'STORY_CASE_VOTE_INELIGIBLE' } });
     await expect(
-      service.voteCase(storyId, revisionCase.id, actor('evidence'), {
+      service.voteCase(storyId, revisionCase.id, evidenceActor, {
         decision: 'DISMISS',
         reason: 'The cited revision author cannot vote.',
       }),
@@ -838,8 +981,8 @@ describe('StoryCollaborationService', () => {
           status: 'OPEN',
           documentId,
           revisionNumber: 1,
-          targetAgentId: 'agent-evidence',
-          evidence: [{ documentId, revisionNumber: 1, authorAgentId: 'agent-evidence' }],
+          targetAgentId: evidenceAuthor.id,
+          evidence: [{ documentId, revisionNumber: 1, authorAgentId: evidenceAuthor.id }],
           votes: [],
         },
       ],
@@ -859,13 +1002,12 @@ describe('StoryCollaborationService', () => {
   });
 
   it('uses the third vote to resolve a split vote and closes voting at three', async () => {
-    await Promise.all([
-      seedAgent('author'),
-      seedAgent('peer-1'),
-      seedAgent('peer-2'),
-      seedAgent('peer-3'),
-    ]);
-    await seedRevision(1, 'A reviewed revision', actor('author'));
+    const author = await seedAgent('author');
+    await Promise.all([seedAgent('peer-1'), seedAgent('peer-2'), seedAgent('peer-3')]);
+    await seedRevision(1, 'A reviewed revision', {
+      agentId: author.id,
+      ownerUserId: author.userId,
+    });
     const review = await service.createCase(storyId, actor('creator'), {
       caseType: 'REVISION_REVIEW',
       documentId,

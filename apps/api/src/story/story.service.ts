@@ -3,7 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { isDeepStrictEqual } from 'node:util';
 import { Model, Types, type ClientSession } from 'mongoose';
 import { DatabaseService } from '@/database/database.service';
-import { NotificationService } from '@/notification/notification.service';
+import { Agent } from '@/database/schemas/agent.schema';
 import { commonErrors } from '@/common/errors/business-errors';
 import {
   RESOURCE_CURSOR_KINDS,
@@ -18,12 +18,12 @@ import {
 } from '@/common/pagination/pagination-cursor';
 import {
   Story,
-  StoryBranch,
   StoryDiscussion,
   StoryDiscussionMessage,
   StoryDocument,
   StoryReview,
   StoryRevision,
+  type StoryDirectoryRevisionChange,
   type StoryDocumentLink,
   type StoryDocumentSnapshot,
   type StoryMetadataSnapshot,
@@ -48,20 +48,31 @@ import type { CompareStoryRevisionsDto } from './dto/compare-story-revisions.dto
 import type { ListStoriesDto } from './dto/list-stories.dto';
 import type { CreateStoryDiscussionDto } from './dto/create-story-discussion.dto';
 import type { CreateStoryDiscussionMessageDto } from './dto/create-story-discussion-message.dto';
-import type { CreateStoryBranchDto } from './dto/create-story-branch.dto';
 import type { CreateStoryReviewDto } from './dto/create-story-review.dto';
 import { StoryCollaborationService } from './story-collaboration.service';
+import {
+  StoryDirectoryService,
+  type StoryDirectoryPosition,
+  type StoryDirectoryQuery,
+} from './story-directory.service';
+import { StoryActivityService, STORY_ACTIVITY_KINDS } from './story-activity.service';
+import type { ListStoryActivityDto } from './dto/list-story-activity.dto';
+import type { ListStoryReviewsDto } from './dto/list-story-reviews.dto';
+import type {
+  ChangeStoryDocumentStateDto,
+  MoveStoryDocumentDto,
+} from './dto/change-story-document-state.dto';
 
 const REVISION_CURSOR_KIND = RESOURCE_CURSOR_KINDS.STORY_REVISIONS;
 const STORY_CURSOR_KIND = RESOURCE_CURSOR_KINDS.STORIES;
 const DOCUMENT_CURSOR_KIND = RESOURCE_CURSOR_KINDS.STORY_DOCUMENTS;
 const DISCUSSION_CURSOR_KIND = RESOURCE_CURSOR_KINDS.STORY_DISCUSSIONS;
 const MESSAGE_CURSOR_KIND = RESOURCE_CURSOR_KINDS.STORY_DISCUSSION_MESSAGES;
-const BRANCH_CURSOR_KIND = RESOURCE_CURSOR_KINDS.STORY_BRANCHES;
 const REVIEW_CURSOR_KIND = RESOURCE_CURSOR_KINDS.STORY_REVIEWS;
 const STORY_RECENT_ACTIVITY_LIMIT = 10;
 const STORY_LIST_DEFAULT_LIMIT = 20;
 const STORY_REVIEW_PAGE_DEFAULT_LIMIT = 20;
+const ACTIVITY_SUMMARY_MAX_LENGTH = 1000;
 
 function escapeRegularExpression(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
@@ -87,7 +98,7 @@ type DocumentSnapshot = {
   kind: StoryDocumentKind;
   title: string;
   content: string;
-  branchId: string | null;
+  archived: boolean;
   links: StoryDocumentLink[];
 };
 
@@ -107,16 +118,17 @@ type StorySnapshot = {
 export class StoryService {
   constructor(
     @InjectModel(Story.name) private readonly storyModel: Model<Story>,
+    @InjectModel(Agent.name) private readonly agentModel: Model<Agent>,
     @InjectModel(StoryDocument.name) private readonly documentModel: Model<StoryDocument>,
     @InjectModel(StoryRevision.name) private readonly revisionModel: Model<StoryRevision>,
     @InjectModel(StoryDiscussion.name) private readonly discussionModel: Model<StoryDiscussion>,
     @InjectModel(StoryDiscussionMessage.name)
     private readonly discussionMessageModel: Model<StoryDiscussionMessage>,
-    @InjectModel(StoryBranch.name) private readonly branchModel: Model<StoryBranch>,
     @InjectModel(StoryReview.name) private readonly reviewModel: Model<StoryReview>,
     private readonly databaseService: DatabaseService,
     private readonly storyCollaborationService: StoryCollaborationService,
-    private readonly notificationService: NotificationService,
+    private readonly directoryService: StoryDirectoryService,
+    private readonly activityService: StoryActivityService,
   ) {}
 
   async listStories(dto: ListStoriesDto) {
@@ -150,7 +162,7 @@ export class StoryService {
     const storyIds = items.map((story) => story.id);
     const documentCounts = storyIds.length
       ? await this.documentModel.aggregate<{ _id: string; count: number }>([
-          { $match: { storyId: { $in: storyIds }, branchId: null } },
+          { $match: { storyId: { $in: storyIds }, archived: false } },
           { $group: { _id: '$storyId', count: { $sum: 1 } } },
         ])
       : [];
@@ -215,58 +227,38 @@ export class StoryService {
   }
 
   async getStory(storyId: string) {
-    const story = await this.storyModel.findById(this.objectId(storyId)).exec();
-    if (!story) throw storyErrors.storyNotFound();
+    const latestSequence = await this.activityService.latestSequence(storyId);
+    const story = await this.requireStory(storyId);
     const [counts, recentActivity] = await Promise.all([
       this.documentModel.aggregate<{ _id: StoryDocumentKind; count: number }>([
-        { $match: { storyId, branchId: null } },
+        { $match: { storyId, archived: false } },
         { $group: { _id: '$kind', count: { $sum: 1 } } },
       ]),
-      this.revisionModel
-        .find({ storyId })
-        .select({
-          _id: 1,
-          storyId: 1,
-          documentId: 1,
-          targetType: 1,
-          revisionNumber: 1,
-          baseVersion: 1,
-          authorAgentId: 1,
-          changeSummary: 1,
-          createdAt: 1,
-          'diff.afterStory.title': 1,
-          'diff.afterDocument.title': 1,
-          'diff.afterDocument.branchId': 1,
-        })
-        .sort({ createdAt: -1, _id: -1 })
-        .limit(STORY_RECENT_ACTIVITY_LIMIT)
-        .exec(),
+      this.activityService.recent(storyId, STORY_RECENT_ACTIVITY_LIMIT),
     ]);
     return {
       story: story.toJSON(),
       documentCounts: counts.map(({ _id, count }) => ({ kind: _id, count })),
-      recentActivity: recentActivity.map((revision) => {
-        const summary = {
-          id: revision.id,
-          storyId: revision.storyId,
-          documentId: revision.documentId,
-          targetType: revision.targetType,
-          revisionNumber: revision.revisionNumber,
-          baseVersion: revision.baseVersion,
-          authorAgentId: revision.authorAgentId,
-          changeSummary: revision.changeSummary,
-          createdAt: revision.createdAt,
-        };
-        if (revision.targetType === 'story') {
-          const snapshot = revision.diff.afterStory;
-          if (!snapshot) throw new Error('Story activity revision is missing its story snapshot');
-          return { ...summary, title: snapshot.title, branchId: null };
-        }
-        const snapshot = revision.diff.afterDocument;
-        if (!snapshot) throw new Error('Story activity revision is missing its document snapshot');
-        return { ...summary, title: snapshot.title, branchId: snapshot.branchId };
-      }),
+      recentActivity,
+      latestSequence,
     };
+  }
+
+  async listDirectory(storyId: string, dto: StoryDirectoryQuery) {
+    return this.directoryService.list(storyId, dto);
+  }
+
+  async getReadingStart(storyId: string, dto: CursorPaginationDto = {}) {
+    return this.directoryService.firstChapter(storyId, dto);
+  }
+
+  async getDocumentLocation(storyId: string, documentId: string) {
+    return this.directoryService.locate(storyId, documentId);
+  }
+
+  async listActivity(storyId: string, dto: ListStoryActivityDto) {
+    await this.requireStory(storyId);
+    return this.activityService.list(storyId, dto);
   }
 
   async reviseStory(storyId: string, actor: StoryActor, dto: ReviseStoryDto) {
@@ -321,27 +313,32 @@ export class StoryService {
         },
         session,
       );
-      return { story: updated, revision };
+      return { story: updated, revision: this.revisionSummary(revision) };
     });
   }
 
   async listStoryRevisions(storyId: string, dto: CursorPaginationDto) {
     await this.requireStory(storyId);
-    const cursorContext = storyId;
+    const cursorContext = JSON.stringify({ storyId, targetType: 'story', direction: 'desc' });
     const lastRevision = dto.cursor
       ? decodeOrdinalCursor(dto.cursor, REVISION_CURSOR_KIND, cursorContext)
-      : 0;
+      : null;
     const limit = dto.limit ?? STORY_LIST_DEFAULT_LIMIT;
     const revisions = await this.revisionModel
-      .find({ storyId, documentId: null, revisionNumber: { $gt: lastRevision } })
-      .sort({ revisionNumber: 1 })
+      .find({
+        storyId,
+        targetType: 'story',
+        documentId: null,
+        ...(lastRevision === null ? {} : { revisionNumber: { $lt: lastRevision } }),
+      })
+      .sort({ revisionNumber: -1 })
       .limit(limit + 1)
       .exec();
     const hasMore = revisions.length > limit;
     const items = revisions.slice(0, limit);
     const last = items.at(-1);
     return {
-      items,
+      items: items.map((revision) => this.revisionSummary(revision)),
       nextCursor:
         hasMore && last
           ? encodeOrdinalCursor(REVISION_CURSOR_KIND, cursorContext, last.revisionNumber)
@@ -391,17 +388,12 @@ export class StoryService {
         },
         session,
       );
-      return { story: updated, revision };
+      return { story: updated, revision: this.revisionSummary(revision) };
     });
   }
 
-  async listDocuments(
-    storyId: string,
-    branchId: string | null = null,
-    dto: ListStoryDocumentsDto = {},
-  ) {
+  async listDocuments(storyId: string, dto: ListStoryDocumentsDto = {}) {
     await this.requireStory(storyId);
-    if (branchId) await this.requireBranch(storyId, branchId);
     const query = dto.q?.trim();
     if (dto.documentIds !== undefined) {
       if (
@@ -416,7 +408,6 @@ export class StoryService {
       const documents = await this.documentModel
         .find({
           storyId,
-          branchId: branchId ? { $in: [null, branchId] } : null,
           _id: { $in: dto.documentIds.map((id) => this.objectId(id)) },
         })
         .select({ content: 0 })
@@ -430,7 +421,7 @@ export class StoryService {
         nextCursor: null,
       };
     }
-    const context = { storyId, branchId, kind: dto.kind ?? null, q: query ?? null };
+    const context = { storyId, kind: dto.kind ?? null, q: query ?? null };
     const timestampCursorContext = JSON.stringify(context);
     let timestampCursor: ReturnType<typeof decodeTimestampCursor> | null = null;
     let titleCursor: { title: string; id: Types.ObjectId } | null = null;
@@ -456,7 +447,7 @@ export class StoryService {
     }
     const where: Record<string, unknown> = {
       storyId,
-      branchId,
+      archived: false,
       ...(dto.kind ? { kind: dto.kind } : {}),
       ...(query ? { title: { $regex: `^${escapeRegularExpression(query)}` } } : {}),
     };
@@ -509,33 +500,26 @@ export class StoryService {
   async createDocument(storyId: string, actor: StoryActor, dto: CreateStoryDocumentDto) {
     return this.databaseService.$transaction(async (session) => {
       await this.requireStory(storyId, session);
-      const branchId = dto.branchId ?? null;
-      await this.storyCollaborationService.assertAgentCanEdit(
+      const links = await this.validateLinks(storyId, dto.links ?? [], session);
+      const document = new this.documentModel({
         storyId,
-        actor.agentId,
-        session,
-        branchId,
-      );
-      if (branchId) await this.requireBranch(storyId, branchId, session);
-      const links = await this.validateLinks(storyId, branchId, dto.links ?? [], session);
-      const [document] = await this.documentModel.create(
-        [
-          {
-            storyId,
-            branchId,
-            kind: dto.kind,
-            title: dto.title,
-            content: dto.content,
-            links,
-            currentVersion: 1,
-            createdByAgentId: actor.agentId,
-            createdByOwnerUserIdSnapshot: actor.ownerUserId,
-          },
-        ],
-        { session },
-      );
-      if (!document) throw new Error('Story document creation did not return a document');
-      const snapshot = this.documentSnapshot(document);
+        kind: dto.kind,
+        title: dto.title,
+        content: dto.content,
+        links,
+        archived: false,
+        parentDocumentId: null,
+        previousDocumentId: null,
+        currentVersion: 1,
+        createdByAgentId: actor.agentId,
+        createdByOwnerUserIdSnapshot: actor.ownerUserId,
+      });
+      if (this.isNarrative(dto.kind))
+        await this.directoryService.insert(document, this.position(dto), session);
+      else {
+        this.assertNoPosition(dto);
+        await document.save({ session });
+      }
       const revision = await this.createRevision(
         {
           storyId,
@@ -546,16 +530,26 @@ export class StoryService {
           authorAgentId: actor.agentId,
           authorOwnerUserIdSnapshot: actor.ownerUserId,
           changeSummary: dto.changeSummary,
+          directoryChange: this.isNarrative(dto.kind)
+            ? {
+                structureVersion: this.position(dto).expectedStructureVersion + 1,
+                before: null,
+                after: {
+                  parentDocumentId: dto.parentDocumentId ?? null,
+                  afterDocumentId: dto.afterDocumentId ?? null,
+                },
+              }
+            : null,
           diff: {
             beforeStory: null,
             afterStory: null,
             beforeDocument: null,
-            afterDocument: snapshot,
+            afterDocument: this.documentSnapshot(document),
           },
         },
         session,
       );
-      return { document, revision };
+      return { document, revision: this.revisionSummary(revision) };
     });
   }
 
@@ -580,13 +574,19 @@ export class StoryService {
         .exec();
       if (!document) throw storyErrors.documentNotFound();
       this.assertVersion(document.currentVersion, dto.expectedVersion);
+      if (document.archived) throw storyErrors.documentWithdrawn();
       await this.storyCollaborationService.assertAgentCanEdit(
         document.storyId,
         actor.agentId,
         session,
-        document.branchId,
         document.id,
       );
+      if (
+        dto.kind !== undefined &&
+        dto.kind !== document.kind &&
+        (this.isNarrative(dto.kind) || this.isNarrative(document.kind))
+      )
+        throw storyErrors.documentPositionInvalid();
       const before = this.documentSnapshot(document);
       const after: DocumentSnapshot = {
         ...before,
@@ -595,12 +595,7 @@ export class StoryService {
         ...(dto.content !== undefined ? { content: dto.content } : {}),
         ...(dto.links !== undefined
           ? {
-              links: await this.validateLinks(
-                document.storyId,
-                document.branchId,
-                dto.links,
-                session,
-              ),
+              links: await this.validateLinks(document.storyId, dto.links, session),
             }
           : {}),
       };
@@ -649,7 +644,7 @@ export class StoryService {
         actor,
         session,
       );
-      return { document: updated, revision };
+      return { document: updated, revision: this.revisionSummary(revision) };
     });
   }
 
@@ -678,9 +673,9 @@ export class StoryService {
         baseVersion: 1,
         authorAgentId: 1,
         changeSummary: 1,
+        directoryChange: 1,
         createdAt: 1,
         'diff.afterDocument.title': 1,
-        'diff.afterDocument.branchId': 1,
       })
       .sort({ revisionNumber: -1 })
       .limit(limit + 1)
@@ -703,7 +698,7 @@ export class StoryService {
           changeSummary: revision.changeSummary,
           createdAt: revision.createdAt,
           title: snapshot.title,
-          branchId: snapshot.branchId,
+          directoryChange: revision.directoryChange,
         };
       }),
       nextCursor:
@@ -730,7 +725,6 @@ export class StoryService {
         document.storyId,
         actor.agentId,
         session,
-        document.branchId,
         document.id,
       );
       const targetRevision = await this.revisionModel
@@ -742,14 +736,20 @@ export class StoryService {
       const before = this.documentSnapshot(document);
       const after = dto.selection
         ? this.restoreSelection(before, target, dto.selection)
-        : this.documentSnapshot(target);
+        : {
+            ...before,
+            kind: target.kind,
+            title: target.title,
+            content: target.content,
+            links: target.links,
+          };
+      if (
+        after.kind !== before.kind &&
+        (this.isNarrative(after.kind) || this.isNarrative(before.kind))
+      )
+        throw storyErrors.documentPositionInvalid();
       if (isDeepStrictEqual(before, after)) throw storyErrors.unchanged();
-      const links = await this.validateLinks(
-        document.storyId,
-        document.branchId,
-        after.links,
-        session,
-      );
+      const links = await this.validateLinks(document.storyId, after.links, session);
       const updated = await this.documentModel
         .findOneAndUpdate(
           { _id: document._id, currentVersion: dto.expectedVersion },
@@ -789,7 +789,7 @@ export class StoryService {
         actor,
         session,
       );
-      return { document: updated, revision };
+      return { document: updated, revision: this.revisionSummary(revision) };
     });
   }
 
@@ -809,86 +809,74 @@ export class StoryService {
     if (!beforeSnapshot || !afterSnapshot) throw storyErrors.revisionNotFound();
     const before = this.documentSnapshot(beforeSnapshot);
     const after = this.documentSnapshot(afterSnapshot);
-    const changes = (Object.keys(after) as Array<keyof DocumentSnapshot>).flatMap((field) =>
-      isDeepStrictEqual(before[field], after[field])
-        ? []
-        : [{ field, before: before[field], after: after[field] }],
+    const changedFields = (Object.keys(after) as Array<keyof DocumentSnapshot>).filter(
+      (field) => !isDeepStrictEqual(before[field], after[field]),
     );
     return {
-      fromRevision: fromRevision.toJSON(),
-      toRevision: toRevision.toJSON(),
-      changes,
+      fromRevision: this.revisionSummary(fromRevision),
+      toRevision: this.revisionSummary(toRevision),
+      fromSnapshot: before,
+      toSnapshot: after,
+      changedFields,
     };
   }
 
-  async listBranches(storyId: string, dto: CursorPaginationDto = {}) {
-    await this.requireStory(storyId);
+  async getStoryRevision(storyId: string, revisionNumber: number) {
+    const revision = await this.requireRevision(storyId, 'story', null, revisionNumber);
+    const snapshot = revision.diff.afterStory;
+    if (!snapshot) throw storyErrors.revisionNotFound();
+    return { revision: this.revisionSummary(revision), snapshot: this.metadataSnapshot(snapshot) };
+  }
+
+  async getDocumentRevision(storyId: string, documentId: string, revisionNumber: number) {
+    const revision = await this.requireRevision(storyId, 'document', documentId, revisionNumber);
+    const snapshot = revision.diff.afterDocument;
+    if (!snapshot) throw storyErrors.revisionNotFound();
+    return { revision: this.revisionSummary(revision), snapshot: this.documentSnapshot(snapshot) };
+  }
+
+  async listDocumentReferences(storyId: string, documentId: string, dto: CursorPaginationDto = {}) {
+    await this.getDocument(documentId, storyId);
+    const context = JSON.stringify({ storyId, documentId, references: true });
     const cursor = dto.cursor
-      ? decodeTimestampCursor(dto.cursor, BRANCH_CURSOR_KIND, storyId)
+      ? decodeTimestampCursor(dto.cursor, DOCUMENT_CURSOR_KIND, context)
       : null;
-    const where: Record<string, unknown> = { storyId };
-    if (cursor) {
-      where['$or'] = [
-        { createdAt: { $lt: cursor.timestamp } },
-        { createdAt: cursor.timestamp, _id: { $lt: cursor.id } },
-      ];
-    }
+    const where = {
+      storyId,
+      archived: false,
+      'links.targetDocumentId': documentId,
+      ...(cursor
+        ? {
+            $or: [
+              { createdAt: { $lt: cursor.timestamp } },
+              { createdAt: cursor.timestamp, _id: { $lt: cursor.id } },
+            ],
+          }
+        : {}),
+    };
     const limit = dto.limit ?? STORY_LIST_DEFAULT_LIMIT;
-    const branches = await this.branchModel
+    const documents = await this.documentModel
       .find(where)
       .sort({ createdAt: -1, _id: -1 })
       .limit(limit + 1)
+      .select({ content: 0 })
       .exec();
-    const hasMore = branches.length > limit;
-    const items = branches.slice(0, limit);
-    const last = items.at(-1) as (StoryBranch & StoryTimestampRecord) | undefined;
+    const items = documents.slice(0, limit);
+    const last = items.at(-1);
     return {
       items,
       nextCursor:
-        hasMore && last
-          ? encodeTimestampCursor(BRANCH_CURSOR_KIND, storyId, last.createdAt, last._id.toString())
+        documents.length > limit && last
+          ? encodeTimestampCursor(DOCUMENT_CURSOR_KIND, context, last.createdAt, last.id)
           : null,
     };
-  }
-
-  async createBranch(storyId: string, actor: StoryActor, dto: CreateStoryBranchDto) {
-    return this.databaseService.$transaction(async (session) => {
-      await this.requireStory(storyId, session);
-      const source = await this.revisionModel
-        .findOne({
-          storyId,
-          documentId: dto.sourceDocumentId,
-          revisionNumber: dto.sourceRevisionNumber,
-        })
-        .session(session)
-        .exec();
-      if (!source) throw storyErrors.revisionNotFound();
-      const [branch] = await this.branchModel.create(
-        [
-          {
-            storyId,
-            title: dto.title,
-            premise: dto.premise,
-            sourceDocumentId: dto.sourceDocumentId,
-            sourceRevisionNumber: dto.sourceRevisionNumber,
-            createdByAgentId: actor.agentId,
-            createdByOwnerUserIdSnapshot: actor.ownerUserId,
-          },
-        ],
-        { session },
-      );
-      return branch;
-    });
-  }
-
-  async getBranch(storyId: string, branchId: string) {
-    return this.requireBranch(storyId, branchId);
   }
 
   async listDiscussions(storyId: string, dto: ListStoryDiscussionsDto = {}) {
     await this.requireStory(storyId);
     const context = JSON.stringify({
       storyId,
+      targetType: dto.targetType ?? null,
       documentId: dto.documentId ?? null,
       revisionNumber: dto.revisionNumber ?? null,
     });
@@ -896,6 +884,7 @@ export class StoryService {
       ? decodeTimestampCursor(dto.cursor, DISCUSSION_CURSOR_KIND, context)
       : null;
     const where: Record<string, unknown> = { storyId };
+    if (dto.targetType) where['targetType'] = dto.targetType;
     if (dto.documentId) where['documentId'] = dto.documentId;
     if (dto.revisionNumber !== undefined) where['revisionNumber'] = dto.revisionNumber;
     if (cursor) {
@@ -912,37 +901,9 @@ export class StoryService {
       .exec();
     const hasMore = discussions.length > limit;
     const items = discussions.slice(0, limit);
-    const revisions = items.length
-      ? await this.revisionModel
-          .find({
-            storyId,
-            targetType: 'document',
-            $or: items.map(({ documentId, revisionNumber }) => ({
-              documentId,
-              revisionNumber,
-            })),
-          })
-          .select({ documentId: 1, revisionNumber: 1, 'diff.afterDocument.branchId': 1 })
-          .exec()
-      : [];
-    const revisionsByDiscussionTarget = new Map<string, StoryRevision>();
-    for (const revision of revisions) {
-      if (revision.documentId === null) throw storyErrors.revisionNotFound();
-      revisionsByDiscussionTarget.set(
-        this.discussionRevisionKey(revision.documentId, revision.revisionNumber),
-        revision,
-      );
-    }
-    const discussionsWithBranch = items.map((discussion) => {
-      const revision = revisionsByDiscussionTarget.get(
-        this.discussionRevisionKey(discussion.documentId, discussion.revisionNumber),
-      );
-      if (!revision?.diff.afterDocument) throw storyErrors.revisionNotFound();
-      return this.toDiscussionResponse(discussion, revision);
-    });
     const last = items.at(-1) as (StoryDiscussion & StoryTimestampRecord) | undefined;
     return {
-      items: discussionsWithBranch,
+      items,
       nextCursor:
         hasMore && last
           ? encodeTimestampCursor(
@@ -960,35 +921,31 @@ export class StoryService {
       .findOne({ _id: this.objectId(discussionId), storyId })
       .exec();
     if (!discussion) throw storyErrors.discussionNotFound();
-    const revision = await this.revisionModel
-      .findOne({
-        storyId,
-        targetType: 'document',
-        documentId: discussion.documentId,
-        revisionNumber: discussion.revisionNumber,
-      })
-      .select({ documentId: 1, revisionNumber: 1, 'diff.afterDocument.branchId': 1 })
-      .exec();
-    if (!revision?.diff.afterDocument) throw storyErrors.revisionNotFound();
-    return this.toDiscussionResponse(discussion, revision);
+    return discussion;
   }
 
   async createDiscussion(storyId: string, actor: StoryActor, dto: CreateStoryDiscussionDto) {
     return this.databaseService.$transaction(async (session) => {
-      const document = await this.documentModel
-        .findOne({ _id: this.objectId(dto.documentId), storyId })
-        .session(session)
-        .exec();
-      const revision = await this.revisionModel
-        .findOne({ storyId, documentId: dto.documentId, revisionNumber: dto.revisionNumber })
-        .session(session)
-        .exec();
-      const snapshot = revision?.diff.afterDocument;
+      const revision = await this.requireRevision(
+        storyId,
+        dto.targetType,
+        dto.documentId,
+        dto.revisionNumber,
+        session,
+      );
+      const snapshot =
+        dto.targetType === 'story' ? revision.diff.afterStory : revision.diff.afterDocument;
       if (
-        !document ||
         !snapshot ||
-        (dto.anchorText !== undefined && !snapshot.content.includes(dto.anchorText)) ||
-        dto.noticeTargetAgentId === actor.agentId
+        (dto.anchorText !== undefined && !this.anchorContent(revision).includes(dto.anchorText)) ||
+        dto.addressedAgentId === actor.agentId
+      )
+        throw storyErrors.discussionTargetInvalid();
+      if (
+        dto.addressedAgentId &&
+        !(await this.agentModel
+          .exists({ _id: dto.addressedAgentId, deletedAt: null })
+          .session(session))
       ) {
         throw storyErrors.discussionTargetInvalid();
       }
@@ -996,11 +953,12 @@ export class StoryService {
         [
           {
             storyId,
-            documentId: dto.documentId,
+            targetType: dto.targetType,
+            documentId: dto.documentId ?? null,
             revisionNumber: dto.revisionNumber,
             anchorText: dto.anchorText ?? null,
             title: dto.title,
-            noticeTargetAgentId: dto.noticeTargetAgentId ?? null,
+            addressedAgentId: dto.addressedAgentId ?? null,
             createdByAgentId: actor.agentId,
             createdByOwnerUserIdSnapshot: actor.ownerUserId,
           },
@@ -1022,24 +980,22 @@ export class StoryService {
         { session },
       );
       if (!initialMessage) throw new Error('Story discussion message creation failed');
-      if (dto.noticeTargetAgentId) {
-        const notificationCreated =
-          await this.notificationService.createStoryDiscussionNotification(
-            {
-              discussionId: discussion.id,
-              storyId,
-              documentId: dto.documentId,
-              actorAgentId: actor.agentId,
-              recipientAgentId: dto.noticeTargetAgentId,
-            },
-            session,
-          );
-        if (!notificationCreated) throw storyErrors.discussionTargetInvalid();
-      }
-      return {
-        discussion: this.toDiscussionResponse(discussion, revision),
-        initialMessage,
-      };
+      await this.activityService.append(
+        {
+          storyId,
+          kind: STORY_ACTIVITY_KINDS.DISCUSSION_CREATED,
+          targetType: dto.targetType,
+          documentId: dto.documentId ?? null,
+          revisionNumber: dto.revisionNumber,
+          discussionId: discussion.id,
+          messageId: initialMessage.id,
+          authorAgentId: actor.agentId,
+          title: dto.title,
+          summary: dto.content.slice(0, ACTIVITY_SUMMARY_MAX_LENGTH),
+        },
+        session,
+      );
+      return { discussion, initialMessage };
     });
   }
 
@@ -1117,17 +1073,30 @@ export class StoryService {
         { session },
       );
       if (!message) throw new Error('Story discussion message creation failed');
+      await this.activityService.append(
+        {
+          storyId,
+          kind: STORY_ACTIVITY_KINDS.MESSAGE_CREATED,
+          targetType: discussion.targetType,
+          documentId: discussion.documentId,
+          revisionNumber: discussion.revisionNumber,
+          discussionId,
+          messageId: message.id,
+          authorAgentId: actor.agentId,
+          title: discussion.title,
+          summary: dto.content.slice(0, ACTIVITY_SUMMARY_MAX_LENGTH),
+        },
+        session,
+      );
       return message;
     });
   }
 
-  async listReviews(
-    storyId: string,
-    dto: CursorPaginationDto & { documentId?: string; revisionNumber?: number } = {},
-  ) {
+  async listReviews(storyId: string, dto: ListStoryReviewsDto = {}) {
     await this.requireStory(storyId);
     const context = JSON.stringify({
       storyId,
+      targetType: dto.targetType ?? null,
       documentId: dto.documentId ?? null,
       revisionNumber: dto.revisionNumber ?? null,
     });
@@ -1136,6 +1105,7 @@ export class StoryService {
       : null;
     const where: Record<string, unknown> = {
       storyId,
+      ...(dto.targetType ? { targetType: dto.targetType } : {}),
       ...(dto.documentId ? { documentId: dto.documentId } : {}),
       ...(dto.revisionNumber ? { revisionNumber: dto.revisionNumber } : {}),
     };
@@ -1165,28 +1135,26 @@ export class StoryService {
 
   async createReview(storyId: string, actor: StoryActor, dto: CreateStoryReviewDto) {
     return this.databaseService.$transaction(async (session) => {
-      const revision = await this.revisionModel
-        .findOne({
-          storyId,
-          documentId: dto.documentId,
-          revisionNumber: dto.revisionNumber,
-        })
-        .session(session)
-        .exec();
-      const snapshot = revision?.diff.afterDocument;
+      const revision = await this.requireRevision(
+        storyId,
+        dto.targetType,
+        dto.documentId,
+        dto.revisionNumber,
+        session,
+      );
+      const snapshot =
+        dto.targetType === 'story' ? revision.diff.afterStory : revision.diff.afterDocument;
       if (
         !snapshot ||
-        (dto.anchorText !== undefined &&
-          dto.anchorText !== null &&
-          !snapshot.content.includes(dto.anchorText))
-      ) {
+        (dto.anchorText != null && !this.anchorContent(revision).includes(dto.anchorText))
+      )
         throw storyErrors.reviewTargetInvalid();
-      }
       const [review] = await this.reviewModel.create(
         [
           {
             storyId,
-            documentId: dto.documentId,
+            targetType: dto.targetType,
+            documentId: dto.documentId ?? null,
             revisionNumber: dto.revisionNumber,
             authorAgentId: actor.agentId,
             authorOwnerUserIdSnapshot: actor.ownerUserId,
@@ -1197,8 +1165,242 @@ export class StoryService {
         { session },
       );
       if (!review) throw new Error('Story review creation did not return a document');
+      await this.activityService.append(
+        {
+          storyId,
+          kind: STORY_ACTIVITY_KINDS.REVIEW_CREATED,
+          targetType: dto.targetType,
+          documentId: dto.documentId ?? null,
+          revisionNumber: dto.revisionNumber,
+          authorAgentId: actor.agentId,
+          title: snapshot.title,
+          summary: dto.content.slice(0, ACTIVITY_SUMMARY_MAX_LENGTH),
+        },
+        session,
+      );
       return review;
     });
+  }
+
+  async getDiscussionMessage(storyId: string, discussionId: string, messageId: string) {
+    await this.getDiscussion(storyId, discussionId);
+    const message = await this.discussionMessageModel
+      .findOne({ _id: this.objectId(messageId), storyId, discussionId })
+      .exec();
+    if (!message) throw storyErrors.discussionNotFound();
+    return message;
+  }
+
+  async moveDocument(
+    storyId: string,
+    documentId: string,
+    actor: StoryActor,
+    dto: MoveStoryDocumentDto,
+  ) {
+    return this.changeDocumentState(storyId, documentId, actor, dto, 'move');
+  }
+
+  async withdrawDocument(
+    storyId: string,
+    documentId: string,
+    actor: StoryActor,
+    dto: ChangeStoryDocumentStateDto,
+  ) {
+    return this.changeDocumentState(storyId, documentId, actor, dto, 'withdraw');
+  }
+
+  async reinstateDocument(
+    storyId: string,
+    documentId: string,
+    actor: StoryActor,
+    dto: MoveStoryDocumentDto,
+  ) {
+    return this.changeDocumentState(storyId, documentId, actor, dto, 'reinstate');
+  }
+
+  private async changeDocumentState(
+    storyId: string,
+    documentId: string,
+    actor: StoryActor,
+    dto: MoveStoryDocumentDto,
+    action: 'move' | 'withdraw' | 'reinstate',
+  ) {
+    return this.databaseService.$transaction(async (session) => {
+      const document = await this.documentModel
+        .findOne({ _id: this.objectId(documentId), storyId })
+        .session(session)
+        .exec();
+      if (!document) throw storyErrors.documentNotFound();
+      this.assertVersion(document.currentVersion, dto.expectedVersion);
+      await this.storyCollaborationService.assertAgentCanEdit(
+        storyId,
+        actor.agentId,
+        session,
+        documentId,
+      );
+      const before = this.documentSnapshot(document);
+      const beforePosition = {
+        parentDocumentId: document.parentDocumentId?.toString() ?? null,
+        afterDocumentId: document.previousDocumentId?.toString() ?? null,
+      };
+      if (
+        (action === 'withdraw' && document.archived) ||
+        (action !== 'reinstate' && document.archived) ||
+        (action === 'reinstate' && !document.archived)
+      )
+        throw storyErrors.unchanged();
+      document.currentVersion += 1;
+      if (action === 'move')
+        await this.directoryService.move(document, this.position(dto), session);
+      else if (action === 'withdraw')
+        await this.directoryService.withdraw(document, dto.expectedStructureVersion, session);
+      else if (this.isNarrative(document.kind))
+        await this.directoryService.rejoin(document, this.position(dto), session);
+      else {
+        this.assertNoPosition(dto);
+        document.archived = false;
+        await document.save({ session });
+      }
+      const after = this.documentSnapshot(document);
+      const revision = await this.createRevision(
+        {
+          storyId,
+          documentId,
+          targetType: 'document',
+          revisionNumber: document.currentVersion,
+          baseVersion: dto.expectedVersion,
+          authorAgentId: actor.agentId,
+          authorOwnerUserIdSnapshot: actor.ownerUserId,
+          changeSummary: dto.changeSummary,
+          directoryChange: this.isNarrative(document.kind)
+            ? {
+                structureVersion: (dto.expectedStructureVersion ?? 0) + 1,
+                before: action === 'reinstate' ? null : beforePosition,
+                after:
+                  action === 'withdraw'
+                    ? null
+                    : {
+                        parentDocumentId: document.parentDocumentId?.toString() ?? null,
+                        afterDocumentId: document.previousDocumentId?.toString() ?? null,
+                      },
+              }
+            : null,
+          diff: {
+            beforeStory: null,
+            afterStory: null,
+            beforeDocument: before,
+            afterDocument: after,
+          },
+        },
+        session,
+        action === 'move'
+          ? STORY_ACTIVITY_KINDS.DOCUMENT_MOVED
+          : action === 'withdraw'
+            ? STORY_ACTIVITY_KINDS.DOCUMENT_WITHDRAWN
+            : STORY_ACTIVITY_KINDS.DOCUMENT_REINSTATED,
+      );
+      return { document, revision: this.revisionSummary(revision) };
+    });
+  }
+
+  private position(dto: {
+    parentDocumentId?: string | null;
+    afterDocumentId?: string | null;
+    expectedStructureVersion?: number;
+  }): StoryDirectoryPosition {
+    if (
+      dto.expectedStructureVersion === undefined ||
+      dto.parentDocumentId === undefined ||
+      dto.afterDocumentId === undefined
+    )
+      throw storyErrors.documentPositionInvalid();
+    return {
+      parentDocumentId: dto.parentDocumentId,
+      afterDocumentId: dto.afterDocumentId,
+      expectedStructureVersion: dto.expectedStructureVersion,
+    };
+  }
+
+  private assertNoPosition(dto: {
+    parentDocumentId?: string | null;
+    afterDocumentId?: string | null;
+    expectedStructureVersion?: number;
+  }): void {
+    if (
+      dto.parentDocumentId !== undefined ||
+      dto.afterDocumentId !== undefined ||
+      dto.expectedStructureVersion !== undefined
+    )
+      throw storyErrors.documentPositionInvalid();
+  }
+
+  private isNarrative(kind: StoryDocumentKind): boolean {
+    return kind === 'volume' || kind === 'chapter' || kind === 'scene';
+  }
+
+  private async requireRevision(
+    storyId: string,
+    targetType: 'story' | 'document',
+    documentId: string | null,
+    revisionNumber: number,
+    session?: ClientSession,
+  ) {
+    if (
+      (targetType === 'story' && documentId != null) ||
+      (targetType === 'document' && !documentId)
+    )
+      throw storyErrors.discussionTargetInvalid();
+    const query = this.revisionModel.findOne({
+      storyId,
+      targetType,
+      documentId: documentId ?? null,
+      revisionNumber,
+    });
+    if (session) query.session(session);
+    const revision = await query.exec();
+    if (!revision) throw storyErrors.revisionNotFound();
+    return revision;
+  }
+
+  private anchorContent(revision: StoryRevision): string {
+    if (revision.targetType === 'document') {
+      const snapshot = revision.diff.afterDocument;
+      if (!snapshot) throw storyErrors.revisionNotFound();
+      return snapshot.content;
+    }
+    const snapshot = revision.diff.afterStory;
+    if (!snapshot) throw storyErrors.revisionNotFound();
+    return [
+      snapshot.title,
+      snapshot.premise,
+      snapshot.genre,
+      snapshot.tone,
+      snapshot.viewpoint,
+      snapshot.targetLength,
+      snapshot.phase,
+      snapshot.establishedDirection,
+      ...snapshot.openQuestions,
+    ]
+      .filter((value) => value !== null)
+      .join('\n');
+  }
+
+  private revisionSummary(revision: StoryRevision) {
+    const snapshot = revision.diff.afterDocument ?? revision.diff.afterStory;
+    if (!snapshot) throw storyErrors.revisionNotFound();
+    return {
+      id: revision.id,
+      storyId: revision.storyId,
+      documentId: revision.documentId,
+      targetType: revision.targetType,
+      revisionNumber: revision.revisionNumber,
+      baseVersion: revision.baseVersion,
+      authorAgentId: revision.authorAgentId,
+      changeSummary: revision.changeSummary,
+      createdAt: revision.createdAt,
+      title: snapshot.title,
+      directoryChange: revision.directoryChange,
+    };
   }
 
   private async createRevision(
@@ -1211,6 +1413,7 @@ export class StoryService {
       authorAgentId: string;
       authorOwnerUserIdSnapshot: string;
       changeSummary: string;
+      directoryChange?: StoryDirectoryRevisionChange | null;
       diff: {
         beforeStory: StoryMetadataSnapshot | StorySnapshot | null;
         afterStory: StoryMetadataSnapshot | StorySnapshot | null;
@@ -1219,9 +1422,33 @@ export class StoryService {
       };
     },
     session: ClientSession,
+    activityKind?: (typeof STORY_ACTIVITY_KINDS)[keyof typeof STORY_ACTIVITY_KINDS],
   ) {
     const [revision] = await this.revisionModel.create([input], { session });
     if (!revision) throw new Error('Story revision creation did not return a document');
+    const snapshot = input.diff.afterDocument ?? input.diff.afterStory;
+    if (!snapshot) throw storyErrors.revisionNotFound();
+    await this.activityService.append(
+      {
+        storyId: input.storyId,
+        kind:
+          activityKind ??
+          (input.targetType === 'story'
+            ? input.baseVersion === 0
+              ? STORY_ACTIVITY_KINDS.STORY_CREATED
+              : STORY_ACTIVITY_KINDS.STORY_REVISED
+            : input.baseVersion === 0
+              ? STORY_ACTIVITY_KINDS.DOCUMENT_CREATED
+              : STORY_ACTIVITY_KINDS.DOCUMENT_REVISED),
+        targetType: input.targetType,
+        documentId: input.documentId,
+        revisionNumber: input.revisionNumber,
+        authorAgentId: input.authorAgentId,
+        title: snapshot.title,
+        summary: input.changeSummary,
+      },
+      session,
+    );
     return revision;
   }
 
@@ -1233,17 +1460,8 @@ export class StoryService {
     return story;
   }
 
-  private async requireBranch(storyId: string, branchId: string, session?: ClientSession) {
-    const query = this.branchModel.findOne({ _id: this.objectId(branchId), storyId });
-    if (session) query.session(session);
-    const branch = await query.exec();
-    if (!branch) throw storyErrors.branchNotFound();
-    return branch;
-  }
-
   private async validateLinks(
     storyId: string,
-    branchId: string | null,
     links: readonly { targetDocumentId: string; relation: StoryDocumentLink['relation'] }[],
     session: ClientSession,
   ): Promise<StoryDocumentLink[]> {
@@ -1251,7 +1469,6 @@ export class StoryService {
     const query = this.documentModel.find({
       _id: { $in: links.map((link) => this.objectId(link.targetDocumentId)) },
       storyId,
-      branchId: { $in: [null, branchId] },
     });
     query.session(session);
     const targets = await query.select('_id').exec();
@@ -1266,7 +1483,7 @@ export class StoryService {
       kind: document.kind,
       title: document.title,
       content: document.content,
-      branchId: document.branchId,
+      archived: document.archived,
       links: document.links.map((link) => ({
         targetDocumentId: link.targetDocumentId,
         relation: link.relation,
@@ -1329,27 +1546,6 @@ export class StoryService {
       ...currentLines.slice(currentEnd),
     ].join('\n');
     return { ...current, content: restoredContent };
-  }
-
-  private toDiscussionResponse(discussion: StoryDiscussion, revision: StoryRevision) {
-    const snapshot = revision.diff.afterDocument;
-    if (!snapshot) throw storyErrors.revisionNotFound();
-    return {
-      id: discussion.id,
-      storyId: discussion.storyId,
-      documentId: discussion.documentId,
-      revisionNumber: discussion.revisionNumber,
-      branchId: snapshot.branchId,
-      anchorText: discussion.anchorText,
-      title: discussion.title,
-      noticeTargetAgentId: discussion.noticeTargetAgentId,
-      createdByAgentId: discussion.createdByAgentId,
-      createdAt: discussion.createdAt,
-    };
-  }
-
-  private discussionRevisionKey(documentId: string, revisionNumber: number): string {
-    return JSON.stringify([documentId, revisionNumber]);
   }
 
   private assertVersion(currentVersion: number, expectedVersion: number): void {

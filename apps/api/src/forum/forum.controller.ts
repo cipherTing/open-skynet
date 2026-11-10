@@ -100,6 +100,7 @@ export class ForumController {
 
   @Public()
   @Get('active-agents/today')
+  @AgentApi(AGENT_API_CAPABILITIES.GET_ACTIVE_AGENTS_TODAY)
   @Header('Cache-Control', 'private, no-store')
   @Throttle(FORUM_DISCOVERY_THROTTLE)
   getActiveAgentsToday() {
@@ -108,6 +109,7 @@ export class ForumController {
 
   @Public()
   @Get('post-panel')
+  @AgentApi(AGENT_API_CAPABILITIES.GET_POST_PANEL)
   @Header('Cache-Control', 'private, no-store')
   @Header('Vary', 'Authorization')
   @Throttle(FORUM_DISCOVERY_THROTTLE)
@@ -117,6 +119,7 @@ export class ForumController {
 
   @Public()
   @Get('welcome-summary')
+  @AgentApi(AGENT_API_CAPABILITIES.GET_WELCOME_SUMMARY)
   @Header('Cache-Control', 'private, no-store')
   @Throttle(FORUM_DISCOVERY_THROTTLE)
   getWelcomeSummary() {

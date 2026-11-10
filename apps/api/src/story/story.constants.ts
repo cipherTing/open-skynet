@@ -32,8 +32,6 @@ export const STORY_DOCUMENT_RELATIONS = {
   REFERENCES: 'references',
   FEATURES: 'features',
   OCCURS_AT: 'occurs_at',
-  PART_OF: 'part_of',
-  FOLLOWS: 'follows',
   FORESHADOWS: 'foreshadows',
 } as const;
 
@@ -89,18 +87,17 @@ export const STORY_COLLABORATION_MAX_RECUSED_IDENTITIES =
   STORY_COLLABORATION_MAX_RELATED_CONFLICTS * STORY_EDIT_CONFLICT_REVISION_COUNT;
 
 export const STORY_LIST_MAX_LIMIT = 50;
-export const STORY_DOCUMENT_MAX_CONTENT_LENGTH = 100_000;
 export const STORY_DOCUMENT_MAX_LINKS = 100;
 export const STORY_DOCUMENT_MAX_SELECTION = 50;
 export const STORY_DOCUMENT_TITLE_PREFIX_INDEX = {
   storyId: 1,
-  branchId: 1,
+  archived: 1,
   title: 1,
   _id: 1,
 } as const;
 export const STORY_DOCUMENT_KIND_TITLE_PREFIX_INDEX = {
   storyId: 1,
-  branchId: 1,
+  archived: 1,
   kind: 1,
   title: 1,
   _id: 1,
@@ -119,6 +116,18 @@ export const STORY_MAX_OPEN_QUESTIONS = 20;
 
 export const STORY_AGENT_API_CAPABILITIES = {
   LIST_STORIES: 'list_stories',
+  LIST_STORY_DIRECTORY: 'list_story_directory',
+  GET_STORY_READING_START: 'get_story_reading_start',
+  GET_STORY_DOCUMENT_LOCATION: 'get_story_document_location',
+  MOVE_STORY_DOCUMENT: 'move_story_document',
+  WITHDRAW_STORY_DOCUMENT: 'withdraw_story_document',
+  REINSTATE_STORY_DOCUMENT: 'reinstate_story_document',
+  GET_STORY_REVISION: 'get_story_revision',
+  GET_STORY_DOCUMENT_REVISION: 'get_story_document_revision',
+  LIST_STORY_ACTIVITY: 'list_story_activity',
+  LIST_STORY_DOCUMENT_REFERENCES: 'list_story_document_references',
+  GET_STORY_DISCUSSION_MESSAGE: 'get_story_discussion_message',
+  GET_STORY_COLLABORATION_CASE: 'get_story_collaboration_case',
   CREATE_STORY: 'create_story',
   GET_STORY: 'get_story',
   REVISE_STORY: 'revise_story',
@@ -136,9 +145,6 @@ export const STORY_AGENT_API_CAPABILITIES = {
   CREATE_STORY_DISCUSSION: 'create_story_discussion',
   LIST_STORY_DISCUSSION_MESSAGES: 'list_story_discussion_messages',
   CREATE_STORY_DISCUSSION_MESSAGE: 'create_story_discussion_message',
-  LIST_STORY_BRANCHES: 'list_story_branches',
-  CREATE_STORY_BRANCH: 'create_story_branch',
-  GET_STORY_BRANCH: 'get_story_branch',
   LIST_STORY_REVIEWS: 'list_story_reviews',
   CREATE_STORY_REVIEW: 'create_story_review',
   LIST_STORY_CONFLICTS: 'list_story_conflicts',

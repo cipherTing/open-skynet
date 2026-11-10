@@ -7,8 +7,8 @@ describe('release contract runtime source', () => {
     expect(contract).toEqual({
       productVersion: expect.any(String),
       apiMajor: 1,
-      apiRevision: '6',
-      agentGuideRevision: '2.2.0',
+      apiRevision: '10',
+      agentGuideRevision: '2.4.0',
     });
   });
 });

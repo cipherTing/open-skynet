@@ -1,14 +1,10 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { HttpException } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { commonErrors } from '@/common/errors/business-errors';
 import { decryptSecret, encryptSecret } from '@/common/security/encrypted-secret';
 
-export const PAGINATION_CURSOR_TTL_SECONDS = 72 * 60 * 60;
-
-const PAGINATION_CURSOR_VERSION = 1;
-const PAGINATION_CURSOR_PURPOSE = 'pagination-cursor';
-const MILLISECONDS_PER_SECOND = 1000;
+const PAGINATION_CURSOR_PURPOSE = `pagination-cursor:${randomBytes(32).toString('base64url')}`;
 
 export const PAGINATION_CURSOR_KINDS = {
   POSTS: 'POSTS',
@@ -34,7 +30,6 @@ export const PAGINATION_CURSOR_KINDS = {
   STORY_REVISIONS: 'STORY_REVISIONS',
   STORY_DISCUSSIONS: 'STORY_DISCUSSIONS',
   STORY_DISCUSSION_MESSAGES: 'STORY_DISCUSSION_MESSAGES',
-  STORY_BRANCHES: 'STORY_BRANCHES',
   STORY_REVIEWS: 'STORY_REVIEWS',
   STORY_CONFLICTS: 'STORY_CONFLICTS',
   STORY_COLLABORATION_CASES: 'STORY_COLLABORATION_CASES',
@@ -77,12 +72,9 @@ type PaginationCursorPosition =
   | HotPosition;
 
 type PaginationCursorPayload = {
-  version: typeof PAGINATION_CURSOR_VERSION;
   kind: PaginationCursorKind;
   contextHash: string;
   subjectHash: string | null;
-  issuedAt: string;
-  expiresAt: string;
   position: PaginationCursorPosition;
 };
 
@@ -100,7 +92,6 @@ export interface HotCursorPosition {
 type CursorCodecOptions = {
   context?: PaginationContext;
   subjectId?: string;
-  now?: Date;
 };
 
 function canonicalizeContext(context: PaginationContext): string {
@@ -194,31 +185,15 @@ function parsePayload(value: unknown): PaginationCursorPayload {
     throw commonErrors.paginationCursorInvalid();
   }
   if (
-    value['version'] !== PAGINATION_CURSOR_VERSION ||
     typeof value['contextHash'] !== 'string' ||
-    (value['subjectHash'] !== null && typeof value['subjectHash'] !== 'string') ||
-    typeof value['issuedAt'] !== 'string' ||
-    typeof value['expiresAt'] !== 'string'
-  ) {
-    throw commonErrors.paginationCursorInvalid();
-  }
-  const issuedAt = new Date(value['issuedAt']);
-  const expiresAt = new Date(value['expiresAt']);
-  const expectedDuration = PAGINATION_CURSOR_TTL_SECONDS * MILLISECONDS_PER_SECOND;
-  if (
-    Number.isNaN(issuedAt.getTime()) ||
-    Number.isNaN(expiresAt.getTime()) ||
-    expiresAt.getTime() - issuedAt.getTime() !== expectedDuration
+    (value['subjectHash'] !== null && typeof value['subjectHash'] !== 'string')
   ) {
     throw commonErrors.paginationCursorInvalid();
   }
   return {
-    version: PAGINATION_CURSOR_VERSION,
     kind: kind as PaginationCursorKind,
     contextHash: value['contextHash'],
     subjectHash: value['subjectHash'],
-    issuedAt: issuedAt.toISOString(),
-    expiresAt: expiresAt.toISOString(),
     position: parsePosition(value['position']),
   };
 }
@@ -228,17 +203,10 @@ function encodeCursor(
   position: PaginationCursorPosition,
   options: CursorCodecOptions,
 ): string {
-  const issuedAt = options.now ?? new Date();
-  const expiresAt = new Date(
-    issuedAt.getTime() + PAGINATION_CURSOR_TTL_SECONDS * MILLISECONDS_PER_SECOND,
-  );
   const payload: PaginationCursorPayload = {
-    version: PAGINATION_CURSOR_VERSION,
     kind,
     contextHash: hashContext(options.context),
     subjectHash: hashSubject(options.subjectId),
-    issuedAt: issuedAt.toISOString(),
-    expiresAt: expiresAt.toISOString(),
     position,
   };
   return encryptSecret(JSON.stringify(payload), PAGINATION_CURSOR_PURPOSE, kind);
@@ -264,10 +232,6 @@ function decodeCursor(
     payload.subjectHash !== hashSubject(options.subjectId)
   ) {
     throw commonErrors.paginationCursorInvalid();
-  }
-  const now = options.now ?? new Date();
-  if (now.getTime() >= new Date(payload.expiresAt).getTime()) {
-    throw commonErrors.paginationCursorExpired();
   }
   return payload.position;
 }

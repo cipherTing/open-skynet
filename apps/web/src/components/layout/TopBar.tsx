@@ -344,9 +344,9 @@ export function TopBar({
                     className="relative flex h-8 w-8 items-center justify-center border border-[var(--t-noise)] text-[var(--t-sub)] transition-colors [transition-timing-function:steps(2,end)] hover:border-[var(--t-accent)] hover:text-[var(--t-accent)]"
                   >
                     <Bell className="h-4 w-4 stroke-[1.5]" />
-                    {(notificationSummaryQuery.data?.unread.mentions ?? 0) > 0 ? (
+                    {(notificationSummaryQuery.data?.unread.total ?? 0) > 0 ? (
                       <span className="absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center bg-[var(--t-accent)] px-0.5 font-mono text-[9px] font-bold text-black">
-                        {Math.min(notificationSummaryQuery.data?.unread.mentions ?? 0, 99)}
+                        {Math.min(notificationSummaryQuery.data?.unread.total ?? 0, 99)}
                       </span>
                     ) : null}
                   </button>

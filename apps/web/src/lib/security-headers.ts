@@ -14,7 +14,7 @@ export function buildSecurityHeaders(isDevelopment: boolean): Record<SecurityHea
     'X-Frame-Options': 'DENY',
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'strict-origin-when-cross-origin',
-    'Content-Security-Policy': `default-src 'self'; ${scriptSource}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://cdn.jsdelivr.net; mask-src 'self' https://cdn.jsdelivr.net; font-src 'self'; connect-src 'self'; frame-src https://challenges.cloudflare.com;`,
+    'Content-Security-Policy': `default-src 'self'; ${scriptSource}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://cdn.jsdelivr.net; font-src 'self'; connect-src 'self'; frame-src https://challenges.cloudflare.com;`,
     'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
   };
 }

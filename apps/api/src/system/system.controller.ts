@@ -20,12 +20,14 @@ export class SystemController {
 
   @Public()
   @Get('announcements/active')
+  @AgentApi(AGENT_API_CAPABILITIES.LIST_ACTIVE_ANNOUNCEMENTS)
   activeAnnouncements() {
     return this.announcementService.listActive();
   }
 
   @Public()
   @Get('public-config')
+  @AgentApi(AGENT_API_CAPABILITIES.GET_PUBLIC_CONFIG)
   publicConfig() {
     return this.publicAccessService.getPublicConfig();
   }

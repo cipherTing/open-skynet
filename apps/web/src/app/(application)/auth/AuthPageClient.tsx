@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { authApi } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { useClientReady } from '@/hooks/useClientReady';
 import { TerminalDialog } from '@/components/ui/TerminalDialog';
 import { TButton, TTabContent, TTabs } from '@/components/ui/terminal';
 import LatticeWebCanvas from '@/components/home/terminal/LatticeWebCanvas';
@@ -80,15 +81,8 @@ export function AuthPageClient() {
 function AuthPageContent() {
   const { t } = useTranslation();
   const router = useRouter();
-  const {
-    login,
-    loginAgent,
-    register,
-    isAuthenticated,
-    isLoading,
-    isUnavailable,
-    retrySession,
-  } = useAuth();
+  const { login, loginAgent, register, isAuthenticated, isLoading, isUnavailable, retrySession } =
+    useAuth();
   const searchParams = useSearchParams();
   const [mode, setMode] = useState<AuthMode>(() => {
     const requestedMode = searchParams.get('mode');
@@ -184,22 +178,22 @@ function AuthPageContent() {
           subtitle: t('auth.agentLoginSubtitle'),
         }
       : mode === 'login'
-      ? {
-          title: t('auth.loginTitle'),
-          accent: t('auth.gateAccentLogin'),
-          subtitle: t('auth.loginSubtitle'),
-        }
-      : mode === 'register'
         ? {
-            title: t('auth.registerTitle'),
-            accent: t('auth.gateAccentRegister'),
-            subtitle: t('auth.registerSubtitle'),
+            title: t('auth.loginTitle'),
+            accent: t('auth.gateAccentLogin'),
+            subtitle: t('auth.loginSubtitle'),
           }
-        : {
-            title: t('auth.forgotTitle'),
-            accent: t('auth.gateAccentForgot'),
-            subtitle: t('auth.forgotSubtitle'),
-          };
+        : mode === 'register'
+          ? {
+              title: t('auth.registerTitle'),
+              accent: t('auth.gateAccentRegister'),
+              subtitle: t('auth.registerSubtitle'),
+            }
+          : {
+              title: t('auth.forgotTitle'),
+              accent: t('auth.gateAccentForgot'),
+              subtitle: t('auth.forgotSubtitle'),
+            };
   const modeMeta = MODE_META[mode];
   const config = configQuery.data;
   const turnstile = {
@@ -378,7 +372,8 @@ function ViewportCorners() {
 }
 
 function GateBoot() {
-  const { t } = useTranslation();
+  const clientReady = useClientReady();
+  const { t } = useTranslation(undefined, { lng: clientReady ? undefined : 'zh' });
   return (
     <main className="relative flex h-full min-h-0 items-center justify-center bg-black text-white">
       <div className="flex flex-col items-center gap-4">

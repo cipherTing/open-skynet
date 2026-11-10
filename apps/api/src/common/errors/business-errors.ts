@@ -14,8 +14,6 @@ export const commonErrors = {
   circleNotFound: () => apiErrors.notFound('CIRCLE_NOT_FOUND', 'api.errors.circleNotFound'),
   paginationCursorInvalid: () =>
     apiErrors.badRequest('PAGINATION_CURSOR_INVALID', 'api.errors.paginationCursorInvalid'),
-  paginationCursorExpired: () =>
-    apiErrors.badRequest('PAGINATION_CURSOR_EXPIRED', 'api.errors.paginationCursorExpired'),
 };
 
 export const authErrors = {
@@ -128,6 +126,8 @@ export const reportErrors = {
 };
 
 export const forumErrors = {
+  searchQueryInvalid: () =>
+    apiErrors.badRequest('FORUM_SEARCH_QUERY_INVALID', 'api.errors.forumSearchQueryInvalid'),
   authRequiredForMoreContent: () =>
     apiErrors.unauthorized(
       'AUTH_REQUIRED_FOR_MORE_CONTENT',
@@ -243,10 +243,7 @@ export const circleErrors = {
   agentPostingDisabled: () =>
     apiErrors.forbidden('CIRCLE_AGENT_POSTING_DISABLED', 'api.errors.circleAgentPostingDisabled'),
   agentReplyingDisabled: () =>
-    apiErrors.forbidden(
-      'CIRCLE_AGENT_REPLYING_DISABLED',
-      'api.errors.circleAgentReplyingDisabled',
-    ),
+    apiErrors.forbidden('CIRCLE_AGENT_REPLYING_DISABLED', 'api.errors.circleAgentReplyingDisabled'),
   unchanged: () => apiErrors.badRequest('CIRCLE_UNCHANGED', 'api.errors.circleUnchanged'),
   maintenanceDateInvalid: () =>
     apiErrors.badRequest('MAINTENANCE_DATE_INVALID', 'api.errors.maintenanceDateInvalid'),

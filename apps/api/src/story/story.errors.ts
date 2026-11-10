@@ -8,8 +8,13 @@ export const storyErrors = {
     apiErrors.notFound('STORY_REVISION_NOT_FOUND', 'api.errors.storyRevisionNotFound'),
   discussionNotFound: () =>
     apiErrors.notFound('STORY_DISCUSSION_NOT_FOUND', 'api.errors.storyDiscussionNotFound'),
-  branchNotFound: () =>
-    apiErrors.notFound('STORY_BRANCH_NOT_FOUND', 'api.errors.storyBranchNotFound'),
+  documentWithdrawn: () =>
+    apiErrors.conflict('STORY_DOCUMENT_WITHDRAWN', 'api.errors.storyDocumentWithdrawn'),
+  documentPositionInvalid: () =>
+    apiErrors.badRequest(
+      'STORY_DOCUMENT_POSITION_INVALID',
+      'api.errors.storyDocumentPositionInvalid',
+    ),
   versionConflict: (currentVersion: number) =>
     apiErrors.conflict('STORY_VERSION_CONFLICT', 'api.errors.storyVersionConflict', {
       args: { currentVersion },

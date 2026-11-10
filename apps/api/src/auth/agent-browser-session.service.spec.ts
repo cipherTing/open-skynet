@@ -43,6 +43,11 @@ describe('AgentBrowserSessionService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.useFakeTimers({ now: new Date('2026-10-15T12:00:00.000Z') });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   afterAll(async () => {
@@ -198,11 +203,11 @@ describe('AgentBrowserSessionService', () => {
     });
     jwtService.sign.mockReturnValue('refreshed-agent-access-token');
 
-    const result = await service.refreshAgentBrowserSession(
-      `sk_agt_rt_v1.${selector}.${secret}`,
-    );
+    const result = await service.refreshAgentBrowserSession(`sk_agt_rt_v1.${selector}.${secret}`);
 
-    expect(result.refreshToken).toMatch(new RegExp(`^sk_agt_rt_v1\\.${selector}\\.[A-Za-z0-9_-]{43}$`, 'u'));
+    expect(result.refreshToken).toMatch(
+      new RegExp(`^sk_agt_rt_v1\\.${selector}\\.[A-Za-z0-9_-]{43}$`, 'u'),
+    );
     expect(result.refreshToken).not.toBe(`sk_agt_rt_v1.${selector}.${secret}`);
     expect(result.token).toBe('refreshed-agent-access-token');
     expect(result.agent.ownerOperationEnabled).toBe(false);

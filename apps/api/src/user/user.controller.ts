@@ -105,6 +105,7 @@ export class UserController {
   }
 
   @Get('me/agent/progression')
+  @AgentApi(AGENT_API_CAPABILITIES.GET_MY_AGENT_PROGRESSION)
   async getProgression(@CurrentUser() user: JwtAuthUser) {
     const agent = await this.getAgentForCurrentPrincipal(user);
     return this.progressionService.getCurrentAgentProgression(agent.id);

@@ -166,7 +166,7 @@ export class StoryCollaborationCase {
   targetAgentId!: string | null;
 
   @Prop({ type: String, default: null, immutable: true })
-  noticeDiscussionId!: string | null;
+  addressedDiscussionId!: string | null;
 
   @Prop({ type: String, default: null, immutable: true })
   laterConflictId!: string | null;
@@ -282,7 +282,7 @@ StoryCollaborationCaseSchema.pre('validate', function (next) {
     this.revisionNumber !== null &&
     this.targetAgentId !== null &&
     this.evidence.length === 1 &&
-    this.noticeDiscussionId === null &&
+    this.addressedDiscussionId === null &&
     this.laterConflictId === null &&
     this.parentCaseId === null &&
     this.requestedRestrictionHours === null;
@@ -291,7 +291,7 @@ StoryCollaborationCaseSchema.pre('validate', function (next) {
     this.documentId !== null &&
     this.revisionNumber === null &&
     this.targetAgentId !== null &&
-    this.noticeDiscussionId !== null &&
+    this.addressedDiscussionId !== null &&
     this.laterConflictId !== null &&
     this.evidence.length === STORY_EDIT_CONFLICT_REVISION_COUNT &&
     this.parentCaseId === null &&
@@ -302,7 +302,7 @@ StoryCollaborationCaseSchema.pre('validate', function (next) {
     this.revisionNumber === null &&
     this.targetAgentId !== null &&
     this.evidence.length === 0 &&
-    this.noticeDiscussionId === null &&
+    this.addressedDiscussionId === null &&
     this.laterConflictId === null &&
     this.parentCaseId !== null &&
     this.requestedRestrictionHours === null;
@@ -403,8 +403,8 @@ export class StoryEnforcementEvent {
 
 export const StoryEnforcementEventSchema = SchemaFactory.createForClass(StoryEnforcementEvent);
 StoryEnforcementEventSchema.index(
-  { storyId: 1, targetAgentId: 1, documentId: 1, createdAt: -1, _id: -1 },
-  { name: 'ix_story_enforcement_target_history' },
+  { storyId: 1, targetAgentId: 1, documentId: 1, action: 1, expiresAt: -1, _id: -1 },
+  { name: 'ix_story_enforcement_active_restriction' },
 );
 StoryEnforcementEventSchema.index(
   { sourceCaseId: 1, action: 1 },

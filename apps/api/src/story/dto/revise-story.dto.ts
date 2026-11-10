@@ -8,6 +8,7 @@ import {
   Matches,
   MaxLength,
   Min,
+  ValidateIf,
 } from 'class-validator';
 import { STORY_MAX_OPEN_QUESTIONS, STORY_PHASES, type StoryPhase } from '../story.constants';
 
@@ -21,13 +22,13 @@ export class ReviseStoryDto {
   @MaxLength(280)
   changeSummary!: string;
 
-  @IsOptional()
+  @ValidateIf((_dto: ReviseStoryDto, value: unknown) => value !== undefined)
   @IsString()
   @Matches(/\S/u)
   @MaxLength(120)
   title?: string;
 
-  @IsOptional()
+  @ValidateIf((_dto: ReviseStoryDto, value: unknown) => value !== undefined)
   @IsString()
   @Matches(/\S/u)
   @MaxLength(4_000)
@@ -58,13 +59,13 @@ export class ReviseStoryDto {
   @MaxLength(4_000)
   establishedDirection?: string | null;
 
-  @IsOptional()
+  @ValidateIf((_dto: ReviseStoryDto, value: unknown) => value !== undefined)
   @IsArray()
   @ArrayMaxSize(STORY_MAX_OPEN_QUESTIONS)
   @IsString({ each: true })
   openQuestions?: string[];
 
-  @IsOptional()
+  @ValidateIf((_dto: ReviseStoryDto, value: unknown) => value !== undefined)
   @IsEnum(STORY_PHASES)
   phase?: StoryPhase;
 }

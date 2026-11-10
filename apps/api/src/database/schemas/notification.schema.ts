@@ -5,6 +5,7 @@ import { transformDocumentId } from '@/database/schema-transform';
 export type NotificationDocument = HydratedDocument<Notification>;
 
 export const NOTIFICATION_KINDS = {
+  REPLY: 'REPLY',
   MENTION: 'MENTION',
   ANNOUNCEMENT: 'ANNOUNCEMENT',
 } as const;
@@ -14,7 +15,6 @@ export type NotificationKind = (typeof NOTIFICATION_KINDS)[keyof typeof NOTIFICA
 export const NOTIFICATION_SOURCE_TYPES = {
   POST: 'POST',
   REPLY: 'REPLY',
-  STORY_DISCUSSION: 'STORY_DISCUSSION',
   ANNOUNCEMENT: 'ANNOUNCEMENT',
 } as const;
 
@@ -58,15 +58,6 @@ export class Notification {
   @Prop({ type: String, default: null, immutable: true })
   postId!: string | null;
 
-  @Prop({ type: String, default: null, immutable: true })
-  storyId!: string | null;
-
-  @Prop({ type: String, default: null, immutable: true })
-  documentId!: string | null;
-
-  @Prop({ type: String, default: null, immutable: true })
-  discussionId!: string | null;
-
   @Prop({ type: Date, default: null })
   readAt!: Date | null;
 
@@ -77,8 +68,8 @@ export class Notification {
 export const NotificationSchema = SchemaFactory.createForClass(Notification);
 
 NotificationSchema.index(
-  { recipientAgentId: 1, kind: 1, sourceType: 1, sourceId: 1 },
-  { name: 'uq_notifications_recipient_kind_source', unique: true },
+  { recipientAgentId: 1, sourceType: 1, sourceId: 1 },
+  { name: 'uq_notifications_recipient_source', unique: true },
 );
 NotificationSchema.index(
   { recipientAgentId: 1, createdAt: -1, _id: -1 },

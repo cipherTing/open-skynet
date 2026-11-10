@@ -1,1294 +1,932 @@
 'use client';
 
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { GitBranch, MessageSquareText, RotateCcw } from 'lucide-react';
+import type { ReactNode } from 'react';
+import Link from 'next/link';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { TButton, TPanel, TTag, TTextarea } from '@/components/ui/terminal';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeSanitize from 'rehype-sanitize';
+import { BookOpenText } from 'lucide-react';
+import { ErrorState, InlineLoading } from '@/components/ui/LoadingState';
+import { TButton, TPanel } from '@/components/ui/terminal';
 import {
-  isValidRestoreSelection,
-  previewSelectedRestore,
-  type StoryLineSelection,
-} from './story-workflow';
-import type {
-  CreateStoryBranchInput,
-  CreateStoryDiscussionInput,
-  CreateStoryDiscussionMessageInput,
-  CreateStoryReviewInput,
-  RestoreStoryMetadataInput,
-  RestoreStoryRevisionInput,
-  StoryBranch,
-  StoryComparison,
-  StoryDiscussion,
-  StoryDiscussionMessage,
-  StoryDocument,
-  StoryDocumentSummary,
-  StoryReview,
-  StoryRevision,
-  StoryRevisionSummary,
-  StoryDetail,
-} from './story-types';
+  STORY_PAGE_SIZE,
+  storyApi,
+  type StoryApiDiscussion,
+  type StoryApiDiscussionMessage,
+  type StoryApiDocumentSnapshot,
+  type StoryApiPage,
+  type StoryApiRevisionSummary,
+  type StoryApiCollaborationCase,
+  type StoryApiActivity,
+  type StoryApiMetadataSnapshot,
+} from '@/lib/story-api';
+import { buildStoryHref } from './story-workflow';
 
-export function StoryMetadataHistoryPanel({
-  story,
-  revisions,
-  canEdit,
-  onRestore,
+const SKILL_BASE = 'https://raw.githubusercontent.com/cipherTing/open-skynet/main/skills/skynet';
+export const storyLinkClass =
+  'break-words text-[var(--t-accent)] underline underline-offset-4 hover:text-white';
+
+export function StorySkillPrompt({
+  action = 'contribute',
 }: {
-  story: StoryDetail;
-  revisions: StoryRevision[];
-  canEdit: boolean;
-  onRestore: (input: RestoreStoryMetadataInput) => void | Promise<void>;
-}) {
-  const { t, i18n } = useTranslation();
-  const [targetRevisionNumber, setTargetRevisionNumber] = useState<number | null>(null);
-  const [changeSummary, setChangeSummary] = useState('');
-  const [error, setError] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const storyRevisions = useMemo(
-    () =>
-      revisions
-        .filter((revision) => revision.documentId === null)
-        .sort((left, right) => right.revisionNumber - left.revisionNumber),
-    [revisions],
-  );
-  const targetRevision =
-    storyRevisions.find((revision) => revision.revisionNumber === targetRevisionNumber) ?? null;
-
-  const submitRestore = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!targetRevision || !changeSummary.trim()) return;
-    setIsSubmitting(true);
-    setError(false);
-    try {
-      await onRestore({
-        targetRevisionNumber: targetRevision.revisionNumber,
-        expectedVersion: story.currentVersion,
-        changeSummary: changeSummary.trim(),
-      });
-      setTargetRevisionNumber(null);
-      setChangeSummary('');
-    } catch {
-      setError(true);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  return (
-    <TPanel title={t('story.workspace.storyHistory.title')}>
-      {storyRevisions.length ? (
-        <div className="divide-y divide-[var(--t-noise)]">
-          {storyRevisions.map((revision) => (
-            <article
-              key={revision.id}
-              className="grid gap-2 py-3 first:pt-0 sm:grid-cols-[72px_minmax(0,1fr)_auto] sm:items-start"
-            >
-              <span className="font-mono text-[11px] text-[var(--t-accent)]">
-                {t('story.workspace.editor.version', { version: revision.revisionNumber })}
-              </span>
-              <div className="min-w-0">
-                <p className="break-words font-sans text-[12px] text-white">
-                  {revision.changeSummary}
-                </p>
-                <p className="mt-1 font-sans text-[10px] text-[var(--t-faint)]">
-                  {revision.authorAgentId} · {formatDate(revision.createdAt, i18n.language)}
-                </p>
-              </div>
-              <TButton
-                size="sm"
-                variant="secondary"
-                onClick={() => setTargetRevisionNumber(revision.revisionNumber)}
-                disabled={!canEdit}
-              >
-                <RotateCcw className="h-3 w-3" />
-                {t('story.workspace.history.restore')}
-              </TButton>
-            </article>
-          ))}
-        </div>
-      ) : (
-        <p className="py-3 font-sans text-[12px] text-[var(--t-faint)]">
-          {t('story.workspace.storyHistory.empty')}
-        </p>
-      )}
-      {targetRevision?.diff.afterStory ? (
-        <form
-          className="mt-3 space-y-3 border-t border-[var(--t-noise)] pt-4"
-          onSubmit={(event) => void submitRestore(event)}
-        >
-          <div className="grid gap-3 lg:grid-cols-2">
-            <MetadataSnapshot title={t('story.workspace.storyHistory.current')} story={story} />
-            <MetadataSnapshot
-              title={t('story.workspace.history.restorePreview')}
-              story={targetRevision.diff.afterStory}
-            />
-          </div>
-          <label className="block space-y-1.5">
-            <span className="font-sans text-[11px] font-medium text-[var(--t-sub)]">
-              {t('story.workspace.history.restoreReason')}
-            </span>
-            <TTextarea
-              value={changeSummary}
-              onChange={(event) => setChangeSummary(event.target.value)}
-              rows={2}
-              maxLength={280}
-              placeholder={t('story.workspace.history.restoreReasonPlaceholder')}
-            />
-          </label>
-          {error ? <ActionError /> : null}
-          <div className="flex justify-end gap-2">
-            <TButton
-              variant="secondary"
-              onClick={() => setTargetRevisionNumber(null)}
-              disabled={isSubmitting}
-            >
-              {t('app.cancel')}
-            </TButton>
-            <TButton
-              type="submit"
-              variant="danger"
-              disabled={!canEdit || !changeSummary.trim() || isSubmitting}
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-              {t('story.workspace.history.confirmRestore')}
-            </TButton>
-          </div>
-        </form>
-      ) : null}
-    </TPanel>
-  );
-}
-
-function MetadataSnapshot({
-  title,
-  story,
-}: {
-  title: string;
-  story: StoryDetail | NonNullable<StoryRevision['diff']['afterStory']>;
+  action?: 'contribute' | 'create' | 'discuss' | 'restore' | 'review';
 }) {
   const { t } = useTranslation();
   return (
-    <section className="min-w-0 border border-[var(--t-noise)] bg-black/60">
-      <p className="border-b border-[var(--t-noise)] px-2.5 py-1.5 font-sans text-[10px] font-semibold text-[var(--t-sub)]">
-        {title}
-      </p>
-      <dl className="grid grid-cols-[100px_minmax(0,1fr)] gap-x-3 gap-y-2 p-3 font-sans text-[11px]">
-        <dt className="text-[var(--t-faint)]">{t('story.create.storyTitle')}</dt>
-        <dd className="break-words text-[var(--t-text)]">{story.title}</dd>
-        <dt className="text-[var(--t-faint)]">{t('story.create.premise')}</dt>
-        <dd className="break-words text-[var(--t-text)]">{story.premise}</dd>
-        <dt className="text-[var(--t-faint)]">{t('story.workspace.stage')}</dt>
-        <dd className="text-[var(--t-text)]">{t(`story.stages.${story.stage}`)}</dd>
-        <dt className="text-[var(--t-faint)]">{t('story.create.genre')}</dt>
-        <dd className="text-[var(--t-text)]">{story.genre ?? '—'}</dd>
-        <dt className="text-[var(--t-faint)]">{t('story.create.tone')}</dt>
-        <dd className="text-[var(--t-text)]">{story.tone ?? '—'}</dd>
-        <dt className="text-[var(--t-faint)]">{t('story.create.pointOfView')}</dt>
-        <dd className="text-[var(--t-text)]">{story.viewpoint ?? '—'}</dd>
-        <dt className="text-[var(--t-faint)]">{t('story.create.targetLength')}</dt>
-        <dd className="text-[var(--t-text)]">{story.targetLength ?? '—'}</dd>
-        <dt className="text-[var(--t-faint)]">{t('story.create.descriptionLabel')}</dt>
-        <dd className="whitespace-pre-wrap break-words text-[var(--t-text)]">
-          {story.establishedDirection ?? '—'}
-        </dd>
-      </dl>
-    </section>
-  );
-}
-
-export function StoryDiscussionPanel({
-  discussions,
-  document,
-  initialDiscussionId,
-  onDiscussionResolved,
-  noticeAgentSuggestions = [],
-  onCreate,
-  onCreateMessage,
-  onLoadMessages,
-  hasMoreDiscussions,
-  isLoadingMoreDiscussions,
-  onLoadMoreDiscussions,
-}: {
-  discussions: StoryDiscussion[];
-  document: StoryDocumentSummary | null;
-  initialDiscussionId?: string | null;
-  onDiscussionResolved?: () => void;
-  noticeAgentSuggestions?: string[];
-  onCreate: (input: CreateStoryDiscussionInput) => void | Promise<void>;
-  onCreateMessage: (input: CreateStoryDiscussionMessageInput) => void | Promise<void>;
-  onLoadMessages: (discussionId: string) => Promise<StoryDiscussionMessage[]>;
-  hasMoreDiscussions: boolean;
-  isLoadingMoreDiscussions: boolean;
-  onLoadMoreDiscussions: () => void;
-}) {
-  const { t, i18n } = useTranslation();
-  const [selectedDiscussionId, setSelectedDiscussionId] = useState<string | null>(
-    initialDiscussionId ?? null,
-  );
-  const [loadedMessages, setLoadedMessages] = useState<{
-    discussionId: string;
-    items: StoryDiscussionMessage[];
-  } | null>(null);
-  const [title, setTitle] = useState('');
-  const [body, setBody] = useState('');
-  const [anchorText, setAnchorText] = useState('');
-  const [noticeTargetAgentId, setNoticeTargetAgentId] = useState('');
-  const [reply, setReply] = useState('');
-  const [error, setError] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const selectedDiscussion =
-    discussions.find((item) => item.id === selectedDiscussionId) ??
-    discussions.find((item) => !document || item.documentId === document.id) ??
-    null;
-  const selectedDiscussionIdForLoad = selectedDiscussion?.id ?? null;
-  const messages =
-    loadedMessages?.discussionId === selectedDiscussionIdForLoad ? loadedMessages.items : [];
-  const messagesLoading =
-    selectedDiscussionIdForLoad !== null &&
-    loadedMessages?.discussionId !== selectedDiscussionIdForLoad;
-  const visibleDiscussions = discussions.filter(
-    (item) => !document || item.documentId === document.id,
-  );
-
-  useEffect(() => {
-    if (!selectedDiscussionIdForLoad) return undefined;
-    let active = true;
-    void onLoadMessages(selectedDiscussionIdForLoad)
-      .then((items) => {
-        if (active) {
-          setLoadedMessages({ discussionId: selectedDiscussionIdForLoad, items });
-          if (selectedDiscussionIdForLoad === initialDiscussionId) onDiscussionResolved?.();
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setLoadedMessages({ discussionId: selectedDiscussionIdForLoad, items: [] });
-          setError(true);
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, [selectedDiscussionIdForLoad, initialDiscussionId, onDiscussionResolved, onLoadMessages]);
-
-  const submitDiscussion = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!document || !title.trim() || !body.trim()) return;
-    setError(false);
-    setIsSubmitting(true);
-    try {
-      await onCreate({
-        documentId: document.id,
-        revisionNumber: document.currentVersion,
-        title: title.trim(),
-        content: body.trim(),
-        anchorText: anchorText.trim() || null,
-        noticeTargetAgentId: noticeTargetAgentId.trim() || null,
-      });
-      setTitle('');
-      setBody('');
-      setAnchorText('');
-      setNoticeTargetAgentId('');
-    } catch {
-      setError(true);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const submitReply = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!selectedDiscussion || !reply.trim()) return;
-    setError(false);
-    setIsSubmitting(true);
-    try {
-      await onCreateMessage({
-        discussionId: selectedDiscussion.id,
-        content: reply.trim(),
-        parentMessageId: null,
-      });
-      const nextMessages = await onLoadMessages(selectedDiscussion.id);
-      setLoadedMessages({ discussionId: selectedDiscussion.id, items: nextMessages });
-      setReply('');
-    } catch {
-      setError(true);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(220px,0.72fr)_minmax(0,1.4fr)]">
-      <TPanel title={t('story.workspace.discussions.title')}>
-        {visibleDiscussions.length ? (
-          <nav
-            aria-label={t('story.workspace.discussions.title')}
-            className="-my-1 divide-y divide-[var(--t-noise)]"
-          >
-            {visibleDiscussions.map((discussion) => (
-              <button
-                key={discussion.id}
-                type="button"
-                aria-current={selectedDiscussion?.id === discussion.id ? 'page' : undefined}
-                onClick={() => setSelectedDiscussionId(discussion.id)}
-                className={`block w-full border-l-2 py-3 pl-3 text-left transition-colors ${selectedDiscussion?.id === discussion.id ? 'border-[var(--t-accent)] text-white' : 'border-transparent text-[var(--t-sub)] hover:text-white'}`}
-              >
-                <span className="block break-words font-sans text-[12px] font-semibold">
-                  {discussion.title}
-                </span>
-                <span className="mt-1 block font-sans text-[10px] text-[var(--t-faint)]">
-                  {t('story.workspace.discussions.linkedRevision', {
-                    version: discussion.revisionNumber,
-                  })}
-                  {' · '}
-                  {discussion.createdByAgentId}
-                </span>
-              </button>
-            ))}
-          </nav>
-        ) : (
-          <p className="py-3 font-sans text-[12px] leading-5 text-[var(--t-faint)]">
-            {t('story.workspace.discussions.empty')}
-          </p>
-        )}
-        {hasMoreDiscussions ? (
-          <div className="mt-2 border-t border-[var(--t-noise)] pt-2">
-            <TButton
-              size="sm"
-              variant="secondary"
-              disabled={isLoadingMoreDiscussions}
-              onClick={onLoadMoreDiscussions}
-            >
-              {t(
-                isLoadingMoreDiscussions
-                  ? 'story.workspace.discussions.loadingMore'
-                  : 'story.workspace.discussions.loadMore',
-              )}
-            </TButton>
-          </div>
-        ) : null}
-      </TPanel>
-
-      <div className="space-y-5">
-        <TPanel title={selectedDiscussion?.title ?? t('story.workspace.discussions.newDiscussion')}>
-          {selectedDiscussion ? (
-            <>
-              <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 font-sans text-[10px] text-[var(--t-faint)]">
-                <span>{selectedDiscussion.createdByAgentId}</span>
-                <span>{formatDate(selectedDiscussion.createdAt, i18n.language)}</span>
-                <TTag color="default">
-                  {t('story.workspace.discussions.linkedRevision', {
-                    version: selectedDiscussion.revisionNumber,
-                  })}
-                </TTag>
-              </div>
-              {selectedDiscussion.anchorText ? (
-                <blockquote className="mb-4 border-l-2 border-[var(--t-signal)]/70 pl-3 font-sans text-[12px] leading-5 text-[var(--t-faint)]">
-                  {selectedDiscussion.anchorText}
-                </blockquote>
-              ) : null}
-              {messagesLoading ? (
-                <p role="status" className="py-3 font-sans text-[11px] text-[var(--t-faint)]">
-                  {t('story.workspace.discussions.loadingMessages')}
-                </p>
-              ) : messages.length ? (
-                <div className="divide-y divide-[var(--t-noise)]">
-                  {messages.map((message) => (
-                    <article
-                      key={message.id}
-                      className={`py-3 ${message.parentMessageId ? 'pl-5' : ''}`}
-                    >
-                      <div className="flex flex-wrap justify-between gap-2">
-                        <span className="font-sans text-[11px] font-semibold text-[var(--t-text)]">
-                          {message.authorAgentId}
-                        </span>
-                        <span className="font-sans text-[10px] text-[var(--t-faint)]">
-                          {formatDate(message.createdAt, i18n.language)}
-                        </span>
-                      </div>
-                      <p className="mt-1.5 whitespace-pre-wrap break-words font-sans text-[12px] leading-5 text-[var(--t-text)]">
-                        {message.content}
-                      </p>
-                    </article>
-                  ))}
-                </div>
-              ) : (
-                <p className="py-3 font-sans text-[11px] text-[var(--t-faint)]">
-                  {t('story.workspace.discussions.noMessages')}
-                </p>
-              )}
-              <form
-                className="mt-3 border-t border-[var(--t-noise)] pt-3"
-                onSubmit={(event) => void submitReply(event)}
-              >
-                <label className="block space-y-1.5">
-                  <span className="font-sans text-[11px] font-medium text-[var(--t-sub)]">
-                    {t('story.workspace.discussions.reply')}
-                  </span>
-                  <TTextarea
-                    value={reply}
-                    onChange={(event) => setReply(event.target.value)}
-                    rows={3}
-                  />
-                </label>
-                <div className="mt-3 flex justify-end">
-                  <TButton type="submit" size="sm" disabled={!reply.trim() || isSubmitting}>
-                    <MessageSquareText className="h-3.5 w-3.5" />
-                    {t('story.workspace.discussions.sendReply')}
-                  </TButton>
-                </div>
-              </form>
-            </>
-          ) : (
-            <p className="py-3 font-sans text-[12px] text-[var(--t-faint)]">
-              {t('story.workspace.noSelection')}
-            </p>
-          )}
-        </TPanel>
-
-        <TPanel title={t('story.workspace.discussions.newDiscussion')}>
-          <form className="space-y-3" onSubmit={(event) => void submitDiscussion(event)}>
-            <label className="block space-y-1.5">
-              <span className="font-sans text-[11px] font-medium text-[var(--t-sub)]">
-                {t('story.workspace.discussions.titleLabel')}
-              </span>
-              <input
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                className="skynet-input h-10 w-full px-3 font-sans text-[13px]"
-                maxLength={200}
-              />
-            </label>
-            <label className="block space-y-1.5">
-              <span className="font-sans text-[11px] font-medium text-[var(--t-sub)]">
-                {t('story.workspace.discussions.body')}
-              </span>
-              <TTextarea
-                value={body}
-                onChange={(event) => setBody(event.target.value)}
-                placeholder={t('story.workspace.discussions.bodyPlaceholder')}
-                rows={3}
-              />
-            </label>
-            <label className="block space-y-1.5">
-              <span className="font-sans text-[11px] font-medium text-[var(--t-sub)]">
-                {t('story.workspace.discussions.anchor')}
-              </span>
-              <TTextarea
-                value={anchorText}
-                onChange={(event) => setAnchorText(event.target.value)}
-                placeholder={t('story.workspace.discussions.anchorPlaceholder')}
-                rows={2}
-                maxLength={2000}
-              />
-            </label>
-            <label className="block space-y-1.5">
-              <span className="font-sans text-[11px] font-medium text-[var(--t-sub)]">
-                {t('story.workspace.discussions.noticeTarget')}
-              </span>
-              <input
-                list="story-discussion-agent-suggestions"
-                value={noticeTargetAgentId}
-                onChange={(event) => setNoticeTargetAgentId(event.target.value)}
-                placeholder={t('story.workspace.discussions.noticeTargetPlaceholder')}
-                className="skynet-input h-10 w-full px-3 font-mono text-[12px]"
-              />
-              <datalist id="story-discussion-agent-suggestions">
-                {noticeAgentSuggestions.map((agentId) => (
-                  <option key={agentId} value={agentId} />
-                ))}
-              </datalist>
-            </label>
-            {error ? <ActionError /> : null}
-            <div className="flex justify-end">
-              <TButton
-                type="submit"
-                disabled={!document || !title.trim() || !body.trim() || isSubmitting}
-              >
-                <MessageSquareText className="h-3.5 w-3.5" />
-                {t('story.workspace.discussions.submit')}
-              </TButton>
-            </div>
-            {!document ? (
-              <p className="font-sans text-[10px] text-[var(--t-faint)]">
-                {t('story.workspace.discussions.selectFileFirst')}
-              </p>
-            ) : null}
-          </form>
-        </TPanel>
-      </div>
-    </div>
-  );
-}
-
-export function StoryReviewPanel({
-  reviews,
-  document,
-  onCreate,
-}: {
-  reviews: StoryReview[];
-  document: StoryDocumentSummary | null;
-  onCreate: (input: CreateStoryReviewInput) => void | Promise<void>;
-}) {
-  const { t } = useTranslation();
-  const [content, setContent] = useState('');
-  const [anchorText, setAnchorText] = useState('');
-  const [error, setError] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const visibleReviews = useMemo(
-    () =>
-      reviews
-        .filter((review) => !document || review.documentId === document.id)
-        .sort((left, right) => right.revisionNumber - left.revisionNumber),
-    [reviews, document],
-  );
-
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!document || !content.trim()) return;
-    setError(false);
-    setIsSubmitting(true);
-    try {
-      await onCreate({
-        documentId: document.id,
-        revisionNumber: document.currentVersion,
-        content: content.trim(),
-        anchorText: anchorText.trim() || null,
-      });
-      setContent('');
-      setAnchorText('');
-    } catch {
-      setError(true);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="space-y-5">
-      <TPanel title={t('story.workspace.reviews.title')}>
-        {visibleReviews.length ? (
-          <div className="divide-y divide-[var(--t-noise)]">
-            {visibleReviews.map((review) => (
-              <article key={review.id} className="py-3 first:pt-0 last:pb-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-sans text-[10px] text-[var(--t-faint)]">
-                    {t('story.workspace.editor.version', { version: review.revisionNumber })}
-                  </span>
-                  <span className="font-sans text-[10px] text-[var(--t-faint)]">
-                    {review.authorAgentId}
-                  </span>
-                </div>
-                {review.anchorText ? (
-                  <blockquote className="mt-2 border-l-2 border-[var(--t-accent-dim)] pl-3 font-sans text-[11px] leading-5 text-[var(--t-sub)]">
-                    {review.anchorText}
-                  </blockquote>
-                ) : null}
-                <p className="mt-2 whitespace-pre-wrap font-sans text-[12px] leading-5 text-[var(--t-text)]">
-                  {review.content}
-                </p>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <p className="font-sans text-[12px] text-[var(--t-faint)]">
-            {t('story.workspace.reviews.empty')}
-          </p>
-        )}
-      </TPanel>
-
-      <TPanel title={t('story.workspace.reviews.submit')}>
-        <form className="space-y-3" onSubmit={(event) => void submit(event)}>
-          <label className="block space-y-1.5">
-            <span className="font-sans text-[11px] font-medium text-[var(--t-sub)]">
-              {t('story.workspace.reviews.anchor')}
-            </span>
-            <TTextarea
-              value={anchorText}
-              onChange={(event) => setAnchorText(event.target.value)}
-              placeholder={t('story.workspace.reviews.anchorPlaceholder')}
-              rows={2}
-              maxLength={2000}
-            />
-          </label>
-          <label className="block space-y-1.5">
-            <span className="font-sans text-[11px] font-medium text-[var(--t-sub)]">
-              {t('story.workspace.reviews.content')}
-            </span>
-            <TTextarea
-              value={content}
-              onChange={(event) => setContent(event.target.value)}
-              placeholder={t('story.workspace.reviews.contentPlaceholder')}
-              rows={4}
-              maxLength={10000}
-            />
-          </label>
-          {error ? <ActionError /> : null}
-          <div className="flex justify-end">
-            <TButton type="submit" disabled={!document || !content.trim() || isSubmitting}>
-              {t('story.workspace.reviews.submit')}
-            </TButton>
-          </div>
-        </form>
-      </TPanel>
-    </div>
-  );
-}
-
-export function StoryBranchPanel({
-  branches,
-  document,
-  canEdit,
-  activeBranchId,
-  onSelectBranch,
-  onCreate,
-}: {
-  branches: StoryBranch[];
-  document: StoryDocumentSummary | null;
-  canEdit: boolean;
-  activeBranchId: string | null;
-  onSelectBranch: (branchId: string | null) => void;
-  onCreate: (input: CreateStoryBranchInput) => void | Promise<void>;
-}) {
-  const { t } = useTranslation();
-  const [isCreating, setIsCreating] = useState(false);
-  const [title, setTitle] = useState('');
-  const [premise, setPremise] = useState('');
-  const [error, setError] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!document || !title.trim() || !premise.trim()) return;
-    setError(false);
-    setIsSubmitting(true);
-    try {
-      await onCreate({
-        title: title.trim(),
-        premise: premise.trim(),
-        sourceDocumentId: document.id,
-        sourceRevisionNumber: document.currentVersion,
-      });
-      setTitle('');
-      setPremise('');
-      setIsCreating(false);
-    } catch {
-      setError(true);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="space-y-5">
-      <TPanel
-        title={t('story.workspace.branches.title')}
-        actions={
-          !isCreating ? (
-            <TButton
-              size="sm"
-              variant="secondary"
-              onClick={() => setIsCreating(true)}
-              disabled={!canEdit || !document}
-              title={!document ? t('story.workspace.branches.selectFileFirst') : undefined}
-            >
-              <GitBranch className="h-3.5 w-3.5" />
-              {t('story.workspace.branches.create')}
-            </TButton>
-          ) : null
-        }
+    <aside
+      className="border border-[var(--t-noise)] px-3 py-2 font-sans text-[11px] leading-6 text-[var(--t-sub)]"
+      aria-label={t('story.reading.skillTitle')}
+    >
+      <BookOpenText aria-hidden="true" className="mr-2 inline h-3.5 w-3.5 text-[var(--t-accent)]" />
+      <span>{t('story.reading.prompts.' + action)}</span>{' '}
+      <Link
+        href={SKILL_BASE + '/references/novel.md'}
+        target="_blank"
+        rel="noreferrer"
+        className={storyLinkClass}
       >
-        {branches.length ? (
-          <div className="divide-y divide-[var(--t-noise)]">
-            {branches.map((branch) => (
-              <article
-                key={branch.id}
-                className="flex flex-wrap items-start justify-between gap-3 py-3 first:pt-0 last:pb-0"
-              >
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="break-words font-sans text-[13px] font-semibold text-white">
-                      {branch.title}
-                    </h3>
-                    <TTag color={branch.id === activeBranchId ? 'accent' : 'default'}>
-                      {branch.id === activeBranchId
-                        ? t('story.workspace.branches.active')
-                        : t('story.workspace.branches.branch')}
-                    </TTag>
-                  </div>
-                  <p className="mt-1.5 font-sans text-[12px] leading-5 text-[var(--t-sub)]">
-                    {branch.premise}
-                  </p>
-                  <p className="mt-1 font-sans text-[10px] text-[var(--t-faint)]">
-                    {t('story.workspace.branches.basedOn', {
-                      documentId: branch.sourceDocumentId,
-                      version: branch.sourceRevisionNumber,
-                    })}
-                  </p>
-                </div>
-                <div className="flex shrink-0 flex-col items-end gap-2">
-                  <span className="font-sans text-[10px] text-[var(--t-faint)]">
-                    {branch.createdByAgentId}
-                  </span>
-                  {branch.id !== activeBranchId ? (
-                    <TButton
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => onSelectBranch(branch.id)}
-                    >
-                      {t('story.workspace.branches.open')}
-                    </TButton>
-                  ) : null}
-                </div>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <p className="py-3 font-sans text-[12px] leading-5 text-[var(--t-faint)]">
-            {t('story.workspace.branches.empty')}
-          </p>
-        )}
-      </TPanel>
-
-      {isCreating ? (
-        <TPanel title={t('story.workspace.branches.create')}>
-          <form className="space-y-3" onSubmit={(event) => void submit(event)}>
-            <label className="block space-y-1.5">
-              <span className="font-sans text-[11px] font-medium text-[var(--t-sub)]">
-                {t('story.workspace.branches.name')}
-              </span>
-              <input
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                placeholder={t('story.workspace.branches.namePlaceholder')}
-                className="skynet-input h-10 w-full px-3 font-sans text-[13px]"
-                maxLength={120}
-                autoFocus
-              />
-            </label>
-            <label className="block space-y-1.5">
-              <span className="font-sans text-[11px] font-medium text-[var(--t-sub)]">
-                {t('story.workspace.branches.premise')}
-              </span>
-              <TTextarea
-                value={premise}
-                onChange={(event) => setPremise(event.target.value)}
-                placeholder={t('story.workspace.branches.premisePlaceholder')}
-                rows={3}
-                maxLength={4000}
-              />
-            </label>
-            {document ? (
-              <p className="font-sans text-[10px] text-[var(--t-faint)]">
-                {t('story.workspace.branches.sourceRevision', {
-                  title: document.title,
-                  version: document.currentVersion,
-                })}
-              </p>
-            ) : null}
-            {error ? <ActionError /> : null}
-            <div className="flex justify-end gap-2">
-              <TButton
-                variant="secondary"
-                onClick={() => setIsCreating(false)}
-                disabled={isSubmitting}
-              >
-                {t('app.cancel')}
-              </TButton>
-              <TButton
-                type="submit"
-                disabled={!document || !title.trim() || !premise.trim() || isSubmitting}
-              >
-                <GitBranch className="h-3.5 w-3.5" />
-                {t('story.workspace.branches.submit')}
-              </TButton>
-            </div>
-          </form>
-        </TPanel>
-      ) : null}
-    </div>
+        {t('story.reading.novelReference')}
+      </Link>
+      <span aria-hidden="true"> · </span>
+      <Link
+        href={SKILL_BASE + '/SKILL.md'}
+        target="_blank"
+        rel="noreferrer"
+        className={storyLinkClass}
+      >
+        {t('story.reading.skillEntry')}
+      </Link>
+    </aside>
   );
 }
 
-export function StoryRevisionHistoryPanel({
-  document,
-  revisions,
-  onCompare,
-  onRestore,
+export function StoryMarkdown({ children }: { children: string }) {
+  return (
+    <article className="prose prose-invert prose-sm max-w-none break-words font-sans leading-8 text-[var(--t-text)] prose-headings:font-semibold prose-a:text-[var(--t-accent)] prose-strong:text-white">
+      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
+        {children}
+      </ReactMarkdown>
+    </article>
+  );
+}
+
+export function StoryPager({
   hasMore,
-  isLoadingMore,
-  onLoadMore,
+  loading,
+  failed = false,
+  load,
 }: {
-  document: StoryDocument | null;
-  revisions: StoryRevisionSummary[];
-  onCompare: (
-    documentId: string,
-    fromRevisionNumber: number,
-    toRevisionNumber: number,
-  ) => Promise<StoryComparison>;
-  onRestore: (input: RestoreStoryRevisionInput) => void | Promise<void>;
   hasMore: boolean;
-  isLoadingMore: boolean;
-  onLoadMore: () => void;
+  loading: boolean;
+  failed?: boolean;
+  load: () => void;
 }) {
   const { t } = useTranslation();
-  const [fromRevisionNumber, setFromRevisionNumber] = useState('');
-  const [toRevisionNumber, setToRevisionNumber] = useState('');
-  const [restoreRevisionNumber, setRestoreRevisionNumber] = useState<number | null>(null);
-  const [restoreMode, setRestoreMode] = useState<'WHOLE' | 'SELECTION'>('WHOLE');
-  const [changeSummary, setChangeSummary] = useState('');
-  const [selection, setSelection] = useState<StoryLineSelection>({
-    currentStartLine: 1,
-    currentEndLine: 1,
-    targetStartLine: 1,
-    targetEndLine: 1,
+  return hasMore || failed ? (
+    <div className="mt-4 border-t border-[var(--t-noise)] pt-3">
+      {failed ? (
+        <p role="alert" className="mb-2 text-[11px] text-[var(--t-hazard)]">
+          {t('story.reading.loadMoreFailed')}
+        </p>
+      ) : null}
+      <TButton size="sm" variant="secondary" disabled={loading} onClick={load}>
+        {t(loading ? 'story.reading.loadingMore' : failed ? 'app.retry' : 'story.reading.loadMore')}
+      </TButton>
+    </div>
+  ) : null;
+}
+
+export function StoryQueryStatus({
+  pending,
+  failed,
+  retry,
+  children,
+}: {
+  pending: boolean;
+  failed: boolean;
+  retry: () => void;
+  children: ReactNode;
+}) {
+  const { t } = useTranslation();
+  if (pending) return <InlineLoading label={t('story.reading.loading')} />;
+  if (failed) return <ErrorState message={t('story.reading.loadFailed')} onAction={retry} />;
+  return children;
+}
+
+export function useStoryPages<T>(
+  key: readonly (string | number | null)[],
+  load: (cursor: string | undefined) => Promise<StoryApiPage<T>>,
+) {
+  return useInfiniteQuery({
+    queryKey: key,
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ pageParam }) => load(pageParam),
+    getNextPageParam: (page) => page.nextCursor ?? undefined,
+    retry: false,
   });
-  const [comparison, setComparison] = useState<StoryComparison | null>(null);
-  const [restoreSnapshot, setRestoreSnapshot] = useState<StoryRevision | null>(null);
-  const [isComparing, setIsComparing] = useState(false);
-  const [error, setError] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const documentRevisions = useMemo(
-    () => revisions.filter((revision) => !document || revision.documentId === document.id),
-    [revisions, document],
+}
+
+export function StoryDate({ value }: { value: string }) {
+  const { i18n } = useTranslation();
+  return (
+    <time dateTime={value}>
+      {new Intl.DateTimeFormat(i18n.language.startsWith('zh') ? 'zh-CN' : 'en-US', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      }).format(new Date(value))}
+    </time>
   );
-  const restoreRevision =
-    documentRevisions.find((revision) => revision.revisionNumber === restoreRevisionNumber) ?? null;
-  const restoreTargetContent = restoreSnapshot?.diff.afterDocument?.content ?? '';
-  const restoreSelectionValid =
-    document && restoreRevision
-      ? isValidRestoreSelection(document.content, restoreTargetContent, selection)
-      : false;
-  const restorePreview =
-    document && restoreRevision
-      ? restoreMode === 'WHOLE'
-        ? restoreTargetContent
-        : restoreSelectionValid
-          ? previewSelectedRestore(document.content, restoreTargetContent, selection)
-          : null
-      : null;
+}
 
-  const beginRestore = async (revision: StoryRevisionSummary) => {
-    if (!document || revision.revisionNumber >= document.currentVersion) return;
-    setRestoreRevisionNumber(revision.revisionNumber);
-    setRestoreSnapshot(null);
-    setRestoreMode('WHOLE');
-    setChangeSummary('');
-    setIsComparing(true);
-    setError(false);
-    try {
-      const comparison = await onCompare(
-        document.id,
-        revision.revisionNumber,
-        document.currentVersion,
-      );
-      setRestoreSnapshot(comparison.fromRevision);
-      const content = comparison.fromRevision.diff.afterDocument?.content ?? '';
-      setSelection({
-        currentStartLine: 1,
-        currentEndLine: document.content.split('\n').length,
-        targetStartLine: 1,
-        targetEndLine: content.split('\n').length,
-      });
-    } catch {
-      setError(true);
-      setRestoreRevisionNumber(null);
-    } finally {
-      setIsComparing(false);
-    }
-  };
-
-  const compareRevisions = async () => {
-    if (!document) return;
-    const from = Number(fromRevisionNumber);
-    const to = Number(toRevisionNumber);
-    if (!Number.isInteger(from) || !Number.isInteger(to) || from === to) return;
-    setIsComparing(true);
-    setError(false);
-    try {
-      setComparison(await onCompare(document.id, from, to));
-    } catch {
-      setError(true);
-    } finally {
-      setIsComparing(false);
-    }
-  };
-
-  const submitRestore = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (
-      !document ||
-      !restoreRevision ||
-      !changeSummary.trim() ||
-      restorePreview === null ||
-      (restoreMode === 'SELECTION' && !restoreSelectionValid)
-    )
-      return;
-    setIsSubmitting(true);
-    setError(false);
-    try {
-      await onRestore({
-        documentId: document.id,
-        targetRevisionNumber: restoreRevision.revisionNumber,
-        changeSummary: changeSummary.trim(),
-        expectedVersion: document.currentVersion,
-        selection: restoreMode === 'SELECTION' ? selection : null,
-      });
-      setRestoreRevisionNumber(null);
-      setChangeSummary('');
-    } catch {
-      setError(true);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
+export function StoryOpening({ snapshot }: { snapshot: StoryApiMetadataSnapshot }) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-5">
-      <TPanel title={t('story.workspace.history.title')}>
-        {!document ? (
-          <p className="py-4 font-sans text-[12px] text-[var(--t-faint)]">
-            {t('story.workspace.noSelection')}
-          </p>
-        ) : documentRevisions.length ? (
-          <div className="space-y-3">
-            <div className="divide-y divide-[var(--t-noise)]">
-              {documentRevisions.map((revision) => (
-                <article
-                  key={revision.id}
-                  className="grid gap-2 py-3 first:pt-0 sm:grid-cols-[72px_minmax(0,1fr)_auto] sm:items-start"
-                >
-                  <span className="font-mono text-[11px] text-[var(--t-accent)]">
-                    {t('story.workspace.editor.version', { version: revision.revisionNumber })}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="break-words font-sans text-[12px] text-white">
-                      {revision.changeSummary}
-                    </p>
-                    <p className="mt-1 font-sans text-[10px] text-[var(--t-faint)]">
-                      {revision.authorAgentId} · {formatDate(revision.createdAt)}
-                    </p>
-                  </div>
-                  <TButton
-                    size="sm"
-                    variant="secondary"
-                    disabled={revision.revisionNumber >= (document?.currentVersion ?? 0)}
-                    onClick={() => void beginRestore(revision)}
-                  >
-                    <RotateCcw className="h-3 w-3" />
-                    {t('story.workspace.history.restore')}
-                  </TButton>
-                </article>
-              ))}
+      <h2 className="break-words text-2xl font-semibold text-white">{snapshot.title}</h2>
+      <StoryMarkdown>{snapshot.premise}</StoryMarkdown>
+      <dl className="grid gap-x-5 gap-y-2 font-sans text-[12px] leading-6 sm:grid-cols-[100px_minmax(0,1fr)]">
+        <dt className="text-[var(--t-faint)]">{t('story.reading.phase')}</dt>
+        <dd>{t('story.phases.' + snapshot.phase)}</dd>
+        {(['genre', 'tone', 'viewpoint', 'targetLength'] as const).map((key) =>
+          snapshot[key] ? (
+            <div key={key} className="contents">
+              <dt className="text-[var(--t-faint)]">{t('story.reading.' + key)}</dt>
+              <dd className="break-words">{snapshot[key]}</dd>
             </div>
-
-            {hasMore ? (
-              <div className="border-t border-[var(--t-noise)] pt-3">
-                <TButton
-                  size="sm"
-                  variant="secondary"
-                  disabled={isLoadingMore}
-                  onClick={onLoadMore}
-                >
-                  {t(
-                    isLoadingMore
-                      ? 'story.workspace.history.loadingMore'
-                      : 'story.workspace.history.loadMore',
-                  )}
-                </TButton>
-              </div>
-            ) : null}
-
-            <div className="border-t border-[var(--t-noise)] pt-4">
-              <p className="mb-3 font-sans text-[12px] font-semibold text-white">
-                {t('story.workspace.history.compare')}
-              </p>
-              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
-                <RevisionSelect
-                  label={t('story.workspace.history.from')}
-                  value={fromRevisionNumber}
-                  revisions={documentRevisions}
-                  onChange={setFromRevisionNumber}
-                />
-                <RevisionSelect
-                  label={t('story.workspace.history.to')}
-                  value={toRevisionNumber}
-                  revisions={documentRevisions}
-                  onChange={setToRevisionNumber}
-                />
-                <TButton
-                  variant="secondary"
-                  disabled={
-                    isComparing ||
-                    !fromRevisionNumber ||
-                    !toRevisionNumber ||
-                    fromRevisionNumber === toRevisionNumber
-                  }
-                  onClick={() => void compareRevisions()}
-                >
-                  {t('story.workspace.history.compare')}
-                </TButton>
-              </div>
-              {comparison ? (
-                comparison.changes.length ? (
-                  <div className="mt-3 divide-y divide-[var(--t-noise)] border-t border-[var(--t-noise)]">
-                    {comparison.changes.map((change) => (
-                      <div
-                        key={change.field}
-                        className="grid gap-2 py-3 lg:grid-cols-[100px_minmax(0,1fr)_minmax(0,1fr)]"
-                      >
-                        <span className="font-mono text-[10px] text-[var(--t-faint)]">
-                          {t(`story.workspace.history.fields.${change.field}`)}
-                        </span>
-                        <RevisionContent
-                          title={t('story.workspace.history.before')}
-                          content={formatComparisonValue(change.before)}
-                        />
-                        <RevisionContent
-                          title={t('story.workspace.history.after')}
-                          content={formatComparisonValue(change.after)}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="mt-3 border-t border-[var(--t-noise)] pt-3 font-sans text-[11px] text-[var(--t-faint)]">
-                    {t('story.workspace.history.noChanges')}
-                  </p>
-                )
-              ) : null}
-            </div>
-          </div>
-        ) : (
-          <p className="py-4 font-sans text-[12px] text-[var(--t-faint)]">
-            {t('story.workspace.history.empty')}
-          </p>
+          ) : null,
         )}
-        {error ? (
-          <div className="mt-3">
-            <ActionError />
-          </div>
-        ) : null}
-      </TPanel>
-
-      {restoreRevision && restoreSnapshot && document ? (
-        <TPanel title={t('story.workspace.history.restoreTitle')}>
-          <p className="mb-3 font-sans text-[12px] leading-5 text-[var(--t-sub)]">
-            {t('story.workspace.history.restoreDescription')}
-          </p>
-          <form className="space-y-3" onSubmit={(event) => void submitRestore(event)}>
-            <label className="block space-y-1.5">
-              <span className="font-sans text-[11px] font-medium text-[var(--t-sub)]">
-                {t('story.workspace.history.restoreMode')}
-              </span>
-              <select
-                value={restoreMode}
-                onChange={(event) => setRestoreMode(event.target.value as 'WHOLE' | 'SELECTION')}
-                className="skynet-input h-10 w-full px-3 font-sans text-[12px]"
-              >
-                <option value="WHOLE">{t('story.workspace.history.restoreWhole')}</option>
-                <option value="SELECTION">{t('story.workspace.history.restoreSelection')}</option>
-              </select>
-            </label>
-            {restoreMode === 'SELECTION' ? (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <LineRange
-                  label={t('story.workspace.history.currentLines')}
-                  start={selection.currentStartLine}
-                  end={selection.currentEndLine}
-                  max={document.content.split('\n').length}
-                  onChange={(key, value) =>
-                    setSelection((current) => ({ ...current, [key]: value }))
-                  }
-                />
-                <LineRange
-                  label={t('story.workspace.history.targetLines')}
-                  start={selection.targetStartLine}
-                  end={selection.targetEndLine}
-                  max={restoreTargetContent.split('\n').length}
-                  onChange={(key, value) =>
-                    setSelection((current) => ({ ...current, [key]: value }))
-                  }
-                />
-              </div>
-            ) : null}
-            <div className="grid gap-3 lg:grid-cols-2">
-              <RevisionContent
-                title={t('story.workspace.history.currentContent')}
-                content={document.content}
-              />
-              <RevisionContent
-                title={t('story.workspace.history.restorePreview')}
-                content={restorePreview ?? t('story.workspace.history.invalidSelection')}
-              />
-            </div>
-            <label className="block space-y-1.5">
-              <span className="font-sans text-[11px] font-medium text-[var(--t-sub)]">
-                {t('story.workspace.history.restoreReason')}
-              </span>
-              <TTextarea
-                value={changeSummary}
-                onChange={(event) => setChangeSummary(event.target.value)}
-                placeholder={t('story.workspace.history.restoreReasonPlaceholder')}
-                rows={2}
-                maxLength={280}
-              />
-            </label>
-            <div className="flex justify-end gap-2">
-              <TButton
-                variant="secondary"
-                onClick={() => setRestoreRevisionNumber(null)}
-                disabled={isSubmitting}
-              >
-                {t('app.cancel')}
-              </TButton>
-              <TButton
-                type="submit"
-                variant="danger"
-                disabled={
-                  !changeSummary.trim() ||
-                  restorePreview === null ||
-                  (restoreMode === 'SELECTION' && !restoreSelectionValid) ||
-                  isSubmitting
-                }
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-                {t('story.workspace.history.confirmRestore')}
-              </TButton>
-            </div>
-          </form>
-        </TPanel>
+      </dl>
+      {snapshot.establishedDirection ? (
+        <section>
+          <h3 className="mb-2 font-semibold text-white">{t('story.reading.direction')}</h3>
+          <StoryMarkdown>{snapshot.establishedDirection}</StoryMarkdown>
+        </section>
+      ) : null}
+      {snapshot.openQuestions.length ? (
+        <section>
+          <h3 className="mb-2 font-semibold text-white">{t('story.reading.openQuestions')}</h3>
+          <ul className="list-inside list-disc space-y-2 font-sans text-[13px] leading-7">
+            {snapshot.openQuestions.map((question, index) => (
+              <li key={index}>{question}</li>
+            ))}
+          </ul>
+        </section>
       ) : null}
     </div>
   );
 }
 
-function RevisionSelect({
-  label,
-  value,
-  revisions,
-  onChange,
+export function StoryRelated({
+  storyId,
+  documentId,
+  snapshot,
 }: {
-  label: string;
-  value: string;
-  revisions: StoryRevisionSummary[];
-  onChange: (value: string) => void;
+  storyId: string;
+  documentId: string;
+  snapshot: StoryApiDocumentSnapshot;
 }) {
   const { t } = useTranslation();
-  return (
-    <label className="block min-w-0 space-y-1.5">
-      <span className="font-sans text-[11px] font-medium text-[var(--t-sub)]">{label}</span>
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="skynet-input h-10 w-full px-3 font-sans text-[12px]"
-      >
-        <option value="">—</option>
-        {revisions.map((revision) => (
-          <option key={revision.id} value={revision.revisionNumber}>
-            {t('story.workspace.editor.version', { version: revision.revisionNumber })} ·{' '}
-            {revision.changeSummary}
-          </option>
-        ))}
-      </select>
-    </label>
+  const ids = [...new Set(snapshot.links.map((link) => link.targetDocumentId))];
+  const targets = useQuery({
+    queryKey: ['story', storyId, 'links', ...ids],
+    queryFn: async () =>
+      (
+        await Promise.all(
+          Array.from({ length: Math.ceil(ids.length / 50) }, (_, index) =>
+            storyApi.listDocuments(storyId, {
+              documentIds: ids.slice(index * 50, (index + 1) * 50),
+            }),
+          ),
+        )
+      ).flatMap((page) => page.items),
+    enabled: ids.length > 0,
+    retry: false,
+  });
+  const references = useStoryPages(['story', storyId, 'references', documentId], (cursor) =>
+    storyApi.listReferences(storyId, documentId, { cursor, limit: STORY_PAGE_SIZE }),
   );
-}
-
-function LineRange({
-  label,
-  start,
-  end,
-  max,
-  onChange,
-}: {
-  label: string;
-  start: number;
-  end: number;
-  max: number;
-  onChange: (
-    key: 'currentStartLine' | 'currentEndLine' | 'targetStartLine' | 'targetEndLine',
-    value: number,
-  ) => void;
-}) {
-  const { t } = useTranslation();
-  const prefix = label.startsWith('current') ? 'current' : 'target';
   return (
-    <fieldset className="grid grid-cols-2 gap-2 border border-[var(--t-noise)] p-3">
-      <legend className="px-1 font-sans text-[10px] text-[var(--t-sub)]">{label}</legend>
-      <label className="space-y-1">
-        <span className="block font-sans text-[10px] text-[var(--t-faint)]">
-          {t('story.workspace.history.lineStart')}
-        </span>
-        <input
-          type="number"
-          min={1}
-          max={max}
-          value={start}
-          onChange={(event) =>
-            onChange(
-              `${prefix}StartLine` as 'currentStartLine' | 'targetStartLine',
-              Number(event.target.value),
-            )
-          }
-          className="skynet-input h-9 w-full px-2 font-mono text-[12px]"
-        />
-      </label>
-      <label className="space-y-1">
-        <span className="block font-sans text-[10px] text-[var(--t-faint)]">
-          {t('story.workspace.history.lineEnd')}
-        </span>
-        <input
-          type="number"
-          min={1}
-          max={max}
-          value={end}
-          onChange={(event) =>
-            onChange(
-              `${prefix}EndLine` as 'currentEndLine' | 'targetEndLine',
-              Number(event.target.value),
-            )
-          }
-          className="skynet-input h-9 w-full px-2 font-mono text-[12px]"
-        />
-      </label>
-    </fieldset>
-  );
-}
-
-function RevisionContent({ title, content }: { title: string; content: string }) {
-  return (
-    <div className="min-w-0 border border-[var(--t-noise)] bg-black/60">
-      <p className="border-b border-[var(--t-noise)] px-2.5 py-1.5 font-sans text-[10px] font-semibold text-[var(--t-sub)]">
-        {title}
-      </p>
-      <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words p-2.5 font-mono text-[11px] leading-5 text-[var(--t-text)]">
-        {content || ' '}
-      </pre>
+    <div className="space-y-5">
+      <TPanel title={t('story.reading.related')}>
+        {ids.length ? (
+          <StoryQueryStatus
+            pending={targets.isPending}
+            failed={targets.isError}
+            retry={() => void targets.refetch()}
+          >
+            <ul className="divide-y divide-[var(--t-noise)]">
+              {snapshot.links.map((link) => (
+                <li
+                  key={link.targetDocumentId + link.relation}
+                  className="py-2 font-sans text-[12px] leading-6"
+                >
+                  <Link
+                    className={storyLinkClass}
+                    href={buildStoryHref(storyId, {
+                      documentId: link.targetDocumentId,
+                      tab: 'reading',
+                    })}
+                  >
+                    {targets.data?.find((item) => item.id === link.targetDocumentId)?.title ??
+                      link.targetDocumentId}
+                  </Link>
+                  <p className="text-[10px] text-[var(--t-faint)]">
+                    {t('story.reading.relations.' + link.relation)}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </StoryQueryStatus>
+        ) : (
+          <Empty />
+        )}
+      </TPanel>
+      <TPanel title={t('story.reading.referencedBy')}>
+        <StoryQueryStatus
+          pending={references.isPending}
+          failed={references.isError && !references.data}
+          retry={() => void references.refetch()}
+        >
+          {references.data?.pages.some((page) => page.items.length) ? (
+            <ul className="space-y-3">
+              {references.data.pages
+                .flatMap((page) => page.items)
+                .map((item) => (
+                  <li key={item.id}>
+                    <Link
+                      href={buildStoryHref(storyId, { documentId: item.id, tab: 'reading' })}
+                      className={storyLinkClass}
+                    >
+                      {item.title}
+                    </Link>
+                  </li>
+                ))}
+            </ul>
+          ) : (
+            <Empty />
+          )}
+          <StoryPager
+            hasMore={references.hasNextPage}
+            loading={references.isFetchingNextPage}
+            failed={references.isFetchNextPageError}
+            load={() => void references.fetchNextPage()}
+          />
+        </StoryQueryStatus>
+      </TPanel>
     </div>
   );
 }
 
-function ActionError() {
+function Empty() {
   const { t } = useTranslation();
   return (
-    <p role="alert" className="font-sans text-[12px] text-[var(--t-hazard)]">
-      {t('story.workspace.actionFailed')}
+    <p className="py-2 font-sans text-[12px] leading-6 text-[var(--t-faint)]">
+      {t('story.reading.empty')}
     </p>
   );
 }
 
-function formatDate(value: string, language?: string): string {
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return value;
-  return new Intl.DateTimeFormat(language?.startsWith('zh') ? 'zh-CN' : 'en-US', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(date);
+function revisionHref(
+  storyId: string,
+  documentId: string | null,
+  revisionNumber: number,
+  panel: 'history' | 'discussions' | 'reviews' = 'history',
+) {
+  return buildStoryHref(storyId, {
+    tab: documentId ? 'reading' : 'overview',
+    panel,
+    documentId,
+    revisionNumber,
+  });
 }
 
-function formatComparisonValue(value: StoryComparison['changes'][number]['before']): string {
-  if (value === null) return '∅';
-  if (Array.isArray(value)) return JSON.stringify(value, null, 2);
-  return String(value);
+export function StoryHistory({
+  storyId,
+  documentId,
+}: {
+  storyId: string;
+  documentId: string | null;
+}) {
+  const { t } = useTranslation();
+  const query = useStoryPages<StoryApiRevisionSummary>(
+    ['story', storyId, 'history', documentId],
+    (cursor) =>
+      documentId
+        ? storyApi.listDocumentRevisions(storyId, documentId, { cursor, limit: STORY_PAGE_SIZE })
+        : storyApi.listStoryRevisions(storyId, { cursor, limit: STORY_PAGE_SIZE }),
+  );
+  return (
+    <TPanel title={t('story.reading.history')}>
+      <StoryQueryStatus
+        pending={query.isPending}
+        failed={query.isError && !query.data}
+        retry={() => void query.refetch()}
+      >
+        <ol className="divide-y divide-[var(--t-noise)]">
+          {query.data?.pages
+            .flatMap((page) => page.items)
+            .map((revision) => (
+              <li key={revision.id} className="space-y-1 py-3 font-sans text-[12px] leading-6">
+                <Link
+                  className={storyLinkClass}
+                  href={revisionHref(storyId, documentId, revision.revisionNumber)}
+                >
+                  {t('story.reading.version', { version: revision.revisionNumber })} ·{' '}
+                  {revision.changeSummary}
+                </Link>
+                {revision.revisionNumber > 1 ? (
+                  <p>
+                    <Link
+                      className={storyLinkClass}
+                      href={
+                        revisionHref(storyId, documentId, revision.revisionNumber) +
+                        '&compareRevisionNumber=' +
+                        (revision.revisionNumber - 1)
+                      }
+                    >
+                      {t('story.reading.comparePrevious')}
+                    </Link>
+                  </p>
+                ) : null}
+                <p className="break-all text-[10px] text-[var(--t-faint)]">
+                  {revision.authorAgentId} · <StoryDate value={revision.createdAt} />
+                </p>
+                {revision.directoryChange ? (
+                  <p className="text-[10px] text-[var(--t-faint)]">
+                    {t('story.reading.directoryRevision', {
+                      version: revision.directoryChange.structureVersion,
+                    })}
+                  </p>
+                ) : null}
+              </li>
+            ))}
+        </ol>
+        {!query.data?.pages.some((page) => page.items.length) ? <Empty /> : null}
+        <StoryPager
+          hasMore={query.hasNextPage}
+          loading={query.isFetchingNextPage}
+          failed={query.isFetchNextPageError}
+          load={() => void query.fetchNextPage()}
+        />
+        <StorySkillPrompt action="restore" />
+      </StoryQueryStatus>
+    </TPanel>
+  );
+}
+
+export function StoryDiscussions({
+  storyId,
+  documentId,
+  selected,
+  messageId,
+}: {
+  storyId: string;
+  documentId: string | null;
+  selected: StoryApiDiscussion | null;
+  messageId: string | null;
+}) {
+  const { t } = useTranslation();
+  const query = useStoryPages(['story', storyId, 'discussions', documentId], (cursor) =>
+    storyApi.listDiscussions(storyId, {
+      targetType: documentId ? 'document' : 'story',
+      documentId: documentId ?? undefined,
+      cursor,
+      limit: STORY_PAGE_SIZE,
+    }),
+  );
+  return (
+    <div className="space-y-4">
+      <TPanel title={t('story.reading.discussions')}>
+        <StoryQueryStatus
+          pending={query.isPending}
+          failed={query.isError && !query.data}
+          retry={() => void query.refetch()}
+        >
+          <ul className="divide-y divide-[var(--t-noise)]">
+            {query.data?.pages
+              .flatMap((page) => page.items)
+              .map((discussion) => (
+                <li key={discussion.id} className="py-3">
+                  <Link
+                    className={storyLinkClass}
+                    href={buildStoryHref(storyId, {
+                      documentId: discussion.documentId,
+                      revisionNumber: discussion.revisionNumber,
+                      discussionId: discussion.id,
+                      panel: 'discussions',
+                      tab: discussion.documentId ? 'reading' : 'overview',
+                    })}
+                  >
+                    {discussion.title}
+                  </Link>
+                  <p className="mt-1 text-[10px] text-[var(--t-faint)]">
+                    {t('story.reading.linkedVersion', { version: discussion.revisionNumber })}
+                  </p>
+                </li>
+              ))}
+          </ul>
+          {!query.data?.pages.some((page) => page.items.length) ? <Empty /> : null}
+          <StoryPager
+            hasMore={query.hasNextPage}
+            loading={query.isFetchingNextPage}
+            failed={query.isFetchNextPageError}
+            load={() => void query.fetchNextPage()}
+          />
+        </StoryQueryStatus>
+      </TPanel>
+      {selected ? (
+        <StoryDiscussionThread storyId={storyId} discussion={selected} messageId={messageId} />
+      ) : null}
+      <StorySkillPrompt action="discuss" />
+    </div>
+  );
+}
+
+function StoryDiscussionThread({
+  storyId,
+  discussion,
+  messageId,
+}: {
+  storyId: string;
+  discussion: StoryApiDiscussion;
+  messageId: string | null;
+}) {
+  const { t } = useTranslation();
+  const messages = useStoryPages(['story', storyId, 'messages', discussion.id], (cursor) =>
+    storyApi.listDiscussionMessages(storyId, discussion.id, {
+      cursor,
+      order: 'desc',
+      limit: STORY_PAGE_SIZE,
+    }),
+  );
+  const opening = useQuery({
+    queryKey: ['story', storyId, 'first-message', discussion.id],
+    queryFn: () =>
+      storyApi.listDiscussionMessages(storyId, discussion.id, { order: 'asc', limit: 1 }),
+    retry: false,
+  });
+  const focus = useQuery({
+    queryKey: ['story', storyId, 'message', discussion.id, messageId],
+    queryFn: () => storyApi.getDiscussionMessage(storyId, discussion.id, messageId ?? ''),
+    enabled: messageId !== null,
+    retry: false,
+  });
+  const first = opening.data?.items[0];
+  const messageLink = (id: string) =>
+    buildStoryHref(storyId, {
+      tab: discussion.documentId ? 'reading' : 'overview',
+      panel: 'discussions',
+      documentId: discussion.documentId,
+      revisionNumber: discussion.revisionNumber,
+      discussionId: discussion.id,
+      messageId: id,
+    });
+  const renderMessage = (message: StoryApiDiscussionMessage) => (
+    <article
+      key={message.id}
+      id={'message-' + message.id}
+      className="min-w-0 space-y-2 border-t border-[var(--t-noise)] py-3"
+    >
+      <p className="break-all font-sans text-[10px] leading-5 text-[var(--t-faint)]">
+        {message.authorAgentId} · <StoryDate value={message.createdAt} />
+      </p>
+      <StoryMarkdown>{message.content}</StoryMarkdown>
+      {message.parentMessageId ? (
+        <Link className={storyLinkClass} href={messageLink(message.parentMessageId)}>
+          {t('story.reading.parentMessage')}
+        </Link>
+      ) : null}
+    </article>
+  );
+  return (
+    <TPanel title={discussion.title}>
+      <p className="mb-3 font-sans text-[11px] text-[var(--t-faint)]">
+        {t('story.reading.linkedVersion', { version: discussion.revisionNumber })}
+      </p>
+      <Link
+        className={storyLinkClass}
+        href={
+          revisionHref(storyId, discussion.documentId, discussion.revisionNumber, 'discussions') +
+          '&discussionId=' +
+          encodeURIComponent(discussion.id)
+        }
+      >
+        {t('story.reading.readReferencedVersion')}
+      </Link>
+      {discussion.anchorText ? (
+        <blockquote className="my-4 break-words border-l-2 border-[var(--t-accent)] pl-3 font-sans text-[12px] leading-7 text-[var(--t-sub)]">
+          {discussion.anchorText}
+        </blockquote>
+      ) : null}
+      <StoryQueryStatus
+        pending={opening.isPending}
+        failed={opening.isError}
+        retry={() => void opening.refetch()}
+      >
+        {first ? (
+          <div>
+            <p className="mt-4 font-sans text-[10px] text-[var(--t-faint)]">
+              {t('story.reading.discussionOpening')}
+            </p>
+            {renderMessage(first)}
+          </div>
+        ) : null}
+      </StoryQueryStatus>
+      {messageId ? (
+        <StoryQueryStatus
+          pending={focus.isPending}
+          failed={focus.isError}
+          retry={() => void focus.refetch()}
+        >
+          {focus.data ? (
+            <div className="my-3 border border-[var(--t-accent)] px-3">
+              <p className="pt-3 text-[11px] text-[var(--t-accent)]">
+                {t('story.reading.focusedMessage')}
+              </p>
+              {renderMessage(focus.data)}
+            </div>
+          ) : null}
+        </StoryQueryStatus>
+      ) : null}
+      <StoryQueryStatus
+        pending={messages.isPending}
+        failed={messages.isError && !messages.data}
+        retry={() => void messages.refetch()}
+      >
+        {messages.data?.pages
+          .flatMap((page) => page.items)
+          .filter((message) => message.id !== first?.id)
+          .map(renderMessage)}
+        <StoryPager
+          hasMore={messages.hasNextPage}
+          loading={messages.isFetchingNextPage}
+          failed={messages.isFetchNextPageError}
+          load={() => void messages.fetchNextPage()}
+        />
+      </StoryQueryStatus>
+    </TPanel>
+  );
+}
+
+export function StoryReviews({
+  storyId,
+  documentId,
+  revisionNumber,
+}: {
+  storyId: string;
+  documentId: string | null;
+  revisionNumber: number | null;
+}) {
+  const { t } = useTranslation();
+  const query = useStoryPages(['story', storyId, 'reviews', documentId, revisionNumber], (cursor) =>
+    storyApi.listReviews(storyId, {
+      targetType: documentId ? 'document' : 'story',
+      documentId: documentId ?? undefined,
+      revisionNumber: revisionNumber ?? undefined,
+      cursor,
+      limit: STORY_PAGE_SIZE,
+    }),
+  );
+  return (
+    <TPanel title={t('story.reading.reviews')}>
+      <StoryQueryStatus
+        pending={query.isPending}
+        failed={query.isError && !query.data}
+        retry={() => void query.refetch()}
+      >
+        {query.data?.pages
+          .flatMap((page) => page.items)
+          .map((review) => (
+            <article key={review.id} className="space-y-3 border-b border-[var(--t-noise)] py-3">
+              <Link
+                className={storyLinkClass}
+                href={revisionHref(storyId, review.documentId, review.revisionNumber, 'reviews')}
+              >
+                {t('story.reading.linkedVersion', { version: review.revisionNumber })}
+              </Link>
+              {review.anchorText ? (
+                <blockquote className="border-l border-[var(--t-accent)] pl-3 text-[var(--t-sub)]">
+                  {review.anchorText}
+                </blockquote>
+              ) : null}
+              <StoryMarkdown>{review.content}</StoryMarkdown>
+              <p className="break-all text-[10px] text-[var(--t-faint)]">
+                {review.authorAgentId} · <StoryDate value={review.createdAt} />
+              </p>
+            </article>
+          ))}
+        {!query.data?.pages.some((page) => page.items.length) ? <Empty /> : null}
+        <StoryPager
+          hasMore={query.hasNextPage}
+          loading={query.isFetchingNextPage}
+          failed={query.isFetchNextPageError}
+          load={() => void query.fetchNextPage()}
+        />
+        <StorySkillPrompt action="review" />
+      </StoryQueryStatus>
+    </TPanel>
+  );
+}
+
+export function StoryCases({
+  storyId,
+  selectedCaseId,
+}: {
+  storyId: string;
+  selectedCaseId: string | null;
+}) {
+  const { t } = useTranslation();
+  const query = useStoryPages(['story', storyId, 'cases'], (cursor) =>
+    storyApi.listCollaborationCases(storyId, { cursor, limit: STORY_PAGE_SIZE }),
+  );
+  const selected = useQuery({
+    queryKey: ['story', storyId, 'case', selectedCaseId],
+    queryFn: () => storyApi.getCollaborationCase(storyId, selectedCaseId ?? ''),
+    enabled: selectedCaseId !== null,
+    retry: false,
+  });
+  const renderCase = (item: StoryApiCollaborationCase) => (
+    <article key={item.id} className="space-y-3 border-b border-[var(--t-noise)] py-4">
+      <Link
+        className={storyLinkClass}
+        href={buildStoryHref(storyId, { tab: 'collaboration', panel: 'cases', caseId: item.id })}
+      >
+        {t('story.reading.caseTypes.' + item.caseType)} ·{' '}
+        {t('story.reading.caseStatuses.' + item.status)}
+      </Link>
+      <StoryMarkdown>{item.reason}</StoryMarkdown>
+      {item.addressedDiscussionId ? (
+        <Link
+          className={storyLinkClass}
+          href={buildStoryHref(storyId, {
+            discussionId: item.addressedDiscussionId,
+            panel: 'discussions',
+            tab: 'reading',
+          })}
+        >
+          {t('story.reading.addressedDiscussion')}
+        </Link>
+      ) : null}
+      <ul className="space-y-2">
+        {item.evidence.map((evidence) => (
+          <li key={evidence.documentId + ':' + evidence.revisionNumber}>
+            <Link
+              className={storyLinkClass}
+              href={revisionHref(storyId, evidence.documentId, evidence.revisionNumber)}
+            >
+              {t('story.reading.evidenceVersion', { version: evidence.revisionNumber })}
+            </Link>
+          </li>
+        ))}
+      </ul>
+      {item.restrictionExpiresAt ? (
+        <p className="font-sans text-[11px] text-[var(--t-sub)]">
+          {t('story.reading.expires')} <StoryDate value={item.restrictionExpiresAt} />
+        </p>
+      ) : null}
+      {item.votes.map((vote) => (
+        <div key={vote.reviewerAgentId} className="border-l border-[var(--t-noise)] pl-3">
+          <p className="break-all text-[10px] text-[var(--t-faint)]">
+            {vote.reviewerAgentId} · {t('story.reading.decisions.' + vote.decision)}
+          </p>
+          <StoryMarkdown>{vote.reason}</StoryMarkdown>
+        </div>
+      ))}
+    </article>
+  );
+  return (
+    <TPanel title={t('story.reading.cases')}>
+      <StoryConflicts storyId={storyId} />
+      {selectedCaseId ? (
+        <StoryQueryStatus
+          pending={selected.isPending}
+          failed={selected.isError}
+          retry={() => void selected.refetch()}
+        >
+          {selected.data ? renderCase(selected.data) : null}
+        </StoryQueryStatus>
+      ) : null}
+      <StoryQueryStatus
+        pending={query.isPending}
+        failed={query.isError && !query.data}
+        retry={() => void query.refetch()}
+      >
+        {query.data?.pages
+          .flatMap((page) => page.items)
+          .filter((item) => item.id !== selectedCaseId)
+          .map(renderCase)}
+        {!query.data?.pages.some((page) => page.items.length) && !selectedCaseId ? <Empty /> : null}
+        <StoryPager
+          hasMore={query.hasNextPage}
+          loading={query.isFetchingNextPage}
+          failed={query.isFetchNextPageError}
+          load={() => void query.fetchNextPage()}
+        />
+      </StoryQueryStatus>
+      <StorySkillPrompt action="discuss" />
+    </TPanel>
+  );
+}
+
+export function activityHref(storyId: string, activity: StoryApiActivity) {
+  return buildStoryHref(storyId, {
+    tab: activity.caseId ? 'collaboration' : activity.documentId ? 'reading' : 'overview',
+    panel: activity.caseId
+      ? 'cases'
+      : activity.discussionId
+        ? 'discussions'
+        : activity.kind === 'REVIEW_CREATED'
+          ? 'reviews'
+          : 'history',
+    documentId: activity.documentId,
+    revisionNumber: activity.revisionNumber,
+    discussionId: activity.discussionId,
+    messageId: activity.messageId,
+    caseId: activity.caseId,
+  });
+}
+
+export function StoryActivities({ storyId }: { storyId: string }) {
+  const { t } = useTranslation();
+  const query = useInfiniteQuery({
+    queryKey: ['story', storyId, 'activity'],
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) =>
+      storyApi.listActivity(storyId, { afterSequence: pageParam, limit: STORY_PAGE_SIZE }),
+    getNextPageParam: (page) => (page.hasMore ? page.nextSequence : undefined),
+    retry: false,
+  });
+  return (
+    <TPanel title={t('story.reading.activity')}>
+      <StoryQueryStatus
+        pending={query.isPending}
+        failed={query.isError && !query.data}
+        retry={() => void query.refetch()}
+      >
+        <ol className="divide-y divide-[var(--t-noise)]">
+          {query.data?.pages
+            .flatMap((page) => page.items)
+            .map((activity) => (
+              <li key={activity.id} className="space-y-1 py-3">
+                <Link className={storyLinkClass} href={activityHref(storyId, activity)}>
+                  {activity.title}
+                </Link>
+                <p className="break-words font-sans text-[12px] leading-6">{activity.summary}</p>
+                <p className="break-all font-sans text-[10px] text-[var(--t-faint)]">
+                  {activity.authorAgentId} · <StoryDate value={activity.createdAt} />
+                </p>
+              </li>
+            ))}
+        </ol>
+        {!query.data?.pages.some((page) => page.items.length) ? <Empty /> : null}
+        <StoryPager
+          hasMore={query.hasNextPage}
+          loading={query.isFetchingNextPage}
+          failed={query.isFetchNextPageError}
+          load={() => void query.fetchNextPage()}
+        />
+      </StoryQueryStatus>
+    </TPanel>
+  );
+}
+
+export function StoryRevisionComparison({
+  storyId,
+  documentId,
+  fromRevisionNumber,
+  toRevisionNumber,
+}: {
+  storyId: string;
+  documentId: string | null;
+  fromRevisionNumber: number;
+  toRevisionNumber: number;
+}) {
+  const { t } = useTranslation();
+  const comparison = useQuery({
+    queryKey: ['story', storyId, 'comparison', documentId, fromRevisionNumber, toRevisionNumber],
+    queryFn: async () => {
+      if (documentId) {
+        const result = await storyApi.compareRevisions(
+          storyId,
+          documentId,
+          fromRevisionNumber,
+          toRevisionNumber,
+        );
+        return {
+          targetType: 'document' as const,
+          fromSnapshot: result.fromSnapshot,
+          toSnapshot: result.toSnapshot,
+          changedFields: result.changedFields,
+        };
+      }
+      const [from, to] = await Promise.all([
+        storyApi.getStoryRevision(storyId, fromRevisionNumber),
+        storyApi.getStoryRevision(storyId, toRevisionNumber),
+      ]);
+      const fields: Array<keyof StoryApiMetadataSnapshot> = [
+        'title',
+        'premise',
+        'genre',
+        'tone',
+        'viewpoint',
+        'targetLength',
+        'establishedDirection',
+        'openQuestions',
+        'phase',
+      ];
+      return {
+        targetType: 'story' as const,
+        fromSnapshot: from.snapshot,
+        toSnapshot: to.snapshot,
+        changedFields: fields.filter(
+          (field) => JSON.stringify(from.snapshot[field]) !== JSON.stringify(to.snapshot[field]),
+        ),
+      };
+    },
+    retry: false,
+  });
+  return (
+    <StoryQueryStatus
+      pending={comparison.isPending}
+      failed={comparison.isError}
+      retry={() => void comparison.refetch()}
+    >
+      {comparison.data ? (
+        <div className="space-y-4">
+          <p className="font-sans text-[12px] text-[var(--t-sub)]">
+            {t('story.reading.changedFields')}{' '}
+            {comparison.data.changedFields
+              .map((field) => t('story.reading.fields.' + field))
+              .join(' · ')}
+          </p>
+          <TPanel title={t('story.reading.comparisonVersion', { version: fromRevisionNumber })}>
+            {comparison.data.targetType === 'document' ? (
+              <StoryMarkdown>{comparison.data.fromSnapshot.content}</StoryMarkdown>
+            ) : (
+              <StoryOpening snapshot={comparison.data.fromSnapshot} />
+            )}
+          </TPanel>
+          <TPanel title={t('story.reading.comparisonVersion', { version: toRevisionNumber })}>
+            {comparison.data.targetType === 'document' ? (
+              <StoryMarkdown>{comparison.data.toSnapshot.content}</StoryMarkdown>
+            ) : (
+              <StoryOpening snapshot={comparison.data.toSnapshot} />
+            )}
+          </TPanel>
+        </div>
+      ) : null}
+    </StoryQueryStatus>
+  );
+}
+
+function StoryConflicts({ storyId }: { storyId: string }) {
+  const { t } = useTranslation();
+  const query = useStoryPages(['story', storyId, 'conflicts'], (cursor) =>
+    storyApi.listConflicts(storyId, { cursor, limit: STORY_PAGE_SIZE }),
+  );
+  return (
+    <details className="mb-5 border-b border-[var(--t-noise)] pb-4">
+      <summary className="cursor-pointer font-sans text-[12px] text-[var(--t-sub)]">
+        {t('story.reading.conflicts')}
+      </summary>
+      <p className="my-3 font-sans text-[11px] leading-6 text-[var(--t-faint)]">
+        {t('story.reading.conflictExplanation')}
+      </p>
+      <StoryQueryStatus
+        pending={query.isPending}
+        failed={query.isError && !query.data}
+        retry={() => void query.refetch()}
+      >
+        {query.data?.pages
+          .flatMap((page) => page.items)
+          .map((conflict) => (
+            <article key={conflict.id} className="space-y-2 border-t border-[var(--t-noise)] py-3">
+              <p className="font-sans text-[10px] text-[var(--t-faint)]">
+                <StoryDate value={conflict.createdAt} />
+              </p>
+              <div className="flex flex-wrap gap-3">
+                {conflict.revisionNumbers.map((version) => (
+                  <Link
+                    key={version}
+                    className={storyLinkClass}
+                    href={revisionHref(storyId, conflict.documentId, version)}
+                  >
+                    {t('story.reading.version', { version })}
+                  </Link>
+                ))}
+              </div>
+            </article>
+          ))}
+        {!query.data?.pages.some((page) => page.items.length) ? <Empty /> : null}
+        <StoryPager
+          hasMore={query.hasNextPage}
+          loading={query.isFetchingNextPage}
+          failed={query.isFetchNextPageError}
+          load={() => void query.fetchNextPage()}
+        />
+      </StoryQueryStatus>
+    </details>
+  );
 }

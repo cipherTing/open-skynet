@@ -106,6 +106,13 @@ const NOTIFICATION_UNIQUE_INDEX: ExpectedIndex = {
   unique: true,
 };
 
+const NOTIFICATION_SOURCE_UNIQUE_INDEX: ExpectedIndex = {
+  collection: 'notifications',
+  name: 'uq_notifications_recipient_source',
+  key: { recipientAgentId: 1, sourceType: 1, sourceId: 1 },
+  unique: true,
+};
+
 const NOTIFICATION_RECIPIENT_INDEX: ExpectedIndex = {
   collection: 'notifications',
   name: 'idx_notifications_recipient_created_at',
@@ -256,10 +263,31 @@ const RC5_CIRCLE_REPLY_POLICY_MIGRATION: DatabaseMigration = {
   },
 };
 
+const RC6_NOTIFICATION_SOURCE_IDENTITY_CONTRACT = {
+  createdIndexes: [NOTIFICATION_SOURCE_UNIQUE_INDEX],
+  droppedIndexes: [NOTIFICATION_UNIQUE_INDEX],
+} as const;
+
+const RC6_NOTIFICATION_SOURCE_IDENTITY_MIGRATION: DatabaseMigration = {
+  id: '20261109_001_rc6_notification_source_identity',
+  checksum: migrationChecksum(RC6_NOTIFICATION_SOURCE_IDENTITY_CONTRACT),
+  apply: async (context) => {
+    await context.assertLockHeld();
+    await ensureExpectedIndex(context.database, NOTIFICATION_SOURCE_UNIQUE_INDEX);
+    await context.assertLockHeld();
+    await verifyExpectedIndex(context.database, NOTIFICATION_SOURCE_UNIQUE_INDEX);
+    await context.assertLockHeld();
+    await dropExpectedLegacyIndex(context.database, NOTIFICATION_UNIQUE_INDEX);
+    await context.assertLockHeld();
+    await verifyExpectedIndex(context.database, NOTIFICATION_SOURCE_UNIQUE_INDEX);
+  },
+};
+
 const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
   RC2_MIGRATION,
   RC5_NOTIFICATION_MIGRATION,
   RC5_CIRCLE_REPLY_POLICY_MIGRATION,
+  RC6_NOTIFICATION_SOURCE_IDENTITY_MIGRATION,
 ];
 
 export function getDatabaseMigrationRequirements(): readonly DatabaseMigrationRequirement[] {
@@ -589,8 +617,9 @@ async function withMigrationLock<T>(
 
   while (Date.now() < deadline) {
     const now = new Date();
+    let lock: MigrationLock | null;
     try {
-      const lock = await locks.findOneAndUpdate(
+      lock = await locks.findOneAndUpdate(
         {
           _id: MIGRATION_LOCK_ID,
           $or: [{ leaseExpiresAt: { $lte: now } }, { leaseExpiresAt: { $exists: false } }],
@@ -598,49 +627,49 @@ async function withMigrationLock<T>(
         { $set: { owner, leaseExpiresAt: new Date(now.getTime() + MIGRATION_LOCK_LEASE_MS) } },
         { upsert: true, returnDocument: 'after' },
       );
-      if (lock?.owner === owner) {
-        let renewalFailure: Error | null = null;
-        let renewal = Promise.resolve();
-        const assertHeld = async (): Promise<void> => {
-          await renewal;
-          if (renewalFailure) throw renewalFailure;
-          const heldLock = await locks.findOne({
-            _id: MIGRATION_LOCK_ID,
-            owner,
-            leaseExpiresAt: { $gt: new Date() },
-          });
-          if (!heldLock) throw new Error('Database migration lock was lost during execution');
-        };
-        const renewalTimer = setInterval(() => {
-          renewal = locks
-            .updateOne(
-              { _id: MIGRATION_LOCK_ID, owner },
-              { $set: { leaseExpiresAt: new Date(Date.now() + MIGRATION_LOCK_LEASE_MS) } },
-            )
-            .then((result) => {
-              if (result.modifiedCount !== 1) {
-                renewalFailure = new Error('Database migration lock was lost during execution');
-              }
-            })
-            .catch((error: unknown) => {
-              renewalFailure =
-                error instanceof Error
-                  ? error
-                  : new Error('Database migration lock renewal failed');
-            });
-        }, MIGRATION_LOCK_RENEWAL_MS);
-        try {
-          await assertHeld();
-          const result = await work({ assertHeld });
-          await assertHeld();
-          return result;
-        } finally {
-          clearInterval(renewalTimer);
-          await locks.deleteOne({ _id: MIGRATION_LOCK_ID, owner });
-        }
-      }
     } catch (error) {
       if (!isDuplicateKeyError(error)) throw error;
+      await waitForMigrationLockRetry();
+      continue;
+    }
+    if (lock?.owner === owner) {
+      let renewalFailure: Error | null = null;
+      let renewal = Promise.resolve();
+      const assertHeld = async (): Promise<void> => {
+        await renewal;
+        if (renewalFailure) throw renewalFailure;
+        const heldLock = await locks.findOne({
+          _id: MIGRATION_LOCK_ID,
+          owner,
+          leaseExpiresAt: { $gt: new Date() },
+        });
+        if (!heldLock) throw new Error('Database migration lock was lost during execution');
+      };
+      const renewalTimer = setInterval(() => {
+        renewal = locks
+          .updateOne(
+            { _id: MIGRATION_LOCK_ID, owner },
+            { $set: { leaseExpiresAt: new Date(Date.now() + MIGRATION_LOCK_LEASE_MS) } },
+          )
+          .then((result) => {
+            if (result.modifiedCount !== 1) {
+              renewalFailure = new Error('Database migration lock was lost during execution');
+            }
+          })
+          .catch((error: unknown) => {
+            renewalFailure =
+              error instanceof Error ? error : new Error('Database migration lock renewal failed');
+          });
+      }, MIGRATION_LOCK_RENEWAL_MS);
+      try {
+        await assertHeld();
+        const result = await work({ assertHeld });
+        await assertHeld();
+        return result;
+      } finally {
+        clearInterval(renewalTimer);
+        await locks.deleteOne({ _id: MIGRATION_LOCK_ID, owner });
+      }
     }
     await waitForMigrationLockRetry();
   }

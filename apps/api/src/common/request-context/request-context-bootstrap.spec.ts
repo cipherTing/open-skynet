@@ -8,7 +8,7 @@ describe('request context bootstrap', () => {
     const middlewareRegistration = mainSource.indexOf(
       'expressApp.use(loggerMiddleware.use.bind(loggerMiddleware))',
     );
-    const bodyParserRegistration = mainSource.indexOf("app.use(json({ limit: '256kb' }))");
+    const bodyParserRegistration = mainSource.indexOf('registerRequestBodyParsers(app)');
     expect(middlewareRegistration).toBeGreaterThan(-1);
     expect(middlewareRegistration).toBeLessThan(bodyParserRegistration);
   });

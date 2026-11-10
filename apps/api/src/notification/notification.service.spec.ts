@@ -13,6 +13,8 @@ import {
   NOTIFICATION_SOURCE_TYPES,
 } from '@/database/schemas/notification.schema';
 import { NotificationService } from './notification.service';
+import { ListNotificationsDto } from './dto/list-notifications.dto';
+import { validate } from 'class-validator';
 
 describe('NotificationService', () => {
   jest.setTimeout(120_000);
@@ -38,6 +40,7 @@ describe('NotificationService', () => {
     }).compile();
     connection = moduleRef.get<Connection>(getConnectionToken());
     service = moduleRef.get(NotificationService);
+    await connection.model(Notification.name).init();
   });
 
   beforeEach(async () => {
@@ -87,53 +90,139 @@ describe('NotificationService', () => {
     expect(notifications.every((item) => item.kind === NOTIFICATION_KINDS.MENTION)).toBe(true);
   });
 
-  it('creates an idempotent story discussion notification with navigation context', async () => {
+  it('does not add a mention or reset read state for an already notified reply source', async () => {
     const [author, recipient] = await createAgents();
-    const discussionId = new Types.ObjectId().toString();
-    const input = {
-      discussionId,
-      storyId: new Types.ObjectId().toString(),
-      documentId: new Types.ObjectId().toString(),
-      actorAgentId: author.id,
+    const sourceId = new Types.ObjectId().toString();
+    const postId = new Types.ObjectId().toString();
+    const createdAt = new Date('2026-11-09T10:00:00Z');
+    const readAt = new Date('2026-11-09T11:00:00Z');
+    await connection.collection('notifications').insertOne({
       recipientAgentId: recipient.id,
-    };
-    const before = await service.listNotifications(recipient.id, { filter: 'all', limit: 10 });
-    expect(before.items).toHaveLength(0);
-
-    await expect(service.createStoryDiscussionNotification(input)).resolves.toBe(true);
-    await expect(service.createStoryDiscussionNotification(input)).resolves.toBe(true);
-
-    const page = await service.listNotifications(recipient.id, { filter: 'all', limit: 10 });
-    expect(page.items).toHaveLength(1);
-    expect(page.items[0]).toMatchObject({
-      kind: NOTIFICATION_KINDS.MENTION,
-      readAt: null,
-      actor: { id: author.id },
-      target: {
-        type: NOTIFICATION_SOURCE_TYPES.STORY_DISCUSSION,
-        id: discussionId,
-        storyId: input.storyId,
-        documentId: input.documentId,
-        discussionId,
-      },
+      kind: 'REPLY',
+      sourceType: 'REPLY',
+      sourceId,
+      actorAgentId: author.id,
+      postId,
+      readAt,
+      createdAt,
+      updatedAt: createdAt,
     });
+    await service.createMentionNotifications({
+      sourceType: NOTIFICATION_SOURCE_TYPES.REPLY,
+      sourceId,
+      postId,
+      actorAgentId: author.id,
+      recipientAgentIds: [recipient.id],
+    });
+    const records = await connection
+      .model(Notification.name)
+      .find({ recipientAgentId: recipient.id, sourceId })
+      .lean();
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({ kind: 'REPLY', createdAt, readAt });
+    expect(await service.getUnreadCounts(recipient.id)).toEqual({ total: 0, mentions: 0 });
   });
 
-  it('reports that a story discussion notice was not delivered to an inactive recipient', async () => {
+  it('filters reply notifications separately from mentions and counts all unread kinds', async () => {
     const [author, recipient] = await createAgents();
+    const postId = new Types.ObjectId().toString();
+    const sourceId = new Types.ObjectId().toString();
+    await connection.collection('notifications').insertOne({
+      recipientAgentId: recipient.id,
+      kind: 'REPLY',
+      sourceType: 'REPLY',
+      sourceId,
+      actorAgentId: author.id,
+      postId,
+      readAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    await service.createMentionNotifications({
+      sourceType: NOTIFICATION_SOURCE_TYPES.POST,
+      sourceId: postId,
+      postId,
+      actorAgentId: author.id,
+      recipientAgentIds: [recipient.id],
+    });
+    const query = Object.assign(new ListNotificationsDto(), { filter: 'reply', limit: 10 });
+    expect(await validate(query)).toEqual([]);
+    const replies = await service.listNotifications(recipient.id, query);
+    expect(replies.items).toHaveLength(1);
+    expect(replies.items[0]).toMatchObject({ kind: 'REPLY', target: { id: sourceId } });
+    expect(
+      (await service.listNotifications(recipient.id, { filter: 'mention', limit: 10 })).items,
+    ).toHaveLength(1);
+    expect(
+      (await service.listNotifications(recipient.id, { filter: 'unread', limit: 10 })).items,
+    ).toHaveLength(2);
+    expect(await service.getUnreadCounts(recipient.id)).toEqual({ total: 2, mentions: 1 });
+  });
+
+  it('enforces source identity across notification kinds in the unique index', async () => {
+    const [author, recipient] = await createAgents();
+    const sourceId = new Types.ObjectId().toString();
+    const postId = new Types.ObjectId().toString();
+    await service.createMentionNotifications({
+      sourceType: NOTIFICATION_SOURCE_TYPES.REPLY,
+      sourceId,
+      postId,
+      actorAgentId: author.id,
+      recipientAgentIds: [recipient.id],
+    });
+    await expect(
+      connection.collection('notifications').insertOne({
+        recipientAgentId: recipient.id,
+        kind: 'REPLY',
+        sourceType: 'REPLY',
+        sourceId,
+        actorAgentId: author.id,
+        postId,
+        readAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }),
+    ).rejects.toMatchObject({ code: 11000 });
+    expect(
+      await connection
+        .model(Notification.name)
+        .countDocuments({ recipientAgentId: recipient.id, sourceId }),
+    ).toBe(1);
+  });
+
+  it('keeps concurrent reply notification delivery unique and excludes self and inactive recipients', async () => {
+    const [author, recipient, inactive] = await createAgents();
     await connection
       .model(Agent.name)
-      .updateOne({ _id: recipient._id }, { $set: { deletedAt: new Date() } });
-
-    await expect(
-      service.createStoryDiscussionNotification({
-        discussionId: new Types.ObjectId().toString(),
-        storyId: new Types.ObjectId().toString(),
-        documentId: new Types.ObjectId().toString(),
-        actorAgentId: author.id,
-        recipientAgentId: recipient.id,
+      .updateOne({ _id: inactive.id }, { $set: { deletedAt: new Date() } });
+    const input = {
+      sourceId: new Types.ObjectId().toString(),
+      postId: new Types.ObjectId().toString(),
+      actorAgentId: author.id,
+      replyRecipientAgentIds: [recipient.id, recipient.id, inactive.id, author.id],
+      mentionedAgentIds: [recipient.id, inactive.id, author.id],
+    };
+    await Promise.all(
+      Array.from({ length: 3 }, () => service.createForumReplyNotifications(input)),
+    );
+    const received = await service.listNotifications(recipient.id, { filter: 'reply', limit: 10 });
+    expect(received.items).toEqual([
+      expect.objectContaining({
+        kind: 'REPLY',
+        target: expect.objectContaining({ id: input.sourceId, postId: input.postId }),
       }),
-    ).resolves.toBe(false);
+    ]);
+    expect(await connection.model(Notification.name).countDocuments()).toBe(1);
+    const original = received.items[0];
+    if (!original) throw new Error('Reply notification was not delivered');
+    await service.markRead(recipient.id, [original.id]);
+    const read = (await service.listNotifications(recipient.id, { filter: 'reply', limit: 10 }))
+      .items[0];
+    await service.createForumReplyNotifications(input);
+    expect(
+      (await service.listNotifications(recipient.id, { filter: 'reply', limit: 10 })).items[0],
+    ).toEqual(read);
+    expect(await service.getUnreadCounts(recipient.id)).toEqual({ total: 0, mentions: 0 });
   });
 
   it('paginates unread and type-filtered notifications without marking them read', async () => {

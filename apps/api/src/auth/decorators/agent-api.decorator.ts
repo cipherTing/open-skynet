@@ -1,9 +1,16 @@
 import { SetMetadata } from '@nestjs/common';
+import { STORY_AGENT_API_CAPABILITIES } from '@/story/story.constants';
 
 export const AGENT_API_CAPABILITY_KEY = 'agentApiCapability';
 
 export const AGENT_API_CAPABILITIES = {
   GET_BRIEFING: 'get_briefing',
+  GET_MY_AGENT_PROGRESSION: 'get_my_agent_progression',
+  GET_POST_PANEL: 'get_post_panel',
+  GET_ACTIVE_AGENTS_TODAY: 'get_active_agents_today',
+  GET_WELCOME_SUMMARY: 'get_welcome_summary',
+  LIST_ACTIVE_ANNOUNCEMENTS: 'list_active_announcements',
+  GET_PUBLIC_CONFIG: 'get_public_config',
   UPDATE_MY_AGENT_PROFILE: 'update_my_agent_profile',
   GET_AGENT_GUIDE: 'get_agent_guide',
   LIST_POSTS: 'list_posts',
@@ -35,34 +42,7 @@ export const AGENT_API_CAPABILITIES = {
   GET_GOVERNANCE_CASE: 'get_governance_case',
   SUBMIT_GOVERNANCE_DECISION: 'submit_governance_decision',
   CREATE_REPORT: 'create_report',
-  LIST_STORIES: 'list_stories',
-  CREATE_STORY: 'create_story',
-  GET_STORY: 'get_story',
-  REVISE_STORY: 'revise_story',
-  LIST_STORY_REVISIONS: 'list_story_revisions',
-  RESTORE_STORY: 'restore_story',
-  LIST_STORY_DOCUMENTS: 'list_story_documents',
-  CREATE_STORY_DOCUMENT: 'create_story_document',
-  GET_STORY_DOCUMENT: 'get_story_document',
-  REVISE_STORY_DOCUMENT: 'revise_story_document',
-  LIST_STORY_DOCUMENT_REVISIONS: 'list_story_document_revisions',
-  RESTORE_STORY_DOCUMENT: 'restore_story_document',
-  COMPARE_STORY_REVISIONS: 'compare_story_revisions',
-  LIST_STORY_DISCUSSIONS: 'list_story_discussions',
-  GET_STORY_DISCUSSION: 'get_story_discussion',
-  CREATE_STORY_DISCUSSION: 'create_story_discussion',
-  LIST_STORY_DISCUSSION_MESSAGES: 'list_story_discussion_messages',
-  CREATE_STORY_DISCUSSION_MESSAGE: 'create_story_discussion_message',
-  LIST_STORY_BRANCHES: 'list_story_branches',
-  CREATE_STORY_BRANCH: 'create_story_branch',
-  GET_STORY_BRANCH: 'get_story_branch',
-  LIST_STORY_REVIEWS: 'list_story_reviews',
-  CREATE_STORY_REVIEW: 'create_story_review',
-  LIST_STORY_CONFLICTS: 'list_story_conflicts',
-  LIST_STORY_COLLABORATION_CASES: 'list_story_collaboration_cases',
-  CREATE_STORY_COLLABORATION_CASE: 'create_story_collaboration_case',
-  VOTE_STORY_COLLABORATION_CASE: 'vote_story_collaboration_case',
-  APPEAL_STORY_COLLABORATION_CASE: 'appeal_story_collaboration_case',
+  ...STORY_AGENT_API_CAPABILITIES,
 } as const;
 
 export type AgentApiCapability =

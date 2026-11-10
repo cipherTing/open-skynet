@@ -1,14 +1,12 @@
 import { getConnectionToken, MongooseModule } from '@nestjs/mongoose';
 import { Test, type TestingModule } from '@nestjs/testing';
-import { type Connection } from 'mongoose';
+import { Types, type Connection } from 'mongoose';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { DatabaseService } from '@/database/database.service';
-import { NotificationService } from '@/notification/notification.service';
+import { Agent, AgentSchema } from '@/database/schemas/agent.schema';
 import {
   Story,
   StorySchema,
-  StoryBranch,
-  StoryBranchSchema,
   StoryDiscussion,
   StoryDiscussionSchema,
   StoryDiscussionMessage,
@@ -22,6 +20,14 @@ import {
 } from '@/database/schemas/story.schema';
 import { StoryService } from './story.service';
 import { StoryCollaborationService } from './story-collaboration.service';
+import { StoryActivityService } from './story-activity.service';
+import { StoryDirectoryService } from './story-directory.service';
+import {
+  StoryActivity,
+  StoryActivitySchema,
+  StoryActivityCounter,
+  StoryActivityCounterSchema,
+} from '@/database/schemas/story-activity.schema';
 
 describe('StoryService', () => {
   jest.setTimeout(60_000);
@@ -34,10 +40,6 @@ describe('StoryService', () => {
     assertAgentCanEdit: jest.fn(),
     detectAndRecordEditConflict: jest.fn(),
   };
-  const notificationService = {
-    createStoryDiscussionNotification: jest.fn(),
-  };
-
   const actor = (name: string) => ({
     agentId: `agent-${name}`,
     ownerUserId: `owner-${name}`,
@@ -49,49 +51,370 @@ describe('StoryService', () => {
       imports: [
         MongooseModule.forRoot(replicaSet.getUri()),
         MongooseModule.forFeature([
+          { name: Agent.name, schema: AgentSchema },
           { name: Story.name, schema: StorySchema },
+          { name: StoryActivity.name, schema: StoryActivitySchema },
+          { name: StoryActivityCounter.name, schema: StoryActivityCounterSchema },
           { name: StoryDocument.name, schema: StoryDocumentSchema },
           { name: StoryRevision.name, schema: StoryRevisionSchema },
           { name: StoryDiscussion.name, schema: StoryDiscussionSchema },
           { name: StoryDiscussionMessage.name, schema: StoryDiscussionMessageSchema },
-          { name: StoryBranch.name, schema: StoryBranchSchema },
           { name: StoryReview.name, schema: StoryReviewSchema },
         ]),
       ],
       providers: [
         StoryService,
+        StoryActivityService,
+        StoryDirectoryService,
         DatabaseService,
         { provide: StoryCollaborationService, useValue: collaborationService },
-        { provide: NotificationService, useValue: notificationService },
       ],
     }).compile();
     connection = moduleRef.get<Connection>(getConnectionToken());
     service = moduleRef.get(StoryService);
     await Promise.all([
+      connection.model(Agent.name).init(),
       connection.model(Story.name).init(),
+      connection.model(StoryActivity.name).init(),
+      connection.model(StoryActivityCounter.name).init(),
       connection.model(StoryDocument.name).init(),
       connection.model(StoryRevision.name).init(),
       connection.model(StoryDiscussion.name).init(),
       connection.model(StoryDiscussionMessage.name).init(),
-      connection.model(StoryBranch.name).init(),
       connection.model(StoryReview.name).init(),
     ]);
   });
 
   beforeEach(async () => {
     jest.clearAllMocks();
-    notificationService.createStoryDiscussionNotification.mockResolvedValue(true);
     collaborationService.assertAgentCanEdit.mockResolvedValue(undefined);
     collaborationService.detectAndRecordEditConflict.mockResolvedValue(null);
     await Promise.all([
+      connection.model(Agent.name).deleteMany({}),
       connection.model(Story.name).deleteMany({}),
       connection.model(StoryDocument.name).deleteMany({}),
       connection.collection('story_revisions').deleteMany({}),
+      connection.collection('story_activities').deleteMany({}),
+      connection.collection('story_activity_counters').deleteMany({}),
       connection.collection('story_discussions').deleteMany({}),
       connection.collection('story_discussion_messages').deleteMany({}),
-      connection.model(StoryBranch.name).deleteMany({}),
       connection.collection('story_reviews').deleteMany({}),
     ]);
+  });
+
+  afterAll(async () => {
+    await moduleRef.close();
+    await replicaSet.stop();
+  });
+
+  it('preserves the original failure when rolling back a linked scene and its revision', async () => {
+    const story = await service.createStory(actor('a'), {
+      title: 'Scene rollback',
+      premise: 'The clockmaker follows a physical trace.',
+    });
+    const { document: setting } = await service.createDocument(story.id, actor('a'), {
+      kind: 'world_setting',
+      title: 'Physical traces remain',
+      content: 'The tide removes memories but leaves objects untouched.',
+      changeSummary: 'Define the world rule.',
+    });
+    const { document: chapter } = await service.createDocument(story.id, actor('a'), {
+      kind: 'chapter',
+      title: 'At the lighthouse',
+      content: 'The clockmaker reaches the door.',
+      changeSummary: 'Draft the chapter.',
+      expectedStructureVersion: 1,
+      parentDocumentId: null,
+      afterDocumentId: null,
+    });
+    const failure = new Error('Abort the scene creation transaction');
+    const database = moduleRef.get(DatabaseService);
+
+    await expect(
+      database.$transaction(async () => {
+        await service.createDocument(story.id, actor('a'), {
+          kind: 'scene',
+          title: 'Oil on the latch',
+          content: 'Red oil remains on the latch after the tide.',
+          links: [{ targetDocumentId: setting.id, relation: 'references' }],
+          changeSummary: 'Add a scene that applies the world rule.',
+          expectedStructureVersion: 2,
+          parentDocumentId: chapter.id,
+          afterDocumentId: null,
+        });
+        throw failure;
+      }),
+    ).rejects.toBe(failure);
+
+    expect(await connection.model(StoryDocument.name).countDocuments({ kind: 'scene' })).toBe(0);
+    expect(await connection.model(StoryRevision.name).countDocuments({ storyId: story.id })).toBe(
+      3,
+    );
+    expect((await service.getStory(story.id)).story.structureVersion).toBe(2);
+  });
+
+  it('returns a structure conflict instead of an internal error for simultaneous linked scenes', async () => {
+    const story = await service.createStory(actor('a'), {
+      title: 'Concurrent scenes',
+      premise: 'Two writers add a scene at the same position.',
+    });
+    const { document: setting } = await service.createDocument(story.id, actor('a'), {
+      kind: 'world_setting',
+      title: 'The tide',
+      content: 'Physical traces remain after memories fade.',
+      changeSummary: 'Define a shared rule.',
+    });
+    const { document: chapter } = await service.createDocument(story.id, actor('a'), {
+      kind: 'chapter',
+      title: 'The door',
+      content: 'The clockmaker reaches the lighthouse.',
+      changeSummary: 'Draft the chapter.',
+      expectedStructureVersion: 1,
+      parentDocumentId: null,
+      afterDocumentId: null,
+    });
+    const results = await Promise.allSettled(
+      ['a', 'b'].map((name) =>
+        service.createDocument(story.id, actor(name), {
+          kind: 'scene',
+          title: 'Scene ' + name,
+          content: 'Red oil remains on the door.',
+          links: [{ targetDocumentId: setting.id, relation: 'references' }],
+          changeSummary: 'Add an evidence scene.',
+          expectedStructureVersion: 2,
+          parentDocumentId: chapter.id,
+          afterDocumentId: null,
+        }),
+      ),
+    );
+
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    const rejected = results.find((result) => result.status === 'rejected');
+    if (!rejected || rejected.status !== 'rejected') throw new Error('Expected a stale scene');
+    expect(rejected.reason).toMatchObject({
+      response: { code: 'STORY_STRUCTURE_VERSION_CONFLICT', currentStructureVersion: 3 },
+    });
+    expect(await connection.model(StoryDocument.name).countDocuments({ kind: 'scene' })).toBe(1);
+  });
+
+  it('returns one current body and a revision summary for every document write', async () => {
+    const story = await service.createStory(actor('a'), {
+      title: 'Compact writes',
+      premise: 'A clockmaker keeps the original record.',
+    });
+    const { document: volume } = await service.createDocument(story.id, actor('a'), {
+      kind: 'volume',
+      title: 'First volume',
+      content: 'The first arc.',
+      changeSummary: 'Create the volume.',
+      expectedStructureVersion: 1,
+      parentDocumentId: null,
+      afterDocumentId: null,
+    });
+    const original = 'The clockmaker remembers. '.repeat(1_000);
+    const changed = 'The clockmaker writes it down. '.repeat(1_000);
+    const created = await service.createDocument(story.id, actor('a'), {
+      kind: 'chapter',
+      title: 'The original record',
+      content: original,
+      changeSummary: 'Draft the chapter.',
+      expectedStructureVersion: 2,
+      parentDocumentId: null,
+      afterDocumentId: volume.id,
+    });
+    const revised = await service.reviseDocument(created.document.id, actor('b'), {
+      expectedVersion: 1,
+      content: changed,
+      changeSummary: 'Record the memory.',
+    });
+    const restored = await service.restoreDocument(created.document.id, actor('a'), {
+      expectedVersion: 2,
+      targetRevisionNumber: 1,
+      changeSummary: 'Restore the original wording.',
+    });
+    const moved = await service.moveDocument(story.id, created.document.id, actor('a'), {
+      expectedVersion: 3,
+      expectedStructureVersion: 3,
+      parentDocumentId: volume.id,
+      afterDocumentId: null,
+      changeSummary: 'Place in the first volume.',
+    });
+    const withdrawn = await service.withdrawDocument(story.id, created.document.id, actor('a'), {
+      expectedVersion: 4,
+      expectedStructureVersion: 4,
+      changeSummary: 'Withdraw for checking.',
+    });
+    const reinstated = await service.reinstateDocument(story.id, created.document.id, actor('a'), {
+      expectedVersion: 5,
+      expectedStructureVersion: 5,
+      parentDocumentId: volume.id,
+      afterDocumentId: null,
+      changeSummary: 'Reinstate the checked chapter.',
+    });
+
+    for (const [index, result] of [
+      created,
+      revised,
+      restored,
+      moved,
+      withdrawn,
+      reinstated,
+    ].entries()) {
+      expect(result.revision).toMatchObject({
+        storyId: story.id,
+        documentId: created.document.id,
+        revisionNumber: index + 1,
+        baseVersion: index,
+      });
+      expect(result.revision).not.toHaveProperty('diff');
+      const serialized = JSON.stringify(result);
+      expect(serialized.split(result.document.content)).toHaveLength(2);
+      expect(serialized).not.toContain(index === 1 ? original : changed);
+    }
+    expect(reinstated.revision.directoryChange).toMatchObject({
+      structureVersion: 6,
+      before: null,
+      after: { parentDocumentId: volume.id, afterDocumentId: null },
+    });
+    expect(
+      (await service.getDocumentRevision(story.id, created.document.id, 2)).snapshot.content,
+    ).toBe(changed);
+  });
+
+  it('returns a revision summary beside the current opening when revising and restoring', async () => {
+    const story = await service.createStory(actor('a'), {
+      title: 'Opening history',
+      premise: 'An old letter arrives.',
+    });
+    const revised = await service.reviseStory(story.id, actor('b'), {
+      expectedVersion: 1,
+      premise: 'A new letter arrives.',
+      changeSummary: 'Change the premise.',
+    });
+    const restored = await service.restoreStory(story.id, actor('a'), {
+      expectedVersion: 2,
+      targetRevisionNumber: 1,
+      changeSummary: 'Restore the original premise.',
+    });
+    for (const result of [revised, restored]) {
+      expect(result.revision).toMatchObject({
+        storyId: story.id,
+        targetType: 'story',
+        documentId: null,
+      });
+      expect(result.revision).not.toHaveProperty('diff');
+      expect(JSON.stringify(result).split(result.story.premise)).toHaveLength(2);
+    }
+    expect((await service.getStoryRevision(story.id, 2)).snapshot.premise).toBe(
+      'A new letter arrives.',
+    );
+  });
+
+  it('captures the initial activity checkpoint before reading the opening', async () => {
+    const story = await service.createStory(actor('a'), {
+      title: 'A safe handover',
+      premise: 'The clock has not moved.',
+    });
+    const activities = moduleRef.get(StoryActivityService);
+    const readLatestSequence = activities.latestSequence.bind(activities);
+    const latestSequence = jest
+      .spyOn(activities, 'latestSequence')
+      .mockImplementationOnce(async (id) => {
+        await service.reviseStory(story.id, actor('b'), {
+          expectedVersion: 1,
+          premise: 'The clock has moved.',
+          changeSummary: 'A revision commits while the newcomer reads.',
+        });
+        return readLatestSequence(id);
+      });
+    try {
+      const overview = await service.getStory(story.id);
+      expect(overview.latestSequence).toBe(2);
+      expect(overview.story).toMatchObject({ currentVersion: 2, premise: 'The clock has moved.' });
+      await service.reviseStory(story.id, actor('b'), {
+        expectedVersion: 2,
+        premise: 'The clock moves again.',
+        changeSummary: 'Continue after the handover.',
+      });
+      const resumed = await service.listActivity(story.id, {
+        afterSequence: overview.latestSequence,
+      });
+      expect(resumed.items).toEqual([expect.objectContaining({ sequence: 3, revisionNumber: 3 })]);
+    } finally {
+      latestSequence.mockRestore();
+    }
+  });
+
+  it('restores a selection whose resulting content exceeds 50000 characters', async () => {
+    const story = await service.createStory(actor('a'), {
+      title: 'Long chapter',
+      premise: 'A record.',
+    });
+    const { document } = await service.createDocument(story.id, actor('a'), {
+      kind: 'world_setting',
+      title: 'Long memory',
+      content: `${'A'.repeat(30_000)}\ntail`,
+      changeSummary: 'Record the first version.',
+    });
+    await service.reviseDocument(document.id, actor('b'), {
+      expectedVersion: 1,
+      content: `${'B'.repeat(20_000)}\nx`,
+      changeSummary: 'Record a shorter first line.',
+    });
+    const selection = {
+      currentStartLine: 2,
+      currentEndLine: 2,
+      targetStartLine: 1,
+      targetEndLine: 1,
+    };
+    const restored = await service.restoreDocument(document.id, actor('a'), {
+      expectedVersion: 2,
+      targetRevisionNumber: 1,
+      selection,
+      changeSummary: 'Restore the selected historical line.',
+    });
+    expect(restored.document.content).toBe(`${'B'.repeat(20_000)}\n${'A'.repeat(30_000)}`);
+    expect(restored.document.currentVersion).toBe(3);
+    expect((await service.listDocumentRevisions(document.id)).items).toHaveLength(3);
+    expect((await service.listActivity(story.id, { afterSequence: 0 })).nextSequence).toBe(4);
+  });
+
+  it('creates, revises and restores full bodies above 50000 characters', async () => {
+    const story = await service.createStory(actor('a'), {
+      title: 'Wave records',
+      premise: 'A record survives.',
+    });
+    const content = '潮'.repeat(60_000);
+    const revisedContent = '🌊'.repeat(60_001);
+    for (const body of [content, revisedContent]) {
+      expect(Buffer.byteLength(JSON.stringify({ content: body }), 'utf8')).toBeLessThan(1_048_576);
+    }
+    const { document } = await service.createDocument(story.id, actor('a'), {
+      kind: 'world_setting',
+      title: 'Wave notation',
+      content,
+      changeSummary: 'Write the full notation.',
+    });
+    expect(document.content).toBe(content);
+    const revised = await service.reviseDocument(document.id, actor('b'), {
+      expectedVersion: 1,
+      content: revisedContent,
+      changeSummary: 'Record the revised full text.',
+    });
+    expect(revised.document.content).toBe(revisedContent);
+    expect((await service.getDocumentRevision(story.id, document.id, 1)).snapshot.content).toBe(
+      content,
+    );
+    expect((await service.getDocumentRevision(story.id, document.id, 2)).snapshot.content).toBe(
+      revisedContent,
+    );
+    const restored = await service.restoreDocument(document.id, actor('a'), {
+      expectedVersion: 2,
+      targetRevisionNumber: 1,
+      changeSummary: 'Restore the full notation.',
+    });
+    expect(restored.document.content).toBe(content);
+    expect(restored.document.currentVersion).toBe(3);
   });
 
   it('passes the document id to restriction checks before revising and records conflict signals', async () => {
@@ -100,7 +423,7 @@ describe('StoryService', () => {
       premise: 'A cartographer discovers a coastline that changes overnight.',
     });
     const { document } = await service.createDocument(story.id, actor('a'), {
-      kind: 'chapter',
+      kind: 'world_setting',
       title: 'Opening',
       content: 'The coast is quiet.',
       changeSummary: 'Start the chapter.',
@@ -121,7 +444,6 @@ describe('StoryService', () => {
       story.id,
       'agent-b',
       expect.anything(),
-      null,
       document.id,
     );
     expect(collaborationService.detectAndRecordEditConflict).toHaveBeenCalledWith(
@@ -138,7 +460,7 @@ describe('StoryService', () => {
       premise: 'A cartographer discovers a coastline that changes overnight.',
     });
     const { document } = await service.createDocument(story.id, actor('author'), {
-      kind: 'chapter',
+      kind: 'world_setting',
       title: 'Opening',
       content: 'The coast is quiet.',
       changeSummary: 'Start the chapter.',
@@ -161,71 +483,8 @@ describe('StoryService', () => {
       story.id,
       'agent-editor',
       expect.anything(),
-      null,
       document.id,
     );
-  });
-
-  it('keeps parallel route edits outside the story mainline restriction while retaining revision history', async () => {
-    const story = await service.createStory(actor('a'), {
-      title: 'The Glass Coast',
-      premise: 'A cartographer discovers a coastline that changes overnight.',
-    });
-    const { document } = await service.createDocument(story.id, actor('a'), {
-      kind: 'chapter',
-      title: 'Opening',
-      content: 'The coast is quiet.',
-      changeSummary: 'Start the chapter.',
-    });
-    const branch = await service.createBranch(story.id, actor('b'), {
-      title: 'The Remembered Coast',
-      premise: 'The coastline records every name.',
-      sourceDocumentId: document.id,
-      sourceRevisionNumber: 1,
-    });
-    const { document: branchDocument } = await service.createDocument(story.id, actor('b'), {
-      branchId: branch.id,
-      kind: 'chapter',
-      title: 'Opening',
-      content: 'Every visitor is remembered.',
-      changeSummary: 'Write the parallel opening.',
-    });
-
-    await service.reviseDocument(
-      branchDocument.id,
-      actor('c'),
-      {
-        expectedVersion: 1,
-        content: 'The coast remembers each visitor by name.',
-        changeSummary: 'Continue the parallel version.',
-      },
-      story.id,
-    );
-
-    expect(collaborationService.assertAgentCanEdit).toHaveBeenCalledWith(
-      story.id,
-      'agent-c',
-      expect.anything(),
-      branch.id,
-      branchDocument.id,
-    );
-    expect(collaborationService.detectAndRecordEditConflict).toHaveBeenCalledWith(
-      story.id,
-      branchDocument.id,
-      actor('c'),
-      expect.anything(),
-    );
-    expect(await service.listDocumentRevisions(branchDocument.id)).toMatchObject({
-      items: [
-        expect.objectContaining({ revisionNumber: 2 }),
-        expect.objectContaining({ revisionNumber: 1 }),
-      ],
-    });
-  });
-
-  afterAll(async () => {
-    await moduleRef.close();
-    await replicaSet.stop();
   });
 
   it('returns a lightweight document directory while preserving linked full-text reads', async () => {
@@ -240,7 +499,7 @@ describe('StoryService', () => {
       changeSummary: 'Establish the tide.',
     });
     const { document: chapter } = await service.createDocument(story.id, actor('b'), {
-      kind: 'chapter',
+      kind: 'world_setting',
       title: 'The First Map',
       content: 'Mira watches the harbor move.',
       links: [{ targetDocumentId: setting.id, relation: 'references' }],
@@ -253,8 +512,7 @@ describe('StoryService', () => {
         expect.objectContaining({
           id: chapter.id,
           storyId: story.id,
-          branchId: null,
-          kind: 'chapter',
+          kind: 'world_setting',
           title: 'The First Map',
           currentVersion: 1,
           createdByAgentId: 'agent-b',
@@ -280,14 +538,14 @@ describe('StoryService', () => {
     });
     for (const title of ['Mira [map] I', 'Mira [map] II', 'Mira map III']) {
       await service.createDocument(story.id, actor('a'), {
-        kind: 'chapter',
+        kind: 'world_setting',
         title,
         content: 'A tide.',
         changeSummary: 'Add a chapter.',
       });
     }
     await service.createDocument(story.id, actor('a'), {
-      kind: 'chapter',
+      kind: 'world_setting',
       title: 'Mira [map] I',
       content: 'A second version of the title.',
       changeSummary: 'Repeat the chapter title.',
@@ -299,179 +557,33 @@ describe('StoryService', () => {
       changeSummary: 'Introduce Mira.',
     });
 
-    const filters = { q: 'Mira [map]', kind: 'chapter' as const, limit: 1 };
-    const firstPage = await service.listDocuments(story.id, null, filters);
+    const filters = { q: 'Mira [map]', kind: 'world_setting' as const, limit: 1 };
+    const firstPage = await service.listDocuments(story.id, filters);
     expect(firstPage.items.map((item) => item.title)).toEqual(['Mira [map] I']);
     expect(firstPage.nextCursor).toEqual(expect.any(String));
-    const secondPage = await service.listDocuments(story.id, null, {
+    const secondPage = await service.listDocuments(story.id, {
       ...filters,
       cursor: firstPage.nextCursor ?? undefined,
     });
     expect(secondPage.items.map((item) => item.title)).toEqual(['Mira [map] I']);
     expect(secondPage.nextCursor).toEqual(expect.any(String));
-    const thirdPage = await service.listDocuments(story.id, null, {
+    const thirdPage = await service.listDocuments(story.id, {
       ...filters,
       cursor: secondPage.nextCursor ?? undefined,
     });
     expect(thirdPage.items.map((item) => item.title)).toEqual(['Mira [map] II']);
     expect(thirdPage.nextCursor).toBeNull();
     await expect(
-      service.listDocuments(story.id, null, {
+      service.listDocuments(story.id, {
         ...filters,
         q: 'Mira',
         cursor: firstPage.nextCursor ?? undefined,
       }),
     ).rejects.toMatchObject({ response: { code: 'PAGINATION_CURSOR_INVALID' } });
-    await expect(service.listDocuments(story.id, null, { q: 'mira [map]' })).resolves.toMatchObject(
-      {
-        items: [],
-        nextCursor: null,
-      },
-    );
-  });
-
-  it('returns linked document summaries in one bounded selection without entering the paged directory mode', async () => {
-    const story = await service.createStory(actor('a'), {
-      title: 'The Glass Coast',
-      premise: 'A coastline changes overnight.',
+    await expect(service.listDocuments(story.id, { q: 'mira [map]' })).resolves.toMatchObject({
+      items: [],
+      nextCursor: null,
     });
-    const { document: setting } = await service.createDocument(story.id, actor('a'), {
-      kind: 'world_setting',
-      title: 'Tide rule',
-      content: 'Each tide returns a name.',
-      changeSummary: 'Establish the tide.',
-    });
-    const { document: chapter } = await service.createDocument(story.id, actor('b'), {
-      kind: 'chapter',
-      title: 'The First Map',
-      content: 'Mira watches the harbor.',
-      changeSummary: 'Write the opening.',
-    });
-    const { document: otherChapter } = await service.createDocument(story.id, actor('b'), {
-      kind: 'chapter',
-      title: 'The Alternate Map',
-      content: 'A different tide.',
-      changeSummary: 'Write an alternate opening.',
-    });
-    const branch = await service.createBranch(story.id, actor('c'), {
-      title: 'The Remembered Coast',
-      premise: 'The coast remembers every name.',
-      sourceDocumentId: chapter.id,
-      sourceRevisionNumber: 1,
-    });
-    const { document: branchChapter } = await service.createDocument(story.id, actor('c'), {
-      branchId: branch.id,
-      kind: 'chapter',
-      title: 'A Remembered Map',
-      content: 'A remembered tide.',
-      changeSummary: 'Write the branch opening.',
-    });
-    const otherBranch = await service.createBranch(story.id, actor('d'), {
-      title: 'The Drowned Coast',
-      premise: 'The coast has vanished.',
-      sourceDocumentId: chapter.id,
-      sourceRevisionNumber: 1,
-    });
-    const { document: otherBranchChapter } = await service.createDocument(story.id, actor('d'), {
-      branchId: otherBranch.id,
-      kind: 'chapter',
-      title: 'The Drowned Map',
-      content: 'No tide.',
-      changeSummary: 'Write another branch opening.',
-    });
-
-    const selected = await service.listDocuments(story.id, null, {
-      documentIds: [setting.id, chapter.id],
-    });
-    expect(selected.items.map((item) => item.id).sort()).toEqual([setting.id, chapter.id].sort());
-    expect(selected.nextCursor).toBeNull();
-    await expect(service.listDocuments(story.id, null, { documentIds: [] })).rejects.toMatchObject({
-      response: { code: 'STORY_DOCUMENT_SELECTOR_INVALID' },
-    });
-    for (const item of JSON.parse(JSON.stringify(selected.items))) {
-      expect(item).not.toHaveProperty('content');
-    }
-    const branchSelection = await service.listDocuments(story.id, branch.id, {
-      documentIds: [
-        setting.id,
-        chapter.id,
-        otherChapter.id,
-        branchChapter.id,
-        otherBranchChapter.id,
-      ],
-    });
-    expect(branchSelection.items.map((item) => item.id).sort()).toEqual(
-      [setting.id, chapter.id, otherChapter.id, branchChapter.id].sort(),
-    );
-    expect(branchSelection.nextCursor).toBeNull();
-    await expect(
-      service.listDocuments(story.id, null, {
-        documentIds: [setting.id],
-        q: 'Tide',
-      }),
-    ).rejects.toMatchObject({ response: { code: 'STORY_DOCUMENT_SELECTOR_INVALID' } });
-  });
-
-  it('summarizes recent activity with its historical title and route instead of full revision snapshots', async () => {
-    const story = await service.createStory(actor('a'), {
-      title: 'The Glass Coast',
-      premise: 'A coastline changes overnight.',
-    });
-    const { document } = await service.createDocument(story.id, actor('a'), {
-      kind: 'chapter',
-      title: 'The First Map',
-      content: 'A tide.',
-      changeSummary: 'Write the opening.',
-    });
-    const branch = await service.createBranch(story.id, actor('b'), {
-      title: 'The Remembered Coast',
-      premise: 'The coast remembers names.',
-      sourceDocumentId: document.id,
-      sourceRevisionNumber: 1,
-    });
-    await service.createDocument(story.id, actor('b'), {
-      branchId: branch.id,
-      kind: 'chapter',
-      title: 'The Other Map',
-      content: 'Another tide.',
-      changeSummary: 'Write a parallel opening.',
-    });
-    await service.reviseDocument(document.id, actor('c'), {
-      expectedVersion: 1,
-      title: 'The Revised Map',
-      changeSummary: 'Clarify the title.',
-    });
-
-    const detail = await service.getStory(story.id);
-    expect(detail.recentActivity).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          storyId: story.id,
-          documentId: null,
-          targetType: 'story',
-          revisionNumber: 1,
-          baseVersion: 0,
-          title: 'The Glass Coast',
-          branchId: null,
-          authorAgentId: 'agent-a',
-          createdAt: expect.any(Date),
-        }),
-        expect.objectContaining({
-          documentId: document.id,
-          revisionNumber: 1,
-          title: 'The First Map',
-          branchId: null,
-        }),
-        expect.objectContaining({
-          documentId: document.id,
-          revisionNumber: 2,
-          title: 'The Revised Map',
-          branchId: null,
-        }),
-        expect.objectContaining({ title: 'The Other Map', branchId: branch.id }),
-      ]),
-    );
-    for (const item of detail.recentActivity) expect(item).not.toHaveProperty('diff');
   });
 
   it('reads latest discussion messages first and binds tie-safe cursors to the requested direction', async () => {
@@ -480,12 +592,13 @@ describe('StoryService', () => {
       premise: 'A coastline changes overnight.',
     });
     const { document } = await service.createDocument(story.id, actor('a'), {
-      kind: 'chapter',
+      kind: 'world_setting',
       title: 'The First Map',
       content: 'A tide.',
       changeSummary: 'Start.',
     });
     const { discussion } = await service.createDiscussion(story.id, actor('a'), {
+      targetType: 'document',
       documentId: document.id,
       revisionNumber: 1,
       title: 'Who sees the coast?',
@@ -567,7 +680,6 @@ describe('StoryService', () => {
       authorAgentId: 'agent-b',
       changeSummary: 'Give Mira a conflict with the changing coast.',
       title: 'Mira',
-      branchId: null,
     });
     expect(revisions.items[0]).not.toHaveProperty('diff');
     expect(
@@ -577,14 +689,9 @@ describe('StoryService', () => {
         toRevisionNumber: 2,
       }),
     ).toMatchObject({
-      fromRevision: {
-        diff: { afterDocument: { content: 'Mira is a patient mapmaker.' } },
-      },
-      toRevision: {
-        diff: {
-          afterDocument: { content: 'Mira is a patient mapmaker who distrusts fixed borders.' },
-        },
-      },
+      fromSnapshot: { content: 'Mira is a patient mapmaker.' },
+      toSnapshot: { content: 'Mira is a patient mapmaker who distrusts fixed borders.' },
+      changedFields: ['content'],
     });
   });
 
@@ -594,7 +701,7 @@ describe('StoryService', () => {
       premise: 'A cartographer discovers a coastline that changes overnight.',
     });
     const { document } = await service.createDocument(story.id, actor('a'), {
-      kind: 'chapter',
+      kind: 'world_setting',
       title: 'The First Map',
       content: 'Mira finds the map.',
       changeSummary: 'Start the chapter.',
@@ -663,7 +770,7 @@ describe('StoryService', () => {
       currentVersion: 3,
       content: 'The coast shifts at each new moon.',
     });
-    expect(comparison.changes).toEqual([]);
+    expect(comparison.changedFields).toEqual([]);
     expect(history.items.map((revision) => revision.revisionNumber)).toEqual([3, 2, 1]);
     expect(history.items[0]).toMatchObject({
       baseVersion: 2,
@@ -679,7 +786,7 @@ describe('StoryService', () => {
       premise: 'A coastline changes overnight.',
     });
     const { document } = await service.createDocument(story.id, actor('a'), {
-      kind: 'chapter',
+      kind: 'world_setting',
       title: 'The First Map',
       content: 'Version one.',
       changeSummary: 'Start the chapter.',
@@ -705,7 +812,7 @@ describe('StoryService', () => {
     expect(olderPage.nextCursor).toBeNull();
 
     const { document: anotherDocument } = await service.createDocument(story.id, actor('d'), {
-      kind: 'chapter',
+      kind: 'world_setting',
       title: 'Another Map',
       content: 'Another version.',
       changeSummary: 'Start another chapter.',
@@ -724,7 +831,7 @@ describe('StoryService', () => {
       premise: 'A cartographer discovers a coastline that changes overnight.',
     });
     const { document } = await service.createDocument(story.id, actor('a'), {
-      kind: 'chapter',
+      kind: 'world_setting',
       title: 'The Harbor',
       content: 'The harbor is silent.\nMira checks the map.\nThe tide turns.',
       changeSummary: 'Draft the scene.',
@@ -751,101 +858,9 @@ describe('StoryService', () => {
       currentVersion: 3,
       content: 'The harbor is silent.\nMira checks the map.\nThe tide turns.',
     });
-    expect(restored.revision.diff.beforeDocument).toMatchObject({
+    const previous = await service.getDocumentRevision(story.id, document.id, 2);
+    expect(previous.snapshot).toMatchObject({
       content: 'The harbor is silent.\nMira burns the map.\nThe tide turns.',
-    });
-  });
-
-  it('keeps branches, anchored discussion, and reviews scoped to their story versions', async () => {
-    const story = await service.createStory(actor('a'), {
-      title: 'The Glass Coast',
-      premise: 'A cartographer discovers a coastline that changes overnight.',
-    });
-    const { document } = await service.createDocument(story.id, actor('a'), {
-      kind: 'chapter',
-      title: 'The First Map',
-      content: 'Mira watches the harbor move.',
-      changeSummary: 'Draft the opening chapter.',
-    });
-    const branch = await service.createBranch(story.id, actor('b'), {
-      title: 'The Coast Remembers',
-      premise: 'The coastline is responding to forgotten names.',
-      sourceDocumentId: document.id,
-      sourceRevisionNumber: 1,
-    });
-    const { document: branchDocument } = await service.createDocument(story.id, actor('b'), {
-      branchId: branch.id,
-      kind: 'plotline',
-      title: 'The remembered coast',
-      content: 'The sea returns one lost street each night.',
-      changeSummary: 'Open an alternate plotline.',
-    });
-    const { discussion: thread } = await service.createDiscussion(story.id, actor('c'), {
-      documentId: document.id,
-      revisionNumber: 1,
-      title: 'A question about perception',
-      anchorText: 'the harbor move',
-      content: 'Is the movement visible to everyone in the scene?',
-    });
-    const { discussion: branchThread } = await service.createDiscussion(story.id, actor('c'), {
-      documentId: branchDocument.id,
-      revisionNumber: 1,
-      title: 'A question about the alternate coast',
-      anchorText: 'one lost street',
-      content: 'Does this happen before sunrise?',
-    });
-    const message = await service.addDiscussionMessage(story.id, thread.id, actor('a'), {
-      content: 'Only people looking at the old map notice it.',
-    });
-    const review = await service.createReview(story.id, actor('d'), {
-      documentId: document.id,
-      revisionNumber: 1,
-      content: 'The scene follows the established coast rule.',
-      anchorText: 'Mira watches the harbor move.',
-    });
-
-    expect(await service.listDocuments(story.id)).toMatchObject({
-      items: [expect.objectContaining({ id: document.id, branchId: null })],
-    });
-    expect(await service.listDocuments(story.id, branch.id)).toMatchObject({
-      items: [expect.objectContaining({ id: branchDocument.id, branchId: branch.id })],
-    });
-    expect(thread).toMatchObject({
-      documentId: document.id,
-      revisionNumber: 1,
-      anchorText: 'the harbor move',
-      branchId: null,
-    });
-    expect(branchThread).toMatchObject({
-      documentId: branchDocument.id,
-      revisionNumber: 1,
-      branchId: branch.id,
-    });
-    expect(await service.getDiscussion(story.id, branchThread.id)).toMatchObject({
-      id: branchThread.id,
-      branchId: branch.id,
-    });
-    expect(await service.listDiscussions(story.id)).toMatchObject({
-      items: expect.arrayContaining([
-        expect.objectContaining({ id: thread.id, branchId: null }),
-        expect.objectContaining({ id: branchThread.id, branchId: branch.id }),
-      ]),
-    });
-    expect(
-      await service.listDiscussions(story.id, {
-        documentId: branchDocument.id,
-        revisionNumber: 1,
-      }),
-    ).toMatchObject({
-      items: [expect.objectContaining({ id: branchThread.id, branchId: branch.id })],
-    });
-    expect(message).toMatchObject({ discussionId: thread.id, authorAgentId: 'agent-a' });
-    expect(review).toMatchObject({
-      documentId: document.id,
-      revisionNumber: 1,
-      authorAgentId: 'agent-d',
-      content: 'The scene follows the established coast rule.',
-      anchorText: 'Mira watches the harbor move.',
     });
   });
 
@@ -855,18 +870,20 @@ describe('StoryService', () => {
       premise: 'A cartographer discovers a coastline that changes overnight.',
     });
     const { document } = await service.createDocument(story.id, actor('a'), {
-      kind: 'chapter',
+      kind: 'world_setting',
       title: 'The First Map',
       content: 'Mira watches the harbor move.',
       changeSummary: 'Draft the opening chapter.',
     });
     await service.createDiscussion(story.id, actor('b'), {
+      targetType: 'document',
       documentId: document.id,
       revisionNumber: 1,
       title: 'First question',
       content: 'Should Mira trust the map?',
     });
     await service.createDiscussion(story.id, actor('c'), {
+      targetType: 'document',
       documentId: document.id,
       revisionNumber: 1,
       title: 'Second question',
@@ -890,7 +907,7 @@ describe('StoryService', () => {
     ).rejects.toMatchObject({ response: { code: 'PAGINATION_CURSOR_INVALID' } });
   });
 
-  it('notifies a discussion target in the same transaction and records the target on the discussion', async () => {
+  it('records a discussion target without sending an inbox notification', async () => {
     const story = await service.createStory(actor('author'), {
       title: 'The Glass Coast',
       premise: 'A cartographer discovers a coastline that changes overnight.',
@@ -902,25 +919,25 @@ describe('StoryService', () => {
       changeSummary: 'Create Mira.',
     });
 
+    const addressedAgent = await connection.model(Agent.name).create({
+      name: 'addressed-agent',
+      description: '',
+      userId: 'addressed-owner',
+    });
+    const notificationsBefore = await connection.collection('notifications').countDocuments({});
     const result = await service.createDiscussion(story.id, actor('author'), {
+      targetType: 'document',
       documentId: document.id,
       revisionNumber: 1,
       title: 'Question about Mira',
       content: 'Does this conflict with her earlier motive?',
       anchorText: 'Mira studies the old maps.',
-      noticeTargetAgentId: actor('target').agentId,
+      addressedAgentId: addressedAgent.id,
     });
 
-    expect(result.discussion).toMatchObject({ noticeTargetAgentId: actor('target').agentId });
-    expect(notificationService.createStoryDiscussionNotification).toHaveBeenCalledWith(
-      {
-        discussionId: result.discussion.id,
-        storyId: story.id,
-        documentId: document.id,
-        actorAgentId: actor('author').agentId,
-        recipientAgentId: actor('target').agentId,
-      },
-      expect.anything(),
+    expect(result.discussion).toMatchObject({ addressedAgentId: addressedAgent.id });
+    await expect(connection.collection('notifications').countDocuments({})).resolves.toBe(
+      notificationsBefore,
     );
   });
 
@@ -938,17 +955,17 @@ describe('StoryService', () => {
 
     await expect(
       service.createDiscussion(story.id, actor('author'), {
+        targetType: 'document',
         documentId: document.id,
         revisionNumber: 1,
         title: 'Question about Mira',
         content: 'Does this conflict with her earlier motive?',
-        noticeTargetAgentId: actor('author').agentId,
+        addressedAgentId: actor('author').agentId,
       }),
     ).rejects.toMatchObject({ status: 400 });
-    expect(notificationService.createStoryDiscussionNotification).not.toHaveBeenCalled();
   });
 
-  it('rolls back a discussion when its requested notification cannot be delivered', async () => {
+  it('rejects a discussion addressed to an Agent that does not exist', async () => {
     const story = await service.createStory(actor('author'), {
       title: 'The Glass Coast',
       premise: 'A cartographer discovers a coastline that changes overnight.',
@@ -959,21 +976,312 @@ describe('StoryService', () => {
       content: 'Mira studies the old maps.',
       changeSummary: 'Create Mira.',
     });
-    notificationService.createStoryDiscussionNotification.mockResolvedValue(false);
-
     await expect(
       service.createDiscussion(story.id, actor('author'), {
+        targetType: 'document',
         documentId: document.id,
         revisionNumber: 1,
         title: 'Question about Mira',
         content: 'Does this conflict with her earlier motive?',
-        noticeTargetAgentId: actor('missing').agentId,
+        addressedAgentId: new Types.ObjectId().toString(),
       }),
     ).rejects.toMatchObject({ response: { code: 'STORY_DISCUSSION_TARGET_INVALID' } });
+  });
+  it('keeps story opening discussion and feedback anchored to the exact metadata revision', async () => {
+    const story = await service.createStory(actor('a'), {
+      title: 'A shared opening',
+      premise: 'The city remembers.',
+    });
+    const { discussion } = await service.createDiscussion(story.id, actor('b'), {
+      targetType: 'story',
+      documentId: null,
+      revisionNumber: 1,
+      title: 'What does remember mean?',
+      content: 'Can we make this memory unreliable?',
+      anchorText: 'The city remembers.',
+    });
+    const review = await service.createReview(story.id, actor('b'), {
+      targetType: 'story',
+      documentId: null,
+      revisionNumber: 1,
+      content: 'The premise gives a useful shared question.',
+    });
+    await service.reviseStory(story.id, actor('a'), {
+      expectedVersion: 1,
+      changeSummary: 'Clarify the premise.',
+      premise: 'The city forgets at dawn.',
+    });
+    expect(await service.getStoryRevision(story.id, 1)).toMatchObject({
+      snapshot: { premise: 'The city remembers.' },
+    });
+    expect(await service.getDiscussion(story.id, discussion.id)).toMatchObject({
+      targetType: 'story',
+      documentId: null,
+      revisionNumber: 1,
+    });
+    expect(
+      (await service.listReviews(story.id, { targetType: 'story' })).items.map((item) => item.id),
+    ).toEqual([review.id]);
+    const phaseReview = await service.createReview(story.id, actor('b'), {
+      targetType: 'story',
+      documentId: null,
+      revisionNumber: 2,
+      content: 'The opening phase is still appropriate.',
+      anchorText: 'opening',
+    });
+    expect(phaseReview).toMatchObject({ revisionNumber: 2, anchorText: 'opening' });
+  });
 
-    await expect(service.listDiscussions(story.id)).resolves.toMatchObject({ items: [] });
+  it('returns only the selected historical snapshots when comparing large document revisions', async () => {
+    const story = await service.createStory(actor('a'), {
+      title: 'History',
+      premise: 'An archive.',
+    });
+    const { document } = await service.createDocument(story.id, actor('a'), {
+      kind: 'character',
+      title: 'Archivist',
+      content: 'A'.repeat(10000),
+      changeSummary: 'Start.',
+    });
+    await service.reviseDocument(document.id, actor('b'), {
+      expectedVersion: 1,
+      content: 'B'.repeat(10000),
+      changeSummary: 'Revise.',
+    });
+    await service.reviseDocument(document.id, actor('b'), {
+      expectedVersion: 2,
+      content: 'C'.repeat(10000),
+      changeSummary: 'Revise again.',
+    });
+    const result = await service.compareRevisions(
+      { documentId: document.id, fromRevisionNumber: 2, toRevisionNumber: 3 },
+      story.id,
+    );
+    expect(result.changedFields).toEqual(['content']);
+    expect(result.fromRevision).not.toHaveProperty('diff');
+    expect(JSON.stringify(result).split('B'.repeat(10000))).toHaveLength(2);
+    expect(JSON.stringify(result).split('C'.repeat(10000))).toHaveLength(2);
+    expect(await service.getDocumentRevision(story.id, document.id, 2)).toMatchObject({
+      snapshot: { content: 'B'.repeat(10000) },
+    });
+  });
+
+  it('withdraws a mistaken material reversibly without hiding its history or changing state during content restore', async () => {
+    const story = await service.createStory(actor('a'), {
+      title: 'Materials',
+      premise: 'A shared archive.',
+    });
+    const { document } = await service.createDocument(story.id, actor('a'), {
+      kind: 'character',
+      title: 'Duplicate',
+      content: 'First note.',
+      changeSummary: 'Create.',
+    });
+    await service.reviseDocument(document.id, actor('b'), {
+      expectedVersion: 1,
+      content: 'Second note.',
+      changeSummary: 'Correct.',
+    });
+    await service.withdrawDocument(story.id, document.id, actor('b'), {
+      expectedVersion: 2,
+      changeSummary: 'Duplicate material.',
+    });
+    expect((await service.listDocuments(story.id)).items).toHaveLength(0);
+    expect(await service.getDocument(document.id, story.id)).toMatchObject({
+      archived: true,
+      currentVersion: 3,
+    });
     await expect(
-      connection.collection('story_discussion_messages').countDocuments({ storyId: story.id }),
-    ).resolves.toBe(0);
+      service.reviseDocument(document.id, actor('b'), {
+        expectedVersion: 3,
+        content: 'Hidden update.',
+        changeSummary: 'Wrong.',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'STORY_DOCUMENT_WITHDRAWN' } });
+    await service.restoreDocument(
+      document.id,
+      actor('b'),
+      { expectedVersion: 3, targetRevisionNumber: 1, changeSummary: 'Restore content only.' },
+      story.id,
+    );
+    expect(await service.getDocument(document.id, story.id)).toMatchObject({
+      archived: true,
+      currentVersion: 4,
+      content: 'First note.',
+    });
+    await service.reinstateDocument(story.id, document.id, actor('b'), {
+      expectedVersion: 4,
+      changeSummary: 'Restore to directory.',
+    });
+    expect(await service.getDocument(document.id, story.id)).toMatchObject({
+      archived: false,
+      currentVersion: 5,
+      content: 'First note.',
+    });
+    expect((await service.listDocumentRevisions(document.id)).items).toHaveLength(5);
+  });
+
+  it('records old-thread replies in persistent activity and reads the parent without scanning the discussion', async () => {
+    const story = await service.createStory(actor('a'), {
+      title: 'Conversation',
+      premise: 'A city.',
+    });
+    const { discussion, initialMessage } = await service.createDiscussion(story.id, actor('a'), {
+      targetType: 'story',
+      documentId: null,
+      revisionNumber: 1,
+      title: 'Opening question',
+      content: 'Who remembers?',
+    });
+    const message = await service.addDiscussionMessage(story.id, discussion.id, actor('b'), {
+      content: 'A clockmaker.',
+      parentMessageId: initialMessage.id,
+    });
+    expect(
+      await service.getDiscussionMessage(story.id, discussion.id, initialMessage.id),
+    ).toMatchObject({ content: 'Who remembers?' });
+    const activities = await service.listActivity(story.id, { afterSequence: 2 });
+    expect(activities.items).toEqual([
+      expect.objectContaining({
+        kind: 'MESSAGE_CREATED',
+        messageId: message.id,
+        discussionId: discussion.id,
+      }),
+    ]);
+    expect(activities.nextSequence).toBe(3);
+  });
+  it('uses the shared ordered directory for chapter insertion, moving and explicit reinstatement', async () => {
+    const story = await service.createStory(actor('a'), {
+      title: 'Ordered novel',
+      premise: 'A clockmaker follows the tide.',
+    });
+    const { document: volume } = await service.createDocument(story.id, actor('a'), {
+      kind: 'volume',
+      title: 'Volume one',
+      content: 'First arc.',
+      changeSummary: 'Start volume.',
+      expectedStructureVersion: 1,
+      parentDocumentId: null,
+      afterDocumentId: null,
+    });
+    const { document: first } = await service.createDocument(story.id, actor('a'), {
+      kind: 'chapter',
+      title: 'First chapter',
+      content: 'The clock stops.',
+      changeSummary: 'Start first chapter.',
+      expectedStructureVersion: 2,
+      parentDocumentId: volume.id,
+      afterDocumentId: null,
+    });
+    const { document: last } = await service.createDocument(story.id, actor('b'), {
+      kind: 'chapter',
+      title: 'Last chapter',
+      content: 'The tide returns.',
+      changeSummary: 'Continue.',
+      expectedStructureVersion: 3,
+      parentDocumentId: volume.id,
+      afterDocumentId: first.id,
+    });
+    const { document: middle } = await service.createDocument(story.id, actor('b'), {
+      kind: 'chapter',
+      title: 'Middle chapter',
+      content: 'A letter arrives.',
+      changeSummary: 'Insert missing scene.',
+      expectedStructureVersion: 4,
+      parentDocumentId: volume.id,
+      afterDocumentId: first.id,
+    });
+    expect(
+      (await service.listDirectory(story.id, { parentDocumentId: volume.id })).items.map(
+        (item) => item.id,
+      ),
+    ).toEqual([first.id, middle.id, last.id]);
+    const firstHistorical = await service.getDocumentRevision(story.id, last.id, 1);
+    expect(firstHistorical.snapshot).not.toHaveProperty('previousDocumentId');
+    expect(firstHistorical.revision.directoryChange).toMatchObject({
+      structureVersion: 4,
+      before: null,
+      after: { parentDocumentId: volume.id, afterDocumentId: first.id },
+    });
+    expect(await service.getReadingStart(story.id)).toMatchObject({ document: { id: first.id } });
+    expect(await service.getDocumentLocation(story.id, middle.id)).toMatchObject({
+      ancestors: [{ id: volume.id }],
+      previousDocument: { id: first.id },
+      nextDocument: { id: last.id },
+    });
+    await expect(
+      service.withdrawDocument(story.id, volume.id, actor('b'), {
+        expectedVersion: 1,
+        expectedStructureVersion: 5,
+        changeSummary: 'Cannot hide chapters.',
+      }),
+    ).rejects.toMatchObject({ response: { code: 'STORY_DOCUMENT_HAS_CHILDREN' } });
+    await service.withdrawDocument(story.id, middle.id, actor('b'), {
+      expectedVersion: 1,
+      expectedStructureVersion: 5,
+      changeSummary: 'Remove mistaken insertion.',
+    });
+    await service.reinstateDocument(story.id, middle.id, actor('b'), {
+      expectedVersion: 2,
+      expectedStructureVersion: 6,
+      parentDocumentId: volume.id,
+      afterDocumentId: last.id,
+      changeSummary: 'Rejoin at end.',
+    });
+    await expect(
+      service.restoreDocument(
+        middle.id,
+        actor('b'),
+        {
+          expectedVersion: 3,
+          targetRevisionNumber: 1,
+          changeSummary: 'Check old body cannot change position.',
+        },
+        story.id,
+      ),
+    ).rejects.toMatchObject({ response: { code: 'STORY_UNCHANGED' } });
+    expect((await service.getDocument(middle.id, story.id)).previousDocumentId?.toString()).toBe(
+      last.id,
+    );
+    expect(
+      (await service.listDirectory(story.id, { parentDocumentId: volume.id })).items.map(
+        (item) => item.id,
+      ),
+    ).toEqual([first.id, last.id, middle.id]);
+  });
+
+  it('resolves linked summaries and reverse references without reading unrelated full text', async () => {
+    const story = await service.createStory(actor('a'), {
+      title: 'References',
+      premise: 'An archive.',
+    });
+    const { document: character } = await service.createDocument(story.id, actor('a'), {
+      kind: 'character',
+      title: 'Mira',
+      content: 'A mapmaker.',
+      changeSummary: 'Introduce.',
+    });
+    const { document: setting } = await service.createDocument(story.id, actor('a'), {
+      kind: 'world_setting',
+      title: 'Glass coast',
+      content: 'Mira visits the coast.',
+      changeSummary: 'Link a character.',
+      links: [{ targetDocumentId: character.id, relation: 'features' }],
+    });
+    const selection = await service.listDocuments(story.id, {
+      documentIds: [setting.id, character.id],
+    });
+    expect(selection.items.map((item) => item.id)).toEqual([setting.id, character.id]);
+    expect(selection.items[0].toJSON()).not.toHaveProperty('content');
+    const referencedBy = await service.listDocumentReferences(story.id, character.id);
+    expect(referencedBy.items.map((item) => item.id)).toEqual([setting.id]);
+    await service.withdrawDocument(story.id, setting.id, actor('a'), {
+      expectedVersion: 1,
+      changeSummary: 'Withdraw draft.',
+    });
+    expect((await service.listDocumentReferences(story.id, character.id)).items).toHaveLength(0);
+    expect(
+      (await service.listDocuments(story.id, { documentIds: [setting.id] })).items[0],
+    ).toMatchObject({ archived: true });
   });
 });

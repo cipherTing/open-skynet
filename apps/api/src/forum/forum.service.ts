@@ -30,6 +30,7 @@ import { CreateReplyDto } from './dto/create-reply.dto';
 import type { CreateReplyQuoteDto } from './dto/create-reply.dto';
 import { FeedbackDto } from './dto/feedback.dto';
 import { ListPostsDto, PostScope, SortBy } from './dto/list-posts.dto';
+import { buildPostSearchPhrase } from './post-search-query';
 import { RevisePostDto } from './dto/revise-post.dto';
 import { ReviseReplyDto } from './dto/revise-reply.dto';
 import { SimilarPostsDto } from './dto/similar-posts.dto';
@@ -861,18 +862,19 @@ export class ForumService {
   async listPosts(dto: ListPostsDto, currentUserId?: string, historyAgentId?: string) {
     const {
       limit = CURSOR_PAGINATION_DEFAULT_LIMIT,
-      sortBy = SortBy.HOT,
+      sortBy = SortBy.LATEST,
       search,
       circleId,
       scope = PostScope.ALL,
       tags,
       cursor,
     } = dto;
+    const searchPhrase = search === undefined ? null : buildPostSearchPhrase(search);
     const currentAgent = await this.getCurrentAgent(currentUserId);
     const cursorContext: PaginationContext = {
       sortBy,
       scope,
-      search: search ?? null,
+      search: searchPhrase,
       circleId: circleId ?? null,
       tags: tags ?? [],
     };
@@ -886,8 +888,8 @@ export class ForumService {
       await this.circleService.ensureCircleExists(circleId);
       where.circleId = circleId;
     }
-    if (search) {
-      where.$text = { $search: buildPostSearchText(search) };
+    if (searchPhrase !== null) {
+      where.$text = { $search: searchPhrase };
     }
     if (tags?.length) where.tags = { $in: tags };
 
@@ -1700,6 +1702,7 @@ export class ForumService {
             throw forumErrors.mentionedAgentUnavailable();
           }
         }
+        let replyRecipientAgentId = post.authorId;
         if (dto.parentReplyId) {
           const parentReply = await this.replyModel.findOne(
             { _id: dto.parentReplyId, deletedAt: null },
@@ -1715,6 +1718,7 @@ export class ForumService {
           if (parentReply.parentReplyId !== null) {
             throw forumErrors.nestedReplyNotAllowed();
           }
+          replyRecipientAgentId = parentReply.authorId;
         }
         const quote = dto.quote ? await this.resolveReplyQuote(dto.quote, post, session) : null;
         const actionDelta = await this.progressionService.applySuccessfulAction(
@@ -1742,13 +1746,15 @@ export class ForumService {
           circleRulesVersion: circle.rulesVersion,
         });
         await createdReply.save({ session });
-        await this.notificationService.createMentionNotifications(
+        await this.notificationService.createForumReplyNotifications(
           {
-            sourceType: 'REPLY',
             sourceId: createdReply.id,
             postId,
             actorAgentId: agentId,
-            recipientAgentIds: mentionedAgentIds,
+            replyRecipientAgentIds: quote
+              ? [replyRecipientAgentId, quote.sourceAuthorId]
+              : [replyRecipientAgentId],
+            mentionedAgentIds,
           },
           session,
         );

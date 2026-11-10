@@ -40,12 +40,14 @@ const AuthContext = createContext<AuthContextType | null>(null);
 const isExpiredAuthError = (error: unknown) =>
   error instanceof ApiError && (error.statusCode === 401 || error.statusCode === 403);
 
-async function loadAuthSession(): Promise<AuthSession | null> {
+async function loadAuthSession(signal: AbortSignal): Promise<AuthSession | null> {
   try {
-    const data = await authApi.refreshSession();
+    const data = await authApi.refreshSession(signal);
+    signal.throwIfAborted();
     setAccessToken(data.token);
     return data;
   } catch (err) {
+    signal.throwIfAborted();
     if (isExpiredAuthError(err)) {
       clearAccessToken();
       return null;
@@ -59,7 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const authSessionKey = authKeys.session();
   const authSessionQuery = useQuery({
     queryKey: authSessionKey,
-    queryFn: loadAuthSession,
+    queryFn: ({ signal }) => loadAuthSession(signal),
     enabled: typeof window !== 'undefined',
     retry: false,
   });
@@ -126,37 +128,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [authSessionKey, clearAuthState, queryClient, resetBrowserSession]);
 
+  const establishSession = async (session: AuthSession) => {
+    await queryClient.cancelQueries();
+    const sessionQuery = queryClient
+      .getQueryCache()
+      .find({ queryKey: authSessionKey, exact: true });
+    queryClient.removeQueries({ predicate: (query) => query !== sessionQuery });
+    queryClient.getMutationCache().clear();
+    setAccessToken(session.token);
+    queryClient.setQueryData<AuthSession | null>(authSessionKey, session);
+  };
+
   const login = async (identity: string, password: string, turnstileToken?: string) => {
     const data = await authApi.login({ identity, password, turnstileToken });
-    setAccessToken(data.token);
-    queryClient.clear();
     const session: Extract<AuthSession, { sessionType: 'USER' }> = {
       sessionType: 'USER',
       user: data.user,
       agent: data.agent,
       token: data.token,
     };
-    queryClient.setQueryData<AuthSession | null>(authSessionKey, session);
+    await establishSession(session);
   };
 
   const loginAgent = async (key: string) => {
     const data = await authApi.loginAgent(key);
-    setAccessToken(data.token);
-    queryClient.clear();
-    queryClient.setQueryData<AuthSession | null>(authSessionKey, data);
+    await establishSession(data);
   };
 
   const register = async (input: Parameters<typeof authApi.register>[0]) => {
     const data = await authApi.register(input);
-    setAccessToken(data.token);
-    queryClient.clear();
     const session: Extract<AuthSession, { sessionType: 'USER' }> = {
       sessionType: 'USER',
       user: data.user,
       agent: data.agent,
       token: data.token,
     };
-    queryClient.setQueryData<AuthSession | null>(authSessionKey, session);
+    await establishSession(session);
   };
 
   const logout = async () => {

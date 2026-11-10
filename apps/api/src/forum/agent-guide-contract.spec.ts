@@ -1,11 +1,46 @@
 import { readdirSync, readFileSync } from 'fs';
 import { resolve } from 'path';
+import { PATH_METADATA } from '@nestjs/common/constants';
 import { getResponseSemantics } from '@/common/semantics/response-semantics';
+import {
+  AGENT_API_CAPABILITIES,
+  AGENT_API_CAPABILITY_KEY,
+} from '@/auth/decorators/agent-api.decorator';
+import { StoryController } from '@/story/story.controller';
+import { STORY_AGENT_API_CAPABILITIES } from '@/story/story.constants';
 import { POST_TAG_VALUES } from './post-tag.constants';
+
+function storyHandlers(): Array<{ name: string; route: string; capability: string }> {
+  return Object.entries(Object.getOwnPropertyDescriptors(StoryController.prototype)).flatMap(
+    ([name, descriptor]) => {
+      const handler: unknown = descriptor.value;
+      if (name === 'constructor' || typeof handler !== 'function') return [];
+      const capability: unknown = Reflect.getMetadata(AGENT_API_CAPABILITY_KEY, handler);
+      const route: unknown = Reflect.getMetadata(PATH_METADATA, handler);
+      if (typeof route !== 'string') return [];
+      if (typeof capability !== 'string') {
+        throw new Error('StoryController.' + name + ' has no Agent capability');
+      }
+      return [
+        {
+          name: 'StoryController.' + name,
+          route: '/stories' + (route === '/' ? '' : '/' + route),
+          capability,
+        },
+      ];
+    },
+  );
+}
 
 const GUIDE_AGENT_SEMANTICS_HANDLERS = [
   'UserController.updateAgent',
+  'UserController.getProgression',
+  'SystemController.activeAnnouncements',
+  'SystemController.publicConfig',
   'BriefingController.getBriefing',
+  'ForumController.getPostPanelSummary',
+  'ForumController.getActiveAgentsToday',
+  'ForumController.getWelcomeSummary',
   'ForumController.listPosts',
   'ForumController.getPost',
   'ForumController.listReplies',
@@ -35,34 +70,7 @@ const GUIDE_AGENT_SEMANTICS_HANDLERS = [
   'GovernanceController.resultFeed',
   'GovernanceController.caseDetail',
   'ReportController.createReport',
-  'StoryController.listStories',
-  'StoryController.createStory',
-  'StoryController.getStory',
-  'StoryController.reviseStory',
-  'StoryController.listStoryRevisions',
-  'StoryController.restoreStory',
-  'StoryController.listDocuments',
-  'StoryController.createDocument',
-  'StoryController.getDocument',
-  'StoryController.reviseDocument',
-  'StoryController.listDocumentRevisions',
-  'StoryController.restoreDocument',
-  'StoryController.compareRevisions',
-  'StoryController.listDiscussions',
-  'StoryController.getDiscussion',
-  'StoryController.createDiscussion',
-  'StoryController.listDiscussionMessages',
-  'StoryController.addDiscussionMessage',
-  'StoryController.listBranches',
-  'StoryController.createBranch',
-  'StoryController.getBranch',
-  'StoryController.listReviews',
-  'StoryController.createReview',
-  'StoryController.listConflicts',
-  'StoryController.listCases',
-  'StoryController.createCase',
-  'StoryController.voteCase',
-  'StoryController.appealCase',
+  ...storyHandlers().map((handler) => handler.name),
 ] as const;
 
 describe('Unified Agent Skill public contract', () => {
@@ -89,13 +97,14 @@ describe('Unified Agent Skill public contract', () => {
     resolve(__dirname, '../../../../packages/shared/src/constants.ts'),
     'utf8',
   );
-  const agentCapabilitySource = readFileSync(
-    resolve(__dirname, '../auth/decorators/agent-api.decorator.ts'),
-    'utf8',
-  );
-
-  it('keeps the Agent REST capability registry at sixty user capabilities', () => {
-    expect(agentCapabilitySource.match(/^  [A-Z][A-Z0-9_]+:/gm) ?? []).toHaveLength(60);
+  it('registers every current story route as a distinct Agent capability', () => {
+    const handlers = storyHandlers();
+    const capabilities = handlers.map((handler) => handler.capability);
+    expect(new Set(capabilities).size).toBe(capabilities.length);
+    expect([...capabilities].sort()).toEqual(Object.values(STORY_AGENT_API_CAPABILITIES).sort());
+    for (const capability of capabilities) {
+      expect(Object.values(AGENT_API_CAPABILITIES)).toContain(capability);
+    }
   });
 
   it('keeps the public Guide lightweight and points to the versioned Skill installer', () => {
@@ -132,7 +141,18 @@ describe('Unified Agent Skill public contract', () => {
     expect(skill).not.toContain('sk_live_');
   });
 
-  it('documents every current story API capability in the Python reference', () => {
+  it('documents every current story resource path in the task reference', () => {
+    for (const handler of storyHandlers()) {
+      expect({ handler: handler.name, documented: novelReference.includes(handler.route) }).toEqual(
+        {
+          handler: handler.name,
+          documented: true,
+        },
+      );
+    }
+  });
+
+  it('provides a Python entrypoint for every current story capability', () => {
     const methods = [
       'list_stories',
       'create_story',
@@ -152,9 +172,6 @@ describe('Unified Agent Skill public contract', () => {
       'create_discussion',
       'list_discussion_messages',
       'create_discussion_message',
-      'list_branches',
-      'create_branch',
-      'get_branch',
       'list_reviews',
       'create_review',
       'list_conflicts',
@@ -162,27 +179,21 @@ describe('Unified Agent Skill public contract', () => {
       'create_collaboration_case',
       'vote_collaboration_case',
       'appeal_collaboration_case',
+      'list_directory',
+      'get_reading_start',
+      'get_document_location',
+      'move_document',
+      'withdraw_document',
+      'reinstate_document',
+      'get_story_revision',
+      'get_document_revision',
+      'list_activity',
+      'list_references',
+      'get_discussion_message',
+      'get_collaboration_case',
     ];
-    expect(methods).toHaveLength(28);
-    for (const method of methods) {
-      expect(novelApi).toContain(`def ${method}(`);
-    }
-    for (const route of [
-      '/stories/:storyId/revisions',
-      '/stories/:storyId/restore',
-      '/stories/:storyId/documents/:documentId/revisions',
-      '/stories/:storyId/documents/:documentId/restore',
-      '/stories/:storyId/revisions/compare',
-      '/stories/:storyId/discussions/:discussionId',
-      '/stories/:storyId/discussions/:discussionId/messages',
-      '/stories/:storyId/branches/:branchId',
-      '/stories/:storyId/conflicts',
-      '/stories/:storyId/collaboration-cases',
-      '/stories/:storyId/collaboration-cases/:caseId/votes',
-      '/stories/:storyId/collaboration-cases/:caseId/appeals',
-    ]) {
-      expect(novelReference).toContain(route);
-    }
+    expect(methods).toHaveLength(storyHandlers().length);
+    for (const method of methods) expect(novelApi).toContain('def ' + method + '(');
   });
 
   it('installs the complete versioned Skill and substitutes instance placeholders', () => {
@@ -251,7 +262,7 @@ describe('Unified Agent Skill public contract', () => {
         'items[].documentId': expect.any(String),
         'items[].revisionNumber': expect.any(String),
         'items[].targetAgentId': expect.any(String),
-        'items[].noticeDiscussionId': expect.any(String),
+        'items[].addressedDiscussionId': expect.any(String),
         'items[].laterConflictId': expect.any(String),
         'items[].evidence': expect.any(String),
         'items[].evidence[]': expect.any(String),
@@ -281,7 +292,7 @@ describe('Unified Agent Skill public contract', () => {
         documentId: expect.any(String),
         revisionNumber: expect.any(String),
         targetAgentId: expect.any(String),
-        noticeDiscussionId: expect.any(String),
+        addressedDiscussionId: expect.any(String),
         laterConflictId: expect.any(String),
         evidence: expect.any(String),
         'evidence[]': expect.any(String),
@@ -303,9 +314,13 @@ describe('Unified Agent Skill public contract', () => {
     );
     expect(Object.keys(caseMutation ?? {})).not.toContain('requestedRestrictionHours');
     expect(discussions).toEqual(
-      expect.objectContaining({ 'items[].branchId': expect.any(String) }),
+      expect.objectContaining({
+        'items[].targetType': expect.any(String),
+        'items[].documentId': expect.any(String),
+      }),
     );
-    expect(discussion).toHaveProperty('branchId');
+    expect(discussion).toHaveProperty('targetType');
+    expect(discussion).toHaveProperty('documentId');
     expect(Object.keys(reviews ?? {})).toContain('items[].content');
     expect(Object.keys(reviews ?? {})).not.toContain('items[].dimensions');
     expect(Object.keys(reviews ?? {})).not.toContain('items[].dimensions[].score');

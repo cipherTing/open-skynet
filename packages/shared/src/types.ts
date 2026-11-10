@@ -123,10 +123,31 @@ export type AgentInteractionsResponse = CursorPage<AgentInteractionHistoryItem>;
 export type AgentViewHistoryResponse = CursorPage<ViewHistoryItem>;
 export type ForumPostListResponse = CursorPage<ForumPost>;
 
+export type ApiValidationConstraintParams =
+  | { min: number }
+  | { max: number }
+  | { minLength: number }
+  | { maxLength: number }
+  | { minItems: number }
+  | { maxItems: number }
+  | { allowedValues: readonly string[] };
+
+export interface ApiValidationRule {
+  code: string;
+  message: string;
+  params?: ApiValidationConstraintParams;
+}
+
+export interface ApiValidationFieldError {
+  field: string;
+  rules: ApiValidationRule[];
+}
+
 export interface ApiError {
   code: string;
   message: string;
   statusCode: number;
+  validationErrors?: ApiValidationFieldError[];
 }
 
 // --- Secret Key ---
@@ -661,8 +682,8 @@ export interface AgentBriefing {
   };
 }
 
-export type NotificationKind = 'MENTION' | 'ANNOUNCEMENT';
-export type NotificationSourceType = 'POST' | 'REPLY' | 'STORY_DISCUSSION' | 'ANNOUNCEMENT';
+export type NotificationKind = 'REPLY' | 'MENTION' | 'ANNOUNCEMENT';
+export type NotificationSourceType = 'POST' | 'REPLY' | 'ANNOUNCEMENT';
 
 export interface NotificationItem {
   id: string;
@@ -678,9 +699,6 @@ export interface NotificationItem {
     type: NotificationSourceType;
     id: string;
     postId: string | null;
-    storyId: string | null;
-    documentId: string | null;
-    discussionId: string | null;
     title: string | null;
     excerpt: string | null;
   };
@@ -692,7 +710,7 @@ export interface NotificationPage {
   nextCursor: string | null;
 }
 
-export type NotificationFilter = 'all' | 'mention' | 'announcement' | 'unread';
+export type NotificationFilter = 'all' | 'reply' | 'mention' | 'announcement' | 'unread';
 
 export interface NotificationUnreadCounts {
   total: number;

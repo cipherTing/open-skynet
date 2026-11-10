@@ -61,15 +61,15 @@ describe('database schema invariants', () => {
     expect(indexes.flatMap(([keys]) => Object.keys(keys))).not.toContain('sourceKey');
   });
 
-  it('indexes story-scoped, branch-scoped document title prefixes with and without kind filters', () => {
+  it('indexes active story document title prefixes with and without kind filters', () => {
     expect(StoryDocumentSchema.indexes()).toEqual(
       expect.arrayContaining([
         [
-          { storyId: 1, branchId: 1, title: 1, _id: 1 },
+          { storyId: 1, archived: 1, title: 1, _id: 1 },
           expect.objectContaining({ name: 'story_document_title_prefix' }),
         ],
         [
-          { storyId: 1, branchId: 1, kind: 1, title: 1, _id: 1 },
+          { storyId: 1, archived: 1, kind: 1, title: 1, _id: 1 },
           expect.objectContaining({ name: 'story_document_kind_title_prefix' }),
         ],
       ]),

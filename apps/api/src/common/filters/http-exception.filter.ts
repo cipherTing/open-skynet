@@ -5,22 +5,26 @@ import {
   HttpException,
   HttpStatus,
   Logger,
-} from "@nestjs/common";
-import type { Response } from "express";
+} from '@nestjs/common';
+import type { Response } from 'express';
 import { I18nValidationException } from 'nestjs-i18n';
 import {
   getApiLanguage,
   getContentLanguage,
   translateApiMessage,
 } from '@/common/i18n/api-language';
+import {
+  readValidationConstraint,
+  type ValidationConstraintParams,
+} from '@/common/validation/validation-constraints';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function normalizeExceptionCode(value: unknown, fallback: string): string {
   if (!isRecord(value)) return fallback;
-  return typeof value.code === "string" ? value.code : fallback;
+  return typeof value.code === 'string' ? value.code : fallback;
 }
 
 function messageKeyForStatus(statusCode: number): string {
@@ -53,28 +57,34 @@ function defaultCodeForStatus(statusCode: number): string {
 }
 
 function translateKey(host: ArgumentsHost, key: string): string {
-  const translated = translateApiMessage(
-    { kind: 'skynet_api_message', key },
-    host,
-  );
+  const translated = translateApiMessage({ kind: 'skynet_api_message', key }, host);
   return translated ?? 'The service could not complete the request.';
 }
 
 function flattenValidationErrors(
   errors: unknown,
   host: ArgumentsHost,
-): Array<{ field: string; rules: Array<{ code: string; message: string }> }> {
+  parentPath = '',
+): Array<{
+  field: string;
+  rules: Array<{ code: string; message: string; params?: ValidationConstraintParams }>;
+}> {
   if (!Array.isArray(errors)) return [];
   return errors.flatMap((error) => {
     if (!isRecord(error)) return [];
-    const field = typeof error.property === 'string' ? error.property : '';
+    const property = typeof error.property === 'string' ? error.property : '';
+    const field = property && parentPath ? `${parentPath}.${property}` : property;
     const constraints = isRecord(error.constraints) ? Object.keys(error.constraints) : [];
-    const rules = constraints.map((rule) => ({
-      code: rule,
-      message: translateKey(host, `api.validation.${rule}`),
-    }));
+    const rules = constraints.map((rule) => {
+      const params = readValidationConstraint(error.contexts, rule);
+      return {
+        code: rule,
+        message: translateKey(host, `api.validation.${rule}`),
+        ...(params ? { params } : {}),
+      };
+    });
     const current = field && rules.length > 0 ? [{ field, rules }] : [];
-    return [...current, ...flattenValidationErrors(error.children, host)];
+    return [...current, ...flattenValidationErrors(error.children, host, field || parentPath)];
   });
 }
 
@@ -104,18 +114,19 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     const statusCode = exception.getStatus();
     const exceptionResponse = exception.getResponse();
-    const responseMessage = isRecord(exceptionResponse)
-      ? exceptionResponse.message
-      : undefined;
+    const responseMessage = isRecord(exceptionResponse) ? exceptionResponse.message : undefined;
     const localizedMessage = translateApiMessage(responseMessage, host);
-    const code = exception instanceof I18nValidationException
-      ? 'VALIDATION_FAILED'
-      : normalizeExceptionCode(exceptionResponse, defaultCodeForStatus(statusCode));
-    const validationErrors = exception instanceof I18nValidationException
-      ? flattenValidationErrors(exception.errors, host)
-      : [];
-    const message = localizedMessage
-      ?? translateKey(
+    const code =
+      exception instanceof I18nValidationException
+        ? 'VALIDATION_FAILED'
+        : normalizeExceptionCode(exceptionResponse, defaultCodeForStatus(statusCode));
+    const validationErrors =
+      exception instanceof I18nValidationException
+        ? flattenValidationErrors(exception.errors, host)
+        : [];
+    const message =
+      localizedMessage ??
+      translateKey(
         host,
         exception instanceof I18nValidationException
           ? 'api.errors.validation'

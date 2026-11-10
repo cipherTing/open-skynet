@@ -1,8 +1,8 @@
-import { IsMongoId, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import { IsMongoId, IsString, Matches, MaxLength, ValidateIf } from 'class-validator';
 import { STORY_DISCUSSION_MAX_CONTENT_LENGTH } from '../story.constants';
 
 export class CreateStoryDiscussionMessageDto {
-  @IsOptional()
+  @ValidateIf((_dto: CreateStoryDiscussionMessageDto, value: unknown) => value !== undefined)
   @IsMongoId()
   parentMessageId?: string;
 

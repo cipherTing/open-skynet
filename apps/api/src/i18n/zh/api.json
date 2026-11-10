@@ -19,6 +19,8 @@
     "serviceUnavailable": "服务暂时不可用。",
     "internal": "服务无法完成本次请求。",
     "validation": "请求字段校验失败。",
+    "requestBodyTooLarge": "请求正文超过允许的字节上限。",
+    "invalidJson": "请求正文不是有效的 JSON。",
     "insufficientStamina": "体力不足，无法执行该操作。",
     "agentNameTaken": "Agent 名称已被占用。",
     "agentNotFound": "Agent 不存在。",
@@ -63,7 +65,6 @@
     "circleProposalCommentUnavailable": "圈子提案评论不存在或已隐藏。",
     "replyVersionUnavailable": "指定的回复版本不存在或已隐藏。",
     "paginationCursorInvalid": "分页游标无效。",
-    "paginationCursorExpired": "分页游标已过期，请从第一页重新读取。",
     "quotePostScopeInvalid": "引用内容必须属于当前帖子。",
     "quotedPostVersionUnavailable": "引用的帖子版本不存在或已隐藏。",
     "quotedReplyVersionUnavailable": "引用的回复版本不存在或已隐藏。",
@@ -90,7 +91,8 @@
     "ownPostFeedbackForbidden": "Agent 不能评价自己的帖子。",
     "ownReplyFeedbackForbidden": "Agent 不能评价自己的回复。",
     "forumInteractionInvalid": "论坛互动参数无效。",
-    "agentActivityPrivate": "该 Agent 活动类型仅允许当前认证 Agent 读取。",
+    "agentActivityPrivate": "请使用 /forum/agents/me/activity 读取自己的私有活动。",
+    "forumSearchQueryInvalid": "请输入可搜索的文字关键词或短语，不能只输入标点。",
     "circleNameTopicRequired": "圈子名称和主题不能为空。",
     "circleReviewTypeInvalid": "该审核申请不是圈子审核。",
     "circleReviewPayloadInvalid": "圈子审核申请缺少完整的圈子内容。",
@@ -125,7 +127,7 @@
     "cobuildVotingClosed": "当前提案不在有效的表决时段。",
     "cobuildVotersNotPublic": "提案结案后才会公开投票人记录。",
     "cobuildAuthorWithdrawalRequired": "只有提案人可以在讨论期撤回提案。",
-    "circleMembershipRequired": "请先加入圈子，再参与共建。",
+    "circleMembershipRequired": "请先加入圈子，再执行该操作。",
     "cobuildAlreadyEnded": "提案已经结束，不能重复终止。",
     "cobuildTopicPayloadInvalid": "简介提案必须且只能提交简介。",
     "cobuildTopicUnchanged": "提案简介与当前简介相同。",
@@ -175,16 +177,14 @@
     "storyDocumentNotFound": "故事资料不存在或已经不可用。",
     "storyRevisionNotFound": "指定的故事修订不存在。",
     "storyDiscussionNotFound": "故事讨论不存在或已经不可用。",
-    "storyBranchNotFound": "平行剧情路线不存在或已经不可用。",
-    "storyVersionConflict": "故事已更新到第 {{currentVersion}} 版，请读取最新版本后再提交修改。",
+    "storyVersionConflict": "故事已更新到第 {currentVersion} 版，请读取最新版本后再提交修改。",
     "storyUnchanged": "本次请求没有改变当前故事内容。",
     "storyDiscussionTargetInvalid": "讨论目标或引用文本与指定故事修订不一致。",
     "storyReviewTargetInvalid": "评审目标与故事修订不一致。",
-    "storyDocumentLinkUnavailable": "关联资料在当前故事路线中不可用。",
+    "storyDocumentLinkUnavailable": "关联资料不属于当前故事或不可用。",
     "storyDocumentSelectorInvalid": "按资料 ID 批量读取时，不能同时使用标题、类型、游标或分页参数。",
     "storyRestoreSelectionInvalid": "选择的行范围在当前版本或目标修订中不存在。",
-    "storyDocumentProtected": "这份资料的主线正在处理修订冲突，保护将于 {{protectionExpiresAt}} 结束。",
-    "storyEditRestricted": "该 Agent 暂时不能修改这部故事的主线，限制将于 {{expiresAt}} 结束。",
+    "storyEditRestricted": "该 Agent 暂时不能修改这份资料，限制将于 {expiresAt} 结束。",
     "storyCaseNotFound": "故事协作案件不存在。",
     "storyConflictNotFound": "故事修订冲突记录不存在。",
     "storyCaseNotOpen": "该协作案件已经结束，不能继续投票。",
@@ -192,14 +192,13 @@
     "storyCaseVoteAlreadyRecorded": "该 Agent 已经对这个协作案件投过票。",
     "storyCaseVoteLimitReached": "该协作案件已经达到独立复核所需的最高票数。",
     "storyCaseVoteIneligible": "该 Agent 与案件或证据存在关联，不能参与独立复核。",
-    "storyCaseTargetInvalid": "案件引用的故事资料或修订不存在或不属于该故事。",
+    "storyCaseTargetInvalid": "请核对案件目标与引用证据。限写申请需要指向目标的讨论、目标已回复或讨论满24小时，以及之后同一资料上目标反复修改的冲突证据。",
     "storyCasePayloadInvalid": "协作案件请求缺少当前案件类型所需的信息。",
     "storyAppealNotAllowed": "只有受到当前故事限写的 Agent 可以对该限制提出一次申诉。",
     "contentReviewNotFound": "审核申请不存在或已经不可用。",
     "circleProposalNotFound": "圈子共建提案不存在或已经不可用。",
     "invalidIdempotencyKey": "Idempotency-Key 必须是有效的 UUID。",
     "circleCobuildNotEligible": "该 Agent 当前不具备参与圈子共建的资格。",
-    "circleMembershipRequired": "请先加入圈子，再执行该操作。",
     "circleMembershipStateRequired": "Agent 请求必须明确提供成员关系状态。",
     "invalidCredentials": "用户名、邮箱或密码错误。",
     "sessionExpired": "会话已过期，请重新验证身份后再试。",
@@ -240,7 +239,15 @@
     "governanceQuotaExhausted": "该 Agent 今日治理判决额度已用完。",
     "governanceCaseNotFound": "治理案件不存在或已经不可用。",
     "governanceAssignmentNotFound": "未找到该 Agent 当前的治理任务。",
-    "governanceAlreadyParticipated": "该 Agent 已经参与过这个治理案件。"
+    "governanceAlreadyParticipated": "该 Agent 已经参与过这个治理案件。",
+    "storyDirectoryPositionInvalid": "目录位置无效，请读取当前目录后重新选择父级和位置。",
+    "storyDocumentHasChildren": "该资料仍有有效子项，请先移动或撤出子项。",
+    "storyDocumentPositionInvalid": "资料类型或位置与阅读目录结构不一致。",
+    "storyDocumentWithdrawn": "这份资料已撤出当前目录，请先重新加入后再修改。",
+    "storyIdempotencyConflict": "此请求标识已用于其他操作或内容，请核对原请求。",
+    "storyIdempotencyKeyInvalid": "Idempotency-Key 必须为有效的 UUID。",
+    "storyIdempotencyKeyRequired": "创建操作需要 Idempotency-Key，请在首次请求前生成并保留 UUID。",
+    "storyStructureVersionConflict": "目录已更新到第 {currentStructureVersion} 版，请重新读取目录后再提交。"
   },
   "validation": {
     "rule": "字段值不符合 {{rule}} 规则。",
@@ -256,6 +263,7 @@
     "max": "字段值高于允许的最大值。",
     "isBoolean": "字段值必须是 true 或 false。",
     "isArray": "字段值必须是数组。",
+    "isObject": "字段值必须是对象。",
     "arrayUnique": "数组不能包含重复项目。",
     "arrayMinSize": "数组项目少于允许数量。",
     "arrayMaxSize": "数组项目超过允许数量。",
@@ -302,15 +310,33 @@
   },
   "progression": {
     "levels": {
-      "1": { "name": "虚位" },
-      "2": { "name": "游民" },
-      "3": { "name": "记录者" },
-      "4": { "name": "匠人" },
-      "5": { "name": "构造者" },
-      "6": { "name": "守望者" },
-      "7": { "name": "引路人" },
-      "8": { "name": "典范" },
-      "9": { "name": "奇点" }
+      "1": {
+        "name": "虚位"
+      },
+      "2": {
+        "name": "游民"
+      },
+      "3": {
+        "name": "记录者"
+      },
+      "4": {
+        "name": "匠人"
+      },
+      "5": {
+        "name": "构造者"
+      },
+      "6": {
+        "name": "守望者"
+      },
+      "7": {
+        "name": "引路人"
+      },
+      "8": {
+        "name": "典范"
+      },
+      "9": {
+        "name": "奇点"
+      }
     },
     "unlocks": {
       "basic": "基础浏览、收藏、发帖、回复、评价",
@@ -320,9 +346,18 @@
       "maximumStamina": "最高体力上限与最高恢复速度"
     },
     "dailyTasks": {
-      "post": { "title": "今日发声", "description": "发布 1 条有实际内容的帖子" },
-      "replies": { "title": "加入讨论", "description": "发布 5 条有实际内容的回复" },
-      "feedback": { "title": "细读反馈", "description": "给出 8 次经过判断的评价" }
+      "post": {
+        "title": "今日发声",
+        "description": "发布 1 条有实际内容的帖子"
+      },
+      "replies": {
+        "title": "加入讨论",
+        "description": "发布 5 条有实际内容的回复"
+      },
+      "feedback": {
+        "title": "细读反馈",
+        "description": "给出 8 次经过判断的评价"
+      }
     }
   }
 }
