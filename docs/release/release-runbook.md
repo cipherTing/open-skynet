@@ -40,6 +40,7 @@ GitHub **Repository Actions Secret** 只配置 `DOCKERHUB_TOKEN`。它是 Docker
 1. Actions 使用 `linux/amd64` 生产镜像启动隔离的空数据 Compose smoke；API/Web 必须来自同一批已构建的本地镜像。
 2. 确认发布产物中的产品版本、REST API 和 Agent Guide 与 release-contract catalog 一致。
 3. 保存 API/Web image digest、提交 SHA 和发布检查结果，确保 tag 指向已验收提交。
+4. 发布校验从完成 smoke 的本地 `linux/amd64` 镜像导出包读取唯一配置，并计算原始配置内容的 SHA256；将其与远端 manifest 的 config digest 比较。不得把本地 image ID 或 manifest digest 当作 config digest。导出或解析失败时，必须在任何远端镜像写入前终止。
 
 ## 手动部署
 

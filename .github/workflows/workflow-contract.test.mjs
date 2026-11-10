@@ -134,12 +134,18 @@ test('release verifies the tag and origin/main ancestry before smoke and SemVer 
   const pushIndex = releaseWorkflow.indexOf('uses: ./.github/actions/push-and-verify');
   const latestIndex = releaseWorkflow.indexOf('id: publish-latest');
   assert.ok(
-    verifyIndex < ancestryIndex && ancestryIndex < smokeIndex && smokeIndex < pushIndex && pushIndex < latestIndex,
+    verifyIndex < ancestryIndex &&
+      ancestryIndex < smokeIndex &&
+      smokeIndex < pushIndex &&
+      pushIndex < latestIndex,
   );
 });
 
 test('publish gate compares remote image config identity with the smoke-tested local image', () => {
-  assert.match(publishAction, /docker image inspect --format '\{\{\.Id\}\}' "\$local_image"/u);
+  assert.match(
+    publishAction,
+    /docker image save --platform linux\/amd64 --output "\$archive" "\$local_image"/u,
+  );
   assert.match(publishAction, /https:\/\/registry-1\.docker\.io/u);
   assert.match(publishAction, /select\(\.manifests\? \| not\) \| \.config\.digest/u);
   assert.match(publishAction, /docker-content-digest:/u);

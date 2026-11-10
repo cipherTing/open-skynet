@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
@@ -13,8 +21,8 @@ const apiLocalImage = 'skynet-api-smoke';
 const webLocalImage = 'skynet-web-smoke';
 const apiRemoteImage = 'sundayting/skynet-api:dev-contract-test';
 const webRemoteImage = 'sundayting/skynet-web:dev-contract-test';
-const apiConfigDigest = `sha256:${'a'.repeat(64)}`;
-const webConfigDigest = `sha256:${'b'.repeat(64)}`;
+const apiConfigDigest = 'sha256:51e4615f105c4e8e2a29c4804840bc179be86b337097d063f02f3baa6a57a564';
+const webConfigDigest = 'sha256:5d0a9ef28f143a44014bb23d62d33fba8e5dcf0fc828427bcc194d50620c93b0';
 const differentConfigDigest = `sha256:${'c'.repeat(64)}`;
 const apiManifestDigest = `sha256:${'d'.repeat(64)}`;
 const webManifestDigest = `sha256:${'e'.repeat(64)}`;
@@ -44,13 +52,14 @@ function extractActionRunBlock() {
   return runLines.join('\n');
 }
 
-function renderActionRunBlock() {
+function renderActionRunBlock(overrides = {}) {
   const inputs = {
     'api-local-image': apiLocalImage,
     'api-remote-image': apiRemoteImage,
     'web-local-image': webLocalImage,
     'web-remote-image': webRemoteImage,
     replace_remote: 'false',
+    ...overrides,
   };
   let command = extractActionRunBlock();
 
@@ -64,7 +73,7 @@ function renderActionRunBlock() {
   return command;
 }
 
-function makeFixture(remoteMode) {
+function makeFixture(remoteMode, { localIdentity = 'config', archiveMode = 'valid' } = {}) {
   const directory = mkdtempSync(path.join(os.tmpdir(), 'skynet-publish-action-test-'));
   const dockerPath = path.join(directory, 'docker');
   const curlPath = path.join(directory, 'curl');
@@ -73,6 +82,31 @@ function makeFixture(remoteMode) {
   const remoteLogPath = path.join(directory, 'remote.log');
   const publishedImagesPath = path.join(directory, 'published-images.log');
   const githubOutputPath = path.join(directory, 'github-output.txt');
+  const archiveLogPath = path.join(directory, 'archive.log');
+
+  for (const [image, title] of [
+    [apiLocalImage, 'api'],
+    [webLocalImage, 'web'],
+  ]) {
+    const archiveDirectory = path.join(directory, 'archives', image);
+    const configPath = `blobs/sha256/${title}-config`;
+    mkdirSync(path.join(archiveDirectory, 'blobs', 'sha256'), { recursive: true });
+    const manifest = { Config: configPath, RepoTags: [image], Layers: [] };
+    writeFileSync(
+      path.join(archiveDirectory, 'manifest.json'),
+      JSON.stringify(archiveMode === 'multiple-manifests' ? [manifest, manifest] : [manifest]),
+    );
+    if (archiveMode !== 'missing-config') {
+      writeFileSync(
+        path.join(archiveDirectory, configPath),
+        JSON.stringify({
+          architecture: 'amd64',
+          os: 'linux',
+          config: { Labels: { 'org.opencontainers.image.title': title } },
+        }),
+      );
+    }
+  }
 
   writeFileSync(
     dockerPath,
@@ -87,10 +121,30 @@ if [ "$1" = 'image' ] && [ "$2" = 'inspect' ]; then
     local_image="$argument"
   done
   case "$local_image" in
-    '${apiLocalImage}') printf '%s\\n' "$SKYNET_FAKE_API_CONFIG_DIGEST" ;;
-    '${webLocalImage}') printf '%s\\n' "$SKYNET_FAKE_WEB_CONFIG_DIGEST" ;;
+    '${apiLocalImage}') printf '%s\\n' "$SKYNET_FAKE_API_IMAGE_ID" ;;
+    '${webLocalImage}') printf '%s\\n' "$SKYNET_FAKE_WEB_IMAGE_ID" ;;
     *) echo "unknown local image: $local_image" >&2; exit 64 ;;
   esac
+  exit 0
+fi
+
+if [ "$1" = 'image' ] && [ "$2" = 'save' ]; then
+  shift 2
+  archive=''
+  local_image=''
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --output) archive="$2"; shift 2 ;;
+      --platform) test "$2" = 'linux/amd64'; shift 2 ;;
+      *) local_image="$1"; shift ;;
+    esac
+  done
+  printf '%s\\n' "$archive" >> "$SKYNET_FAKE_ARCHIVE_LOG"
+  if [ "$SKYNET_FAKE_ARCHIVE_MODE" = 'export-failed' ]; then
+    echo 'fixture export failed' >&2
+    exit 65
+  fi
+  tar -cf "$archive" -C "$SKYNET_FAKE_ARCHIVES/$local_image" manifest.json blobs
   exit 0
 fi
 
@@ -196,6 +250,7 @@ printf '%s' "$status"
   writeFileSync(remoteLogPath, '');
   writeFileSync(publishedImagesPath, '');
   writeFileSync(githubOutputPath, '');
+  writeFileSync(archiveLogPath, '');
 
   return {
     directory,
@@ -205,6 +260,9 @@ printf '%s' "$status"
     publishedImagesPath,
     githubOutputPath,
     remoteMode,
+    localIdentity,
+    archiveMode,
+    archiveLogPath,
   };
 }
 
@@ -213,8 +271,8 @@ function readLines(filePath) {
   return content === '' ? [] : content.split('\n');
 }
 
-function runAction(fixture) {
-  return spawnSync('/bin/bash', ['-c', renderActionRunBlock()], {
+function runAction(fixture, overrides) {
+  return spawnSync('/bin/bash', ['-c', renderActionRunBlock(overrides)], {
     cwd: fixture.directory,
     encoding: 'utf8',
     env: {
@@ -223,6 +281,13 @@ function runAction(fixture) {
       PATH: `${fixture.directory}:${process.env.PATH}`,
       SKYNET_FAKE_API_CONFIG_DIGEST: apiConfigDigest,
       SKYNET_FAKE_WEB_CONFIG_DIGEST: webConfigDigest,
+      SKYNET_FAKE_API_IMAGE_ID:
+        fixture.localIdentity === 'manifest' ? apiManifestDigest : apiConfigDigest,
+      SKYNET_FAKE_WEB_IMAGE_ID:
+        fixture.localIdentity === 'manifest' ? webManifestDigest : webConfigDigest,
+      SKYNET_FAKE_ARCHIVES: path.join(fixture.directory, 'archives'),
+      SKYNET_FAKE_ARCHIVE_MODE: fixture.archiveMode,
+      SKYNET_FAKE_ARCHIVE_LOG: fixture.archiveLogPath,
       SKYNET_FAKE_DIFFERENT_CONFIG_DIGEST: differentConfigDigest,
       SKYNET_FAKE_API_MANIFEST_DIGEST: apiManifestDigest,
       SKYNET_FAKE_WEB_MANIFEST_DIGEST: webManifestDigest,
@@ -239,22 +304,65 @@ test('不同 config digest 的远端 tag 会阻止任何镜像写入', () => {
   const fixture = makeFixture('present-different');
   try {
     const result = runAction(fixture);
-    const dockerCalls = readLines(fixture.dockerLogPath);
-
     assert.notEqual(result.status, 0, 'config digest mismatch must fail the publish action');
     assert.match(
       result.stderr,
       /remote tag already exists with a different smoke identity: sundayting\/skynet-api:dev-contract-test/u,
     );
-    assert.deepEqual(dockerCalls, [
-      `image inspect --format {{.Id}} ${apiLocalImage}`,
-      `image inspect --format {{.Id}} ${webLocalImage}`,
-    ]);
     assert.deepEqual(readLines(fixture.publishedImagesPath), []);
     assert.deepEqual(readLines(fixture.githubOutputPath), []);
     assert.deepEqual(readLines(fixture.remoteLogPath), [
       `${apiRemoteImage}|200|${differentConfigDigest}`,
     ]);
+  } finally {
+    rmSync(fixture.directory, { recursive: true, force: true });
+  }
+});
+
+test('本地 image ID 是 manifest 摘要时仍按真实 config 身份核验发布', () => {
+  const fixture = makeFixture('missing-then-matching', { localIdentity: 'manifest' });
+  try {
+    const result = runAction(fixture);
+
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.deepEqual(readLines(fixture.publishedImagesPath), [apiRemoteImage, webRemoteImage]);
+    assert.deepEqual(readLines(fixture.githubOutputPath), [
+      `api-remote-manifest-digest=${apiManifestDigest}`,
+      `web-remote-manifest-digest=${webManifestDigest}`,
+    ]);
+  } finally {
+    rmSync(fixture.directory, { recursive: true, force: true });
+  }
+});
+
+for (const archiveMode of ['export-failed', 'multiple-manifests', 'missing-config']) {
+  test(`本地镜像 ${archiveMode} 时在任何远端写入前失败并清理导出文件`, () => {
+    const fixture = makeFixture('present-matching', { archiveMode });
+    try {
+      const result = runAction(fixture);
+
+      assert.notEqual(result.status, 0);
+      assert.deepEqual(readLines(fixture.publishedImagesPath), []);
+      assert.deepEqual(readLines(fixture.curlLogPath), []);
+      assert.deepEqual(readLines(fixture.githubOutputPath), []);
+      for (const archivePath of readLines(fixture.archiveLogPath)) {
+        assert.equal(existsSync(path.dirname(archivePath)), false);
+      }
+    } finally {
+      rmSync(fixture.directory, { recursive: true, force: true });
+    }
+  });
+}
+
+test('允许覆盖的参数不能用于不可变版本镜像', () => {
+  const fixture = makeFixture('present-matching');
+  try {
+    const result = runAction(fixture, { replace_remote: 'true' });
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /replace-remote is reserved for latest aliases/u);
+    assert.deepEqual(readLines(fixture.publishedImagesPath), []);
+    assert.deepEqual(readLines(fixture.curlLogPath), []);
   } finally {
     rmSync(fixture.directory, { recursive: true, force: true });
   }
@@ -266,14 +374,15 @@ test('缺失的远端 tag 推送后必须以匹配 config digest 回读并输出
     const result = runAction(fixture);
 
     assert.equal(result.status, 0, result.stderr || result.stdout);
-    assert.deepEqual(readLines(fixture.dockerLogPath), [
-      `image inspect --format {{.Id}} ${apiLocalImage}`,
-      `image inspect --format {{.Id}} ${webLocalImage}`,
-      `image tag ${apiLocalImage} ${apiRemoteImage}`,
-      `image push ${apiRemoteImage}`,
-      `image tag ${webLocalImage} ${webRemoteImage}`,
-      `image push ${webRemoteImage}`,
-    ]);
+    assert.deepEqual(
+      readLines(fixture.dockerLogPath).filter((call) => !call.startsWith('image save ')),
+      [
+        `image tag ${apiLocalImage} ${apiRemoteImage}`,
+        `image push ${apiRemoteImage}`,
+        `image tag ${webLocalImage} ${webRemoteImage}`,
+        `image push ${webRemoteImage}`,
+      ],
+    );
     assert.deepEqual(readLines(fixture.publishedImagesPath), [apiRemoteImage, webRemoteImage]);
     assert.deepEqual(readLines(fixture.remoteLogPath), [
       `${apiRemoteImage}|404|`,
@@ -287,6 +396,11 @@ test('缺失的远端 tag 推送后必须以匹配 config digest 回读并输出
       `api-remote-manifest-digest=${apiManifestDigest}`,
       `web-remote-manifest-digest=${webManifestDigest}`,
     ]);
+    const archivePaths = readLines(fixture.archiveLogPath);
+    assert.equal(archivePaths.length, 2);
+    for (const archivePath of archivePaths) {
+      assert.equal(existsSync(path.dirname(archivePath)), false);
+    }
   } finally {
     rmSync(fixture.directory, { recursive: true, force: true });
   }
@@ -298,10 +412,10 @@ test('已存在且 config digest 相同的远端 tag 不会重复推送并复用
     const result = runAction(fixture);
 
     assert.equal(result.status, 0, result.stderr || result.stdout);
-    assert.deepEqual(readLines(fixture.dockerLogPath), [
-      `image inspect --format {{.Id}} ${apiLocalImage}`,
-      `image inspect --format {{.Id}} ${webLocalImage}`,
-    ]);
+    assert.deepEqual(
+      readLines(fixture.dockerLogPath).filter((call) => !call.startsWith('image save ')),
+      [],
+    );
     assert.deepEqual(readLines(fixture.publishedImagesPath), []);
     assert.deepEqual(readLines(fixture.remoteLogPath), [
       `${apiRemoteImage}|200|${apiConfigDigest}`,

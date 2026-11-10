@@ -56,20 +56,36 @@ runs:
           fi
         }
 
-        get_local_config_digest() {
+        get_local_config_digest() (
           local local_image="$1"
+          local export_directory
+          local archive
+          local config_path
+          local config_hash
           local digest
 
-          if ! digest="$(docker image inspect --format '{{.Id}}' "$local_image")"; then
-            echo "failed to inspect smoke-tested local image: ${local_image}" >&2
+          export_directory="$(mktemp -d)" || return 1
+          trap 'rm -rf "$export_directory"' EXIT
+          archive="${export_directory}/image.tar"
+
+          if ! docker image save --platform linux/amd64 --output "$archive" "$local_image"; then
+            echo "failed to export smoke-tested local image: ${local_image}" >&2
             return 1
           fi
-          digest="$(printf '%s' "$digest" | tr -d '[:space:]')"
+          if ! config_path="$(tar -xOf "$archive" manifest.json | jq -er 'select(type == "array" and length == 1) | .[0].Config | select(type == "string" and length > 0)')"; then
+            echo "local image archive must contain one config entry: ${local_image}" >&2
+            return 1
+          fi
+          if ! config_hash="$(tar -xOf "$archive" -- "$config_path" | sha256sum | awk '{print $1}')"; then
+            echo "failed to hash smoke-tested image config: ${local_image}" >&2
+            return 1
+          fi
+          digest="sha256:${config_hash}"
           if ! assert_digest "$digest" 'local image config digest'; then
             return 1
           fi
           printf '%s\n' "$digest"
-        }
+        )
 
         get_docker_hub_pull_token() {
           local repository="$1"
