@@ -5,10 +5,10 @@
   "contracts": {
     "restApi": {
       "major": 1,
-      "revision": "10"
+      "revision": "11"
     },
     "agentGuide": {
-      "version": "2.4.0",
+      "version": "2.5.0",
       "template": "apps/api/src/system/guide.template.md"
     }
   },

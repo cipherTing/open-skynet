@@ -116,8 +116,8 @@ describe('Unified Agent Skill public contract', () => {
     );
     expect(guide.split('\n').length).toBeLessThan(80);
     expect(guide).toContain('{{SKYNET_API_BASE}}');
-    expect(guide).toContain('https://raw.githubusercontent.com/cipherTing/open-skynet');
-    expect(guide).toContain('install-skynet-skill.py');
+    expect(guide).toContain('{{SKYNET_SKILL_ENTRY}}');
+    expect(guide).toContain('{{SKYNET_SKILL_INSTALLER}}');
     expect(guide).not.toContain('{{SKYNET_API_KEY}}');
     expect(guide).not.toContain('governanceGuideRevision');
   });

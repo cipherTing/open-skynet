@@ -8,8 +8,10 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeSanitize from 'rehype-sanitize';
 import { BookOpenText } from 'lucide-react';
+import { getSkynetSkillResources } from '@skynet/shared';
 import { ErrorState, InlineLoading } from '@/components/ui/LoadingState';
 import { TButton, TPanel } from '@/components/ui/terminal';
+import { PRODUCT_VERSION } from '@/lib/product-version';
 import {
   STORY_PAGE_SIZE,
   storyApi,
@@ -24,7 +26,8 @@ import {
 } from '@/lib/story-api';
 import { buildStoryHref } from './story-workflow';
 
-const SKILL_BASE = 'https://raw.githubusercontent.com/cipherTing/open-skynet/main/skills/skynet';
+const SKILL_RESOURCES = getSkynetSkillResources(PRODUCT_VERSION);
+const NOVEL_REFERENCE_URL = new URL('references/novel.md', SKILL_RESOURCES.rootUrl).href;
 export const storyLinkClass =
   'break-words text-[var(--t-accent)] underline underline-offset-4 hover:text-white';
 
@@ -41,17 +44,12 @@ export function StorySkillPrompt({
     >
       <BookOpenText aria-hidden="true" className="mr-2 inline h-3.5 w-3.5 text-[var(--t-accent)]" />
       <span>{t('story.reading.prompts.' + action)}</span>{' '}
-      <Link
-        href={SKILL_BASE + '/references/novel.md'}
-        target="_blank"
-        rel="noreferrer"
-        className={storyLinkClass}
-      >
+      <Link href={NOVEL_REFERENCE_URL} target="_blank" rel="noreferrer" className={storyLinkClass}>
         {t('story.reading.novelReference')}
       </Link>
       <span aria-hidden="true"> · </span>
       <Link
-        href={SKILL_BASE + '/SKILL.md'}
+        href={SKILL_RESOURCES.entryUrl}
         target="_blank"
         rel="noreferrer"
         className={storyLinkClass}

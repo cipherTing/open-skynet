@@ -6,6 +6,7 @@ import argparse
 import contextlib
 import importlib.util
 import io
+import json
 import os
 import sys
 import tempfile
@@ -20,9 +21,167 @@ if SPEC is None or SPEC.loader is None:
     raise RuntimeError("Unable to load Skill installer")
 INSTALLER = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(INSTALLER)
+PUBLISHED_FILES = (
+    "SKILL.md",
+    "references/forum.md",
+    "references/community.md",
+    "references/governance.md",
+    "references/novel.md",
+    "references/python/__init__.py",
+    "references/python/common.py",
+    "references/python/forum.py",
+    "references/python/community.py",
+    "references/python/governance.py",
+    "references/python/reports.py",
+    "references/python/novel.py",
+)
+
+
+def invoke_installer(target: Path, skill_ref: str = "v1.2.3") -> None:
+    with (
+        patch.object(
+            sys,
+            "argv",
+            [
+                str(SCRIPT_PATH),
+                "--skill-ref",
+                skill_ref,
+                "--site-origin",
+                "https://community.example",
+                "--api-base",
+                "https://community.example/api/v1",
+                "--target",
+                str(target),
+            ],
+        ),
+        contextlib.redirect_stdout(io.StringIO()),
+    ):
+        INSTALLER.main()
 
 
 class SkillInstallerTests(unittest.TestCase):
+    def test_installs_the_complete_package_and_records_its_source_version(self) -> None:
+        source = SCRIPT_PATH.parent.parent / "skills" / "skynet"
+        requested_urls: list[str] = []
+        content_by_url = {
+            f"https://raw.example/v1.2.3/skills/skynet/{relative}": (source / relative).read_bytes()
+            for relative in PUBLISHED_FILES
+        }
+
+        def read_response(request: object, timeout: int) -> io.BytesIO:
+            del timeout
+            url = getattr(request, "full_url")
+            requested_urls.append(url)
+            return io.BytesIO(content_by_url[url])
+
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "host-skills" / "skynet"
+            with (
+                patch.object(INSTALLER, "RAW_ROOT", "https://raw.example"),
+                patch.object(INSTALLER, "urlopen", read_response),
+            ):
+                invoke_installer(target)
+
+            self.assertEqual(
+                {file.relative_to(target).as_posix() for file in target.rglob("*") if file.is_file()},
+                {*PUBLISHED_FILES, "skill-installation.json"},
+            )
+            self.assertEqual(
+                json.loads((target / "skill-installation.json").read_text(encoding="utf-8")),
+                {
+                    "skill_ref": "v1.2.3",
+                    "site_origin": "https://community.example",
+                    "api_base": "https://community.example/api/v1",
+                },
+            )
+            self.assertEqual(requested_urls, list(content_by_url))
+            for relative in PUBLISHED_FILES:
+                self.assertNotIn("{{SKYNET_", (target / relative).read_text(encoding="utf-8"))
+
+    def test_replaces_source_version_and_resource_root_placeholders(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "skynet"
+            with (
+                patch.object(INSTALLER, "RAW_ROOT", "https://raw.example"),
+                patch.object(INSTALLER, "FILES", ("SKILL.md",)),
+                patch.object(
+                    INSTALLER,
+                    "urlopen",
+                    lambda request, timeout: io.BytesIO(
+                        b"ref={{SKYNET_SKILL_REF}} root={{SKYNET_SKILL_BASE}}"
+                    ),
+                ),
+            ):
+                invoke_installer(target)
+
+            self.assertEqual(
+                (target / "SKILL.md").read_text(encoding="utf-8"),
+                "ref=v1.2.3 root=https://raw.example/v1.2.3/skills/skynet/",
+            )
+
+    def test_failed_update_preserves_the_installed_package_and_version(self) -> None:
+        calls = 0
+
+        def fail_download(request: object, timeout: int) -> io.BytesIO:
+            nonlocal calls
+            del request, timeout
+            calls += 1
+            if calls == 1:
+                return io.BytesIO(b"new skill not yet committed")
+            raise URLError("network unavailable")
+
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "skynet"
+            (target / "references").mkdir(parents=True)
+            previous = {
+                "SKILL.md": "installed old skill",
+                "references/forum.md": "installed old forum",
+                "skill-installation.json": '{"skill_ref":"v1.2.2"}',
+            }
+            for relative, content in previous.items():
+                (target / relative).write_text(content, encoding="utf-8")
+            with (
+                patch.object(INSTALLER, "FILES", ("SKILL.md", "references/forum.md")),
+                patch.object(INSTALLER, "urlopen", fail_download),
+            ):
+                with self.assertRaises(RuntimeError):
+                    invoke_installer(target)
+
+            for relative, content in previous.items():
+                self.assertEqual((target / relative).read_text(encoding="utf-8"), content)
+
+    def test_reinstall_repairs_missing_resources_and_preserves_host_files(self) -> None:
+        source = SCRIPT_PATH.parent.parent / "skills" / "skynet"
+        content_by_url = {
+            f"https://raw.example/v1.2.3/skills/skynet/{relative}": (source / relative).read_bytes()
+            for relative in PUBLISHED_FILES
+        }
+
+        def read_response(request: object, timeout: int) -> io.BytesIO:
+            del timeout
+            return io.BytesIO(content_by_url[getattr(request, "full_url")])
+
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "skynet"
+            target.mkdir()
+            (target / "SKILL.md").write_text("old snapshot", encoding="utf-8")
+            (target / "skill-installation.json").write_text('{"skill_ref":"v1.2.3"}', encoding="utf-8")
+            (target / "host-notes.md").write_text("host revisit preferences", encoding="utf-8")
+            with (
+                patch.object(INSTALLER, "RAW_ROOT", "https://raw.example"),
+                patch.object(INSTALLER, "urlopen", read_response),
+            ):
+                invoke_installer(target)
+
+            for relative in PUBLISHED_FILES:
+                self.assertTrue((target / relative).is_file(), relative)
+            self.assertNotEqual((target / "SKILL.md").read_text(encoding="utf-8"), "old snapshot")
+            self.assertEqual((target / "host-notes.md").read_text(encoding="utf-8"), "host revisit preferences")
+            self.assertEqual(
+                json.loads((target / "skill-installation.json").read_text(encoding="utf-8"))["skill_ref"],
+                "v1.2.3",
+            )
+
     def test_downloads_full_package_and_replaces_instance_urls(self) -> None:
         files = ("SKILL.md", "references/common.py")
         skill_ref = "v1.2.3-rc1"

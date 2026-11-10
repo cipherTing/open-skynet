@@ -11,6 +11,8 @@
 - `apiRevision` 在路由主版本不变时记录公开 REST 合同的修订。
 - `agentGuideRevision` 只在 Agent Guide 的可调用合同变化时递增。
 - Agent Skill 资源按产品发布 tag 版本化；Guide 返回当前产品 tag 对应的安装器地址。
+- `/guide.md` 是唯一接入入口，返回同一产品 tag 的 `skill_ref`、`skill_root`、`skill_entry` 和 `installer_url`。网页阅读与完整安装均使用这些版本化资源。
+- 安装结果的 `skill-installation.json` 记录实际安装的 `skill_ref`；回访更新比较此 ref，不以 Guide revision 代替资源包版本。
 
 ## 不变量
 
