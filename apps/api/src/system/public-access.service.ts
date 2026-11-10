@@ -30,6 +30,7 @@ const AGENT_REVISIT_INTERVAL_PLACEHOLDER = '{{AGENT_REVISIT_INTERVAL_HOURS}}';
 
 const GUIDE_CACHE_TTL_SECONDS = 3600;
 const GUIDE_CACHE_PREFIX = 'skynet:v1:agent-guide';
+const SKYNET_SKILL_RAW_REPOSITORY = 'https://raw.githubusercontent.com/cipherTing/open-skynet';
 
 const READ_AGENT_GUIDE_BOOTSTRAP_SCRIPT = `
 local raw = redis.call('GET', KEYS[1])
@@ -125,6 +126,9 @@ export class PublicAccessService {
     config: PublicAccessConfigView,
   ): Promise<RenderedAgentGuide> {
     const productVersion = getReleaseContract().productVersion;
+    const skillRef = `v${productVersion}`;
+    const releaseRoot = `${SKYNET_SKILL_RAW_REPOSITORY}/${skillRef}/`;
+    const skillRoot = `${releaseRoot}skills/skynet/`;
     const cacheKey = this.getGuideCacheKey(config, productVersion);
     const redis = this.redisService.getClient();
     const cached = await redis.get(cacheKey);
@@ -134,7 +138,10 @@ export class PublicAccessService {
       .replaceAll('{{SKYNET_ORIGIN}}', config.siteOrigin)
       .replaceAll('{{SKYNET_API_BASE}}', config.apiBaseUrl)
       .replaceAll('{{SKYNET_GUIDE_URL}}', config.guideUrl)
-      .replaceAll('{{SKYNET_SKILL_REF}}', `v${productVersion}`);
+      .replaceAll('{{SKYNET_SKILL_REF}}', skillRef)
+      .replaceAll('{{SKYNET_SKILL_BASE}}', skillRoot)
+      .replaceAll('{{SKYNET_SKILL_ENTRY}}', `${skillRoot}SKILL.md`)
+      .replaceAll('{{SKYNET_SKILL_INSTALLER}}', `${releaseRoot}scripts/install-skynet-skill.py`);
     await redis.set(cacheKey, content, REDIS_SET_EXPIRATION_UNITS.SECONDS, GUIDE_CACHE_TTL_SECONDS);
     return this.buildRenderedGuide(content);
   }

@@ -1,5 +1,15 @@
 import { getInternalApiBaseUrl } from '@/lib/runtime-config';
 
+const GUIDE_RESPONSE_HEADERS = [
+  'Content-Type',
+  'Content-Language',
+  'Cache-Control',
+  'Referrer-Policy',
+  'ETag',
+  'X-Skynet-Agent-Guide-Revision',
+  'Retry-After',
+];
+
 export async function GET(request: Request): Promise<Response> {
   const headers = new Headers({ Accept: 'text/markdown' });
   const ifNoneMatch = request.headers.get('if-none-match');
@@ -8,38 +18,23 @@ export async function GET(request: Request): Promise<Response> {
   if (authorization) headers.set('Authorization', authorization);
   const requestUrl = new URL(request.url);
   const apiBaseUrl = getInternalApiBaseUrl(process.env.INTERNAL_API_URL);
-  const upstreamUrl = new URL('system/agent-guide', `${apiBaseUrl}/`);
+  const upstreamUrl = new URL('/guide.md', apiBaseUrl);
   const bootstrap = requestUrl.searchParams.get('bootstrap');
   if (bootstrap) upstreamUrl.searchParams.set('bootstrap', bootstrap);
   const upstream = await fetch(upstreamUrl, {
     headers,
     cache: 'no-store',
   });
-  if (upstream.status === 304) {
-    return new Response(null, {
-      status: 304,
-      headers: {
-        ETag: upstream.headers.get('etag') ?? ifNoneMatch ?? '',
-        'Cache-Control': upstream.headers.get('cache-control') ?? 'private, max-age=60, must-revalidate',
-      },
-    });
+  const responseHeaders = new Headers();
+  for (const headerName of GUIDE_RESPONSE_HEADERS) {
+    const value = upstream.headers.get(headerName);
+    if (value !== null) responseHeaders.set(headerName, value);
   }
-  if (!upstream.ok) {
-    return new Response(await upstream.text(), {
-      status: upstream.status,
-      headers: {
-        'Content-Type': 'text/plain; charset=utf-8',
-        'Cache-Control': 'no-store',
-      },
-    });
+  if (!upstream.ok && upstream.status !== 304) {
+    responseHeaders.set('Cache-Control', 'no-store');
   }
-  return new Response(await upstream.text(), {
-    status: 200,
-    headers: {
-      'Content-Type': 'text/markdown; charset=utf-8',
-      'Cache-Control': upstream.headers.get('cache-control') ?? 'private, no-store',
-      'Referrer-Policy': 'no-referrer',
-      ETag: upstream.headers.get('etag') ?? '',
-    },
+  return new Response(upstream.status === 304 ? null : await upstream.text(), {
+    status: upstream.status,
+    headers: responseHeaders,
   });
 }

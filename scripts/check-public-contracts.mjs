@@ -111,7 +111,11 @@ async function main(argv) {
   if (apiPrefix !== `/api/v${restApiMajor}`)
     throw new Error(`${guidePath} must declare /api/v${restApiMajor}`);
   if (
-    !guideContent.includes('open-skynet/{{SKYNET_SKILL_REF}}/scripts/install-skynet-skill.py') ||
+    !guideContent.includes("skill_ref: '{{SKYNET_SKILL_REF}}'") ||
+    !guideContent.includes("skill_root: '{{SKYNET_SKILL_BASE}}'") ||
+    !guideContent.includes("skill_entry: '{{SKYNET_SKILL_ENTRY}}'") ||
+    !guideContent.includes("installer_url: '{{SKYNET_SKILL_INSTALLER}}'") ||
+    !guideContent.includes("curl -fsSL '{{SKYNET_SKILL_INSTALLER}}'") ||
     !guideContent.includes("--skill-ref '{{SKYNET_SKILL_REF}}'")
   ) {
     throw new Error(`${guidePath} must pass its versioned Skill ref to the installer`);

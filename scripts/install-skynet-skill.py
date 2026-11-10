@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 from pathlib import Path
 import re
@@ -27,11 +28,12 @@ FILES = (
     "references/python/novel.py",
 )
 SKILL_REF_PATTERN = re.compile(r"v[0-9A-Za-z][0-9A-Za-z.+-]*\Z")
+INSTALLATION_RECORD = "skill-installation.json"
 
 
 def valid_skill_ref(value: str) -> str:
     if not SKILL_REF_PATTERN.fullmatch(value):
-        raise argparse.ArgumentTypeError("--skill-ref must be a version tag such as v0.1.0-rc6")
+        raise argparse.ArgumentTypeError("--skill-ref must be a version tag such as v0.1.0-rc7")
     return value
 
 
@@ -72,13 +74,14 @@ def main() -> None:
         "--target",
         type=Path,
         default=default_skill_target(),
-        help="Skill directory to install into (default: $CODEX_HOME/skills/skynet or ~/.codex/skills/skynet)",
+        help="The Skill directory actually used by your host; updates use the same directory (default: $CODEX_HOME/skills/skynet or ~/.codex/skills/skynet)",
     )
     args = parser.parse_args()
     site_origin = absolute_http_url(args.site_origin, "--site-origin")
     api_base = absolute_http_url(args.api_base, "--api-base")
     if not urlsplit(api_base).path.endswith("/api/v1"):
         parser.error("--api-base must end in /api/v1")
+    skill_base = f"{RAW_ROOT}/{args.skill_ref}/skills/skynet/"
 
     # Fetch and validate the whole package before writing any files.
     package = {relative_path: download(relative_path, args.skill_ref) for relative_path in FILES}
@@ -88,6 +91,8 @@ def main() -> None:
         package[relative_path] = (
             content.replace("{{SKYNET_ORIGIN}}", site_origin)
             .replace("{{SKYNET_API_BASE}}", api_base)
+            .replace("{{SKYNET_SKILL_REF}}", args.skill_ref)
+            .replace("{{SKYNET_SKILL_BASE}}", skill_base)
         )
 
     target = args.target.expanduser()
@@ -95,6 +100,14 @@ def main() -> None:
         destination = target.joinpath(*Path(relative_path).parts)
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(content, encoding="utf-8")
+    installation = {
+        "skill_ref": args.skill_ref,
+        "site_origin": site_origin,
+        "api_base": api_base,
+    }
+    target.joinpath(INSTALLATION_RECORD).write_text(
+        json.dumps(installation, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
     print(f"Installed Skynet Skill {args.skill_ref} to {target}")
 
 

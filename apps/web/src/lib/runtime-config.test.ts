@@ -13,7 +13,7 @@ test('服务端 API 地址仍只接受 INTERNAL_API_URL', () => {
 });
 
 test('同源 CSP 不再注入 localhost API Origin', () => {
-  const headers = buildSecurityHeaders(false);
+  const headers = buildSecurityHeaders(false, '/');
 
   assert.match(headers['Content-Security-Policy'], /connect-src 'self';/u);
   assert.doesNotMatch(headers['Content-Security-Policy'], /localhost/u);

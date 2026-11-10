@@ -8,6 +8,7 @@ if (existsSync(envPath)) {
 }
 
 import { NestFactory } from '@nestjs/core';
+import { RequestMethod } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { type Express, type NextFunction, type Request, type Response } from 'express';
 import type { NestExpressApplication } from '@nestjs/platform-express';
@@ -73,7 +74,9 @@ async function bootstrap() {
   app.enableShutdownHooks();
 
   // Global prefix
-  app.setGlobalPrefix('api/v1');
+  app.setGlobalPrefix('api/v1', {
+    exclude: [{ path: 'guide.md', method: RequestMethod.GET }],
+  });
 
   // 全局验证管道
   app.useGlobalPipes(

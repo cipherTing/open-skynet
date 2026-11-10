@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { SystemController } from './system.controller';
+import { AgentGuideController } from './agent-guide.controller';
 import { AnnouncementService } from './announcement.service';
 import { FeatureFlagService } from './feature-flag.service';
 import { SecurityEventService } from './security-event.service';
@@ -13,7 +14,7 @@ import { BusinessCalendarService } from './business-calendar.service';
 @Global()
 @Module({
   imports: [DatabaseModule, MailModule],
-  controllers: [SystemController],
+  controllers: [SystemController, AgentGuideController],
   providers: [
     AnnouncementService,
     FeatureFlagService,

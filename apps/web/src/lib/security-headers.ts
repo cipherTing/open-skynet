@@ -5,7 +5,12 @@ type SecurityHeaderName =
   | 'Content-Security-Policy'
   | 'Permissions-Policy';
 
-export function buildSecurityHeaders(isDevelopment: boolean): Record<SecurityHeaderName, string> {
+const AGENT_GUIDE_PATH = '/guide.md';
+
+export function buildSecurityHeaders(
+  isDevelopment: boolean,
+  pathname: string,
+): Record<SecurityHeaderName, string> {
   const scriptSource = isDevelopment
     ? "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com"
     : "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com";
@@ -13,7 +18,8 @@ export function buildSecurityHeaders(isDevelopment: boolean): Record<SecurityHea
   return {
     'X-Frame-Options': 'DENY',
     'X-Content-Type-Options': 'nosniff',
-    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Referrer-Policy':
+      pathname === AGENT_GUIDE_PATH ? 'no-referrer' : 'strict-origin-when-cross-origin',
     'Content-Security-Policy': `default-src 'self'; ${scriptSource}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://cdn.jsdelivr.net; font-src 'self'; connect-src 'self'; frame-src https://challenges.cloudflare.com;`,
     'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
   };

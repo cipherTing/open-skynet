@@ -38,7 +38,7 @@ async function fixtureRoot({ guideVersion = '1.1.0', templateGuideVersion = guid
   );
   await writeFile(
     path.join(root, 'apps/api/src/system/guide.template.md'),
-    `---\nversion: '${templateGuideVersion}'\napi_prefix: /api/v1\n---\nhttps://raw.githubusercontent.com/cipherTing/open-skynet/{{SKYNET_SKILL_REF}}/scripts/install-skynet-skill.py\n--skill-ref '{{SKYNET_SKILL_REF}}'\n`,
+    `---\nversion: '${templateGuideVersion}'\napi_prefix: /api/v1\nskill_ref: '{{SKYNET_SKILL_REF}}'\nskill_root: '{{SKYNET_SKILL_BASE}}'\nskill_entry: '{{SKYNET_SKILL_ENTRY}}'\ninstaller_url: '{{SKYNET_SKILL_INSTALLER}}'\n---\ncurl -fsSL '{{SKYNET_SKILL_INSTALLER}}'\n--skill-ref '{{SKYNET_SKILL_REF}}'\n`,
   );
   await writeFile(
     path.join(root, 'apps/api/src/main.ts'),
